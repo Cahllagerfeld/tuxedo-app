@@ -1,0 +1,41 @@
+{
+	"name": "tauri-app",
+	"version": "0.1.0",
+	"description": "",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"tauri": "tauri",
+		"lint": "prettier --check .",
+		"format": "prettier --write .",
+		"prepare": "svelte-kit sync || echo ''",
+		"test:unit": "vitest"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"@tauri-apps/api": "^2.11.0",
+		"@tauri-apps/plugin-opener": "^2.5.4"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/kit": "^2.61.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/vite": "^4.3.0",
+		"@tauri-apps/cli": "^2.11.2",
+		"@vitest/browser-playwright": "^4.1.7",
+		"prettier": "^3.8.3",
+		"prettier-plugin-svelte": "^4.0.1",
+		"prettier-plugin-tailwindcss": "^0.8.0",
+		"svelte": "^5.55.9",
+		"svelte-check": "^4.4.8",
+		"typescript": "^5.9.3",
+		"vite": "^8.0.14",
+		"vitest": "^4.1.7",
+		"vitest-browser-svelte": "^2.1.1"
+	},
+	"packageManager": "pnpm@11.2.2"
+}
