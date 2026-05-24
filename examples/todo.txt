@@ -1,0 +1,18 @@
+(A) 2026-05-24 Review todo.txt parser +TuxedoApp @computer due:2026-05-25
+(B) Schedule Goodwill pickup +GarageSale @phone
+2026-05-24 Document parser behavior +TuxedoApp @computer
+Plan next feature
+Capture inbox item @home @computer +TuxedoApp +Ideas
+Email Sam about launch notes @email +TuxedoApp
+Buy milk @GroceryStore due:2026-05-26
+x 2026-05-24 2026-05-23 Call Mom +Family @phone
+x Ship completed task with no extra metadata
+x 2026-05-24 Archive completed todo examples +TuxedoApp pri:C
+Post signs around the neighborhood +GarageSale
+@GroceryStore pies
+Learn how to add 2+2
+Really gotta call Mom (A) @phone
+(b) Lowercase priority-looking token is plain text @work
+(B)->Priority without space is plain text +SpecExamples
+x 2026-05-24 2026-05-23 Finish release +TuxedoApp +Release @computer @github due:2026-05-24 pri:A
+x Completed task without completion date +OptionalDateExample

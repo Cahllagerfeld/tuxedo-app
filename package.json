@@ -13,12 +13,17 @@
 		"lint": "prettier --check .",
 		"format": "prettier --write .",
 		"prepare": "svelte-kit sync || echo ''",
-		"test:unit": "vitest"
+		"test:unit": "vitest --run",
+		"test:unit:watch": "vitest",
+		"test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+		"test": "pnpm test:unit && pnpm test:rust"
 	},
 	"license": "MIT",
 	"dependencies": {
 		"@tauri-apps/api": "^2.11.0",
-		"@tauri-apps/plugin-opener": "^2.5.4"
+		"@tauri-apps/plugin-dialog": "^2.4.1",
+		"@tauri-apps/plugin-opener": "^2.5.4",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",

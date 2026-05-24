@@ -1,0 +1,9 @@
+(A) 2026-05-24 Ship parser fixture +TuxedoApp @computer due:2026-05-25 pri:A
+
+x 2026-05-24 2026-05-23 Close old issue +TuxedoApp @github
+2026-13-01 Impossible creation date +Broken
+x 2026-99-99 Impossible completion date +Broken
++OnlyMetadata @only due:2026-05-25
+x Completed without date +Inbox @home
+Email team about parser edge cases @email +TuxedoApp
+Task with invalid metadata key:value:extra @computer
