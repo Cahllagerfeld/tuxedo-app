@@ -2,6 +2,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { open } from "@tauri-apps/plugin-dialog";
 	import { parseTodoFileResponse, type TodoFile } from "$lib/todo";
+	import { Button } from "@/components/ui/button";
 
 	let todoFile = $state<TodoFile | null>(null);
 	let error = $state("");
@@ -37,9 +38,9 @@
 		<p class="eyebrow">todo.txt</p>
 		<h1>Open and parse your todo.txt file</h1>
 		<p>Select an existing todo.txt file to parse it in Rust and display the valid tasks here.</p>
-		<button type="button" onclick={openTodoFile} disabled={isLoading}>
+		<Button type="button" onclick={openTodoFile} disabled={isLoading}>
 			{isLoading ? "Opening..." : "Open"}
-		</button>
+		</Button>
 	</section>
 
 	{#if error}
@@ -94,7 +95,8 @@
 				<ul>
 					{#each todoFile.skipped as skipped}
 						<li>
-							<strong>Line {skipped.line_number}:</strong> {skipped.reason}
+							<strong>Line {skipped.line_number}:</strong>
+							{skipped.reason}
 							<code>{skipped.raw}</code>
 						</li>
 					{/each}
@@ -160,37 +162,6 @@
 	.summary,
 	.skipped {
 		padding: 1rem;
-	}
-
-	button {
-		border-radius: 8px;
-		border: 1px solid transparent;
-		padding: 0.6em 1.2em;
-		font-size: 1em;
-		font-weight: 500;
-		font-family: inherit;
-		color: #0f0f0f;
-		background-color: #ffffff;
-		transition: border-color 0.25s;
-		box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-		cursor: pointer;
-	}
-
-	button:hover {
-		border-color: #396cd8;
-	}
-	button:active {
-		border-color: #396cd8;
-		background-color: #e8e8e8;
-	}
-
-	button {
-		outline: none;
-	}
-
-	button:disabled {
-		cursor: wait;
-		opacity: 0.7;
 	}
 
 	.error {
@@ -264,14 +235,6 @@
 		.todo-list li {
 			border-color: #555555;
 			background: #1f1f1f;
-		}
-
-		button {
-			color: #ffffff;
-			background-color: #0f0f0f98;
-		}
-		button:active {
-			background-color: #0f0f0f69;
 		}
 
 		.error {

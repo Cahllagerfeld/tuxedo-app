@@ -13,6 +13,9 @@ const config = {
 	},
 	preprocess: vitePreprocess(),
 	kit: {
+		alias: {
+			"@/*": "./src/lib/*",
+		},
 		adapter: adapter({
 			fallback: "index.html",
 		}),
