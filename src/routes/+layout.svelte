@@ -5,6 +5,7 @@
 	import WorkspaceViewToggler from "@/components/workspace/WorkspaceViewToggler.svelte";
 	import { setAppState } from "@/state/app-context";
 	import { AppState } from "@/state/app-state.svelte";
+	import * as Resizable from "@/components/ui/resizable/index";
 	import { onMount } from "svelte";
 	import "./layout.css";
 	let { children } = $props();
@@ -21,8 +22,15 @@
 	<WorkspaceHeader />
 	<WorkspaceViewToggler />
 	<main class="flex min-h-0 flex-1 overflow-hidden">
-		<Sidebar />
-		{@render children()}
+		<Resizable.PaneGroup direction="horizontal">
+			<Resizable.Pane maxSize={40} minSize={10} defaultSize={10}>
+				<Sidebar />
+			</Resizable.Pane>
+			<Resizable.Handle withHandle />
+			<Resizable.Pane>
+				{@render children()}
+			</Resizable.Pane>
+		</Resizable.PaneGroup>
 	</main>
 	<WorkspaceStatusBar />
 </div>
