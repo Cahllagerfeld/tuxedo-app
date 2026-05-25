@@ -1,4 +1,5 @@
 mod todo_txt;
+mod workspace;
 
 use std::path::PathBuf;
 use todo_txt::error::LoadError;
@@ -9,7 +10,7 @@ fn parse_todo_file(path: String) -> Result<TodoFile, String> {
     load_todo_file(path).map_err(|error| error.to_string())
 }
 
-fn load_todo_file(path: String) -> Result<TodoFile, LoadError> {
+pub(crate) fn load_todo_file(path: String) -> Result<TodoFile, LoadError> {
     let path_buf = PathBuf::from(&path);
 
     if !path_buf.exists() {
@@ -35,7 +36,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![parse_todo_file])
+        .invoke_handler(tauri::generate_handler![
+            parse_todo_file,
+            workspace::load_workspace_config,
+            workspace::save_workspace_config,
+            workspace::load_workspace
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

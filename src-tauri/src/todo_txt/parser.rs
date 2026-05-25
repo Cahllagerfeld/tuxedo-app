@@ -61,11 +61,7 @@ fn parse_completed(line_number: u32, raw: &str, rest: &str) -> Result<TodoItem, 
     })
 }
 
-fn parse_incomplete(
-    line_number: u32,
-    raw: &str,
-    line: &str,
-) -> Result<TodoItem, ParseLineError> {
+fn parse_incomplete(line_number: u32, raw: &str, line: &str) -> Result<TodoItem, ParseLineError> {
     let (priority, rest) = consume_priority(line);
     let (creation_date, rest) = consume_optional_date(rest)?;
     let parsed = parse_tokens(rest)?;
@@ -204,8 +200,7 @@ mod tests {
     #[test]
     fn parses_readme_incomplete_task_examples() {
         let task_with_phone = parse_line(1, "(A) Thank Mom for the meatballs @phone").unwrap();
-        let garage_task =
-            parse_line(2, "(B) Schedule Goodwill pickup +GarageSale @phone").unwrap();
+        let garage_task = parse_line(2, "(B) Schedule Goodwill pickup +GarageSale @phone").unwrap();
         let signs_task = parse_line(3, "Post signs around the neighborhood +GarageSale").unwrap();
         let grocery_task = parse_line(4, "@GroceryStore pies").unwrap();
 
@@ -258,7 +253,10 @@ mod tests {
         let item = parse_line(1, "Buy milk due:2010-01-02").unwrap();
 
         assert_eq!(item.description, "Buy milk");
-        assert_eq!(item.metadata.get("due").map(String::as_str), Some("2010-01-02"));
+        assert_eq!(
+            item.metadata.get("due").map(String::as_str),
+            Some("2010-01-02")
+        );
     }
 
     #[test]
@@ -268,7 +266,10 @@ mod tests {
         assert_eq!(item.description, "Review PR");
         assert_eq!(item.projects, vec!["TodoTxt"]);
         assert_eq!(item.contexts, vec!["github"]);
-        assert_eq!(item.metadata.get("due").map(String::as_str), Some("2026-05-25"));
+        assert_eq!(
+            item.metadata.get("due").map(String::as_str),
+            Some("2026-05-25")
+        );
         assert_eq!(item.metadata.get("pri").map(String::as_str), Some("A"));
     }
 
@@ -356,7 +357,10 @@ mod tests {
         let email_task = parse_line(1, "Email SoAndSo at soandso@example.com").unwrap();
         let math_task = parse_line(2, "Learn how to add 2+2").unwrap();
 
-        assert_eq!(email_task.description, "Email SoAndSo at soandso@example.com");
+        assert_eq!(
+            email_task.description,
+            "Email SoAndSo at soandso@example.com"
+        );
         assert!(email_task.projects.is_empty());
         assert!(email_task.contexts.is_empty());
         assert_eq!(math_task.description, "Learn how to add 2+2");
@@ -488,7 +492,10 @@ mod tests {
         assert!(completed_no_metadata.contexts.is_empty());
         assert!(completed_no_metadata.metadata.is_empty());
 
-        assert_eq!(items[14].description, "(b) Lowercase priority-looking token is plain text");
+        assert_eq!(
+            items[14].description,
+            "(b) Lowercase priority-looking token is plain text"
+        );
         assert_eq!(items[14].contexts, vec!["work"]);
         assert_eq!(
             items[15].description,
@@ -507,7 +514,10 @@ mod tests {
             everything.metadata.get("due").map(String::as_str),
             Some("2026-05-24")
         );
-        assert_eq!(everything.metadata.get("pri").map(String::as_str), Some("A"));
+        assert_eq!(
+            everything.metadata.get("pri").map(String::as_str),
+            Some("A")
+        );
 
         let completed_without_date = items.last().unwrap();
         assert!(completed_without_date.completed);
@@ -607,7 +617,10 @@ mod tests {
         assert!(items[4].metadata.is_empty());
 
         assert_eq!(skipped[0].line_number, 4);
-        assert_eq!(skipped[0].raw, "2026-13-01 Impossible creation date +Broken");
+        assert_eq!(
+            skipped[0].raw,
+            "2026-13-01 Impossible creation date +Broken"
+        );
         assert_eq!(skipped[0].reason, ParseLineError::InvalidDate.to_string());
         assert_eq!(skipped[1].line_number, 5);
         assert_eq!(
@@ -617,6 +630,9 @@ mod tests {
         assert_eq!(skipped[1].reason, ParseLineError::InvalidDate.to_string());
         assert_eq!(skipped[2].line_number, 6);
         assert_eq!(skipped[2].raw, "+OnlyMetadata @only due:2026-05-25");
-        assert_eq!(skipped[2].reason, ParseLineError::EmptyDescription.to_string());
+        assert_eq!(
+            skipped[2].reason,
+            ParseLineError::EmptyDescription.to_string()
+        );
     }
 }

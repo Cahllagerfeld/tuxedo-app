@@ -1,50 +1,126 @@
 <script lang="ts">
+	import type { TodoFile } from "$lib/todo";
+	import {
+		parseWorkspaceConfigResponse,
+		parseWorkspaceLoadResponse,
+		type WorkspaceLoadResult,
+	} from "$lib/workspace";
+	import { Button } from "@/components/ui/button";
 	import { invoke } from "@tauri-apps/api/core";
 	import { open } from "@tauri-apps/plugin-dialog";
-	import { parseTodoFileResponse, type TodoFile } from "$lib/todo";
-	import { Button } from "@/components/ui/button";
+	import { onMount } from "svelte";
 
+	let workspaceRoot = $state<string | null>(null);
+	let todoPath = $state<string | null>(null);
 	let todoFile = $state<TodoFile | null>(null);
+	let warning = $state("");
 	let error = $state("");
 	let isLoading = $state(false);
 
-	async function openTodoFile() {
+	onMount(() => {
+		void restoreWorkspace();
+	});
+
+	async function restoreWorkspace() {
 		error = "";
+		warning = "";
 		isLoading = true;
 
 		try {
-			const path = await open({
-				multiple: false,
-				directory: false,
-				filters: [{ name: "todo.txt", extensions: ["txt"] }],
-			});
+			const response = await invoke("load_workspace_config");
+			const config = parseWorkspaceConfigResponse(response);
+			workspaceRoot = config.root;
 
-			if (!path) {
+			if (!config.root) {
+				todoPath = null;
+				todoFile = null;
 				return;
 			}
 
-			const response = await invoke("parse_todo_file", { path });
-			todoFile = parseTodoFileResponse(response);
+			await loadWorkspace(config.root);
 		} catch (unknownError) {
 			error = unknownError instanceof Error ? unknownError.message : String(unknownError);
 		} finally {
 			isLoading = false;
 		}
 	}
+
+	async function openWorkspaceDirectory() {
+		error = "";
+		warning = "";
+		isLoading = true;
+
+		try {
+			const root = await open({
+				multiple: false,
+				directory: true,
+			});
+
+			if (!root) {
+				return;
+			}
+
+			const response = await invoke("save_workspace_config", { root });
+			const config = parseWorkspaceConfigResponse(response);
+
+			if (config.root) {
+				await loadWorkspace(config.root);
+			}
+		} catch (unknownError) {
+			error = unknownError instanceof Error ? unknownError.message : String(unknownError);
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	async function loadWorkspace(root: string) {
+		const response = await invoke("load_workspace", { root });
+		const workspace = parseWorkspaceLoadResponse(response);
+		applyWorkspaceLoadResult(workspace);
+	}
+
+	function applyWorkspaceLoadResult(workspace: WorkspaceLoadResult) {
+		workspaceRoot = workspace.root;
+		todoPath = workspace.todo_path;
+		todoFile = workspace.todo_file;
+		warning = workspace.todo_exists
+			? ""
+			: `No todo.txt file was found in ${workspace.root}. Add one there or choose another directory.`;
+	}
 </script>
 
 <main class="container">
 	<section class="hero">
 		<p class="eyebrow">todo.txt</p>
-		<h1>Open and parse your todo.txt file</h1>
-		<p>Select an existing todo.txt file to parse it in Rust and display the valid tasks here.</p>
-		<Button type="button" onclick={openTodoFile} disabled={isLoading}>
-			{isLoading ? "Opening..." : "Open"}
+		<h1>Open your todo workspace</h1>
+		<p>Choose the directory that contains todo.txt. Tuxedo will reopen it on startup.</p>
+		<Button type="button" onclick={openWorkspaceDirectory} disabled={isLoading}>
+			{isLoading ? "Loading..." : "Choose Directory"}
 		</Button>
 	</section>
 
 	{#if error}
 		<p class="error" role="alert">{error}</p>
+	{/if}
+
+	{#if warning}
+		<p class="warning" role="status">{warning}</p>
+	{/if}
+
+	{#if !workspaceRoot && !isLoading && !error}
+		<section class="summary" aria-label="No workspace selected">
+			<p><strong>No workspace selected.</strong></p>
+			<p>Choose a directory to load its todo.txt file and remember it for next time.</p>
+		</section>
+	{/if}
+
+	{#if workspaceRoot}
+		<section class="summary" aria-label="Loaded workspace summary">
+			<p><strong>Workspace:</strong> {workspaceRoot}</p>
+			{#if todoPath}
+				<p><strong>Todo file:</strong> {todoPath}</p>
+			{/if}
+		</section>
 	{/if}
 
 	{#if todoFile}
@@ -172,6 +248,14 @@
 		background: #fff1f3;
 	}
 
+	.warning {
+		border: 1px solid #b26a00;
+		border-radius: 8px;
+		padding: 0.75rem 1rem;
+		color: #6f4200;
+		background: #fff8e8;
+	}
+
 	.todo-list,
 	.skipped ul {
 		display: flex;
@@ -240,6 +324,11 @@
 		.error {
 			color: #ffb4c0;
 			background: #3a141b;
+		}
+
+		.warning {
+			color: #ffd699;
+			background: #3a2600;
 		}
 
 		.todo-meta {
