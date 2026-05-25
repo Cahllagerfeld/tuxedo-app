@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { invoke } from "@tauri-apps/api/core";
-	import { open } from "@tauri-apps/plugin-dialog";
-	import { onMount } from "svelte";
 	import type { TodoFile } from "$lib/todo";
 	import {
 		parseWorkspaceConfigResponse,
 		parseWorkspaceLoadResponse,
 		type WorkspaceLoadResult,
 	} from "$lib/workspace";
+	import { Button } from "@/components/ui/button";
+	import { invoke } from "@tauri-apps/api/core";
+	import { open } from "@tauri-apps/plugin-dialog";
+	import { onMount } from "svelte";
 
 	let workspaceRoot = $state<string | null>(null);
 	let todoPath = $state<string | null>(null);
@@ -93,9 +94,9 @@
 		<p class="eyebrow">todo.txt</p>
 		<h1>Open your todo workspace</h1>
 		<p>Choose the directory that contains todo.txt. Tuxedo will reopen it on startup.</p>
-		<button type="button" onclick={openWorkspaceDirectory} disabled={isLoading}>
+		<Button type="button" onclick={openWorkspaceDirectory} disabled={isLoading}>
 			{isLoading ? "Loading..." : "Choose Directory"}
-		</button>
+		</Button>
 	</section>
 
 	{#if error}
@@ -239,37 +240,6 @@
 		padding: 1rem;
 	}
 
-	button {
-		border-radius: 8px;
-		border: 1px solid transparent;
-		padding: 0.6em 1.2em;
-		font-size: 1em;
-		font-weight: 500;
-		font-family: inherit;
-		color: #0f0f0f;
-		background-color: #ffffff;
-		transition: border-color 0.25s;
-		box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-		cursor: pointer;
-	}
-
-	button:hover {
-		border-color: #396cd8;
-	}
-	button:active {
-		border-color: #396cd8;
-		background-color: #e8e8e8;
-	}
-
-	button {
-		outline: none;
-	}
-
-	button:disabled {
-		cursor: wait;
-		opacity: 0.7;
-	}
-
 	.error {
 		border: 1px solid #b00020;
 		border-radius: 8px;
@@ -349,14 +319,6 @@
 		.todo-list li {
 			border-color: #555555;
 			background: #1f1f1f;
-		}
-
-		button {
-			color: #ffffff;
-			background-color: #0f0f0f98;
-		}
-		button:active {
-			background-color: #0f0f0f69;
 		}
 
 		.error {
