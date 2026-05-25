@@ -91,8 +91,24 @@ fn validate_workspace_root(root: &str) -> Result<(), String> {
     Ok(())
 }
 
+enum WorkspaceFile {
+    Todo,
+}
+
+impl WorkspaceFile {
+    fn filename(&self) -> &'static str {
+        match self {
+            Self::Todo => "todo.txt",
+        }
+    }
+
+    fn path_for_root(&self, root: &str) -> PathBuf {
+        PathBuf::from(root).join(self.filename())
+    }
+}
+
 fn todo_path_for_root(root: &str) -> PathBuf {
-    PathBuf::from(root).join("todo.txt")
+    WorkspaceFile::Todo.path_for_root(root)
 }
 
 fn workspace_config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -174,9 +190,11 @@ mod tests {
 
     #[test]
     fn todo_path_is_derived_from_workspace_root() {
-        let path = todo_path_for_root("/tmp/todos");
+        let workspace_file = WorkspaceFile::Todo;
+        let path = workspace_file.path_for_root("/tmp/todos");
 
         assert_eq!(path, PathBuf::from("/tmp/todos").join("todo.txt"));
+        assert_eq!(todo_path_for_root("/tmp/todos"), path);
     }
 
     #[test]
