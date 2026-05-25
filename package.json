@@ -27,6 +27,7 @@
 	},
 	"devDependencies": {
 		"@fontsource-variable/figtree": "^5.2.10",
+		"@fontsource-variable/jetbrains-mono": "^5.2.8",
 		"@internationalized/date": "^3.12.1",
 		"@lucide/svelte": "^1.16.0",
 		"@sveltejs/adapter-static": "^3.0.10",
