@@ -1,13 +1,14 @@
 <script lang="ts">
-	import Sidebar from "@/components/Sidebar.svelte";
-	import WorkspaceHeader from "@/components/workspace/WorkspaceHeader.svelte";
-	import WorkspaceStatusBar from "@/components/workspace/WorkspaceStatusBar.svelte";
-	import WorkspaceViewToggler from "@/components/workspace/WorkspaceViewToggler.svelte";
-	import { setAppState } from "@/state/app-context";
-	import { AppState } from "@/state/app-state.svelte";
-	import * as Resizable from "@/components/ui/resizable/index";
+	import Sidebar from "@/modules/workspace/ui/sidebar/index.svelte";
+	import WorkspaceHeader from "@/modules/workspace/ui/WorkspaceHeader.svelte";
+	import WorkspaceStatusBar from "@/modules/workspace/ui/WorkspaceStatusBar.svelte";
+	import WorkspaceViewToggler from "@/modules/workspace/ui/WorkspaceViewToggler.svelte";
+	import { setAppState } from "@/app/app-context";
+	import { AppState } from "@/app/app-state.svelte";
+	import * as Resizable from "@/shared/ui/resizable/index";
 	import { onMount } from "svelte";
 	import "./layout.css";
+	import { ScrollArea } from "@/shared/ui/scroll-area";
 	let { children } = $props();
 
 	const appState = new AppState();
@@ -23,12 +24,16 @@
 	<WorkspaceViewToggler />
 	<main class="flex min-h-0 flex-1 overflow-hidden">
 		<Resizable.PaneGroup direction="horizontal">
-			<Resizable.Pane maxSize={40} minSize={10} defaultSize={10}>
+			<Resizable.Pane maxSize={30} minSize={10} defaultSize={10}>
 				<Sidebar />
 			</Resizable.Pane>
 			<Resizable.Handle withHandle />
 			<Resizable.Pane>
-				{@render children()}
+				<div class="flex h-full flex-col overflow-hidden">
+					<ScrollArea class="min-h-0 flex-1">
+						{@render children()}
+					</ScrollArea>
+				</div>
 			</Resizable.Pane>
 		</Resizable.PaneGroup>
 	</main>
