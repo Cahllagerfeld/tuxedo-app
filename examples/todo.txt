@@ -1,5 +1,7 @@
 (A) 2026-05-24 Review todo.txt parser +TuxedoApp @computer due:2026-05-25
 (B) Schedule Goodwill pickup +GarageSale @phone
+(C) Test collapsible priority section +TuxedoApp @computer
+(D) Confirm overflow priority is hidden by default +TuxedoApp @computer
 2026-05-24 Document parser behavior +TuxedoApp @computer
 Plan next feature
 Capture inbox item @home @computer +TuxedoApp +Ideas

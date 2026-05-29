@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { todoFileSchema } from "$lib/todo";
+import { todoFileSchema } from "$lib/modules/todo/domain/todo";
 
 export const workspaceConfigSchema = z.object({
 	version: z.number(),
