@@ -1,9 +1,17 @@
 import { z } from "zod";
 import { todoFileSchema } from "$lib/modules/todo/domain/todo";
 
+export const workspaceEntrySchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	color: z.string(),
+	root: z.string(),
+	last_opened_at: z.string(),
+});
+
 export const workspaceConfigSchema = z.object({
-	version: z.number(),
-	root: z.string().nullable(),
+	active_workspace_id: z.string().nullable(),
+	recent_workspaces: z.array(workspaceEntrySchema),
 });
 
 export const workspaceLoadResultSchema = z.object({
@@ -13,6 +21,7 @@ export const workspaceLoadResultSchema = z.object({
 	todo_file: todoFileSchema.nullable(),
 });
 
+export type WorkspaceEntry = z.infer<typeof workspaceEntrySchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 export type WorkspaceLoadResult = z.infer<typeof workspaceLoadResultSchema>;
 

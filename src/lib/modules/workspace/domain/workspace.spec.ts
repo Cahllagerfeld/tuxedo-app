@@ -9,8 +9,16 @@ import {
 } from "./workspace";
 
 const validWorkspaceConfigResponse: WorkspaceConfig = {
-	version: 1,
-	root: "/tmp/todos",
+	active_workspace_id: "workspace-1",
+	recent_workspaces: [
+		{
+			id: "workspace-1",
+			name: "Work",
+			color: "#3b82f6",
+			root: "/tmp/todos",
+			last_opened_at: "2026-05-30T10:00:00.000Z",
+		},
+	],
 };
 
 const validWorkspaceLoadResponse: WorkspaceLoadResult = {
@@ -38,14 +46,17 @@ const validWorkspaceLoadResponse: WorkspaceLoadResult = {
 };
 
 describe("workspaceConfigSchema", () => {
-	it("accepts a saved workspace root", () => {
+	it("accepts recent workspaces and an active workspace id", () => {
 		const result = workspaceConfigSchema.safeParse(validWorkspaceConfigResponse);
 
 		expect(result.success).toBe(true);
 	});
 
-	it("accepts first-run config without a root", () => {
-		const result = workspaceConfigSchema.safeParse({ version: 1, root: null });
+	it("accepts first-run config without an active workspace", () => {
+		const result = workspaceConfigSchema.safeParse({
+			active_workspace_id: null,
+			recent_workspaces: [],
+		});
 
 		expect(result.success).toBe(true);
 	});
@@ -84,9 +95,9 @@ describe("workspace response parsers", () => {
 	});
 
 	it("throws a readable error for config schema drift", () => {
-		expect(() => parseWorkspaceConfigResponse({ version: "1", root: null })).toThrow(
-			/Unexpected workspace config response from Rust: version:/
-		);
+		expect(() =>
+			parseWorkspaceConfigResponse({ active_workspace_id: 1, recent_workspaces: [] })
+		).toThrow(/Unexpected workspace config response from Rust: active_workspace_id:/);
 	});
 
 	it("throws a readable error for load schema drift", () => {

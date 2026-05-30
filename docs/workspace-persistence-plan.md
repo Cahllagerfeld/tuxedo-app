@@ -1,265 +1,206 @@
-# Workspace Persistence Implementation Plan
+# Workspace Management Milestones
 
-Persist workspace configuration globally as TOML, storing workspace roots and metadata while keeping parsed todo contents in memory only. On startup the app should load the active workspace, derive known todo-family files from its root, and re-read existing files from disk.
+This plan keeps the first workspace-management milestone small enough to ship safely while leaving the app in a usable state afterwards. Later milestones are recorded here so they do not get lost, but they should not be pulled into Milestone 1 unless the implementation uncovers a hard dependency.
 
-This document is split into implementation sections that can be handled by separate agents. Each section should keep changes scoped to its listed files and acceptance criteria.
+## Milestone 1: Recent Workspaces Core
 
-## Product Invariants
+### Goal
 
-- The actual `todo.txt` family files remain the source of truth.
-- Config stores user-meaningful workspace metadata, not parsed task data.
-- Workspace config uses root directories instead of individual todo file paths.
-- The app derives known todo-family files from each workspace root.
-- Parsed todo contents stay in memory and are re-read from disk on startup.
-- All app-owned file updates use atomic writes.
+Replace the current single saved workspace root with a small recent-workspaces model. After this milestone, the app should still be usable end to end:
 
-## Current Baseline
+- A user can open a workspace directory.
+- The app creates or updates a recent workspace entry with a name, color, root path, and active marker.
+- The last active workspace restores on launch.
+- Existing `todo.txt` parsing continues to work.
+- Missing `todo.txt` remains a non-fatal warning, as it is today.
+- The shell makes the active workspace name and path clear enough to trust.
 
-The UI currently keeps a single parsed todo file in Svelte state after invoking the Rust parser:
+### Explicit Non-Goals
 
-```svelte
-<script lang="ts">
-	import { invoke } from "@tauri-apps/api/core";
-	import { open } from "@tauri-apps/plugin-dialog";
-	import { parseTodoFileResponse, type TodoFile } from "$lib/todo";
+- No sidebar workspace switcher dropdown yet.
+- No full workspace creation dialog yet.
+- No Formsnap.
+- No SQLite; keep this as app config data.
+- No backwards compatibility requirement for old `workspace.toml`.
+- No advanced missing/moved/deleted path recovery beyond a readable error.
 
-	let todoFile = $state<TodoFile | null>(null);
-	let error = $state("");
-	let isLoading = $state(false);
+### Data Model
 
-	async function openTodoFile() {
-		// ... picker, parse_todo_file, set todoFile
-	}
-</script>
+Persist workspace metadata in the existing Tauri app config directory as TOML.
+
+Use this config shape:
+
+```rust
+pub struct WorkspaceConfig {
+    pub active_workspace_id: Option<String>,
+    pub recent_workspaces: Vec<WorkspaceEntry>,
+}
+
+pub struct WorkspaceEntry {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub root: String,
+    pub last_opened_at: String,
+}
 ```
 
-The Rust backend currently exposes `parse_todo_file`, which reads a selected file and parses it through the shared todo.txt parser.
+Rules:
 
-## Section 1: Workspace Config Model
+- `root` remains a workspace directory, not a direct `todo.txt` file path.
+- `todo.txt` is derived as `<root>/todo.txt`.
+- Parsed todo contents are never persisted.
+- Recent workspaces are deduplicated by `root`.
+- Opening an existing root updates that entry and moves it to the top.
+- Cap recent workspaces at 10.
+- If config parsing fails, return the default empty config because old config compatibility is not required.
 
-### Goal
+### Rust Changes
 
-Define the persisted config shape and keep it compatible with future workspace features.
+Update `src-tauri/src/workspace.rs`:
 
-### Target Files
+- Replace `WorkspaceConfig { version, root }` with the new active/recent model.
+- Keep atomic TOML writes.
+- Keep `load_workspace(root)` returning the existing `WorkspaceLoadResult`.
+- Keep missing `todo.txt` as `todo_exists: false` and `todo_file: null`.
+- Validate workspace roots before saving and before loading.
+- Add helper behavior for:
+  - creating a default workspace name from the selected folder name
+  - choosing a default color
+  - generating an id
+  - upserting and ordering recent workspaces
 
-- `src-tauri/src/lib.rs`
-- Optionally split into `src-tauri/src/workspace_config.rs` if `lib.rs` starts getting crowded.
+Update Tauri commands in `src-tauri/src/lib.rs`:
 
-### Tasks
+- `load_workspace_config() -> WorkspaceConfig`
+- `save_workspace_entry(root: String) -> WorkspaceConfig`
+- `set_active_workspace(id: String) -> WorkspaceConfig`
+- `load_workspace(root: String) -> WorkspaceLoadResult`
 
-1. Add serializable Rust structs:
-   - `WorkspaceConfig`
-   - `Workspace`
-2. Include these fields:
-   - `version: u32`
-   - `active_workspace_id: Option<String>`
-   - `workspaces: Vec<Workspace>`
-   - `Workspace.id: String`
-   - `Workspace.name: String`
-   - `Workspace.color: String`
-   - `Workspace.root: String`
-3. Add a default empty config with `version = 1`, no active workspace, and an empty workspace list.
-4. Keep parsed todo items, skipped lines, and file contents out of this model.
+For Milestone 1, `save_workspace_entry` may accept only `root` and let Rust derive `name`, `color`, `id`, and `last_opened_at`. The richer form-driven metadata editing belongs to the dialog milestone.
 
-### Target TOML
+### Frontend Changes
 
-Store this as `workspaces.toml` under Tauri's app config directory using the Tauri path resolver, not a hardcoded OS path.
+Update `src/lib/modules/workspace/domain/workspace.ts`:
 
-```toml
-version = 1
-active_workspace_id = "default"
+- Add Zod schemas for `WorkspaceEntry`, `WorkspaceConfig`, and existing `WorkspaceLoadResult`.
+- Remove `version` and single `root` from the config schema.
+- Keep readable schema drift errors.
 
-[[workspaces]]
-id = "default"
-name = "Default"
-color = "#396cd8"
-root = "/Users/julian/todos"
+Update `src/lib/modules/workspace/api/workspace-api.ts`:
+
+- Wrap the new Tauri commands.
+- Keep `chooseWorkspaceDirectory()` as the only picker flow for this milestone.
+
+Update `src/lib/modules/workspace/state/workspace-state.svelte.ts`:
+
+- Store:
+  - `activeWorkspace: WorkspaceEntry | null`
+  - `recentWorkspaces: WorkspaceEntry[]`
+  - `todoPath`
+  - `todoFile`
+  - `warning`
+  - `error`
+  - `isLoading`
+- Derive `root` from `activeWorkspace?.root` only if existing todo code still needs it.
+- `restore()` loads config, resolves `active_workspace_id`, and loads that workspace.
+- `openDirectory()` picks a directory, saves/upserts it, applies config, and loads the active workspace.
+- `switchWorkspace(id)` exists for later UI, even if Milestone 1 only uses it in tests or simple controls.
+- Canceling the directory picker must leave current state untouched.
+
+Update shell UI minimally:
+
+- `WorkspaceHeader.svelte` should show active workspace name and root path instead of only raw root.
+- Keep the existing `Open Workspace` button.
+- `WorkspaceStatus.svelte` should keep the current empty/warning/error behavior, updated to read from `activeWorkspace`.
+- `WorkspaceStatusBar.svelte` may stay simple but should no longer be misleading placeholder text.
+- Do not add a switcher menu yet.
+
+### Usable-State Acceptance Criteria
+
+- Fresh launch with no config shows a clear no-workspace state and an open action.
+- Opening a directory with `todo.txt` loads and displays todos.
+- Opening a directory without `todo.txt` selects that workspace and shows a warning, not a crash.
+- Restarting the app restores the last active workspace and re-reads `todo.txt`.
+- Opening a second workspace stores both in recent workspaces and makes the second active.
+- Reopening the first workspace deduplicates by root and moves it to the top.
+- Existing todo filtering/stat UI continues to derive from the loaded `todoFile`.
+- Old single-root config files do not break startup; they reset to empty config.
+
+### Milestone 1 Test Plan
+
+Rust tests:
+
+- Default config has no active workspace and no recents.
+- Config round-trips through TOML.
+- Invalid/old config returns default empty config.
+- Saving a workspace validates root, creates metadata, marks it active, and persists it.
+- Saving the same root deduplicates and moves it to the top.
+- Recent workspace list caps at 10.
+- `load_workspace` parses an existing `todo.txt`.
+- `load_workspace` returns `todo_exists: false` for an existing root without `todo.txt`.
+- `load_workspace` rejects missing roots and file paths.
+
+Frontend tests:
+
+- Config schema accepts active/recent workspace shape.
+- Config parser rejects schema drift with readable messages.
+- Load-result schema still accepts parsed and missing-`todo.txt` results.
+- `WorkspaceState.restore()` handles empty config, valid active workspace, and load errors.
+- `WorkspaceState.openDirectory()` updates active workspace and loaded todo data.
+- Canceling `openDirectory()` preserves existing active workspace and todo data.
+
+Verification commands:
+
+```sh
+pnpm check
+pnpm test:unit
+pnpm test:rust
+pnpm lint
+find src/lib -type d -empty | sort
 ```
 
-### Acceptance Criteria
+## Remaining Milestones
 
-- The config structs serialize and deserialize with `serde`.
-- Missing config can be represented as a valid default config.
-- The model has room for multiple workspaces without changing the top-level shape.
+### Milestone 2: Missing Path And Missing todo.txt Recovery
 
-## Section 2: Rust Dependencies
+Make failure states feel deliberate instead of incidental.
 
-### Goal
+- Add explicit frontend statuses such as `idle`, `restoring`, `loading`, `ready`, `missing-root`, `missing-todo`, and `error`.
+- Keep missing/deleted workspace roots in recents instead of deleting them.
+- Add actions for retry, open different workspace, and remove from recents.
+- Add a Rust command to create `<root>/todo.txt` only when the root exists and the file does not.
+- Show a `Create todo.txt` action for valid workspaces missing the file.
+- Add tests for missing roots, create-file behavior, and state transitions.
 
-Add the crates needed for TOML serialization and atomic writes.
+### Milestone 3: Sidebar Workspace Switcher
 
-### Target Files
+Add the switcher shown in the product direction.
 
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock`
+- Place the switcher at the top of `src/lib/modules/workspace/ui/sidebar/index.svelte`.
+- Closed state shows color dot, active workspace name, and chevron.
+- Open state lists recent workspaces with color dots and active checkmark.
+- Include a bottom `New Workspace` or `Open Workspace` action.
+- Keep rows compact and desktop-tool oriented.
+- Use module-owned workspace UI components; only add shared shadcn primitives if needed.
 
-### Tasks
+### Milestone 4: Workspace Creation Dialog
 
-1. Add the `toml` crate for reading and writing `workspaces.toml`.
-2. Add the `atomicwrites` crate.
-3. Do not remove existing dependencies.
+Replace the automatic default metadata flow with an explicit local-state form.
 
-### Acceptance Criteria
+- Add fields for name, folder path, and color.
+- Use local Svelte 5 runes state plus Zod validation.
+- Do not use Formsnap for this milestone.
+- Folder picker fills the root field.
+- Name defaults from the selected folder until the user edits it.
+- Submit saves/upserts the workspace entry and loads it.
 
-- `cargo check --manifest-path src-tauri/Cargo.toml` can resolve the new dependencies.
-- Future config writes can use `atomicwrites::AtomicFile`.
+### Milestone 5: Shell Polish And Editing
 
-## Section 3: Config File IO Commands
+Round out the management surface after the core behavior is stable.
 
-### Goal
-
-Expose backend commands for loading and saving workspace config.
-
-### Target Files
-
-- `src-tauri/src/lib.rs`
-- Optional `src-tauri/src/workspace_config.rs`
-
-### Tasks
-
-1. Add a helper to resolve `workspaces.toml` under Tauri's app config directory.
-2. Add `load_workspace_config`:
-   - If the file is missing, return the default config.
-   - If the file exists, read and parse TOML.
-   - Return a readable error if parsing fails.
-3. Add `save_workspace_config`:
-   - Create the app config directory if needed.
-   - Serialize the full config to TOML.
-   - Write via `atomicwrites::AtomicFile` with overwrite enabled.
-4. Register both commands alongside `parse_todo_file`.
-
-### Acceptance Criteria
-
-- `load_workspace_config` never fails just because no config file exists yet.
-- `save_workspace_config` never performs a direct non-atomic overwrite.
-- An interrupted config write should leave either the old valid TOML or the new valid TOML, never a partial file.
-
-## Section 4: Workspace File Resolution
-
-### Goal
-
-Derive known todo-family files from a workspace root.
-
-### Target Files
-
-- `src-tauri/src/lib.rs`
-- Optional `src-tauri/src/workspace_config.rs`
-- Optional frontend type file if the resolved shape is exposed to Svelte.
-
-### Tasks
-
-1. Define known workspace file kinds:
-   - `todo`: `todo.txt`, required now.
-   - `inbox`: `inbox.txt`, optional future file.
-   - `archive`: `archive.txt`, optional future file.
-2. Add a helper or command that takes a workspace root and returns resolved file paths and existence flags.
-3. Treat missing `todo.txt` as a workspace warning.
-4. Treat missing `inbox.txt` and `archive.txt` as non-fatal.
-5. Keep parsing delegated to the existing `parse_todo_file` command for files that exist.
-
-### Acceptance Criteria
-
-- Workspace roots are the only paths persisted in config.
-- The app can derive `todo.txt`, `inbox.txt`, and `archive.txt` consistently from the root.
-- Optional files can be absent without blocking the workspace from loading.
-
-## Section 5: Frontend Startup Restore
-
-### Goal
-
-Load the active workspace on startup and parse current file contents from disk.
-
-### Target Files
-
-- `src/routes/+page.svelte`
-- Optional `src/lib/workspace.ts` for TypeScript schemas and helpers.
-
-### Tasks
-
-1. Add TypeScript types or Zod schemas for the workspace config response.
-2. On component mount, call `load_workspace_config`.
-3. Select the active workspace from `active_workspace_id`.
-4. Derive or request known files for the active workspace root.
-5. Call `parse_todo_file` for existing files.
-6. Store parsed todo data in Svelte state only.
-7. Show a clear empty state if no workspace is configured.
-8. Show a clear warning if the active workspace has no `todo.txt`.
-
-### Acceptance Criteria
-
-- Restarting the app restores the active workspace.
-- File contents are re-read from disk on every startup.
-- Parsed todo data is not persisted to TOML.
-- A missing or invalid workspace does not crash the UI.
-
-## Section 6: Workspace Directory Selection
-
-### Goal
-
-Let the user choose a workspace directory and persist it as config.
-
-### Target Files
-
-- `src/routes/+page.svelte`
-- Optional `src/lib/workspace.ts`
-
-### Tasks
-
-1. Change the picker flow from choosing a single todo file to choosing a directory.
-2. Create or update a default workspace using the selected directory as `root`.
-3. Set that workspace as `active_workspace_id`.
-4. Save the full config through `save_workspace_config`.
-5. Reload derived files after saving.
-
-### Acceptance Criteria
-
-- The user can select a directory as a workspace.
-- The selected directory persists across app restarts.
-- The app derives `todo.txt` from that directory instead of storing a direct todo file path.
-
-## Section 7: Future Todo File Mutations
-
-### Goal
-
-Establish the write strategy for later features such as quick capture, inbox triage, and archive completed.
-
-### Target Files
-
-- Future Rust file mutation commands.
-- Future frontend actions.
-
-### Tasks
-
-1. For any mutation of `todo.txt`, `inbox.txt`, or `archive.txt`, read the full current file.
-2. Construct the complete next file contents in memory.
-3. Write using `atomicwrites::AtomicFile` with overwrite enabled.
-4. Re-read and re-parse after the write completes.
-5. Avoid partial line-by-line in-place mutation.
-
-### Acceptance Criteria
-
-- Todo-family file writes follow the same atomic-write rule as config writes.
-- After mutation, the UI reflects freshly parsed file contents.
-- The plain text files remain readable and portable.
-
-## Data Flow
-
-```mermaid
-flowchart TD
-    startup["App Startup"] --> loadConfig["load_workspace_config"]
-    loadConfig --> hasWorkspace{"Active workspace?"}
-    hasWorkspace -->|"No"| empty["Show empty state"]
-    hasWorkspace -->|"Yes"| deriveFiles["Derive todo.txt, inbox.txt, archive.txt"]
-    deriveFiles --> parseExisting["parse_todo_file for existing files"]
-    parseExisting --> render["Render freshly parsed todos"]
-    chooseDirectory["User chooses directory"] --> saveConfig["save_workspace_config"]
-    saveConfig --> deriveFiles
-```
-
-## Final Validation
-
-- Run `pnpm check` for Svelte and TypeScript.
-- Run `pnpm test:rust` to ensure the new Rust commands compile and existing parser tests still pass.
-- Manually launch the app, choose a workspace directory, quit, edit `todo.txt` externally, reopen, and confirm the updated contents appear.
-- Review interrupt-safe behavior around config writes, since `workspaces.toml` should either remain old-valid or become new-valid, never partial.
+- Allow renaming and recoloring existing workspaces.
+- Improve header and status bar copy for ready, loading, missing, and error states.
+- Add remove-from-recents controls where appropriate.
+- Consider keyboard and focus behavior for the switcher/dialog.
+- Add component tests for the switcher and dialog if the local test setup supports them.

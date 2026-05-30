@@ -12,16 +12,17 @@
 	<p class="warning" role="status">{appState.workspace.warning}</p>
 {/if}
 
-{#if !appState.workspace.root && !appState.workspace.isLoading && !appState.workspace.error}
+{#if !appState.workspace.activeWorkspace && !appState.workspace.isLoading && !appState.workspace.error}
 	<section class="summary" aria-label="No workspace selected">
 		<p><strong>No workspace selected.</strong></p>
 		<p>Choose a directory to load its todo.txt file and remember it for next time.</p>
 	</section>
 {/if}
 
-{#if appState.workspace.root}
+{#if appState.workspace.activeWorkspace}
 	<section class="summary" aria-label="Loaded workspace summary">
-		<p><strong>Workspace:</strong> {appState.workspace.root}</p>
+		<p><strong>Workspace:</strong> {appState.workspace.activeWorkspace.name}</p>
+		<p><strong>Root:</strong> {appState.workspace.activeWorkspace.root}</p>
 		{#if appState.workspace.todoPath}
 			<p><strong>Todo file:</strong> {appState.workspace.todoPath}</p>
 		{/if}

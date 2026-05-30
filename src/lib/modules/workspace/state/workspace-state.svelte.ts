@@ -3,17 +3,24 @@ import {
 	chooseWorkspaceDirectory,
 	loadWorkspace,
 	loadWorkspaceConfig,
-	saveWorkspaceConfig,
+	saveWorkspaceEntry,
+	setActiveWorkspace,
 } from "$lib/modules/workspace/api/workspace-api";
-import { type WorkspaceLoadResult } from "$lib/modules/workspace/domain/workspace";
+import {
+	type WorkspaceConfig,
+	type WorkspaceEntry,
+	type WorkspaceLoadResult,
+} from "$lib/modules/workspace/domain/workspace";
 
 export class WorkspaceState {
-	root = $state<string | null>(null);
+	activeWorkspace = $state.raw<WorkspaceEntry | null>(null);
+	recentWorkspaces = $state.raw<WorkspaceEntry[]>([]);
 	todoPath = $state<string | null>(null);
 	todoFile = $state.raw<TodoFile | null>(null);
 	warning = $state("");
 	error = $state("");
 	isLoading = $state(false);
+	root = $derived(this.activeWorkspace?.root ?? null);
 
 	restore = async () => {
 		this.error = "";
@@ -22,15 +29,14 @@ export class WorkspaceState {
 
 		try {
 			const config = await loadWorkspaceConfig();
-			this.root = config.root;
+			this.applyConfig(config);
 
-			if (!config.root) {
-				this.todoPath = null;
-				this.todoFile = null;
+			if (!this.activeWorkspace) {
+				this.clearLoadedTodo();
 				return;
 			}
 
-			await this.load(config.root);
+			await this.load(this.activeWorkspace.root);
 		} catch (unknownError) {
 			this.error = formatUnknownError(unknownError);
 		} finally {
@@ -39,10 +45,6 @@ export class WorkspaceState {
 	};
 
 	openDirectory = async () => {
-		this.error = "";
-		this.warning = "";
-		this.isLoading = true;
-
 		try {
 			const root = await chooseWorkspaceDirectory();
 
@@ -50,10 +52,34 @@ export class WorkspaceState {
 				return;
 			}
 
-			const config = await saveWorkspaceConfig(root);
+			this.error = "";
+			this.warning = "";
+			this.isLoading = true;
 
-			if (config.root) {
-				await this.load(config.root);
+			const config = await saveWorkspaceEntry(root);
+			this.applyConfig(config);
+
+			if (this.activeWorkspace) {
+				await this.load(this.activeWorkspace.root);
+			}
+		} catch (unknownError) {
+			this.error = formatUnknownError(unknownError);
+		} finally {
+			this.isLoading = false;
+		}
+	};
+
+	switchWorkspace = async (id: string) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			const config = await setActiveWorkspace(id);
+			this.applyConfig(config);
+
+			if (this.activeWorkspace) {
+				await this.load(this.activeWorkspace.root);
 			}
 		} catch (unknownError) {
 			this.error = formatUnknownError(unknownError);
@@ -67,13 +93,25 @@ export class WorkspaceState {
 		this.applyLoadResult(workspace);
 	};
 
+	private applyConfig(config: WorkspaceConfig) {
+		this.recentWorkspaces = config.recent_workspaces;
+		this.activeWorkspace =
+			config.recent_workspaces.find((workspace) => workspace.id === config.active_workspace_id) ??
+			config.recent_workspaces[0] ??
+			null;
+	}
+
 	private applyLoadResult(workspace: WorkspaceLoadResult) {
-		this.root = workspace.root;
 		this.todoPath = workspace.todo_path;
 		this.todoFile = workspace.todo_file;
 		this.warning = workspace.todo_exists
 			? ""
 			: `No todo.txt file was found in ${workspace.root}. Add one there or choose another directory.`;
+	}
+
+	private clearLoadedTodo() {
+		this.todoPath = null;
+		this.todoFile = null;
 	}
 }
 

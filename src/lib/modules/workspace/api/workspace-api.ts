@@ -26,7 +26,12 @@ export async function loadWorkspace(root: string): Promise<WorkspaceLoadResult> 
 	return parseWorkspaceLoadResponse(response);
 }
 
-export async function saveWorkspaceConfig(root: string): Promise<WorkspaceConfig> {
-	const response = await invoke("save_workspace_config", { root });
+export async function saveWorkspaceEntry(root: string): Promise<WorkspaceConfig> {
+	const response = await invoke("save_workspace_entry", { root });
+	return parseWorkspaceConfigResponse(response);
+}
+
+export async function setActiveWorkspace(id: string): Promise<WorkspaceConfig> {
+	const response = await invoke("set_active_workspace", { id });
 	return parseWorkspaceConfigResponse(response);
 }

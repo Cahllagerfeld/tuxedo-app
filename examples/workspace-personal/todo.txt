@@ -1,0 +1,5 @@
+(A) 2026-05-30 Verify recent workspace restore +TuxedoApp @computer due:2026-05-31
+(B) Open this folder from the workspace picker +TuxedoApp @manual
+Capture a loose inbox-style task @home
+x 2026-05-30 2026-05-29 Confirm completed tasks still render +TuxedoApp
+Review missing todo.txt warning with another empty folder +WorkspaceTesting

@@ -39,7 +39,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_todo_file,
             workspace::load_workspace_config,
-            workspace::save_workspace_config,
+            workspace::save_workspace_entry,
+            workspace::set_active_workspace,
             workspace::load_workspace
         ])
         .run(tauri::generate_context!())
