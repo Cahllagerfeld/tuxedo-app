@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Checkbox as CheckboxPrimitive } from "bits-ui";
 	import { cn, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
-	import CheckIcon from '@lucide/svelte/icons/check';
-	import MinusIcon from '@lucide/svelte/icons/minus';
+	import CheckIcon from "@lucide/svelte/icons/check";
+	import MinusIcon from "@lucide/svelte/icons/minus";
 
 	let {
 		ref = $bindable(null),
@@ -30,9 +30,9 @@
 			class="[&>svg]:size-3.5 grid place-content-center text-current transition-none"
 		>
 			{#if checked}
-				<CheckIcon  />
+				<CheckIcon />
 			{:else if indeterminate}
-				<MinusIcon  />
+				<MinusIcon />
 			{/if}
 		</div>
 	{/snippet}
