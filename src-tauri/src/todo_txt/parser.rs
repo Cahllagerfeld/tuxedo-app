@@ -455,7 +455,7 @@ mod tests {
         let contents = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/todo.txt"));
         let (items, skipped) = parse_file(contents);
 
-        assert_eq!(items.len(), 18);
+        assert_eq!(items.len(), 20);
         assert!(skipped.is_empty());
 
         let first = &items[0];
@@ -468,7 +468,7 @@ mod tests {
             Some("2026-05-25")
         );
 
-        let no_optional_fields = &items[3];
+        let no_optional_fields = &items[5];
         assert_eq!(no_optional_fields.description, "Plan next feature");
         assert_eq!(no_optional_fields.priority, None);
         assert_eq!(no_optional_fields.creation_date, None);
@@ -477,12 +477,12 @@ mod tests {
         assert!(no_optional_fields.contexts.is_empty());
         assert!(no_optional_fields.metadata.is_empty());
 
-        let multi_project_context = &items[4];
+        let multi_project_context = &items[6];
         assert_eq!(multi_project_context.description, "Capture inbox item");
         assert_eq!(multi_project_context.projects, vec!["TuxedoApp", "Ideas"]);
         assert_eq!(multi_project_context.contexts, vec!["home", "computer"]);
 
-        let completed_no_metadata = &items[8];
+        let completed_no_metadata = &items[10];
         assert!(completed_no_metadata.completed);
         assert_eq!(
             completed_no_metadata.description,
@@ -493,17 +493,17 @@ mod tests {
         assert!(completed_no_metadata.metadata.is_empty());
 
         assert_eq!(
-            items[14].description,
+            items[16].description,
             "(b) Lowercase priority-looking token is plain text"
         );
-        assert_eq!(items[14].contexts, vec!["work"]);
+        assert_eq!(items[16].contexts, vec!["work"]);
         assert_eq!(
-            items[15].description,
+            items[17].description,
             "(B)->Priority without space is plain text"
         );
-        assert_eq!(items[15].projects, vec!["SpecExamples"]);
+        assert_eq!(items[17].projects, vec!["SpecExamples"]);
 
-        let everything = &items[16];
+        let everything = &items[18];
         assert!(everything.completed);
         assert_eq!(everything.completion_date.as_deref(), Some("2026-05-24"));
         assert_eq!(everything.creation_date.as_deref(), Some("2026-05-23"));

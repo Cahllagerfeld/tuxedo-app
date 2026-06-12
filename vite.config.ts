@@ -1,4 +1,6 @@
+import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
@@ -7,7 +9,24 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [
+		tailwindcss(),
+		sveltekit({
+			compilerOptions: {
+				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
+				runes: ({ filename }) =>
+					filename.split(/[/\\]/).includes("node_modules") ? undefined : true,
+			},
+			preprocess: vitePreprocess(),
+
+			alias: {
+				"@/*": "./src/lib/*",
+			},
+			adapter: adapter({
+				fallback: "index.html",
+			}),
+		}),
+	],
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
