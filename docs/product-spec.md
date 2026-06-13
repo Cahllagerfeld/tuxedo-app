@@ -37,7 +37,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 
 - [ ] Replace template README content or link it to this spec.
 - [x] Mark `docs/workspace-persistence-plan.md` as historical/superseded.
-- [ ] Improve workspace empty, loading, warning, and error states.
+- [x] Improve workspace empty, loading, warning, and error states.
 - [ ] Add skipped-line diagnostics UI.
 - [ ] Expand Rust tests for workspace restore and missing-file behavior.
 - [ ] Expand frontend tests for workspace restore state and todo derivations.

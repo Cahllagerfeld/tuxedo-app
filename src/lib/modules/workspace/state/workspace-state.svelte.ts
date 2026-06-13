@@ -25,14 +25,15 @@ export class WorkspaceState {
 			this.root = config.root;
 
 			if (!config.root) {
-				this.todoPath = null;
-				this.todoFile = null;
+				this.clearLoadedWorkspace();
 				return;
 			}
 
 			await this.load(config.root);
 		} catch (unknownError) {
 			this.error = formatUnknownError(unknownError);
+			this.todoPath = null;
+			this.todoFile = null;
 		} finally {
 			this.isLoading = false;
 		}
@@ -74,6 +75,12 @@ export class WorkspaceState {
 		this.warning = workspace.todo_exists
 			? ""
 			: `No todo.txt file was found in ${workspace.root}. Add one there or choose another directory.`;
+	}
+
+	private clearLoadedWorkspace() {
+		this.root = null;
+		this.todoPath = null;
+		this.todoFile = null;
 	}
 }
 

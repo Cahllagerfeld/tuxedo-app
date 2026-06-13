@@ -1,5 +1,13 @@
 <script lang="ts">
 	import { getAppState } from "$lib/app/app-context";
+	import {
+		Empty,
+		EmptyDescription,
+		EmptyHeader,
+		EmptyMedia,
+		EmptyTitle,
+	} from "$lib/shared/ui/empty";
+	import ListTodo from "@lucide/svelte/icons/list-todo";
 	import TodoItem from "./TodoItem.svelte";
 
 	const appState = getAppState();
@@ -48,7 +56,17 @@
 			{/each}
 		</ul>
 	{:else}
-		<p>No valid todo items were found.</p>
+		<Empty>
+			<EmptyMedia variant="icon">
+				<ListTodo />
+			</EmptyMedia>
+			<EmptyHeader>
+				<EmptyTitle>No tasks yet</EmptyTitle>
+				<EmptyDescription>
+					This todo.txt file does not contain any valid task lines yet.
+				</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
 	{/if}
 
 	<!-- {#if appState.todos.skipped.length > 0}
