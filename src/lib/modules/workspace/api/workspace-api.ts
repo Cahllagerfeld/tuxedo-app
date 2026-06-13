@@ -65,3 +65,16 @@ export async function toggleTodoItemCompleted(
 	});
 	return parseWorkspaceMutationResponse(response);
 }
+
+export async function deleteTodoItem(
+	root: string,
+	lineNumber: number,
+	expectedRaw: string
+): Promise<WorkspaceMutationResult> {
+	const response = await invoke("delete_todo_item", {
+		root,
+		lineNumber,
+		expectedRaw,
+	});
+	return parseWorkspaceMutationResponse(response);
+}

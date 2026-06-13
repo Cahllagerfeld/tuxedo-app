@@ -52,7 +52,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 - [x] Add `append_todo_item`.
 - [x] Add `update_todo_item`.
 - [x] Add `toggle_todo_item_completed`.
-- [ ] Add `delete_todo_item`.
+- [x] Add `delete_todo_item`.
 - [x] Add frontend API wrappers, Zod schemas, and TypeScript types for mutation responses.
 - [ ] Add quick-capture UI.
 - [ ] Add task complete/uncomplete UI.
@@ -114,7 +114,7 @@ Required v1 commands:
 - [x] `append_todo_item`: append one valid task line to `todo.txt`.
 - [x] `update_todo_item`: replace one task line by line number with a raw-line guard.
 - [x] `toggle_todo_item_completed`: complete or reopen one task by line number with a raw-line guard.
-- [ ] `delete_todo_item`: remove one task by line number with a raw-line guard.
+- [x] `delete_todo_item`: remove one task by line number with a raw-line guard.
 - [ ] `archive_completed_todo_items`: move completed items from `todo.txt` to `done.txt`.
 
 Mutation commands must:
@@ -213,8 +213,8 @@ Tests:
 - [x] Append creates or extends `todo.txt`.
 - [x] Toggle complete adds a completion marker and current local date.
 - [x] Toggle reopen removes completion marker without losing description metadata.
-- [ ] Edit and delete reject stale raw-line guards.
-- [ ] Mutations preserve unrelated lines.
+- [x] Edit and delete reject stale raw-line guards.
+- [x] Mutations preserve unrelated lines.
 
 ### 4. Metadata And Display
 

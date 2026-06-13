@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { appendTodoItem, toggleTodoItemCompleted, updateTodoItem } from "./workspace-api";
+import {
+	appendTodoItem,
+	deleteTodoItem,
+	toggleTodoItemCompleted,
+	updateTodoItem,
+} from "./workspace-api";
 import type { WorkspaceMutationResult } from "$lib/modules/workspace/domain/workspace";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -76,6 +81,18 @@ describe("workspace mutation API", () => {
 			root: "/tmp/todos",
 			lineNumber: 3,
 			expectedRaw: "Open task +Tuxedo",
+		});
+	});
+
+	it("deletes a todo item with the stale raw-line guard", async () => {
+		await expect(deleteTodoItem("/tmp/todos", 4, "Delete task +Tuxedo")).resolves.toEqual(
+			mutationResult
+		);
+
+		expect(mockedInvoke).toHaveBeenCalledWith("delete_todo_item", {
+			root: "/tmp/todos",
+			lineNumber: 4,
+			expectedRaw: "Delete task +Tuxedo",
 		});
 	});
 

@@ -93,6 +93,17 @@ pub fn toggle_todo_item_completed(
     load_workspace_from_root(root)
 }
 
+#[tauri::command]
+pub fn delete_todo_item(
+    root: String,
+    line_number: usize,
+    expected_raw: String,
+) -> Result<WorkspaceLoadResult, String> {
+    remove_todo_line_for_root(&root, line_number, &expected_raw)
+        .map_err(|error| error.to_string())?;
+    load_workspace_from_root(root)
+}
+
 fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String> {
     validate_workspace_root(&root)?;
 
