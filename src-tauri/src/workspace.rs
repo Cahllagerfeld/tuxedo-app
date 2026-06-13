@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::load_todo_file;
+use crate::todo_txt::parser::parse_line;
 use crate::todo_txt::types::TodoFile;
 
 const WORKSPACE_CONFIG_FILE: &str = "workspace.toml";
@@ -58,6 +59,13 @@ pub fn load_workspace(root: String) -> Result<WorkspaceLoadResult, String> {
     load_workspace_from_root(root)
 }
 
+#[tauri::command]
+pub fn append_todo_item(root: String, raw: String) -> Result<WorkspaceLoadResult, String> {
+    validate_append_todo_line(&raw)?;
+    append_todo_line_for_root(&root, raw).map_err(|error| error.to_string())?;
+    load_workspace_from_root(root)
+}
+
 fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String> {
     validate_workspace_root(&root)?;
 
@@ -76,6 +84,16 @@ fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String>
         todo_exists,
         todo_file,
     })
+}
+
+fn validate_append_todo_line(raw: &str) -> Result<(), String> {
+    if raw.contains('\n') || raw.contains('\r') {
+        return Err("todo item must be a single line".to_string());
+    }
+
+    parse_line(1, raw).map_err(|error| error.to_string())?;
+
+    Ok(())
 }
 
 fn validate_workspace_root(root: &str) -> Result<(), String> {
@@ -541,6 +559,96 @@ mod tests {
         let error = read_todo_lines_for_root(&temp_dir.to_string_lossy()).unwrap_err();
 
         assert!(error.to_string().contains("todo file path is not a file"));
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_item_creates_todo_file_and_returns_reloaded_workspace() {
+        let temp_dir = unique_temp_dir("append-command-creates");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let result = append_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            "(A) Capture task +Tuxedo @computer".to_string(),
+        )
+        .unwrap();
+
+        assert!(result.todo_exists);
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "(A) Capture task +Tuxedo @computer\n"
+        );
+        let todo_file = result.todo_file.unwrap();
+        assert_eq!(todo_file.items.len(), 1);
+        assert_eq!(todo_file.items[0].line_number, 1);
+        assert_eq!(todo_file.items[0].priority, Some('A'));
+        assert_eq!(todo_file.items[0].description, "Capture task");
+        assert_eq!(todo_file.items[0].projects, vec!["Tuxedo"]);
+        assert_eq!(todo_file.items[0].contexts, vec!["computer"]);
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_item_extends_todo_file_without_discarding_existing_lines() {
+        let temp_dir = unique_temp_dir("append-command-extends");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "Existing task\n2024-99-99 bad date\n").unwrap();
+
+        let result = append_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            "Second task due:2026-01-02".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "Existing task\n2024-99-99 bad date\nSecond task due:2026-01-02\n"
+        );
+        let todo_file = result.todo_file.unwrap();
+        assert_eq!(todo_file.items.len(), 2);
+        assert_eq!(todo_file.skipped.len(), 1);
+        assert_eq!(todo_file.items[1].line_number, 3);
+        assert_eq!(todo_file.items[1].description, "Second task");
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_item_rejects_invalid_todo_line_without_writing() {
+        let temp_dir = unique_temp_dir("append-command-invalid");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "Existing task\n").unwrap();
+
+        let error = append_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            "2024-99-99 bad date".to_string(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "date must use YYYY-MM-DD format");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "Existing task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_item_rejects_multiline_input_without_writing() {
+        let temp_dir = unique_temp_dir("append-command-multiline");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let error = append_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            "First task\nSecond task".to_string(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "todo item must be a single line");
+        assert!(!temp_dir.join("todo.txt").exists());
 
         std::fs::remove_dir_all(temp_dir).unwrap();
     }
