@@ -48,7 +48,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 
 ### Milestone 2: Safe Mutations
 
-- [ ] Add Rust helpers for guarded line replacement and atomic todo file writes.
+- [x] Add Rust helpers for guarded line replacement and atomic todo file writes.
 - [ ] Add `append_todo_item`.
 - [ ] Add `update_todo_item`.
 - [ ] Add `toggle_todo_item_completed`.

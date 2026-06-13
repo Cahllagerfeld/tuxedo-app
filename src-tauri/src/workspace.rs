@@ -112,6 +112,105 @@ fn todo_path_for_root(root: &str) -> PathBuf {
     WorkspaceFile::Todo.path_for_root(root)
 }
 
+#[allow(dead_code)]
+fn read_todo_lines_for_root(root: &str) -> Result<Vec<String>, TodoWriteError> {
+    validate_workspace_root(root).map_err(TodoWriteError::InvalidWorkspace)?;
+
+    let todo_path = todo_path_for_root(root);
+
+    if !todo_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    if !todo_path.is_file() {
+        return Err(TodoWriteError::NotAFile(todo_path));
+    }
+
+    let contents = std::fs::read_to_string(todo_path)?;
+
+    Ok(contents.lines().map(str::to_string).collect())
+}
+
+#[allow(dead_code)]
+fn append_todo_line_for_root(root: &str, next_line: String) -> Result<(), TodoWriteError> {
+    let mut lines = read_todo_lines_for_root(root)?;
+    lines.push(next_line);
+
+    write_todo_lines_for_root(root, &lines)
+}
+
+#[allow(dead_code)]
+fn replace_todo_line_for_root(
+    root: &str,
+    line_number: usize,
+    expected_raw_line: &str,
+    next_line: String,
+) -> Result<(), TodoWriteError> {
+    let mut lines = read_todo_lines_for_root(root)?;
+    let line = guarded_line_mut(&mut lines, line_number, expected_raw_line)?;
+    *line = next_line;
+
+    write_todo_lines_for_root(root, &lines)
+}
+
+#[allow(dead_code)]
+fn remove_todo_line_for_root(
+    root: &str,
+    line_number: usize,
+    expected_raw_line: &str,
+) -> Result<(), TodoWriteError> {
+    let mut lines = read_todo_lines_for_root(root)?;
+    guarded_line_mut(&mut lines, line_number, expected_raw_line)?;
+    lines.remove(line_number - 1);
+
+    write_todo_lines_for_root(root, &lines)
+}
+
+#[allow(dead_code)]
+fn guarded_line_mut<'a>(
+    lines: &'a mut [String],
+    line_number: usize,
+    expected_raw_line: &str,
+) -> Result<&'a mut String, TodoWriteError> {
+    if line_number == 0 {
+        return Err(TodoWriteError::InvalidLineNumber(line_number));
+    }
+
+    let line = lines
+        .get_mut(line_number - 1)
+        .ok_or(TodoWriteError::InvalidLineNumber(line_number))?;
+
+    if line != expected_raw_line {
+        return Err(TodoWriteError::StaleLine {
+            line_number,
+            expected: expected_raw_line.to_string(),
+            actual: line.clone(),
+        });
+    }
+
+    Ok(line)
+}
+
+#[allow(dead_code)]
+fn write_todo_lines_for_root(root: &str, lines: &[String]) -> Result<(), TodoWriteError> {
+    validate_workspace_root(root).map_err(TodoWriteError::InvalidWorkspace)?;
+    write_todo_lines(todo_path_for_root(root), lines)
+}
+
+#[allow(dead_code)]
+fn write_todo_lines(path: PathBuf, lines: &[String]) -> Result<(), TodoWriteError> {
+    let contents = if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", lines.join("\n"))
+    };
+    let atomic_file = AtomicFile::new(path, OverwriteBehavior::AllowOverwrite);
+
+    atomic_file.write(|file| file.write_all(contents.as_bytes()))?;
+
+    Ok(())
+}
+
 fn workspace_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let config_dir = app
         .path()
@@ -146,6 +245,27 @@ fn save_workspace_config_to_path(
     atomic_file.write(|file| file.write_all(contents.as_bytes()))?;
 
     Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
+enum TodoWriteError {
+    #[error("{0}")]
+    InvalidWorkspace(String),
+    #[error("todo file path is not a file: {0}")]
+    NotAFile(PathBuf),
+    #[error("todo line number is invalid: {0}")]
+    InvalidLineNumber(usize),
+    #[error("todo line {line_number} changed on disk; expected {expected:?}, found {actual:?}")]
+    StaleLine {
+        line_number: usize,
+        expected: String,
+        actual: String,
+    },
+    #[error("failed to read or write todo file: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("failed to write todo file atomically: {0}")]
+    AtomicWrite(#[from] atomicwrites::Error<std::io::Error>),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -286,6 +406,141 @@ mod tests {
         assert_eq!(restored_config, saved_config);
         assert!(workspace.todo_exists);
         assert_eq!(workspace.todo_file.unwrap().items[0].description, "Restored task");
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_line_creates_missing_todo_file() {
+        let temp_dir = unique_temp_dir("append-creates");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        append_todo_line_for_root(&temp_dir.to_string_lossy(), "(A) New task".to_string()).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "(A) New task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn append_todo_line_preserves_existing_lines() {
+        let temp_dir = unique_temp_dir("append-preserves");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nbad line\n").unwrap();
+
+        append_todo_line_for_root(&temp_dir.to_string_lossy(), "Second task".to_string()).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nbad line\nSecond task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn replace_todo_line_updates_guarded_line_and_preserves_other_lines() {
+        let temp_dir = unique_temp_dir("replace-guarded");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nSecond task\nThird task\n").unwrap();
+
+        replace_todo_line_for_root(
+            &temp_dir.to_string_lossy(),
+            2,
+            "Second task",
+            "Updated second task".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nUpdated second task\nThird task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn replace_todo_line_rejects_stale_raw_line_guard() {
+        let temp_dir = unique_temp_dir("replace-stale");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nChanged task\n").unwrap();
+
+        let error = replace_todo_line_for_root(
+            &temp_dir.to_string_lossy(),
+            2,
+            "Old task",
+            "Updated task".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("todo line 2 changed on disk"));
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nChanged task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn remove_todo_line_deletes_guarded_line_and_preserves_other_lines() {
+        let temp_dir = unique_temp_dir("remove-guarded");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nSecond task\nThird task\n").unwrap();
+
+        remove_todo_line_for_root(&temp_dir.to_string_lossy(), 2, "Second task").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nThird task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn guarded_todo_line_rejects_zero_and_out_of_range_line_numbers() {
+        let temp_dir = unique_temp_dir("guard-invalid");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\n").unwrap();
+
+        let zero_error = replace_todo_line_for_root(
+            &temp_dir.to_string_lossy(),
+            0,
+            "First task",
+            "Updated task".to_string(),
+        )
+        .unwrap_err();
+        let range_error = replace_todo_line_for_root(
+            &temp_dir.to_string_lossy(),
+            2,
+            "Missing task",
+            "Updated task".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(zero_error.to_string().contains("todo line number is invalid: 0"));
+        assert!(range_error.to_string().contains("todo line number is invalid: 2"));
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn read_todo_lines_rejects_todo_path_that_is_directory() {
+        let temp_dir = unique_temp_dir("todo-path-directory");
+        std::fs::create_dir_all(temp_dir.join("todo.txt")).unwrap();
+
+        let error = read_todo_lines_for_root(&temp_dir.to_string_lossy()).unwrap_err();
+
+        assert!(error.to_string().contains("todo file path is not a file"));
 
         std::fs::remove_dir_all(temp_dir).unwrap();
     }
