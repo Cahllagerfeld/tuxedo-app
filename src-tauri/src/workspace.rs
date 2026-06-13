@@ -61,8 +61,21 @@ pub fn load_workspace(root: String) -> Result<WorkspaceLoadResult, String> {
 
 #[tauri::command]
 pub fn append_todo_item(root: String, raw: String) -> Result<WorkspaceLoadResult, String> {
-    validate_append_todo_line(&raw)?;
+    validate_todo_line(&raw)?;
     append_todo_line_for_root(&root, raw).map_err(|error| error.to_string())?;
+    load_workspace_from_root(root)
+}
+
+#[tauri::command]
+pub fn update_todo_item(
+    root: String,
+    line_number: usize,
+    expected_raw: String,
+    raw: String,
+) -> Result<WorkspaceLoadResult, String> {
+    validate_todo_line(&raw)?;
+    replace_todo_line_for_root(&root, line_number, &expected_raw, raw)
+        .map_err(|error| error.to_string())?;
     load_workspace_from_root(root)
 }
 
@@ -86,7 +99,7 @@ fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String>
     })
 }
 
-fn validate_append_todo_line(raw: &str) -> Result<(), String> {
+fn validate_todo_line(raw: &str) -> Result<(), String> {
     if raw.contains('\n') || raw.contains('\r') {
         return Err("todo item must be a single line".to_string());
     }
@@ -649,6 +662,108 @@ mod tests {
 
         assert_eq!(error, "todo item must be a single line");
         assert!(!temp_dir.join("todo.txt").exists());
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn update_todo_item_replaces_guarded_line_and_returns_reloaded_workspace() {
+        let temp_dir = unique_temp_dir("update-command-replaces");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(
+            temp_dir.join("todo.txt"),
+            "First task\nSecond task +Old\nThird task\n",
+        )
+        .unwrap();
+
+        let result = update_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "Second task +Old".to_string(),
+            "(A) Updated second task +New @computer".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\n(A) Updated second task +New @computer\nThird task\n"
+        );
+        let todo_file = result.todo_file.unwrap();
+        assert_eq!(todo_file.items.len(), 3);
+        assert_eq!(todo_file.items[1].line_number, 2);
+        assert_eq!(todo_file.items[1].priority, Some('A'));
+        assert_eq!(todo_file.items[1].description, "Updated second task");
+        assert_eq!(todo_file.items[1].projects, vec!["New"]);
+        assert_eq!(todo_file.items[1].contexts, vec!["computer"]);
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn update_todo_item_rejects_stale_raw_line_guard_without_writing() {
+        let temp_dir = unique_temp_dir("update-command-stale");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nChanged on disk\n").unwrap();
+
+        let error = update_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "Second task".to_string(),
+            "Updated task".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("todo line 2 changed on disk"));
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nChanged on disk\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn update_todo_item_rejects_invalid_replacement_without_writing() {
+        let temp_dir = unique_temp_dir("update-command-invalid");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nSecond task\n").unwrap();
+
+        let error = update_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "Second task".to_string(),
+            "2024-99-99 bad date".to_string(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "date must use YYYY-MM-DD format");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nSecond task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn update_todo_item_rejects_multiline_replacement_without_writing() {
+        let temp_dir = unique_temp_dir("update-command-multiline");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nSecond task\n").unwrap();
+
+        let error = update_todo_item(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "Second task".to_string(),
+            "Updated task\nInjected task".to_string(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "todo item must be a single line");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nSecond task\n"
+        );
 
         std::fs::remove_dir_all(temp_dir).unwrap();
     }

@@ -50,7 +50,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 
 - [x] Add Rust helpers for guarded line replacement and atomic todo file writes.
 - [x] Add `append_todo_item`.
-- [ ] Add `update_todo_item`.
+- [x] Add `update_todo_item`.
 - [ ] Add `toggle_todo_item_completed`.
 - [ ] Add `delete_todo_item`.
 - [ ] Add frontend API wrappers, Zod schemas, and TypeScript types for mutation responses.
@@ -112,7 +112,7 @@ Required v1 commands:
 - [x] `save_workspace_config`: validate and persist the selected workspace root.
 - [x] `load_workspace`: resolve workspace files and parse existing `todo.txt`.
 - [x] `append_todo_item`: append one valid task line to `todo.txt`.
-- [ ] `update_todo_item`: replace one task line by line number with a raw-line guard.
+- [x] `update_todo_item`: replace one task line by line number with a raw-line guard.
 - [ ] `toggle_todo_item_completed`: complete or reopen one task by line number with a raw-line guard.
 - [ ] `delete_todo_item`: remove one task by line number with a raw-line guard.
 - [ ] `archive_completed_todo_items`: move completed items from `todo.txt` to `done.txt`.
