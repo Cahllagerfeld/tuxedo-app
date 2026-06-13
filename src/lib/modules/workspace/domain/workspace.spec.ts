@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
 	parseWorkspaceConfigResponse,
 	parseWorkspaceLoadResponse,
+	parseWorkspaceMutationResponse,
 	workspaceConfigSchema,
 	workspaceLoadResultSchema,
+	workspaceMutationResultSchema,
 	type WorkspaceConfig,
 	type WorkspaceLoadResult,
 } from "./workspace";
@@ -70,6 +72,14 @@ describe("workspaceLoadResultSchema", () => {
 	});
 });
 
+describe("workspaceMutationResultSchema", () => {
+	it("accepts the workspace reload shape returned after mutations", () => {
+		const result = workspaceMutationResultSchema.safeParse(validWorkspaceLoadResponse);
+
+		expect(result.success).toBe(true);
+	});
+});
+
 describe("workspace response parsers", () => {
 	it("returns validated workspace config responses", () => {
 		expect(parseWorkspaceConfigResponse(validWorkspaceConfigResponse)).toEqual(
@@ -79,6 +89,12 @@ describe("workspace response parsers", () => {
 
 	it("returns validated workspace load responses", () => {
 		expect(parseWorkspaceLoadResponse(validWorkspaceLoadResponse)).toEqual(
+			validWorkspaceLoadResponse
+		);
+	});
+
+	it("returns validated workspace mutation responses", () => {
+		expect(parseWorkspaceMutationResponse(validWorkspaceLoadResponse)).toEqual(
 			validWorkspaceLoadResponse
 		);
 	});
@@ -93,5 +109,11 @@ describe("workspace response parsers", () => {
 		expect(() =>
 			parseWorkspaceLoadResponse({ ...validWorkspaceLoadResponse, todo_exists: "true" })
 		).toThrow(/Unexpected workspace load response from Rust: todo_exists:/);
+	});
+
+	it("throws a readable error for mutation schema drift", () => {
+		expect(() =>
+			parseWorkspaceMutationResponse({ ...validWorkspaceLoadResponse, todo_exists: "true" })
+		).toThrow(/Unexpected workspace mutation response from Rust: todo_exists:/);
 	});
 });

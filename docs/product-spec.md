@@ -53,7 +53,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 - [x] Add `update_todo_item`.
 - [x] Add `toggle_todo_item_completed`.
 - [ ] Add `delete_todo_item`.
-- [ ] Add frontend API wrappers, Zod schemas, and TypeScript types for mutation responses.
+- [x] Add frontend API wrappers, Zod schemas, and TypeScript types for mutation responses.
 - [ ] Add quick-capture UI.
 - [ ] Add task complete/uncomplete UI.
 - [ ] Add task edit UI.

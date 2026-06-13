@@ -3,8 +3,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
 	parseWorkspaceConfigResponse,
 	parseWorkspaceLoadResponse,
+	parseWorkspaceMutationResponse,
 	type WorkspaceConfig,
 	type WorkspaceLoadResult,
+	type WorkspaceMutationResult,
 } from "$lib/modules/workspace/domain/workspace";
 
 export async function loadWorkspaceConfig(): Promise<WorkspaceConfig> {
@@ -29,4 +31,37 @@ export async function loadWorkspace(root: string): Promise<WorkspaceLoadResult> 
 export async function saveWorkspaceConfig(root: string): Promise<WorkspaceConfig> {
 	const response = await invoke("save_workspace_config", { root });
 	return parseWorkspaceConfigResponse(response);
+}
+
+export async function appendTodoItem(root: string, raw: string): Promise<WorkspaceMutationResult> {
+	const response = await invoke("append_todo_item", { root, raw });
+	return parseWorkspaceMutationResponse(response);
+}
+
+export async function updateTodoItem(
+	root: string,
+	lineNumber: number,
+	expectedRaw: string,
+	raw: string
+): Promise<WorkspaceMutationResult> {
+	const response = await invoke("update_todo_item", {
+		root,
+		lineNumber,
+		expectedRaw,
+		raw,
+	});
+	return parseWorkspaceMutationResponse(response);
+}
+
+export async function toggleTodoItemCompleted(
+	root: string,
+	lineNumber: number,
+	expectedRaw: string
+): Promise<WorkspaceMutationResult> {
+	const response = await invoke("toggle_todo_item_completed", {
+		root,
+		lineNumber,
+		expectedRaw,
+	});
+	return parseWorkspaceMutationResponse(response);
 }

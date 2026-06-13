@@ -13,8 +13,11 @@ export const workspaceLoadResultSchema = z.object({
 	todo_file: todoFileSchema.nullable(),
 });
 
+export const workspaceMutationResultSchema = workspaceLoadResultSchema;
+
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 export type WorkspaceLoadResult = z.infer<typeof workspaceLoadResultSchema>;
+export type WorkspaceMutationResult = z.infer<typeof workspaceMutationResultSchema>;
 
 function formatSchemaIssues(error: z.ZodError): string {
 	return error.issues
@@ -43,5 +46,17 @@ export function parseWorkspaceLoadResponse(response: unknown): WorkspaceLoadResu
 
 	throw new Error(
 		`Unexpected workspace load response from Rust: ${formatSchemaIssues(result.error)}`
+	);
+}
+
+export function parseWorkspaceMutationResponse(response: unknown): WorkspaceMutationResult {
+	const result = workspaceMutationResultSchema.safeParse(response);
+
+	if (result.success) {
+		return result.data;
+	}
+
+	throw new Error(
+		`Unexpected workspace mutation response from Rust: ${formatSchemaIssues(result.error)}`
 	);
 }
