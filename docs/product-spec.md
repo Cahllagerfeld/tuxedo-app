@@ -35,7 +35,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 
 ### Milestone 1: Baseline Hardening
 
-- [ ] Replace template README content or link it to this spec.
+- [x] Replace template README content or link it to this spec.
 - [x] Mark `docs/workspace-persistence-plan.md` as historical/superseded.
 - [x] Improve workspace empty, loading, warning, and error states.
 - [x] Add skipped-line diagnostics UI.

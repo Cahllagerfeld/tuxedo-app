@@ -1,7 +1,30 @@
-# Tauri + SvelteKit + TypeScript
+# Tuxedo
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+Tuxedo is a local-first desktop app for working with portable `todo.txt` files.
+It is built with Tauri, SvelteKit, Svelte 5 runes, and Rust.
 
-## Recommended IDE Setup
+The product direction, milestones, and implementation checklist live in
+[docs/product-spec.md](docs/product-spec.md).
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+## Development
+
+Install dependencies with the repo package manager:
+
+```sh
+pnpm install
+```
+
+Run the app during development:
+
+```sh
+pnpm tauri dev
+```
+
+Run verification before marking product-spec work complete:
+
+```sh
+pnpm check
+pnpm test:unit
+pnpm test:rust
+pnpm lint
+```
