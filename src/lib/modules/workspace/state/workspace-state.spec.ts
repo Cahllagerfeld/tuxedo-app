@@ -1,5 +1,6 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import {
+	chooseWorkspaceDirectory,
 	loadWorkspace,
 	loadWorkspaceConfig,
 	saveWorkspaceConfig,
@@ -18,6 +19,7 @@ vi.mock("$lib/modules/workspace/api/workspace-api", () => ({
 const mockedLoadWorkspaceConfig = vi.mocked(loadWorkspaceConfig);
 const mockedLoadWorkspace = vi.mocked(loadWorkspace);
 const mockedSaveWorkspaceConfig = vi.mocked(saveWorkspaceConfig);
+const mockedChooseWorkspaceDirectory = vi.mocked(chooseWorkspaceDirectory);
 
 const todoFile: TodoFile = {
 	path: "/tmp/todos/todo.txt",
@@ -76,6 +78,7 @@ describe("WorkspaceState", () => {
 
 	it("restores and applies a saved workspace", async () => {
 		const workspace = new WorkspaceState();
+		workspace.warning = "old warning";
 		mockedLoadWorkspaceConfig.mockResolvedValue(savedConfig);
 		mockedLoadWorkspace.mockResolvedValue(loadedWorkspace);
 
@@ -87,6 +90,20 @@ describe("WorkspaceState", () => {
 		expect(workspace.warning).toBe("");
 		expect(workspace.error).toBe("");
 		expect(mockedLoadWorkspace).toHaveBeenCalledWith("/tmp/todos");
+	});
+
+	it("clears stale errors and warnings before restore", async () => {
+		const workspace = new WorkspaceState();
+		workspace.error = "old error";
+		workspace.warning = "old warning";
+		mockedLoadWorkspaceConfig.mockResolvedValue(savedConfig);
+		mockedLoadWorkspace.mockResolvedValue(loadedWorkspace);
+
+		await workspace.restore();
+
+		expect(workspace.error).toBe("");
+		expect(workspace.warning).toBe("");
+		expect(workspace.todoFile).toEqual(todoFile);
 	});
 
 	it("shows a warning and keeps the workspace usable when todo.txt is missing", async () => {
@@ -126,6 +143,40 @@ describe("WorkspaceState", () => {
 		expect(workspace.todoFile).toBeNull();
 		expect(workspace.warning).toBe("");
 		expect(workspace.error).toBe("workspace directory does not exist: /tmp/todos");
+		expect(workspace.isLoading).toBe(false);
+	});
+
+	it("leaves the current workspace intact when directory selection is cancelled", async () => {
+		const workspace = new WorkspaceState();
+		workspace.root = "/tmp/todos";
+		workspace.todoPath = "/tmp/todos/todo.txt";
+		workspace.todoFile = todoFile;
+		mockedChooseWorkspaceDirectory.mockResolvedValue(null);
+
+		await workspace.openDirectory();
+
+		expect(workspace.root).toBe("/tmp/todos");
+		expect(workspace.todoPath).toBe("/tmp/todos/todo.txt");
+		expect(workspace.todoFile).toEqual(todoFile);
+		expect(workspace.error).toBe("");
+		expect(workspace.warning).toBe("");
+		expect(workspace.isLoading).toBe(false);
+		expect(mockedSaveWorkspaceConfig).not.toHaveBeenCalled();
+		expect(mockedLoadWorkspace).not.toHaveBeenCalled();
+	});
+
+	it("saves and loads a newly selected workspace", async () => {
+		const workspace = new WorkspaceState();
+		mockedChooseWorkspaceDirectory.mockResolvedValue("/tmp/todos");
+		mockedLoadWorkspace.mockResolvedValue(loadedWorkspace);
+
+		await workspace.openDirectory();
+
+		expect(mockedSaveWorkspaceConfig).toHaveBeenCalledWith("/tmp/todos");
+		expect(mockedLoadWorkspace).toHaveBeenCalledWith("/tmp/todos");
+		expect(workspace.root).toBe("/tmp/todos");
+		expect(workspace.todoPath).toBe("/tmp/todos/todo.txt");
+		expect(workspace.todoFile).toEqual(todoFile);
 		expect(workspace.isLoading).toBe(false);
 	});
 });

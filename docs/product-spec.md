@@ -40,7 +40,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 - [x] Improve workspace empty, loading, warning, and error states.
 - [x] Add skipped-line diagnostics UI.
 - [x] Expand Rust tests for workspace restore and missing-file behavior.
-- [ ] Expand frontend tests for workspace restore state and todo derivations.
+- [x] Expand frontend tests for workspace restore state and todo derivations.
 - [ ] Run `pnpm check`.
 - [ ] Run `pnpm test:unit`.
 - [ ] Run `pnpm test:rust`.

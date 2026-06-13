@@ -122,4 +122,66 @@ describe("TodoViewState", () => {
 		expect(view.projectCount).toBe(0);
 		expect(view.availableProjects).toEqual([]);
 	});
+
+	it("clears derived state when a loaded workspace has no todo file", () => {
+		const workspace = new WorkspaceState();
+		const view = new TodoViewState(workspace);
+
+		workspace.todoFile = todoFile;
+		expect(view.totalCount).toBe(4);
+
+		workspace.todoFile = null;
+
+		expect(view.items).toEqual([]);
+		expect(view.skipped).toEqual([]);
+		expect(view.totalCount).toBe(0);
+		expect(view.visibleCount).toBe(0);
+		expect(view.openCount).toBe(0);
+		expect(view.completedCount).toBe(0);
+		expect(view.availableProjects).toEqual([]);
+		expect(view.availableContexts).toEqual([]);
+		expect(view.availablePriorities).toEqual([]);
+	});
+
+	it("deduplicates and sorts available facets from loaded tasks", () => {
+		const workspace = new WorkspaceState();
+		const view = new TodoViewState(workspace);
+
+		workspace.todoFile = {
+			path: "/tmp/facets.txt",
+			items: [
+				{
+					line_number: 1,
+					raw: "(C) Paint trim +House +Tuxedo @phone @computer",
+					completed: false,
+					priority: "C",
+					creation_date: null,
+					completion_date: null,
+					description: "Paint trim",
+					projects: ["House", "Tuxedo"],
+					contexts: ["phone", "computer"],
+					metadata: {},
+				},
+				{
+					line_number: 2,
+					raw: "(A) Order paint +House @hardware @phone",
+					completed: false,
+					priority: "A",
+					creation_date: null,
+					completion_date: null,
+					description: "Order paint",
+					projects: ["House"],
+					contexts: ["hardware", "phone"],
+					metadata: {},
+				},
+			],
+			skipped: [],
+		};
+
+		expect(view.availableProjects).toEqual(["House", "Tuxedo"]);
+		expect(view.availableContexts).toEqual(["computer", "hardware", "phone"]);
+		expect(view.availablePriorities).toEqual(["A", "C"]);
+		expect(view.projectCount).toBe(2);
+		expect(view.priorityCount).toBe(2);
+	});
 });
