@@ -1,5 +1,8 @@
 # Workspace Persistence Implementation Plan
 
+> Historical note: this plan predates the current product spec and is partially implemented.
+> Use `docs/product-spec.md` as the authoritative roadmap for future feature work.
+
 Persist workspace configuration globally as TOML, storing workspace roots and metadata while keeping parsed todo contents in memory only. On startup the app should load the active workspace, derive known todo-family files from its root, and re-read existing files from disk.
 
 This document is split into implementation sections that can be handled by separate agents. Each section should keep changes scoped to its listed files and acceptance criteria.
