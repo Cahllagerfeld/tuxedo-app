@@ -8,6 +8,7 @@
 		EmptyTitle,
 	} from "$lib/shared/ui/empty";
 	import ListTodo from "@lucide/svelte/icons/list-todo";
+	import SkippedLineDiagnostics from "./SkippedLineDiagnostics.svelte";
 	import TodoItem from "./TodoItem.svelte";
 
 	const appState = getAppState();
@@ -22,12 +23,13 @@
 		</p>
 	</section> -->
 
-	{#if appState.todos.items.length > 0}
-		<ul class="space-y-1">
-			{#each appState.todos.items as item (item.line_number)}
-				<li>
-					<TodoItem todo={item} />
-					<!-- <div class="todo-main">
+	<div class="space-y-4">
+		{#if appState.todos.items.length > 0}
+			<ul class="space-y-1">
+				{#each appState.todos.items as item (item.line_number)}
+					<li>
+						<TodoItem todo={item} />
+						<!-- <div class="todo-main">
 							{#if item.priority}
 								<span class="priority">({item.priority})</span>
 							{/if}
@@ -52,35 +54,23 @@
 								<span>{key}:{value}</span>
 							{/each}
 						</div> -->
-				</li>
-			{/each}
-		</ul>
-	{:else}
-		<Empty>
-			<EmptyMedia variant="icon">
-				<ListTodo />
-			</EmptyMedia>
-			<EmptyHeader>
-				<EmptyTitle>No tasks yet</EmptyTitle>
-				<EmptyDescription>
-					This todo.txt file does not contain any valid task lines yet.
-				</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
-	{/if}
-
-	<!-- {#if appState.todos.skipped.length > 0}
-		<section class="skipped">
-			<h2>Skipped lines</h2>
-			<ul>
-				{#each appState.todos.skipped as skipped (skipped.line_number)}
-					<li>
-						<strong>Line {skipped.line_number}:</strong>
-						{skipped.reason}
-						<code>{skipped.raw}</code>
 					</li>
 				{/each}
 			</ul>
-		</section>
-	{/if} -->
+		{:else}
+			<Empty>
+				<EmptyMedia variant="icon">
+					<ListTodo />
+				</EmptyMedia>
+				<EmptyHeader>
+					<EmptyTitle>No tasks yet</EmptyTitle>
+					<EmptyDescription>
+						This todo.txt file does not contain any valid task lines yet.
+					</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		{/if}
+
+		<SkippedLineDiagnostics skipped={appState.todos.skipped} />
+	</div>
 {/if}
