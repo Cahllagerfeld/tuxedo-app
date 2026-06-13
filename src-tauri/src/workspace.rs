@@ -1,4 +1,5 @@
 use atomicwrites::{AtomicFile, OverwriteBehavior};
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -79,6 +80,19 @@ pub fn update_todo_item(
     load_workspace_from_root(root)
 }
 
+#[tauri::command]
+pub fn toggle_todo_item_completed(
+    root: String,
+    line_number: usize,
+    expected_raw: String,
+) -> Result<WorkspaceLoadResult, String> {
+    let toggled = toggle_todo_line_completed(&expected_raw, &current_local_date());
+    validate_todo_line(&toggled)?;
+    replace_todo_line_for_root(&root, line_number, &expected_raw, toggled)
+        .map_err(|error| error.to_string())?;
+    load_workspace_from_root(root)
+}
+
 fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String> {
     validate_workspace_root(&root)?;
 
@@ -107,6 +121,46 @@ fn validate_todo_line(raw: &str) -> Result<(), String> {
     parse_line(1, raw).map_err(|error| error.to_string())?;
 
     Ok(())
+}
+
+fn toggle_todo_line_completed(raw: &str, completion_date: &str) -> String {
+    let trimmed = raw.trim_start();
+
+    if let Some(rest) = trimmed.strip_prefix("x ") {
+        return reopen_todo_line(rest);
+    }
+
+    format!("x {completion_date} {raw}")
+}
+
+fn reopen_todo_line(completed_rest: &str) -> String {
+    let rest = completed_rest.trim_start();
+    let Some((first_token, remaining)) = split_first_token(rest) else {
+        return String::new();
+    };
+
+    if is_date_token(first_token) {
+        remaining.to_string()
+    } else {
+        rest.to_string()
+    }
+}
+
+fn split_first_token(line: &str) -> Option<(&str, &str)> {
+    match line.find(char::is_whitespace) {
+        Some(index) => Some((&line[..index], line[index..].trim_start())),
+        None if !line.is_empty() => Some((line, "")),
+        None => None,
+    }
+}
+
+fn is_date_token(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    bytes.len() == 10 && bytes[4] == b'-' && bytes[7] == b'-'
+}
+
+fn current_local_date() -> String {
+    Local::now().date_naive().format("%Y-%m-%d").to_string()
 }
 
 fn validate_workspace_root(root: &str) -> Result<(), String> {
@@ -763,6 +817,117 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
             "First task\nSecond task\n"
+        );
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn toggle_todo_line_completed_marks_open_task_with_completion_date() {
+        assert_eq!(
+            toggle_todo_line_completed("(A) 2026-01-01 Ship feature +Tuxedo due:2026-01-03", "2026-02-04"),
+            "x 2026-02-04 (A) 2026-01-01 Ship feature +Tuxedo due:2026-01-03"
+        );
+    }
+
+    #[test]
+    fn toggle_todo_line_completed_reopens_completed_task_with_completion_date() {
+        assert_eq!(
+            toggle_todo_line_completed(
+                "x 2026-02-04 2026-01-01 Ship feature +Tuxedo due:2026-01-03",
+                "2026-03-05"
+            ),
+            "2026-01-01 Ship feature +Tuxedo due:2026-01-03"
+        );
+    }
+
+    #[test]
+    fn toggle_todo_line_completed_reopens_completed_task_without_completion_date() {
+        assert_eq!(
+            toggle_todo_line_completed("x Ship feature +Tuxedo due:2026-01-03", "2026-03-05"),
+            "Ship feature +Tuxedo due:2026-01-03"
+        );
+    }
+
+    #[test]
+    fn toggle_todo_item_completed_marks_open_task_and_returns_reloaded_workspace() {
+        let temp_dir = unique_temp_dir("toggle-command-complete");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(
+            temp_dir.join("todo.txt"),
+            "First task\n2026-01-01 Second task +Tuxedo due:2026-01-03\n",
+        )
+        .unwrap();
+        let today = current_local_date();
+
+        let result = toggle_todo_item_completed(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "2026-01-01 Second task +Tuxedo due:2026-01-03".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            format!("First task\nx {today} 2026-01-01 Second task +Tuxedo due:2026-01-03\n")
+        );
+        let todo_file = result.todo_file.unwrap();
+        assert!(todo_file.items[1].completed);
+        assert_eq!(todo_file.items[1].completion_date.as_deref(), Some(today.as_str()));
+        assert_eq!(todo_file.items[1].creation_date.as_deref(), Some("2026-01-01"));
+        assert_eq!(todo_file.items[1].metadata.get("due").map(String::as_str), Some("2026-01-03"));
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn toggle_todo_item_completed_reopens_task_without_losing_metadata() {
+        let temp_dir = unique_temp_dir("toggle-command-reopen");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(
+            temp_dir.join("todo.txt"),
+            "x 2026-02-04 2026-01-01 Second task +Tuxedo due:2026-01-03\n",
+        )
+        .unwrap();
+
+        let result = toggle_todo_item_completed(
+            temp_dir.to_string_lossy().to_string(),
+            1,
+            "x 2026-02-04 2026-01-01 Second task +Tuxedo due:2026-01-03".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "2026-01-01 Second task +Tuxedo due:2026-01-03\n"
+        );
+        let todo_file = result.todo_file.unwrap();
+        assert!(!todo_file.items[0].completed);
+        assert_eq!(todo_file.items[0].completion_date, None);
+        assert_eq!(todo_file.items[0].creation_date.as_deref(), Some("2026-01-01"));
+        assert_eq!(todo_file.items[0].projects, vec!["Tuxedo"]);
+        assert_eq!(todo_file.items[0].metadata.get("due").map(String::as_str), Some("2026-01-03"));
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn toggle_todo_item_completed_rejects_stale_raw_line_guard_without_writing() {
+        let temp_dir = unique_temp_dir("toggle-command-stale");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "First task\nChanged manually on disk\n").unwrap();
+
+        let error = toggle_todo_item_completed(
+            temp_dir.to_string_lossy().to_string(),
+            2,
+            "Second task".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("todo line 2 changed on disk"));
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
+            "First task\nChanged manually on disk\n"
         );
 
         std::fs::remove_dir_all(temp_dir).unwrap();
