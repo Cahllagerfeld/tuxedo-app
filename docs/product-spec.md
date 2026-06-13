@@ -39,7 +39,7 @@ Agents should update these boxes as work lands. Check an item only when the impl
 - [x] Mark `docs/workspace-persistence-plan.md` as historical/superseded.
 - [x] Improve workspace empty, loading, warning, and error states.
 - [x] Add skipped-line diagnostics UI.
-- [ ] Expand Rust tests for workspace restore and missing-file behavior.
+- [x] Expand Rust tests for workspace restore and missing-file behavior.
 - [ ] Expand frontend tests for workspace restore state and todo derivations.
 - [ ] Run `pnpm check`.
 - [ ] Run `pnpm test:unit`.
@@ -143,7 +143,7 @@ Behavior:
 
 - [x] On startup, load the saved workspace config.
 - [ ] If no workspace is configured, show an empty state with an open-workspace action.
-- [ ] If the saved root no longer exists, show a clear error and keep the app usable.
+- [x] If the saved root no longer exists, show a clear error and keep the app usable.
 - [x] If the root exists but `todo.txt` is missing, show a warning and allow task creation.
 - [x] Let the user choose a new workspace directory at any time.
 - [x] Persist only workspace metadata, never parsed task data.
@@ -160,7 +160,7 @@ Tests:
 - [x] Missing config returns a default.
 - [x] Invalid workspace roots are rejected.
 - [x] Missing `todo.txt` returns a warning, not a crash.
-- [ ] Startup restore loads and parses the saved workspace.
+- [x] Startup restore loads and parses the saved workspace.
 
 ### 2. Todo List Reading
 

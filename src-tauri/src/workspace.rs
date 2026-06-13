@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::load_todo_file;
-use crate::todo_txt::error::LoadError;
 use crate::todo_txt::types::TodoFile;
 
 const WORKSPACE_CONFIG_FILE: &str = "workspace.toml";
@@ -56,15 +55,17 @@ pub fn save_workspace_config(app: AppHandle, root: String) -> Result<WorkspaceCo
 
 #[tauri::command]
 pub fn load_workspace(root: String) -> Result<WorkspaceLoadResult, String> {
-    load_workspace_from_root(root).map_err(|error| error.to_string())
+    load_workspace_from_root(root)
 }
 
-fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, LoadError> {
+fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String> {
+    validate_workspace_root(&root)?;
+
     let todo_path = todo_path_for_root(&root);
     let todo_exists = todo_path.exists();
     let todo_path = todo_path.to_string_lossy().to_string();
     let todo_file = if todo_exists {
-        Some(load_todo_file(todo_path.clone())?)
+        Some(load_todo_file(todo_path.clone()).map_err(|error| error.to_string())?)
     } else {
         None
     };
@@ -231,6 +232,15 @@ mod tests {
     }
 
     #[test]
+    fn load_workspace_rejects_missing_workspace_root() {
+        let temp_dir = unique_temp_dir("missing-root");
+
+        let error = load_workspace_from_root(temp_dir.to_string_lossy().to_string()).unwrap_err();
+
+        assert!(error.contains("workspace directory does not exist"));
+    }
+
+    #[test]
     fn load_workspace_parses_existing_todo_file() {
         let temp_dir = unique_temp_dir("existing-todo");
         std::fs::create_dir_all(&temp_dir).unwrap();
@@ -240,6 +250,42 @@ mod tests {
 
         assert!(result.todo_exists);
         assert_eq!(result.todo_file.unwrap().items.len(), 1);
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn missing_workspace_config_file_loads_default_config() {
+        let temp_dir = unique_temp_dir("missing-config");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let config_path = temp_dir.join("workspace.toml");
+
+        let config = load_workspace_config_from_path(config_path).unwrap();
+
+        assert_eq!(config, WorkspaceConfig::default());
+
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn saved_workspace_config_restores_root_and_workspace_load_parses_todo_file() {
+        let temp_dir = unique_temp_dir("restore-root");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("todo.txt"), "(A) Restored task +Tuxedo").unwrap();
+        let config_path = temp_dir.join("workspace.toml");
+        let saved_config = WorkspaceConfig {
+            version: WORKSPACE_CONFIG_VERSION,
+            root: Some(temp_dir.to_string_lossy().to_string()),
+        };
+
+        save_workspace_config_to_path(config_path.clone(), &saved_config).unwrap();
+        let restored_config = load_workspace_config_from_path(config_path).unwrap();
+        let workspace =
+            load_workspace_from_root(restored_config.root.clone().expect("saved root")).unwrap();
+
+        assert_eq!(restored_config, saved_config);
+        assert!(workspace.todo_exists);
+        assert_eq!(workspace.todo_file.unwrap().items[0].description, "Restored task");
 
         std::fs::remove_dir_all(temp_dir).unwrap();
     }
