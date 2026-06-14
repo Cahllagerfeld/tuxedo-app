@@ -4,6 +4,7 @@ import {
 	loadWorkspace,
 	loadWorkspaceConfig,
 	saveWorkspaceConfig,
+	toggleTodoItemCompleted as toggleTodoItemCompletedApi,
 } from "$lib/modules/workspace/api/workspace-api";
 import { type WorkspaceLoadResult } from "$lib/modules/workspace/domain/workspace";
 
@@ -66,6 +67,22 @@ export class WorkspaceState {
 	load = async (root: string) => {
 		const workspace = await loadWorkspace(root);
 		this.applyLoadResult(workspace);
+	};
+
+	toggleTodoItemCompleted = async (lineNumber: number, expectedRaw: string) => {
+		if (!this.root) {
+			this.error = "No workspace is open.";
+			return;
+		}
+
+		this.error = "";
+
+		try {
+			const workspace = await toggleTodoItemCompletedApi(this.root, lineNumber, expectedRaw);
+			this.applyLoadResult(workspace);
+		} catch (unknownError) {
+			this.error = formatUnknownError(unknownError);
+		}
 	};
 
 	private applyLoadResult(workspace: WorkspaceLoadResult) {

@@ -54,11 +54,13 @@ Agents should update these boxes as work lands. Check an item only when the impl
 - [x] Add `toggle_todo_item_completed`.
 - [x] Add `delete_todo_item`.
 - [x] Add frontend API wrappers, Zod schemas, and TypeScript types for mutation responses.
+- [ ] Add a form for adding new items, giving comboboxes for contexts etc...
 - [ ] Add quick-capture UI.
-- [ ] Add task complete/uncomplete UI.
+- [x] Add task complete/uncomplete UI.
 - [ ] Add task edit UI.
 - [ ] Add task delete UI.
-- [ ] Reload workspace state from disk after every successful mutation.
+- [x] Reload workspace state from disk after every successful mutation.
+- [ ] Watch active workspace `todo.txt` for external changes and refresh the UI.
 - [ ] Add stale raw-line guard tests.
 - [ ] Add atomic write and preservation tests.
 - [ ] Run `pnpm check`.
@@ -187,17 +189,44 @@ Tests:
 - [x] Empty and whitespace-only lines do not produce tasks.
 - [x] Frontend state derives counts and facets from loaded data.
 
-### 3. Task CRUD
+### 3. External File Watching
+
+Goal: keep the UI in sync when `todo.txt` is edited outside the app.
+
+Behavior:
+
+- [ ] Watch the active workspace `todo.txt` for changes made by external editors, sync tools, or shell commands.
+- [ ] When the file changes on disk, reload and re-parse `todo.txt` and refresh the UI.
+- [ ] Debounce or coalesce rapid successive writes so the app does not thrash on save.
+- [ ] Ignore or suppress reload loops caused by the app's own atomic writes.
+- [ ] If the user has in-progress edits that would be overwritten, show a clear stale-state or conflict warning instead of silently discarding UI state.
+- [ ] Stop watching the previous file when the workspace changes or the app shuts down.
+
+Implementation notes:
+
+- Rust should own filesystem watching and emit change events to the frontend.
+- Prefer a dedicated watcher in `src-tauri/src/workspace.rs` or a small sibling module rather than polling from Svelte.
+- Reuse the existing `load_workspace` reload path instead of introducing a separate parse flow.
+- Only watch files for the currently active workspace root.
+
+Tests:
+
+- [ ] External edits to `todo.txt` trigger a UI refresh.
+- [ ] App-owned writes do not cause redundant reload loops.
+- [ ] Switching workspaces updates the watched path.
+- [ ] Missing or deleted `todo.txt` during watch produces a readable warning, not a crash.
+
+### 4. Task CRUD
 
 Goal: support common task changes while preserving plain text fidelity.
 
 Behavior:
 
-- [ ] Add a task from a compact quick-capture input.
+- [x] Add a task from a compact quick-capture input.
 - [ ] Edit an existing task's full text.
 - [x] Complete and uncomplete a task.
 - [ ] Delete a task after an explicit user action.
-- [ ] Reload the workspace after every successful mutation.
+- [x] Reload the workspace after every successful mutation.
 - [ ] Show a stale-state error if a line changed on disk after the UI loaded it.
 
 Implementation notes:
@@ -216,7 +245,7 @@ Tests:
 - [x] Edit and delete reject stale raw-line guards.
 - [x] Mutations preserve unrelated lines.
 
-### 4. Metadata And Display
+### 5. Metadata And Display
 
 Goal: make todo.txt metadata visible and useful without hiding the raw format.
 
@@ -239,7 +268,7 @@ Tests:
 - [ ] Unknown metadata remains visible.
 - [ ] Completed tasks do not show as overdue unless the UI explicitly filters for completed due items.
 
-### 5. Filtering, Views, And Sorting
+### 6. Filtering, Views, And Sorting
 
 Goal: make large todo files navigable.
 
@@ -266,7 +295,7 @@ Tests:
 - [ ] Sorts are stable for equal values.
 - [ ] Counts reflect visible and total items.
 
-### 6. Sidebar
+### 7. Sidebar
 
 Goal: turn the sidebar into actionable task navigation.
 
@@ -290,7 +319,7 @@ Tests:
 - [ ] Clicking facets updates visible tasks.
 - [ ] Skipped diagnostics render line number, reason, and raw text.
 
-### 7. Archive Completed
+### 8. Archive Completed
 
 Goal: keep active `todo.txt` files manageable while preserving completed history.
 
@@ -337,10 +366,12 @@ Acceptance:
 - [ ] Add frontend API wrappers and Zod schemas.
 - [ ] Add quick capture, complete/uncomplete, edit, and delete UI.
 - [ ] Reload from disk after every successful mutation.
+- [ ] Watch `todo.txt` for external edits and refresh the UI automatically.
 
 Acceptance:
 
 - [ ] Users can manage tasks without touching the text file manually.
+- [ ] Manual edits to `todo.txt` made outside the app appear in the UI without restarting.
 - [ ] Stale line guards prevent accidental overwrites.
 - [ ] All file writes are atomic.
 
@@ -393,6 +424,7 @@ Vitest may try to bind a local `::1` listener. If tests pass but the process rep
 ## Agent Rules
 
 - Read `AGENTS.md` before editing.
+- Use shadcn-svelte shared primitives for standard UI controls; install missing components with `pnpm dlx shadcn-svelte@latest add <component>` instead of custom-styled elements.
 - Do not create old top-level buckets such as `src/lib/components` or `src/lib/state`.
 - Prefer existing module patterns over new abstractions.
 - Keep tests close to the code they validate.

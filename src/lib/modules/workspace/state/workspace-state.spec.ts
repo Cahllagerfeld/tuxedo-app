@@ -4,6 +4,7 @@ import {
 	loadWorkspace,
 	loadWorkspaceConfig,
 	saveWorkspaceConfig,
+	toggleTodoItemCompleted,
 } from "$lib/modules/workspace/api/workspace-api";
 import type { WorkspaceConfig, WorkspaceLoadResult } from "$lib/modules/workspace/domain/workspace";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,12 +15,14 @@ vi.mock("$lib/modules/workspace/api/workspace-api", () => ({
 	loadWorkspace: vi.fn(),
 	loadWorkspaceConfig: vi.fn(),
 	saveWorkspaceConfig: vi.fn(),
+	toggleTodoItemCompleted: vi.fn(),
 }));
 
 const mockedLoadWorkspaceConfig = vi.mocked(loadWorkspaceConfig);
 const mockedLoadWorkspace = vi.mocked(loadWorkspace);
 const mockedSaveWorkspaceConfig = vi.mocked(saveWorkspaceConfig);
 const mockedChooseWorkspaceDirectory = vi.mocked(chooseWorkspaceDirectory);
+const mockedToggleTodoItemCompleted = vi.mocked(toggleTodoItemCompleted);
 
 const todoFile: TodoFile = {
 	path: "/tmp/todos/todo.txt",
@@ -178,5 +181,67 @@ describe("WorkspaceState", () => {
 		expect(workspace.todoPath).toBe("/tmp/todos/todo.txt");
 		expect(workspace.todoFile).toEqual(todoFile);
 		expect(workspace.isLoading).toBe(false);
+	});
+
+	it("toggles a todo item and reloads workspace state from disk", async () => {
+		const workspace = new WorkspaceState();
+		workspace.root = "/tmp/todos";
+		workspace.todoPath = "/tmp/todos/todo.txt";
+		workspace.todoFile = todoFile;
+
+		const toggledTodoFile: TodoFile = {
+			...todoFile,
+			items: [
+				{
+					...todoFile.items[0],
+					completed: true,
+					completion_date: "2026-06-14",
+					raw: "x 2026-06-14 (A) Review workspace +Tuxedo",
+				},
+			],
+		};
+		const toggledWorkspace: WorkspaceLoadResult = {
+			...loadedWorkspace,
+			todo_file: toggledTodoFile,
+		};
+		mockedToggleTodoItemCompleted.mockResolvedValue(toggledWorkspace);
+
+		await workspace.toggleTodoItemCompleted(1, "(A) Review workspace +Tuxedo");
+
+		expect(mockedToggleTodoItemCompleted).toHaveBeenCalledWith(
+			"/tmp/todos",
+			1,
+			"(A) Review workspace +Tuxedo"
+		);
+		expect(workspace.todoFile).toEqual(toggledTodoFile);
+		expect(workspace.error).toBe("");
+	});
+
+	it("reports stale-line toggle errors without applying stale todo file data", async () => {
+		const workspace = new WorkspaceState();
+		workspace.root = "/tmp/todos";
+		workspace.todoPath = "/tmp/todos/todo.txt";
+		workspace.todoFile = todoFile;
+		mockedToggleTodoItemCompleted.mockRejectedValue(
+			new Error(
+				'todo line 1 changed on disk; expected "(A) Review workspace +Tuxedo", found "Updated task +Tuxedo"'
+			)
+		);
+
+		await workspace.toggleTodoItemCompleted(1, "(A) Review workspace +Tuxedo");
+
+		expect(workspace.todoFile).toEqual(todoFile);
+		expect(workspace.error).toBe(
+			'todo line 1 changed on disk; expected "(A) Review workspace +Tuxedo", found "Updated task +Tuxedo"'
+		);
+	});
+
+	it("reports an error when toggling without an open workspace", async () => {
+		const workspace = new WorkspaceState();
+
+		await workspace.toggleTodoItemCompleted(1, "(A) Review workspace +Tuxedo");
+
+		expect(mockedToggleTodoItemCompleted).not.toHaveBeenCalled();
+		expect(workspace.error).toBe("No workspace is open.");
 	});
 });

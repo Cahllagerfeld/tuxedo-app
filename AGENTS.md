@@ -41,6 +41,16 @@ shadcn-generated primitives belong in the shared layer.
 }
 ```
 
+When UI needs a standard primitive that is not already in `src/lib/shared/ui`, add it with the shadcn-svelte CLI instead of hand-rolling custom-styled elements:
+
+```sh
+pnpm dlx shadcn-svelte@latest add <component>
+```
+
+Install only the components needed for the current slice. Generated files land under `src/lib/shared/ui/<component>` and should be imported from there, for example `$lib/shared/ui/input`.
+
+Do not recreate shadcn component styling inline in feature modules. Use the shared primitives and pass layout classes such as `class="flex-1"` when needed.
+
 Feature-specific components are not shadcn primitives. Keep them inside their owning module, for example:
 
 - Todo UI: `src/lib/modules/todo/ui`
@@ -62,6 +72,7 @@ Preferred examples:
 import { AppState } from "$lib/app/app-state.svelte";
 import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 import { Button } from "$lib/shared/ui/button";
+import { Input } from "$lib/shared/ui/input";
 ```
 
 ## Frontend/Rust Contract
