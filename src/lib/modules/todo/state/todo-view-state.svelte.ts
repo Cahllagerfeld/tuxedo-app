@@ -1,8 +1,8 @@
 import type { TodoItem, SkippedLine } from "$lib/modules/todo/domain/todo";
-import type { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
+import type { WorkspaceStore } from "$lib/modules/workspace/state/workspace-store.svelte";
 
 export class TodoViewState {
-	constructor(workspace: WorkspaceState) {
+	constructor(workspace: WorkspaceStore) {
 		this.items = $derived(workspace.todoFile?.items ?? []);
 		this.skipped = $derived(workspace.todoFile?.skipped ?? []);
 		this.availableProjects = $derived.by(() =>

@@ -5,6 +5,7 @@
 	import WorkspaceViewToggler from "@/modules/workspace/ui/WorkspaceViewToggler.svelte";
 	import { setAppState } from "@/app/app-context";
 	import { AppState } from "@/app/app-state.svelte";
+	import { restoreWorkspace } from "@/modules/workspace/state/workspace-actions";
 	import * as Resizable from "@/shared/ui/resizable/index";
 	import { onMount } from "svelte";
 	import "./layout.css";
@@ -15,7 +16,7 @@
 	setAppState(appState);
 
 	onMount(() => {
-		void appState.workspace.restore();
+		void restoreWorkspace(appState.workspace);
 	});
 </script>
 

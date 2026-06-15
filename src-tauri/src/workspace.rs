@@ -28,11 +28,10 @@ impl Default for WorkspaceConfig {
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct WorkspaceLoadResult {
+pub struct WorkspaceTodoResolution {
     pub root: String,
     pub todo_path: String,
     pub todo_exists: bool,
-    pub todo_file: Option<TodoFile>,
 }
 
 #[tauri::command]
@@ -56,15 +55,15 @@ pub fn save_workspace_config(app: AppHandle, root: String) -> Result<WorkspaceCo
 }
 
 #[tauri::command]
-pub fn load_workspace(root: String) -> Result<WorkspaceLoadResult, String> {
-    load_workspace_from_root(root)
+pub fn resolve_workspace_todo(root: String) -> Result<WorkspaceTodoResolution, String> {
+    resolve_workspace_todo_from_root(root)
 }
 
 #[tauri::command]
-pub fn append_todo_item(root: String, raw: String) -> Result<WorkspaceLoadResult, String> {
+pub fn append_todo_item(root: String, raw: String) -> Result<TodoFile, String> {
     validate_todo_line(&raw)?;
     append_todo_line_for_root(&root, raw).map_err(|error| error.to_string())?;
-    load_workspace_from_root(root)
+    reload_todo_file_for_root(&root)
 }
 
 #[tauri::command]
@@ -73,11 +72,11 @@ pub fn update_todo_item(
     line_number: usize,
     expected_raw: String,
     raw: String,
-) -> Result<WorkspaceLoadResult, String> {
+) -> Result<TodoFile, String> {
     validate_todo_line(&raw)?;
     replace_todo_line_for_root(&root, line_number, &expected_raw, raw)
         .map_err(|error| error.to_string())?;
-    load_workspace_from_root(root)
+    reload_todo_file_for_root(&root)
 }
 
 #[tauri::command]
@@ -85,12 +84,12 @@ pub fn toggle_todo_item_completed(
     root: String,
     line_number: usize,
     expected_raw: String,
-) -> Result<WorkspaceLoadResult, String> {
+) -> Result<TodoFile, String> {
     let toggled = toggle_todo_line_completed(&expected_raw, &current_local_date());
     validate_todo_line(&toggled)?;
     replace_todo_line_for_root(&root, line_number, &expected_raw, toggled)
         .map_err(|error| error.to_string())?;
-    load_workspace_from_root(root)
+    reload_todo_file_for_root(&root)
 }
 
 #[tauri::command]
@@ -98,30 +97,38 @@ pub fn delete_todo_item(
     root: String,
     line_number: usize,
     expected_raw: String,
-) -> Result<WorkspaceLoadResult, String> {
+) -> Result<TodoFile, String> {
     remove_todo_line_for_root(&root, line_number, &expected_raw)
         .map_err(|error| error.to_string())?;
-    load_workspace_from_root(root)
+    reload_todo_file_for_root(&root)
 }
 
-fn load_workspace_from_root(root: String) -> Result<WorkspaceLoadResult, String> {
+fn resolve_workspace_todo_from_root(root: String) -> Result<WorkspaceTodoResolution, String> {
     validate_workspace_root(&root)?;
 
     let todo_path = todo_path_for_root(&root);
     let todo_exists = todo_path.exists();
     let todo_path = todo_path.to_string_lossy().to_string();
-    let todo_file = if todo_exists {
-        Some(load_todo_file(todo_path.clone()).map_err(|error| error.to_string())?)
-    } else {
-        None
-    };
 
-    Ok(WorkspaceLoadResult {
+    Ok(WorkspaceTodoResolution {
         root,
         todo_path,
         todo_exists,
-        todo_file,
     })
+}
+
+fn reload_todo_file_for_root(root: &str) -> Result<TodoFile, String> {
+    validate_workspace_root(root)?;
+
+    let todo_path = todo_path_for_root(root);
+
+    if !todo_path.exists() {
+        return Err(format!(
+            "no todo.txt file was found in {root}; add one there or choose another directory"
+        ));
+    }
+
+    load_todo_file(todo_path.to_string_lossy().to_string()).map_err(|error| error.to_string())
 }
 
 fn validate_todo_line(raw: &str) -> Result<(), String> {

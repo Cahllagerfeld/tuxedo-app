@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseWorkspaceConfigResponse,
-	parseWorkspaceLoadResponse,
-	parseWorkspaceMutationResponse,
+	parseWorkspaceTodoResolutionResponse,
 	workspaceConfigSchema,
-	workspaceLoadResultSchema,
-	workspaceMutationResultSchema,
+	workspaceTodoResolutionSchema,
 	type WorkspaceConfig,
-	type WorkspaceLoadResult,
+	type WorkspaceTodoResolution,
 } from "./workspace";
 
 const validWorkspaceConfigResponse: WorkspaceConfig = {
@@ -15,28 +13,10 @@ const validWorkspaceConfigResponse: WorkspaceConfig = {
 	root: "/tmp/todos",
 };
 
-const validWorkspaceLoadResponse: WorkspaceLoadResult = {
+const validWorkspaceTodoResolutionResponse: WorkspaceTodoResolution = {
 	root: "/tmp/todos",
 	todo_path: "/tmp/todos/todo.txt",
 	todo_exists: true,
-	todo_file: {
-		path: "/tmp/todos/todo.txt",
-		items: [
-			{
-				line_number: 1,
-				raw: "(A) Review workspace +Tuxedo",
-				completed: false,
-				priority: "A",
-				creation_date: null,
-				completion_date: null,
-				description: "Review workspace",
-				projects: ["Tuxedo"],
-				contexts: [],
-				metadata: {},
-			},
-		],
-		skipped: [],
-	},
 };
 
 describe("workspaceConfigSchema", () => {
@@ -53,28 +33,19 @@ describe("workspaceConfigSchema", () => {
 	});
 });
 
-describe("workspaceLoadResultSchema", () => {
-	it("accepts a parsed workspace todo file", () => {
-		const result = workspaceLoadResultSchema.safeParse(validWorkspaceLoadResponse);
+describe("workspaceTodoResolutionSchema", () => {
+	it("accepts a resolved workspace todo path", () => {
+		const result = workspaceTodoResolutionSchema.safeParse(validWorkspaceTodoResolutionResponse);
 
 		expect(result.success).toBe(true);
 	});
 
 	it("accepts a missing todo.txt result", () => {
-		const result = workspaceLoadResultSchema.safeParse({
+		const result = workspaceTodoResolutionSchema.safeParse({
 			root: "/tmp/todos",
 			todo_path: "/tmp/todos/todo.txt",
 			todo_exists: false,
-			todo_file: null,
 		});
-
-		expect(result.success).toBe(true);
-	});
-});
-
-describe("workspaceMutationResultSchema", () => {
-	it("accepts the workspace reload shape returned after mutations", () => {
-		const result = workspaceMutationResultSchema.safeParse(validWorkspaceLoadResponse);
 
 		expect(result.success).toBe(true);
 	});
@@ -87,15 +58,9 @@ describe("workspace response parsers", () => {
 		);
 	});
 
-	it("returns validated workspace load responses", () => {
-		expect(parseWorkspaceLoadResponse(validWorkspaceLoadResponse)).toEqual(
-			validWorkspaceLoadResponse
-		);
-	});
-
-	it("returns validated workspace mutation responses", () => {
-		expect(parseWorkspaceMutationResponse(validWorkspaceLoadResponse)).toEqual(
-			validWorkspaceLoadResponse
+	it("returns validated workspace todo resolution responses", () => {
+		expect(parseWorkspaceTodoResolutionResponse(validWorkspaceTodoResolutionResponse)).toEqual(
+			validWorkspaceTodoResolutionResponse
 		);
 	});
 
@@ -105,15 +70,12 @@ describe("workspace response parsers", () => {
 		);
 	});
 
-	it("throws a readable error for load schema drift", () => {
+	it("throws a readable error for resolution schema drift", () => {
 		expect(() =>
-			parseWorkspaceLoadResponse({ ...validWorkspaceLoadResponse, todo_exists: "true" })
-		).toThrow(/Unexpected workspace load response from Rust: todo_exists:/);
-	});
-
-	it("throws a readable error for mutation schema drift", () => {
-		expect(() =>
-			parseWorkspaceMutationResponse({ ...validWorkspaceLoadResponse, todo_exists: "true" })
-		).toThrow(/Unexpected workspace mutation response from Rust: todo_exists:/);
+			parseWorkspaceTodoResolutionResponse({
+				...validWorkspaceTodoResolutionResponse,
+				todo_exists: "true",
+			})
+		).toThrow(/Unexpected workspace todo resolution response from Rust: todo_exists:/);
 	});
 });

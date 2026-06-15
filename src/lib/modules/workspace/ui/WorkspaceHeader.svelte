@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getAppState } from "$lib/app/app-context";
+	import { openWorkspaceDirectory } from "$lib/modules/workspace/state/workspace-actions";
 	import Button from "@/shared/ui/button/button.svelte";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 
@@ -15,7 +16,7 @@
 	<Button
 		variant="outline"
 		type="button"
-		onclick={appState.workspace.openDirectory}
+		onclick={() => openWorkspaceDirectory(appState.workspace)}
 		disabled={appState.workspace.isLoading}
 	>
 		<FolderOpen class="h-4 w-4" />

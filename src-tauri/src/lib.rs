@@ -40,7 +40,7 @@ pub fn run() {
             parse_todo_file,
             workspace::load_workspace_config,
             workspace::save_workspace_config,
-            workspace::load_workspace,
+            workspace::resolve_workspace_todo,
             workspace::append_todo_item,
             workspace::update_todo_item,
             workspace::toggle_todo_item_completed,

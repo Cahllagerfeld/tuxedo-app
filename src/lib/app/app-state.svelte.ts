@@ -1,7 +1,7 @@
 import { TodoViewState } from "$lib/modules/todo/state/todo-view-state.svelte";
-import { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
+import { WorkspaceStore } from "$lib/modules/workspace/state/workspace-store.svelte";
 
 export class AppState {
-	workspace = new WorkspaceState();
+	workspace = new WorkspaceStore();
 	todos = new TodoViewState(this.workspace);
 }

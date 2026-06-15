@@ -1,5 +1,5 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
-import { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
+import { WorkspaceStore } from "$lib/modules/workspace/state/workspace-store.svelte";
 import { describe, expect, it } from "vitest";
 import { TodoViewState } from "./todo-view-state.svelte";
 
@@ -66,7 +66,7 @@ const todoFile: TodoFile = {
 
 describe("TodoViewState", () => {
 	it("starts empty before a workspace todo file is loaded", () => {
-		const workspace = new WorkspaceState();
+		const workspace = new WorkspaceStore();
 		const view = new TodoViewState(workspace);
 
 		expect(view.items).toEqual([]);
@@ -83,7 +83,7 @@ describe("TodoViewState", () => {
 	});
 
 	it("derives items, skipped lines, counts, and sorted facets from workspace data", () => {
-		const workspace = new WorkspaceState();
+		const workspace = new WorkspaceStore();
 		const view = new TodoViewState(workspace);
 
 		workspace.todoFile = todoFile;
@@ -102,7 +102,7 @@ describe("TodoViewState", () => {
 	});
 
 	it("reacts when the workspace todo file is replaced", () => {
-		const workspace = new WorkspaceState();
+		const workspace = new WorkspaceStore();
 		const view = new TodoViewState(workspace);
 
 		workspace.todoFile = todoFile;
@@ -124,7 +124,7 @@ describe("TodoViewState", () => {
 	});
 
 	it("clears derived state when a loaded workspace has no todo file", () => {
-		const workspace = new WorkspaceState();
+		const workspace = new WorkspaceStore();
 		const view = new TodoViewState(workspace);
 
 		workspace.todoFile = todoFile;
@@ -144,7 +144,7 @@ describe("TodoViewState", () => {
 	});
 
 	it("deduplicates and sorts available facets from loaded tasks", () => {
-		const workspace = new WorkspaceState();
+		const workspace = new WorkspaceStore();
 		const view = new TodoViewState(workspace);
 
 		workspace.todoFile = {

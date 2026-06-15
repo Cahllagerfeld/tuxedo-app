@@ -51,14 +51,13 @@ fn rejects_file_as_workspace_root() {
 }
 
 #[test]
-fn load_workspace_reports_missing_todo_file() {
+fn resolve_workspace_todo_reports_missing_todo_file() {
     let temp_dir = unique_temp_dir("missing-todo");
     std::fs::create_dir_all(&temp_dir).unwrap();
 
-    let result = load_workspace_from_root(temp_dir.to_string_lossy().to_string()).unwrap();
+    let result = resolve_workspace_todo_from_root(temp_dir.to_string_lossy().to_string()).unwrap();
 
     assert!(!result.todo_exists);
-    assert!(result.todo_file.is_none());
     assert_eq!(
         result.todo_path,
         temp_dir.join("todo.txt").to_string_lossy()
@@ -68,24 +67,28 @@ fn load_workspace_reports_missing_todo_file() {
 }
 
 #[test]
-fn load_workspace_rejects_missing_workspace_root() {
+fn resolve_workspace_todo_rejects_missing_workspace_root() {
     let temp_dir = unique_temp_dir("missing-root");
 
-    let error = load_workspace_from_root(temp_dir.to_string_lossy().to_string()).unwrap_err();
+    let error =
+        resolve_workspace_todo_from_root(temp_dir.to_string_lossy().to_string()).unwrap_err();
 
     assert!(error.contains("workspace directory does not exist"));
 }
 
 #[test]
-fn load_workspace_parses_existing_todo_file() {
+fn resolve_workspace_todo_returns_path_for_existing_todo_file() {
     let temp_dir = unique_temp_dir("existing-todo");
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::write(temp_dir.join("todo.txt"), "(A) Test task +Tuxedo").unwrap();
 
-    let result = load_workspace_from_root(temp_dir.to_string_lossy().to_string()).unwrap();
+    let result = resolve_workspace_todo_from_root(temp_dir.to_string_lossy().to_string()).unwrap();
 
     assert!(result.todo_exists);
-    assert_eq!(result.todo_file.unwrap().items.len(), 1);
+    assert_eq!(
+        result.todo_path,
+        temp_dir.join("todo.txt").to_string_lossy()
+    );
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }
@@ -104,7 +107,7 @@ fn missing_workspace_config_file_loads_default_config() {
 }
 
 #[test]
-fn saved_workspace_config_restores_root_and_workspace_load_parses_todo_file() {
+fn saved_workspace_config_restores_root_and_resolve_workspace_todo_finds_todo_file() {
     let temp_dir = unique_temp_dir("restore-root");
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::write(temp_dir.join("todo.txt"), "(A) Restored task +Tuxedo").unwrap();
@@ -116,15 +119,15 @@ fn saved_workspace_config_restores_root_and_workspace_load_parses_todo_file() {
 
     save_workspace_config_to_path(config_path.clone(), &saved_config).unwrap();
     let restored_config = load_workspace_config_from_path(config_path).unwrap();
-    let workspace =
-        load_workspace_from_root(restored_config.root.clone().expect("saved root")).unwrap();
+    let resolution = resolve_workspace_todo_from_root(
+        restored_config.root.clone().expect("saved root"),
+    )
+    .unwrap();
+    let todo_file = load_todo_file(resolution.todo_path).unwrap();
 
     assert_eq!(restored_config, saved_config);
-    assert!(workspace.todo_exists);
-    assert_eq!(
-        workspace.todo_file.unwrap().items[0].description,
-        "Restored task"
-    );
+    assert!(resolution.todo_exists);
+    assert_eq!(todo_file.items[0].description, "Restored task");
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }
@@ -277,7 +280,7 @@ fn read_todo_lines_rejects_todo_path_that_is_directory() {
 }
 
 #[test]
-fn append_todo_item_creates_todo_file_and_returns_reloaded_workspace() {
+fn append_todo_item_creates_todo_file_and_returns_reloaded_todo_file() {
     let temp_dir = unique_temp_dir("append-command-creates");
     std::fs::create_dir_all(&temp_dir).unwrap();
 
@@ -287,18 +290,16 @@ fn append_todo_item_creates_todo_file_and_returns_reloaded_workspace() {
     )
     .unwrap();
 
-    assert!(result.todo_exists);
     assert_eq!(
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "(A) Capture task +Tuxedo @computer\n"
     );
-    let todo_file = result.todo_file.unwrap();
-    assert_eq!(todo_file.items.len(), 1);
-    assert_eq!(todo_file.items[0].line_number, 1);
-    assert_eq!(todo_file.items[0].priority, Some('A'));
-    assert_eq!(todo_file.items[0].description, "Capture task");
-    assert_eq!(todo_file.items[0].projects, vec!["Tuxedo"]);
-    assert_eq!(todo_file.items[0].contexts, vec!["computer"]);
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].line_number, 1);
+    assert_eq!(result.items[0].priority, Some('A'));
+    assert_eq!(result.items[0].description, "Capture task");
+    assert_eq!(result.items[0].projects, vec!["Tuxedo"]);
+    assert_eq!(result.items[0].contexts, vec!["computer"]);
 
     std::fs::remove_dir_all(temp_dir).unwrap();
 }
@@ -323,7 +324,7 @@ fn append_todo_item_extends_todo_file_without_discarding_existing_lines() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "Existing task\n2024-99-99 bad date\nSecond task due:2026-01-02\n"
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert_eq!(todo_file.items.len(), 2);
     assert_eq!(todo_file.skipped.len(), 1);
     assert_eq!(todo_file.items[1].line_number, 3);
@@ -371,7 +372,7 @@ fn append_todo_item_rejects_multiline_input_without_writing() {
 }
 
 #[test]
-fn update_todo_item_replaces_guarded_line_and_returns_reloaded_workspace() {
+fn update_todo_item_replaces_guarded_line_and_returns_reloaded_todo_file() {
     let temp_dir = unique_temp_dir("update-command-replaces");
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::write(
@@ -392,7 +393,7 @@ fn update_todo_item_replaces_guarded_line_and_returns_reloaded_workspace() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "First task\n(A) Updated second task +New @computer\nThird task\n"
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert_eq!(todo_file.items.len(), 3);
     assert_eq!(todo_file.items[1].line_number, 2);
     assert_eq!(todo_file.items[1].priority, Some('A'));
@@ -503,7 +504,7 @@ fn toggle_todo_line_completed_reopens_completed_task_without_completion_date() {
 }
 
 #[test]
-fn toggle_todo_item_completed_marks_open_task_and_returns_reloaded_workspace() {
+fn toggle_todo_item_completed_marks_open_task_and_returns_reloaded_todo_file() {
     let temp_dir = unique_temp_dir("toggle-command-complete");
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::write(
@@ -524,7 +525,7 @@ fn toggle_todo_item_completed_marks_open_task_and_returns_reloaded_workspace() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         format!("First task\nx {today} 2026-01-01 Second task +Tuxedo due:2026-01-03\n")
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert!(todo_file.items[1].completed);
     assert_eq!(
         todo_file.items[1].completion_date.as_deref(),
@@ -563,7 +564,7 @@ fn toggle_todo_item_completed_reopens_task_without_losing_metadata() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "2026-01-01 Second task +Tuxedo due:2026-01-03\n"
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert!(!todo_file.items[0].completed);
     assert_eq!(todo_file.items[0].completion_date, None);
     assert_eq!(
@@ -606,7 +607,7 @@ fn toggle_todo_item_completed_rejects_stale_raw_line_guard_without_writing() {
 }
 
 #[test]
-fn delete_todo_item_removes_guarded_line_and_returns_reloaded_workspace() {
+fn delete_todo_item_removes_guarded_line_and_returns_reloaded_todo_file() {
     let temp_dir = unique_temp_dir("delete-command-removes");
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::write(
@@ -626,7 +627,7 @@ fn delete_todo_item_removes_guarded_line_and_returns_reloaded_workspace() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "First task\nThird task\n"
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert_eq!(todo_file.items.len(), 2);
     assert_eq!(todo_file.items[0].line_number, 1);
     assert_eq!(todo_file.items[1].line_number, 2);
@@ -656,7 +657,7 @@ fn delete_todo_item_preserves_unrelated_skipped_lines() {
         std::fs::read_to_string(temp_dir.join("todo.txt")).unwrap(),
         "2024-99-99 bad date\nThird task\n"
     );
-    let todo_file = result.todo_file.unwrap();
+    let todo_file = result;
     assert_eq!(todo_file.items.len(), 1);
     assert_eq!(todo_file.skipped.len(), 1);
     assert_eq!(todo_file.items[0].line_number, 2);

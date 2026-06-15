@@ -1,23 +1,18 @@
 import { z } from "zod";
-import { todoFileSchema } from "$lib/modules/todo/domain/todo";
 
 export const workspaceConfigSchema = z.object({
 	version: z.number(),
 	root: z.string().nullable(),
 });
 
-export const workspaceLoadResultSchema = z.object({
+export const workspaceTodoResolutionSchema = z.object({
 	root: z.string(),
 	todo_path: z.string(),
 	todo_exists: z.boolean(),
-	todo_file: todoFileSchema.nullable(),
 });
 
-export const workspaceMutationResultSchema = workspaceLoadResultSchema;
-
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
-export type WorkspaceLoadResult = z.infer<typeof workspaceLoadResultSchema>;
-export type WorkspaceMutationResult = z.infer<typeof workspaceMutationResultSchema>;
+export type WorkspaceTodoResolution = z.infer<typeof workspaceTodoResolutionSchema>;
 
 function formatSchemaIssues(error: z.ZodError): string {
 	return error.issues
@@ -37,26 +32,14 @@ export function parseWorkspaceConfigResponse(response: unknown): WorkspaceConfig
 	);
 }
 
-export function parseWorkspaceLoadResponse(response: unknown): WorkspaceLoadResult {
-	const result = workspaceLoadResultSchema.safeParse(response);
+export function parseWorkspaceTodoResolutionResponse(response: unknown): WorkspaceTodoResolution {
+	const result = workspaceTodoResolutionSchema.safeParse(response);
 
 	if (result.success) {
 		return result.data;
 	}
 
 	throw new Error(
-		`Unexpected workspace load response from Rust: ${formatSchemaIssues(result.error)}`
-	);
-}
-
-export function parseWorkspaceMutationResponse(response: unknown): WorkspaceMutationResult {
-	const result = workspaceMutationResultSchema.safeParse(response);
-
-	if (result.success) {
-		return result.data;
-	}
-
-	throw new Error(
-		`Unexpected workspace mutation response from Rust: ${formatSchemaIssues(result.error)}`
+		`Unexpected workspace todo resolution response from Rust: ${formatSchemaIssues(result.error)}`
 	);
 }

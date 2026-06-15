@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getAppState } from "@/app/app-context";
+	import { openWorkspaceDirectory } from "@/modules/workspace/state/workspace-actions";
 	import TodoList from "@/modules/todo/ui/TodoList.svelte";
 	import WorkspaceStatus from "@/modules/workspace/ui/WorkspaceStatus.svelte";
 	import Button from "@/shared/ui/button/button.svelte";
@@ -44,7 +45,7 @@
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<Button onclick={appState.workspace.openDirectory}>Choose Workspace</Button>
+				<Button onclick={() => openWorkspaceDirectory(appState.workspace)}>Choose Workspace</Button>
 			</EmptyContent>
 		</Empty>
 	{:else if !appState.workspace.root}
@@ -59,7 +60,7 @@
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<Button onclick={appState.workspace.openDirectory}>Open Workspace</Button>
+				<Button onclick={() => openWorkspaceDirectory(appState.workspace)}>Open Workspace</Button>
 			</EmptyContent>
 		</Empty>
 	{:else if !appState.workspace.todoFile}
@@ -75,7 +76,7 @@
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<Button variant="outline" onclick={appState.workspace.openDirectory}>
+				<Button variant="outline" onclick={() => openWorkspaceDirectory(appState.workspace)}>
 					Choose Another Workspace
 				</Button>
 			</EmptyContent>

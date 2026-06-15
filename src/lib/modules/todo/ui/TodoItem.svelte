@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TodoItem } from "@/modules/todo/domain/todo";
 	import { getAppState } from "$lib/app/app-context";
+	import { toggleTodoItem } from "$lib/modules/workspace/state/workspace-actions";
 	import { cn } from "@/shared/utils";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 
@@ -21,7 +22,7 @@
 		isToggling = true;
 
 		try {
-			await appState.workspace.toggleTodoItemCompleted(todo.line_number, todo.raw);
+			await toggleTodoItem(appState.workspace, todo.line_number, todo.raw);
 		} finally {
 			isToggling = false;
 		}

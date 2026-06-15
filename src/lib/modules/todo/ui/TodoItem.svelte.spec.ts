@@ -11,6 +11,14 @@ vi.mock("$lib/app/app-context", () => ({
 	getAppState: () => appState,
 }));
 
+vi.mock("$lib/modules/workspace/state/workspace-actions", () => ({
+	toggleTodoItem: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { toggleTodoItem } from "$lib/modules/workspace/state/workspace-actions";
+
+const mockedToggleTodoItem = vi.mocked(toggleTodoItem);
+
 const openTodo: TodoItemData = {
 	line_number: 1,
 	raw: "(A) Review workspace +Tuxedo",
@@ -33,6 +41,7 @@ const completedTodo: TodoItemData = {
 
 describe("TodoItem.svelte", () => {
 	beforeEach(() => {
+		vi.clearAllMocks();
 		appState = new AppState();
 		appState.workspace.root = "/tmp/todos";
 		appState.workspace.todoPath = "/tmp/todos/todo.txt";
@@ -41,7 +50,6 @@ describe("TodoItem.svelte", () => {
 			items: [openTodo],
 			skipped: [],
 		};
-		appState.workspace.toggleTodoItemCompleted = vi.fn().mockResolvedValue(undefined);
 	});
 
 	it("renders open tasks with a mark-complete checkbox", async () => {
@@ -60,12 +68,13 @@ describe("TodoItem.svelte", () => {
 		await expect.element(checkbox).toBeChecked();
 	});
 
-	it("toggles completion through workspace state when the checkbox is clicked", async () => {
+	it("toggles completion through workspace actions when the checkbox is clicked", async () => {
 		render(TodoItemComponent, { todo: openTodo });
 
 		await page.getByRole("checkbox", { name: "Mark task complete" }).click();
 
-		expect(appState.workspace.toggleTodoItemCompleted).toHaveBeenCalledWith(
+		expect(mockedToggleTodoItem).toHaveBeenCalledWith(
+			appState.workspace,
 			1,
 			"(A) Review workspace +Tuxedo"
 		);
