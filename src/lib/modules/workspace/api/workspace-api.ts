@@ -14,6 +14,10 @@ export async function openWorkspace(workspaceId: string): Promise<WorkspaceLoadR
 	return parseWorkspaceLoadResponse(await invoke("open_workspace", { workspaceId }));
 }
 
+export async function deleteWorkspace(workspaceId: string): Promise<WorkspaceCatalogue> {
+	return parseWorkspaceCatalogueResponse(await invoke("delete_workspace", { workspaceId }));
+}
+
 export async function createWorkspace(input: {
 	name: string;
 	color: WorkspaceCatalogue["workspaces"][number]["color"];

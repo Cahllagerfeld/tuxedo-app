@@ -41,6 +41,7 @@ pub fn run() {
             workspace::load_workspace_catalogue,
             workspace::save_workspace_catalogue,
             workspace::open_workspace,
+            workspace::delete_workspace,
             workspace::create_workspace
         ])
         .run(tauri::generate_context!())

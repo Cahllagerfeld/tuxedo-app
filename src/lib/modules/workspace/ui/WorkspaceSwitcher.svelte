@@ -1,6 +1,8 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import Plus from "@lucide/svelte/icons/plus";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
 	import { Button } from "$lib/shared/ui/button";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
@@ -9,6 +11,7 @@
 		workspaces: Workspace[];
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<void>;
+		deleteWorkspace: (workspaceId: string) => Promise<void>;
 		openCreationDialog: () => void;
 	};
 
@@ -23,11 +26,25 @@
 		orange: "bg-orange-600 dark:bg-orange-400",
 	};
 
-	let { workspaces, activeWorkspaceId, selectWorkspace, openCreationDialog }: Props = $props();
+	let {
+		workspaces,
+		activeWorkspaceId,
+		selectWorkspace,
+		deleteWorkspace,
+		openCreationDialog,
+	}: Props = $props();
+	let isDeleteDialogOpen = $state(false);
+	let workspaceToDelete = $state<Workspace | null>(null);
 	const sortedWorkspaces = $derived(
 		[...workspaces].sort((left, right) => left.created_at.localeCompare(right.created_at))
 	);
 	const activeWorkspace = $derived(workspaces.find(({ id }) => id === activeWorkspaceId) ?? null);
+
+	function confirmDeletion() {
+		if (workspaceToDelete) {
+			void deleteWorkspace(workspaceToDelete.id);
+		}
+	}
 </script>
 
 <DropdownMenu.Root>
@@ -66,6 +83,20 @@
 		{:else}
 			<p class="px-2 py-1.5 text-sm text-muted-foreground">No saved workspaces yet.</p>
 		{/if}
+		{#if activeWorkspace}
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item
+				variant="destructive"
+				aria-label={`Delete ${activeWorkspace.name}`}
+				onclick={() => {
+					workspaceToDelete = activeWorkspace;
+					isDeleteDialogOpen = true;
+				}}
+			>
+				<Trash2 aria-hidden="true" />
+				Delete {activeWorkspace.name}
+			</DropdownMenu.Item>
+		{/if}
 		<DropdownMenu.Separator />
 		<DropdownMenu.Item onclick={openCreationDialog}>
 			<Plus aria-hidden="true" />
@@ -73,3 +104,21 @@
 		</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>
+
+<AlertDialog.Root bind:open={isDeleteDialogOpen}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Delete Workspace?</AlertDialog.Title>
+			<AlertDialog.Description>
+				Delete {workspaceToDelete?.name ?? "this Workspace"} from saved Workspaces? Its Todo file will
+				not be deleted.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action variant="destructive" onclick={confirmDeletion}
+				>Delete workspace</AlertDialog.Action
+			>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

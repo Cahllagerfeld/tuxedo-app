@@ -70,6 +70,15 @@ pub fn open_workspace(app: AppHandle, workspace_id: String) -> Result<WorkspaceL
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn delete_workspace(
+    app: AppHandle,
+    workspace_id: String,
+) -> Result<WorkspaceCatalogue, String> {
+    delete_workspace_at_path(workspace_catalogue_path(&app)?, workspace_id)
+        .map_err(|error| error.to_string())
+}
+
 fn open_workspace_at_path(
     catalogue_path: PathBuf,
     workspace_id: String,
@@ -80,13 +89,40 @@ fn open_workspace_at_path(
         .iter()
         .find(|workspace| workspace.id == workspace_id)
         .cloned()
-        .ok_or_else(|| WorkspaceCatalogueError::Invalid(format!("workspace does not exist: {workspace_id}")))?;
+        .ok_or_else(|| {
+            WorkspaceCatalogueError::Invalid(format!("workspace does not exist: {workspace_id}"))
+        })?;
 
     let result = load_workspace(workspace)?;
     catalogue.active_workspace_id = Some(result.workspace.id.clone());
     save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
 
     Ok(result)
+}
+
+fn delete_workspace_at_path(
+    catalogue_path: PathBuf,
+    workspace_id: String,
+) -> Result<WorkspaceCatalogue, WorkspaceCatalogueError> {
+    let mut catalogue = load_workspace_catalogue_from_path(catalogue_path.clone())?;
+    if catalogue.active_workspace_id.as_deref() != Some(workspace_id.as_str()) {
+        return Err(WorkspaceCatalogueError::Invalid(format!(
+            "only the active workspace can be deleted: {workspace_id}"
+        )));
+    }
+
+    let workspace_index = catalogue
+        .workspaces
+        .iter()
+        .position(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| {
+            WorkspaceCatalogueError::Invalid(format!("workspace does not exist: {workspace_id}"))
+        })?;
+    catalogue.workspaces.remove(workspace_index);
+    catalogue.active_workspace_id = None;
+    save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
+
+    Ok(catalogue)
 }
 
 #[tauri::command]
@@ -415,7 +451,9 @@ mod tests {
         assert_eq!(result.workspace, personal);
         assert_eq!(result.todo_file.path, personal_todo_path.to_string_lossy());
         assert_eq!(
-            load_workspace_catalogue_from_path(catalogue_path).unwrap().active_workspace_id,
+            load_workspace_catalogue_from_path(catalogue_path)
+                .unwrap()
+                .active_workspace_id,
             Some(personal.id)
         );
         std::fs::remove_dir_all(directory).unwrap();
@@ -446,7 +484,55 @@ mod tests {
         let error = open_workspace_at_path(catalogue_path.clone(), unavailable.id).unwrap_err();
 
         assert!(error.to_string().contains("failed to load Todo file"));
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            catalogue
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn deleting_the_active_workspace_removes_only_its_catalogue_metadata() {
+        let directory = unique_temp_dir("delete-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let todo_path = directory.join("work.todo");
+        std::fs::write(&todo_path, "Keep this task").unwrap();
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &todo_path.to_string_lossy(),
+        );
+        let personal_todo_path = directory.join("personal.todo");
+        std::fs::write(&personal_todo_path, "Keep this too").unwrap();
+        let personal = workspace(
+            "550e8400-e29b-41d4-a716-446655440001",
+            "Personal",
+            &personal_todo_path.to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(work.id.clone()),
+            workspaces: vec![work.clone(), personal.clone()],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let result = delete_workspace_at_path(catalogue_path.clone(), work.id).unwrap();
+
+        let expected_catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: None,
+            workspaces: vec![personal],
+        };
+        assert_eq!(result, expected_catalogue);
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            expected_catalogue
+        );
+        assert_eq!(
+            std::fs::read_to_string(todo_path).unwrap(),
+            "Keep this task"
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -490,7 +576,10 @@ mod tests {
         assert_eq!(result.workspace.name, "Work");
         assert_eq!(result.workspace.todo_path, todo_path.to_string_lossy());
         assert_eq!(result.todo_file.items.len(), 1);
-        assert_eq!(catalogue.active_workspace_id.as_deref(), Some(result.workspace.id.as_str()));
+        assert_eq!(
+            catalogue.active_workspace_id.as_deref(),
+            Some(result.workspace.id.as_str())
+        );
         assert_eq!(catalogue.workspaces, vec![result.workspace]);
         std::fs::remove_dir_all(directory).unwrap();
     }
@@ -522,7 +611,10 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("duplicate workspace name"));
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), existing);
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            existing
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -553,7 +645,10 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("duplicate todo file"));
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), existing);
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            existing
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -574,7 +669,10 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("could not be parsed"));
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), WorkspaceCatalogue::default());
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            WorkspaceCatalogue::default()
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 

@@ -26,6 +26,7 @@ describe("WorkspaceSwitcher", () => {
 			workspaces: [personal, work],
 			activeWorkspaceId: personal.id,
 			selectWorkspace,
+			deleteWorkspace: vi.fn(),
 			openCreationDialog: vi.fn(),
 		});
 
@@ -45,6 +46,7 @@ describe("WorkspaceSwitcher", () => {
 			workspaces: [],
 			activeWorkspaceId: null,
 			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
 			openCreationDialog,
 		});
 
@@ -52,5 +54,30 @@ describe("WorkspaceSwitcher", () => {
 		await expect.element(page.getByText("No saved workspaces yet.")).toBeVisible();
 		await page.getByRole("menuitem", { name: "New workspace" }).click();
 		expect(openCreationDialog).toHaveBeenCalledOnce();
+	});
+
+	it("requires confirmation before deleting the active workspace", async () => {
+		const deleteWorkspace = vi.fn(async () => {});
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace,
+			openCreationDialog: vi.fn(),
+		});
+
+		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+		await expect.element(page.getByRole("alertdialog")).toBeVisible();
+		await expect.element(page.getByText("Delete Workspace?", { exact: true })).toBeVisible();
+		expect(deleteWorkspace).not.toHaveBeenCalled();
+
+		await page.getByRole("button", { name: "Cancel" }).click();
+		expect(deleteWorkspace).not.toHaveBeenCalled();
+
+		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+		await page.getByRole("button", { name: "Delete workspace" }).click();
+		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
 	});
 });

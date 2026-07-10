@@ -193,3 +193,55 @@ describe("WorkspaceState.open", () => {
 		expect(state.error).toMatch(/todo file does not exist/);
 	});
 });
+
+describe("WorkspaceState.delete", () => {
+	it("removes the active workspace and its loaded Todo data after deletion persists", async () => {
+		const remainingWorkspace = {
+			...workspace,
+			id: "550e8400-e29b-41d4-a716-446655440003",
+			name: "Personal",
+			todo_path: "/tmp/personal.todo",
+		};
+		const state = new WorkspaceState({
+			deleteWorkspace: async (id) => {
+				expect(id).toBe(workspace.id);
+				return { version: 1, active_workspace_id: null, workspaces: [remainingWorkspace] };
+			},
+		});
+		state.catalogue = {
+			version: 1,
+			active_workspace_id: workspace.id,
+			workspaces: [workspace, remainingWorkspace],
+		};
+		state.activeWorkspace = workspace;
+		state.todoFile = { path: workspace.todo_path, items: [], skipped: [] };
+
+		await state.delete(workspace.id);
+
+		expect(state.catalogue).toEqual({
+			version: 1,
+			active_workspace_id: null,
+			workspaces: [remainingWorkspace],
+		});
+		expect(state.activeWorkspace).toBeNull();
+		expect(state.todoFile).toBeNull();
+	});
+
+	it("keeps the active workspace and Todo data when deletion cannot persist", async () => {
+		const state = new WorkspaceState({
+			deleteWorkspace: async () => {
+				throw new Error("catalogue is unavailable");
+			},
+		});
+		state.catalogue = { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] };
+		state.activeWorkspace = workspace;
+		state.todoFile = { path: workspace.todo_path, items: [], skipped: [] };
+
+		await state.delete(workspace.id);
+
+		expect(state.catalogue?.active_workspace_id).toBe(workspace.id);
+		expect(state.activeWorkspace).toEqual(workspace);
+		expect(state.todoFile?.path).toBe(workspace.todo_path);
+		expect(state.error).toMatch(/catalogue is unavailable/);
+	});
+});

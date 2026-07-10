@@ -1,6 +1,7 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import {
 	createWorkspace,
+	deleteWorkspace,
 	loadWorkspaceCatalogue,
 	openWorkspace,
 } from "$lib/modules/workspace/api/workspace-api";
@@ -13,6 +14,7 @@ import type {
 type WorkspaceApi = {
 	loadWorkspaceCatalogue: () => Promise<WorkspaceCatalogue>;
 	openWorkspace: (workspaceId: string) => Promise<WorkspaceLoadResult>;
+	deleteWorkspace: (workspaceId: string) => Promise<WorkspaceCatalogue>;
 	createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLoadResult>;
 };
 
@@ -22,7 +24,12 @@ export type CreateWorkspaceInput = {
 	todoPath: string;
 };
 
-const workspaceApi: WorkspaceApi = { loadWorkspaceCatalogue, openWorkspace, createWorkspace };
+const workspaceApi: WorkspaceApi = {
+	loadWorkspaceCatalogue,
+	openWorkspace,
+	deleteWorkspace,
+	createWorkspace,
+};
 
 export class WorkspaceState {
 	catalogue = $state.raw<WorkspaceCatalogue | null>(null);
@@ -108,6 +115,21 @@ export class WorkspaceState {
 			this.applyLoadResult(result);
 		} catch (unknownError) {
 			this.error = `Could not open workspace: ${formatUnknownError(unknownError)}`;
+		} finally {
+			this.isLoading = false;
+		}
+	};
+
+	delete = async (workspaceId: string) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			this.catalogue = await this.api.deleteWorkspace(workspaceId);
+			this.clearLoadedWorkspace();
+		} catch (unknownError) {
+			this.error = `Could not delete workspace: ${formatUnknownError(unknownError)}`;
 		} finally {
 			this.isLoading = false;
 		}

@@ -13,6 +13,7 @@
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 			selectWorkspace={appState.workspace.open}
+			deleteWorkspace={appState.workspace.delete}
 			openCreationDialog={() => {
 				creationDialog?.openDialog();
 			}}
