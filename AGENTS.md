@@ -19,6 +19,10 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 ## Frontend Conventions
 
 - Write Svelte 5 runes-style components and state.
+- Avoid `$effect`. It is almost never the right tool: prefer `$derived` for computed values,
+  event handlers for user-driven work, and explicit functions/component APIs for coordination.
+  Use `$effect` only when synchronizing with an external system cannot be expressed through those
+  mechanisms, and explain the necessity in the code review.
 - Keep app-wide state composition in `src/lib/app/app-state.svelte.ts`.
 - Keep Svelte context setup/getters in `src/lib/app/app-context.ts`.
 - Use the existing `@/*` alias for `src/lib/*` or `$lib/*`; do not add extra aliases unless there is a strong project-wide reason.
@@ -28,6 +32,20 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 ## shadcn Components
 
 shadcn-generated primitives belong in the shared layer.
+
+Always use a shadcn-svelte primitive whenever a suitable one exists (for example, Dialog,
+Button, Input, Label, and form controls). Add missing primitives with the shadcn-svelte CLI
+rather than building local substitutes. Build a feature-owned component only when the behavior
+is domain-specific or no suitable shadcn-svelte primitive exists; compose shared primitives inside it.
+
+Use Tailwind utility classes for component styling. Do not add component-scoped `<style>` blocks
+when Tailwind can express the design, including responsive and dark-mode variants.
+
+Build client-side forms with the shadcn-svelte `Form` primitives, Formsnap, Superforms, and a
+Zod schema. Follow the `Form.Field` → `Form.Control` → input → `Form.Description` /
+`Form.FieldErrors` composition so labels and validation ARIA attributes stay connected. Keep
+client-side validation responsive, but duplicate all security and persistence validation at the
+Rust command boundary.
 
 `components.json` should keep these aliases:
 

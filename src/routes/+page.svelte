@@ -1,7 +1,7 @@
 <script>
-	import TodoList from "@/modules/todo/ui/TodoList.svelte";
+	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
 </script>
 
 <div class="p-4 w-full">
-	<TodoList />
+	<WorkspaceContent />
 </div>

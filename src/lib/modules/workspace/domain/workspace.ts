@@ -1,19 +1,27 @@
 import { z } from "zod";
 import { todoFileSchema } from "$lib/modules/todo/domain/todo";
 
-export const workspaceConfigSchema = z.object({
-	version: z.number(),
-	root: z.string().nullable(),
+export const workspaceSchema = z.object({
+	id: z.uuid(),
+	name: z.string().min(1),
+	color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
+	todo_path: z.string(),
+	created_at: z.iso.datetime({ offset: true }),
+});
+
+export const workspaceCatalogueSchema = z.object({
+	version: z.literal(1),
+	active_workspace_id: z.string().uuid().nullable(),
+	workspaces: z.array(workspaceSchema),
 });
 
 export const workspaceLoadResultSchema = z.object({
-	root: z.string(),
-	todo_path: z.string(),
-	todo_exists: z.boolean(),
-	todo_file: todoFileSchema.nullable(),
+	workspace: workspaceSchema,
+	todo_file: todoFileSchema,
 });
 
-export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
+export type Workspace = z.infer<typeof workspaceSchema>;
+export type WorkspaceCatalogue = z.infer<typeof workspaceCatalogueSchema>;
 export type WorkspaceLoadResult = z.infer<typeof workspaceLoadResultSchema>;
 
 function formatSchemaIssues(error: z.ZodError): string {
@@ -22,26 +30,16 @@ function formatSchemaIssues(error: z.ZodError): string {
 		.join("; ");
 }
 
-export function parseWorkspaceConfigResponse(response: unknown): WorkspaceConfig {
-	const result = workspaceConfigSchema.safeParse(response);
+function parseResponse<T>(schema: z.ZodType<T>, response: unknown, label: string): T {
+	const result = schema.safeParse(response);
+	if (result.success) return result.data;
+	throw new Error(`Unexpected ${label} response from Rust: ${formatSchemaIssues(result.error)}`);
+}
 
-	if (result.success) {
-		return result.data;
-	}
-
-	throw new Error(
-		`Unexpected workspace config response from Rust: ${formatSchemaIssues(result.error)}`
-	);
+export function parseWorkspaceCatalogueResponse(response: unknown): WorkspaceCatalogue {
+	return parseResponse(workspaceCatalogueSchema, response, "workspace catalogue");
 }
 
 export function parseWorkspaceLoadResponse(response: unknown): WorkspaceLoadResult {
-	const result = workspaceLoadResultSchema.safeParse(response);
-
-	if (result.success) {
-		return result.data;
-	}
-
-	throw new Error(
-		`Unexpected workspace load response from Rust: ${formatSchemaIssues(result.error)}`
-	);
+	return parseResponse(workspaceLoadResultSchema, response, "workspace load");
 }

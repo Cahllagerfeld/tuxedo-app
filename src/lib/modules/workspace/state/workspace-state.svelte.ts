@@ -1,19 +1,49 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import {
-	chooseWorkspaceDirectory,
-	loadWorkspace,
-	loadWorkspaceConfig,
-	saveWorkspaceConfig,
+	createWorkspace,
+	deleteWorkspace,
+	loadWorkspaceCatalogue,
+	openWorkspace,
 } from "$lib/modules/workspace/api/workspace-api";
-import { type WorkspaceLoadResult } from "$lib/modules/workspace/domain/workspace";
+import type {
+	Workspace,
+	WorkspaceCatalogue,
+	WorkspaceLoadResult,
+} from "$lib/modules/workspace/domain/workspace";
+
+type WorkspaceApi = {
+	loadWorkspaceCatalogue: () => Promise<WorkspaceCatalogue>;
+	openWorkspace: (workspaceId: string) => Promise<WorkspaceLoadResult>;
+	deleteWorkspace: (workspaceId: string) => Promise<WorkspaceCatalogue>;
+	createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLoadResult>;
+};
+
+export type CreateWorkspaceInput = {
+	name: string;
+	color: Workspace["color"];
+	todoPath: string;
+};
+
+const workspaceApi: WorkspaceApi = {
+	loadWorkspaceCatalogue,
+	openWorkspace,
+	deleteWorkspace,
+	createWorkspace,
+};
 
 export class WorkspaceState {
-	root = $state<string | null>(null);
-	todoPath = $state<string | null>(null);
+	catalogue = $state.raw<WorkspaceCatalogue | null>(null);
+	activeWorkspace = $state.raw<Workspace | null>(null);
 	todoFile = $state.raw<TodoFile | null>(null);
-	warning = $state("");
 	error = $state("");
+	warning = $state("");
 	isLoading = $state(false);
+
+	private readonly api: WorkspaceApi;
+
+	constructor(api: Partial<WorkspaceApi> = {}) {
+		this.api = { ...workspaceApi, ...api };
+	}
 
 	restore = async () => {
 		this.error = "";
@@ -21,59 +51,100 @@ export class WorkspaceState {
 		this.isLoading = true;
 
 		try {
-			const config = await loadWorkspaceConfig();
-			this.root = config.root;
-
-			if (!config.root) {
-				this.todoPath = null;
-				this.todoFile = null;
+			this.catalogue = await this.api.loadWorkspaceCatalogue();
+			const activeWorkspaceId = this.catalogue.active_workspace_id;
+			if (!activeWorkspaceId) {
+				this.clearLoadedWorkspace();
 				return;
 			}
 
-			await this.load(config.root);
+			try {
+				this.applyLoadResult(await this.api.openWorkspace(activeWorkspaceId));
+			} catch (unknownError) {
+				this.clearLoadedWorkspace();
+				this.warning = `Saved workspace could not be opened: ${formatUnknownError(unknownError)}`;
+			}
 		} catch (unknownError) {
+			this.clearLoadedWorkspace();
 			this.error = formatUnknownError(unknownError);
 		} finally {
 			this.isLoading = false;
 		}
 	};
 
-	openDirectory = async () => {
+	create = async (input: CreateWorkspaceInput) => {
 		this.error = "";
 		this.warning = "";
 		this.isLoading = true;
 
 		try {
-			const root = await chooseWorkspaceDirectory();
-
-			if (!root) {
-				return;
-			}
-
-			const config = await saveWorkspaceConfig(root);
-
-			if (config.root) {
-				await this.load(config.root);
-			}
+			const result = await this.api.createWorkspace(input);
+			this.catalogue = {
+				version: 1,
+				active_workspace_id: result.workspace.id,
+				workspaces: [
+					...(this.catalogue?.workspaces.filter(({ id }) => id !== result.workspace.id) ?? []),
+					result.workspace,
+				],
+			};
+			this.applyLoadResult(result);
 		} catch (unknownError) {
 			this.error = formatUnknownError(unknownError);
+			throw unknownError;
 		} finally {
 			this.isLoading = false;
 		}
 	};
 
-	load = async (root: string) => {
-		const workspace = await loadWorkspace(root);
-		this.applyLoadResult(workspace);
+	open = async (workspaceId: string) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			const result = await this.api.openWorkspace(workspaceId);
+			if (this.catalogue) {
+				this.catalogue = {
+					...this.catalogue,
+					active_workspace_id: result.workspace.id,
+					workspaces: this.catalogue.workspaces.map((workspace) =>
+						workspace.id === result.workspace.id ? result.workspace : workspace
+					),
+				};
+			}
+			this.applyLoadResult(result);
+		} catch (unknownError) {
+			this.error = `Could not open workspace: ${formatUnknownError(unknownError)}`;
+		} finally {
+			this.isLoading = false;
+		}
 	};
 
-	private applyLoadResult(workspace: WorkspaceLoadResult) {
-		this.root = workspace.root;
-		this.todoPath = workspace.todo_path;
-		this.todoFile = workspace.todo_file;
-		this.warning = workspace.todo_exists
-			? ""
-			: `No todo.txt file was found in ${workspace.root}. Add one there or choose another directory.`;
+	delete = async (workspaceId: string) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			this.catalogue = await this.api.deleteWorkspace(workspaceId);
+			if (this.activeWorkspace?.id === workspaceId) {
+				this.clearLoadedWorkspace();
+			}
+		} catch (unknownError) {
+			this.error = `Could not delete workspace: ${formatUnknownError(unknownError)}`;
+		} finally {
+			this.isLoading = false;
+		}
+	};
+
+	private applyLoadResult(result: WorkspaceLoadResult) {
+		this.activeWorkspace = result.workspace;
+		this.todoFile = result.todo_file;
+	}
+
+	private clearLoadedWorkspace() {
+		this.activeWorkspace = null;
+		this.todoFile = null;
 	}
 }
 
