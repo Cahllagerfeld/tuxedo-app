@@ -10,6 +10,7 @@
 
   packages = [ 
     pkgs.git
+    pkgs.github-cli
   ];
 
   languages.javascript = {
