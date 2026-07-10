@@ -88,7 +88,11 @@ fn restore_workspace_session_at_path(
 ) -> Result<WorkspaceSessionSnapshot, WorkspaceCatalogueError> {
     let catalogue = load_workspace_catalogue_from_path(catalogue_path)?;
     let Some(active_workspace_id) = catalogue.active_workspace_id.as_deref() else {
-        return Ok(WorkspaceSessionSnapshot { catalogue, todo_file: None, warning: None });
+        return Ok(WorkspaceSessionSnapshot {
+            catalogue,
+            todo_file: None,
+            warning: None,
+        });
     };
     let workspace = catalogue
         .workspaces
@@ -480,9 +484,15 @@ mod tests {
         let snapshot = restore_workspace_session_at_path(catalogue_path.clone()).unwrap();
 
         assert_eq!(snapshot.catalogue, catalogue);
-        assert_eq!(snapshot.todo_file.unwrap().path, todo_path.to_string_lossy());
+        assert_eq!(
+            snapshot.todo_file.unwrap().path,
+            todo_path.to_string_lossy()
+        );
         assert_eq!(snapshot.warning, None);
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            catalogue
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -507,8 +517,14 @@ mod tests {
 
         assert_eq!(snapshot.catalogue, catalogue);
         assert_eq!(snapshot.todo_file, None);
-        assert!(snapshot.warning.unwrap().contains("Saved workspace could not be opened"));
-        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
+        assert!(snapshot
+            .warning
+            .unwrap()
+            .contains("Saved workspace could not be opened"));
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            catalogue
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -540,8 +556,14 @@ mod tests {
 
         let result = switch_workspace_at_path(catalogue_path.clone(), personal.id.clone()).unwrap();
 
-        assert_eq!(result.catalogue.active_workspace_id, Some(personal.id.clone()));
-        assert_eq!(result.todo_file.unwrap().path, personal_todo_path.to_string_lossy());
+        assert_eq!(
+            result.catalogue.active_workspace_id,
+            Some(personal.id.clone())
+        );
+        assert_eq!(
+            result.todo_file.unwrap().path,
+            personal_todo_path.to_string_lossy()
+        );
         assert_eq!(
             load_workspace_catalogue_from_path(catalogue_path)
                 .unwrap()
