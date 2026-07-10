@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { open } from "@tauri-apps/plugin-dialog";
+	import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 	import { z } from "zod";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
@@ -13,6 +13,7 @@
 	type Props = {
 		selectFile?: () => Promise<string | null>;
 		createWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
+		showTrigger?: boolean;
 	};
 
 	const schema = z.object({
@@ -20,7 +21,12 @@
 		color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
 		todoPath: z.string().min(1, "Choose the exact Todo file for this workspace."),
 	});
-	const colors: Array<{ token: Workspace["color"]; label: string; className: string; ringClass: string }> = [
+	const colors: Array<{
+		token: Workspace["color"];
+		label: string;
+		className: string;
+		ringClass: string;
+	}> = [
 		{
 			token: "blue",
 			label: "Blue",
@@ -71,7 +77,7 @@
 		},
 	];
 
-	let { selectFile = selectTodoFile, createWorkspace }: Props = $props();
+	let { selectFile = selectTodoFile, createWorkspace, showTrigger = true }: Props = $props();
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
 	const { form: formData } = form;
 	let isOpen = $state(false);
@@ -81,8 +87,16 @@
 		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !isCreating
 	);
 
+	export function openDialog() {
+		isOpen = true;
+	}
+
 	async function selectTodoFile(): Promise<string | null> {
-		const selected = await open({ multiple: false, directory: false, title: "Choose Todo file" });
+		const selected = await openFileDialog({
+			multiple: false,
+			directory: false,
+			title: "Choose Todo file",
+		});
 		return typeof selected === "string" ? selected : null;
 	}
 	function resetForm() {
@@ -119,7 +133,12 @@
 
 <Dialog.Root bind:open={isOpen}>
 	<Dialog.Trigger
-		>{#snippet child({ props })}<Button {...props}>New workspace</Button>{/snippet}</Dialog.Trigger
+		>{#snippet child({ props })}<Button
+				{...props}
+				class={showTrigger ? undefined : "hidden"}
+				aria-hidden={!showTrigger}
+				tabindex={showTrigger ? undefined : -1}>New workspace</Button
+			>{/snippet}</Dialog.Trigger
 	>
 	<Dialog.Content showCloseButton={false}>
 		<Dialog.Header

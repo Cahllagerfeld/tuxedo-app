@@ -89,6 +89,30 @@ export class WorkspaceState {
 		}
 	};
 
+	open = async (workspaceId: string) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			const result = await this.api.openWorkspace(workspaceId);
+			if (this.catalogue) {
+				this.catalogue = {
+					...this.catalogue,
+					active_workspace_id: result.workspace.id,
+					workspaces: this.catalogue.workspaces.map((workspace) =>
+						workspace.id === result.workspace.id ? result.workspace : workspace
+					),
+				};
+			}
+			this.applyLoadResult(result);
+		} catch (unknownError) {
+			this.error = `Could not open workspace: ${formatUnknownError(unknownError)}`;
+		} finally {
+			this.isLoading = false;
+		}
+	};
+
 	private applyLoadResult(result: WorkspaceLoadResult) {
 		this.activeWorkspace = result.workspace;
 		this.todoFile = result.todo_file;

@@ -66,15 +66,27 @@ pub fn save_workspace_catalogue(
 
 #[tauri::command]
 pub fn open_workspace(app: AppHandle, workspace_id: String) -> Result<WorkspaceLoadResult, String> {
-    let catalogue = load_workspace_catalogue_from_path(workspace_catalogue_path(&app)?)
-        .map_err(|error| error.to_string())?;
+    open_workspace_at_path(workspace_catalogue_path(&app)?, workspace_id)
+        .map_err(|error| error.to_string())
+}
+
+fn open_workspace_at_path(
+    catalogue_path: PathBuf,
+    workspace_id: String,
+) -> Result<WorkspaceLoadResult, WorkspaceCatalogueError> {
+    let mut catalogue = load_workspace_catalogue_from_path(catalogue_path.clone())?;
     let workspace = catalogue
         .workspaces
-        .into_iter()
+        .iter()
         .find(|workspace| workspace.id == workspace_id)
-        .ok_or_else(|| format!("workspace does not exist: {workspace_id}"))?;
+        .cloned()
+        .ok_or_else(|| WorkspaceCatalogueError::Invalid(format!("workspace does not exist: {workspace_id}")))?;
 
-    load_workspace(workspace).map_err(|error| error.to_string())
+    let result = load_workspace(workspace)?;
+    catalogue.active_workspace_id = Some(result.workspace.id.clone());
+    save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -369,6 +381,72 @@ mod tests {
         .unwrap();
         assert_eq!(result.todo_file.path, todo_path.to_string_lossy());
         assert_eq!(result.todo_file.items.len(), 1);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn opening_a_workspace_persists_it_as_active_only_after_its_todo_file_loads() {
+        let directory = unique_temp_dir("open-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let work_todo_path = directory.join("work.todo");
+        let personal_todo_path = directory.join("personal.todo");
+        std::fs::write(&work_todo_path, "Prepare release").unwrap();
+        std::fs::write(&personal_todo_path, "Plan trip").unwrap();
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &work_todo_path.to_string_lossy(),
+        );
+        let personal = workspace(
+            "550e8400-e29b-41d4-a716-446655440001",
+            "Personal",
+            &personal_todo_path.to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(work.id.clone()),
+            workspaces: vec![work.clone(), personal.clone()],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let result = open_workspace_at_path(catalogue_path.clone(), personal.id.clone()).unwrap();
+
+        assert_eq!(result.workspace, personal);
+        assert_eq!(result.todo_file.path, personal_todo_path.to_string_lossy());
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap().active_workspace_id,
+            Some(personal.id)
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn opening_an_unavailable_workspace_keeps_the_saved_active_workspace() {
+        let directory = unique_temp_dir("open-unavailable-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &directory.join("work.todo").to_string_lossy(),
+        );
+        let unavailable = workspace(
+            "550e8400-e29b-41d4-a716-446655440001",
+            "Unavailable",
+            &directory.join("missing.todo").to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(work.id.clone()),
+            workspaces: vec![work, unavailable.clone()],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let error = open_workspace_at_path(catalogue_path.clone(), unavailable.id).unwrap_err();
+
+        assert!(error.to_string().contains("failed to load Todo file"));
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

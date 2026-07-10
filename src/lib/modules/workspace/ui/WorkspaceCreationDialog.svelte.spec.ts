@@ -14,7 +14,7 @@ describe("WorkspaceCreationDialog", () => {
 		await expect.element(createButton).toBeDisabled();
 
 		await page.getByLabelText("Workspace name").fill("Work");
-		await page.getByRole("button", { name: "Choose Todo file" }).click();
+		await page.getByText("Choose Todo file", { exact: true }).click();
 		await expect.element(createButton).toBeEnabled();
 
 		await createButton.click();
@@ -36,7 +36,7 @@ describe("WorkspaceCreationDialog", () => {
 
 		await page.getByRole("button", { name: "New workspace" }).click();
 		await page.getByLabelText("Workspace name").fill("Work");
-		await page.getByRole("button", { name: "Choose Todo file" }).click();
+		await page.getByText("Choose Todo file", { exact: true }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
 		await expect

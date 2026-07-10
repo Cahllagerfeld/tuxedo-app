@@ -19,6 +19,10 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 ## Frontend Conventions
 
 - Write Svelte 5 runes-style components and state.
+- Avoid `$effect`. It is almost never the right tool: prefer `$derived` for computed values,
+  event handlers for user-driven work, and explicit functions/component APIs for coordination.
+  Use `$effect` only when synchronizing with an external system cannot be expressed through those
+  mechanisms, and explain the necessity in the code review.
 - Keep app-wide state composition in `src/lib/app/app-state.svelte.ts`.
 - Keep Svelte context setup/getters in `src/lib/app/app-context.ts`.
 - Use the existing `@/*` alias for `src/lib/*` or `$lib/*`; do not add extra aliases unless there is a strong project-wide reason.

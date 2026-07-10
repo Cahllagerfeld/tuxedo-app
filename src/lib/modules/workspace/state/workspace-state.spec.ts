@@ -136,3 +136,60 @@ describe("WorkspaceState.create", () => {
 		expect(state.todoFile?.path).toBe(workspace.todo_path);
 	});
 });
+
+describe("WorkspaceState.open", () => {
+	const personalWorkspace = {
+		...workspace,
+		id: "550e8400-e29b-41d4-a716-446655440002",
+		name: "Personal",
+		color: "green" as const,
+		todo_path: "/tmp/personal.todo",
+	};
+
+	it("applies and persists a selected workspace after its Todo file loads", async () => {
+		const state = new WorkspaceState({
+			openWorkspace: async (id) => {
+				expect(id).toBe(personalWorkspace.id);
+				return {
+					workspace: personalWorkspace,
+					todo_file: { path: personalWorkspace.todo_path, items: [], skipped: [] },
+				};
+			},
+		});
+		state.catalogue = {
+			version: 1,
+			active_workspace_id: workspace.id,
+			workspaces: [workspace, personalWorkspace],
+		};
+		state.activeWorkspace = workspace;
+		state.todoFile = { path: workspace.todo_path, items: [], skipped: [] };
+
+		await state.open(personalWorkspace.id);
+
+		expect(state.activeWorkspace).toEqual(personalWorkspace);
+		expect(state.todoFile?.path).toBe(personalWorkspace.todo_path);
+		expect(state.catalogue?.active_workspace_id).toBe(personalWorkspace.id);
+	});
+
+	it("keeps the current workspace and Todo data when a selected workspace cannot load", async () => {
+		const state = new WorkspaceState({
+			openWorkspace: async () => {
+				throw new Error("todo file does not exist");
+			},
+		});
+		state.catalogue = {
+			version: 1,
+			active_workspace_id: workspace.id,
+			workspaces: [workspace, personalWorkspace],
+		};
+		state.activeWorkspace = workspace;
+		state.todoFile = { path: workspace.todo_path, items: [], skipped: [] };
+
+		await state.open(personalWorkspace.id);
+
+		expect(state.activeWorkspace).toEqual(workspace);
+		expect(state.todoFile?.path).toBe(workspace.todo_path);
+		expect(state.catalogue?.active_workspace_id).toBe(workspace.id);
+		expect(state.error).toMatch(/todo file does not exist/);
+	});
+});

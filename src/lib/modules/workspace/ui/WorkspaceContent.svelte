@@ -7,7 +7,9 @@
 
 {#if appState.workspace.error}
 	<p role="alert">{appState.workspace.error}</p>
-{:else if appState.workspace.activeWorkspace}
+{/if}
+
+{#if appState.workspace.activeWorkspace}
 	<TodoList />
 {:else if !appState.workspace.isLoading}
 	<section aria-label="No active workspace">
