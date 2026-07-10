@@ -8,6 +8,7 @@
 	import * as Form from "$lib/shared/ui/form";
 	import { Input } from "$lib/shared/ui/input";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import { cn } from "@/shared/utils";
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {
@@ -183,10 +184,16 @@
 				<div class="flex flex-wrap gap-2">
 					{#each colors as option}<Button
 							type="button"
-							class={`text-white ${option.className} ${$formData.color === option.token ? `ring-2 ring-offset-2 ring-offset-background ${option.ringClass}` : ""}`}
+							class={cn(
+								"rounded-full shrink-0 aspect-square",
+								option.className,
+								$formData.color === option.token && "ring-2 ring-offset-2 ring-offset-background",
+								$formData.color === option.token && option.ringClass
+							)}
 							aria-label={option.label}
 							aria-pressed={$formData.color === option.token}
-							onclick={() => ($formData.color = option.token)}>{option.label}</Button
+							onclick={() => ($formData.color = option.token)}
+							><span class="sr-only">{option.label}</span></Button
 						>{/each}
 				</div>
 				<Form.FieldErrors />
