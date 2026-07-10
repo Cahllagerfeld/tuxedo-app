@@ -127,7 +127,9 @@ export class WorkspaceState {
 
 		try {
 			this.catalogue = await this.api.deleteWorkspace(workspaceId);
-			this.clearLoadedWorkspace();
+			if (this.activeWorkspace?.id === workspaceId) {
+				this.clearLoadedWorkspace();
+			}
 		} catch (unknownError) {
 			this.error = `Could not delete workspace: ${formatUnknownError(unknownError)}`;
 		} finally {

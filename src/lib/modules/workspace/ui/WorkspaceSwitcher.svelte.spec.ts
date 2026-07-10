@@ -79,5 +79,6 @@ describe("WorkspaceSwitcher", () => {
 		await page.getByRole("menuitem", { name: "Delete Work" }).click();
 		await page.getByRole("button", { name: "Delete workspace" }).click();
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
+		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 	});
 });

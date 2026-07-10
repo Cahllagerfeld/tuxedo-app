@@ -105,12 +105,6 @@ fn delete_workspace_at_path(
     workspace_id: String,
 ) -> Result<WorkspaceCatalogue, WorkspaceCatalogueError> {
     let mut catalogue = load_workspace_catalogue_from_path(catalogue_path.clone())?;
-    if catalogue.active_workspace_id.as_deref() != Some(workspace_id.as_str()) {
-        return Err(WorkspaceCatalogueError::Invalid(format!(
-            "only the active workspace can be deleted: {workspace_id}"
-        )));
-    }
-
     let workspace_index = catalogue
         .workspaces
         .iter()
@@ -119,7 +113,9 @@ fn delete_workspace_at_path(
             WorkspaceCatalogueError::Invalid(format!("workspace does not exist: {workspace_id}"))
         })?;
     catalogue.workspaces.remove(workspace_index);
-    catalogue.active_workspace_id = None;
+    if catalogue.active_workspace_id.as_deref() == Some(workspace_id.as_str()) {
+        catalogue.active_workspace_id = None;
+    }
     save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
 
     Ok(catalogue)
@@ -532,6 +528,41 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(todo_path).unwrap(),
             "Keep this task"
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn deleting_a_saved_workspace_preserves_a_different_active_workspace() {
+        let directory = unique_temp_dir("delete-saved-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &directory.join("work.todo").to_string_lossy(),
+        );
+        let personal = workspace(
+            "550e8400-e29b-41d4-a716-446655440001",
+            "Personal",
+            &directory.join("personal.todo").to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(personal.id.clone()),
+            workspaces: vec![work.clone(), personal.clone()],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let result = delete_workspace_at_path(catalogue_path.clone(), work.id).unwrap();
+
+        assert_eq!(
+            result,
+            WorkspaceCatalogue {
+                version: 1,
+                active_workspace_id: Some(personal.id.clone()),
+                workspaces: vec![personal],
+            }
         );
         std::fs::remove_dir_all(directory).unwrap();
     }
