@@ -147,13 +147,12 @@
 			</Form.Field>
 			<Form.Field {form} name="color">
 				<Form.Control
-					>{#snippet children({ props })}<Input
+					>{#snippet children({ props })}<Form.Label>Workspace color</Form.Label><Input
 							{...props}
 							type="hidden"
 							bind:value={$formData.color}
 						/>{/snippet}</Form.Control
 				>
-				<Form.Label>Workspace color</Form.Label>
 				<div class="flex flex-wrap gap-2">
 					{#each colors as option}<Button
 							type="button"
