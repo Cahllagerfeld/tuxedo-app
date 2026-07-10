@@ -156,7 +156,7 @@
 				<div class="flex flex-wrap gap-2">
 					{#each colors as option}<Button
 							type="button"
-							class={`text-white ${option.className}`}
+							class={`text-white ${option.className} ${$formData.color === option.token ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : ""}`}
 							aria-label={option.label}
 							aria-pressed={$formData.color === option.token}
 							onclick={() => ($formData.color = option.token)}>{option.label}</Button
