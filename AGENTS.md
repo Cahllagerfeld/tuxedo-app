@@ -29,9 +29,9 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 
 shadcn-generated primitives belong in the shared layer.
 
-Use shadcn-svelte primitives by default whenever they fit the UI need (for example, Dialog,
+Always use a shadcn-svelte primitive whenever a suitable one exists (for example, Dialog,
 Button, Input, Label, and form controls). Add missing primitives with the shadcn-svelte CLI
-rather than building local substitutes. Only build a feature-owned component when the behavior
+rather than building local substitutes. Build a feature-owned component only when the behavior
 is domain-specific or no suitable shadcn-svelte primitive exists; compose shared primitives inside it.
 
 Use Tailwind utility classes for component styling. Do not add component-scoped `<style>` blocks
