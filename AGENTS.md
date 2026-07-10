@@ -104,3 +104,17 @@ find src/lib -type d -empty | sort
 ```
 
 This should return nothing unless an intentionally empty folder is documented.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout. See `docs/agents/domain.md`.
