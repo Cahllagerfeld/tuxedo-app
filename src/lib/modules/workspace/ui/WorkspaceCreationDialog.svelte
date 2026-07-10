@@ -20,46 +20,54 @@
 		color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
 		todoPath: z.string().min(1, "Choose the exact Todo file for this workspace."),
 	});
-	const colors: Array<{ token: Workspace["color"]; label: string; className: string }> = [
+	const colors: Array<{ token: Workspace["color"]; label: string; className: string; ringClass: string }> = [
 		{
 			token: "blue",
 			label: "Blue",
 			className: "bg-blue-600 hover:bg-blue-700 dark:bg-blue-400 dark:hover:bg-blue-300",
+			ringClass: "ring-blue-600 dark:ring-blue-400",
 		},
 		{
 			token: "green",
 			label: "Green",
 			className: "bg-green-600 hover:bg-green-700 dark:bg-green-400 dark:hover:bg-green-300",
+			ringClass: "ring-green-600 dark:ring-green-400",
 		},
 		{
 			token: "amber",
 			label: "Amber",
 			className: "bg-amber-600 hover:bg-amber-700 dark:bg-amber-400 dark:hover:bg-amber-300",
+			ringClass: "ring-amber-600 dark:ring-amber-400",
 		},
 		{
 			token: "red",
 			label: "Red",
 			className: "bg-red-600 hover:bg-red-700 dark:bg-red-400 dark:hover:bg-red-300",
+			ringClass: "ring-red-600 dark:ring-red-400",
 		},
 		{
 			token: "violet",
 			label: "Violet",
 			className: "bg-violet-600 hover:bg-violet-700 dark:bg-violet-400 dark:hover:bg-violet-300",
+			ringClass: "ring-violet-600 dark:ring-violet-400",
 		},
 		{
 			token: "pink",
 			label: "Pink",
 			className: "bg-pink-600 hover:bg-pink-700 dark:bg-pink-400 dark:hover:bg-pink-300",
+			ringClass: "ring-pink-600 dark:ring-pink-400",
 		},
 		{
 			token: "cyan",
 			label: "Cyan",
 			className: "bg-cyan-600 hover:bg-cyan-700 dark:bg-cyan-400 dark:hover:bg-cyan-300",
+			ringClass: "ring-cyan-600 dark:ring-cyan-400",
 		},
 		{
 			token: "orange",
 			label: "Orange",
 			className: "bg-orange-600 hover:bg-orange-700 dark:bg-orange-400 dark:hover:bg-orange-300",
+			ringClass: "ring-orange-600 dark:ring-orange-400",
 		},
 	];
 
@@ -156,7 +164,7 @@
 				<div class="flex flex-wrap gap-2">
 					{#each colors as option}<Button
 							type="button"
-							class={`text-white ${option.className} ${$formData.color === option.token ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : ""}`}
+							class={`text-white ${option.className} ${$formData.color === option.token ? `ring-2 ring-offset-2 ring-offset-background ${option.ringClass}` : ""}`}
 							aria-label={option.label}
 							aria-pressed={$formData.color === option.token}
 							onclick={() => ($formData.color = option.token)}>{option.label}</Button
