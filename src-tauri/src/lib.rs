@@ -38,9 +38,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             parse_todo_file,
-            workspace::load_workspace_config,
-            workspace::save_workspace_config,
-            workspace::load_workspace
+            workspace::load_workspace_catalogue,
+            workspace::save_workspace_catalogue,
+            workspace::open_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

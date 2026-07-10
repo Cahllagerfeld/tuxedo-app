@@ -1,97 +1,56 @@
 import { describe, expect, it } from "vitest";
 import {
-	parseWorkspaceConfigResponse,
+	parseWorkspaceCatalogueResponse,
 	parseWorkspaceLoadResponse,
-	workspaceConfigSchema,
+	workspaceCatalogueSchema,
 	workspaceLoadResultSchema,
-	type WorkspaceConfig,
+	type WorkspaceCatalogue,
 	type WorkspaceLoadResult,
 } from "./workspace";
 
-const validWorkspaceConfigResponse: WorkspaceConfig = {
+const workspace = {
+	id: "550e8400-e29b-41d4-a716-446655440000",
+	name: "Work",
+	color: "blue",
+	todo_path: "/tmp/work.todo",
+	created_at: "2026-07-10T10:00:00+00:00",
+} as const;
+
+const catalogue: WorkspaceCatalogue = {
 	version: 1,
-	root: "/tmp/todos",
+	active_workspace_id: workspace.id,
+	workspaces: [workspace],
 };
 
-const validWorkspaceLoadResponse: WorkspaceLoadResult = {
-	root: "/tmp/todos",
-	todo_path: "/tmp/todos/todo.txt",
-	todo_exists: true,
-	todo_file: {
-		path: "/tmp/todos/todo.txt",
-		items: [
-			{
-				line_number: 1,
-				raw: "(A) Review workspace +Tuxedo",
-				completed: false,
-				priority: "A",
-				creation_date: null,
-				completion_date: null,
-				description: "Review workspace",
-				projects: ["Tuxedo"],
-				contexts: [],
-				metadata: {},
-			},
-		],
-		skipped: [],
-	},
+const loadResult: WorkspaceLoadResult = {
+	workspace,
+	todo_file: { path: workspace.todo_path, items: [], skipped: [] },
 };
 
-describe("workspaceConfigSchema", () => {
-	it("accepts a saved workspace root", () => {
-		const result = workspaceConfigSchema.safeParse(validWorkspaceConfigResponse);
-
-		expect(result.success).toBe(true);
+describe("workspace response schemas", () => {
+	it("accepts the first-run empty catalogue", () => {
+		expect(
+			workspaceCatalogueSchema.safeParse({ version: 1, active_workspace_id: null, workspaces: [] })
+				.success
+		).toBe(true);
 	});
 
-	it("accepts first-run config without a root", () => {
-		const result = workspaceConfigSchema.safeParse({ version: 1, root: null });
-
-		expect(result.success).toBe(true);
-	});
-});
-
-describe("workspaceLoadResultSchema", () => {
-	it("accepts a parsed workspace todo file", () => {
-		const result = workspaceLoadResultSchema.safeParse(validWorkspaceLoadResponse);
-
-		expect(result.success).toBe(true);
+	it("accepts a catalogue and loaded exact Todo file", () => {
+		expect(workspaceCatalogueSchema.safeParse(catalogue).success).toBe(true);
+		expect(workspaceLoadResultSchema.safeParse(loadResult).success).toBe(true);
 	});
 
-	it("accepts a missing todo.txt result", () => {
-		const result = workspaceLoadResultSchema.safeParse({
-			root: "/tmp/todos",
-			todo_path: "/tmp/todos/todo.txt",
-			todo_exists: false,
-			todo_file: null,
-		});
-
-		expect(result.success).toBe(true);
-	});
-});
-
-describe("workspace response parsers", () => {
-	it("returns validated workspace config responses", () => {
-		expect(parseWorkspaceConfigResponse(validWorkspaceConfigResponse)).toEqual(
-			validWorkspaceConfigResponse
-		);
+	it("returns validated Rust responses", () => {
+		expect(parseWorkspaceCatalogueResponse(catalogue)).toEqual(catalogue);
+		expect(parseWorkspaceLoadResponse(loadResult)).toEqual(loadResult);
 	});
 
-	it("returns validated workspace load responses", () => {
-		expect(parseWorkspaceLoadResponse(validWorkspaceLoadResponse)).toEqual(
-			validWorkspaceLoadResponse
-		);
-	});
-
-	it("throws a readable error for config schema drift", () => {
-		expect(() => parseWorkspaceConfigResponse({ version: "1", root: null })).toThrow(
-			/Unexpected workspace config response from Rust: version:/
-		);
-	});
-
-	it("throws a readable error for load schema drift", () => {
+	it("reports schema drift clearly", () => {
 		expect(() =>
-			parseWorkspaceLoadResponse({ ...validWorkspaceLoadResponse, todo_exists: "true" })
-		).toThrow(/Unexpected workspace load response from Rust: todo_exists:/);
+			parseWorkspaceCatalogueResponse({ version: 1, active_workspace_id: null, workspaces: [{}] })
+		).toThrow(/Unexpected workspace catalogue response from Rust: workspaces.0.id:/);
+		expect(() => parseWorkspaceLoadResponse({ ...loadResult, todo_file: null })).toThrow(
+			/Unexpected workspace load response from Rust: todo_file:/
+		);
 	});
 });
