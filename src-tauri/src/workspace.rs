@@ -77,6 +77,79 @@ pub fn open_workspace(app: AppHandle, workspace_id: String) -> Result<WorkspaceL
     load_workspace(workspace).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn create_workspace(
+    app: AppHandle,
+    name: String,
+    color: String,
+    todo_path: String,
+) -> Result<WorkspaceLoadResult, String> {
+    create_workspace_at_path(workspace_catalogue_path(&app)?, name, color, todo_path)
+        .map_err(|error| error.to_string())
+}
+
+fn create_workspace_at_path(
+    catalogue_path: PathBuf,
+    name: String,
+    color: String,
+    todo_path: String,
+) -> Result<WorkspaceLoadResult, WorkspaceCatalogueError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(WorkspaceCatalogueError::Invalid(
+            "workspace name must be trimmed and non-empty".into(),
+        ));
+    }
+    if !WORKSPACE_COLORS.contains(&color.as_str()) {
+        return Err(WorkspaceCatalogueError::Invalid(format!(
+            "unsupported workspace color: {color}"
+        )));
+    }
+
+    let todo_file = load_todo_file(todo_path.clone()).map_err(WorkspaceCatalogueError::TodoFile)?;
+    if !todo_file.skipped.is_empty() {
+        return Err(WorkspaceCatalogueError::Invalid(
+            "selected Todo file could not be parsed".into(),
+        ));
+    }
+
+    let mut catalogue = load_workspace_catalogue_from_path(catalogue_path.clone())?;
+    if catalogue
+        .workspaces
+        .iter()
+        .any(|workspace| workspace.name.eq_ignore_ascii_case(&name))
+    {
+        return Err(WorkspaceCatalogueError::Invalid(format!(
+            "duplicate workspace name: {name}"
+        )));
+    }
+    if catalogue
+        .workspaces
+        .iter()
+        .any(|workspace| workspace.todo_path == todo_path)
+    {
+        return Err(WorkspaceCatalogueError::Invalid(format!(
+            "duplicate todo file: {todo_path}"
+        )));
+    }
+
+    let workspace = Workspace {
+        id: Uuid::new_v4().to_string(),
+        name,
+        color,
+        todo_path,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    catalogue.active_workspace_id = Some(workspace.id.clone());
+    catalogue.workspaces.push(workspace.clone());
+    save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
+
+    Ok(WorkspaceLoadResult {
+        workspace,
+        todo_file,
+    })
+}
+
 fn load_workspace(workspace: Workspace) -> Result<WorkspaceLoadResult, LoadError> {
     let todo_file = load_todo_file(workspace.todo_path.clone())?;
     Ok(WorkspaceLoadResult {
@@ -195,6 +268,8 @@ enum WorkspaceCatalogueError {
     TomlSerialize(#[from] toml::ser::Error),
     #[error("failed to write workspace catalogue atomically: {0}")]
     AtomicWrite(#[from] atomicwrites::Error<std::io::Error>),
+    #[error("failed to load Todo file: {0}")]
+    TodoFile(#[from] LoadError),
     #[error("invalid workspace catalogue: {0}")]
     Invalid(String),
 }
@@ -314,6 +389,114 @@ mod tests {
         save_workspace_catalogue_to_path(path.clone(), &first).unwrap();
         save_workspace_catalogue_to_path(path.clone(), &second).unwrap();
         assert_eq!(load_workspace_catalogue_from_path(path).unwrap(), second);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn creating_a_workspace_persists_it_as_active_after_loading_its_todo_file() {
+        let directory = unique_temp_dir("create-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let todo_path = directory.join("work.todo");
+        std::fs::write(&todo_path, "Prepare release").unwrap();
+
+        let result = create_workspace_at_path(
+            catalogue_path.clone(),
+            "  Work  ".into(),
+            "blue".into(),
+            todo_path.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+
+        let catalogue = load_workspace_catalogue_from_path(catalogue_path).unwrap();
+        assert_eq!(result.workspace.name, "Work");
+        assert_eq!(result.workspace.todo_path, todo_path.to_string_lossy());
+        assert_eq!(result.todo_file.items.len(), 1);
+        assert_eq!(catalogue.active_workspace_id.as_deref(), Some(result.workspace.id.as_str()));
+        assert_eq!(catalogue.workspaces, vec![result.workspace]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn creating_a_workspace_rejects_duplicate_names_without_changing_the_catalogue() {
+        let directory = unique_temp_dir("duplicate-name");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let existing = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: None,
+            workspaces: vec![workspace(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "Work",
+                "/tmp/work.todo",
+            )],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &existing).unwrap();
+        let todo_path = directory.join("personal.todo");
+        std::fs::write(&todo_path, "Plan trip").unwrap();
+
+        let error = create_workspace_at_path(
+            catalogue_path.clone(),
+            " work ".into(),
+            "green".into(),
+            todo_path.to_string_lossy().into_owned(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("duplicate workspace name"));
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), existing);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn creating_a_workspace_rejects_duplicate_todo_files_without_changing_the_catalogue() {
+        let directory = unique_temp_dir("duplicate-file");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let todo_path = directory.join("work.todo");
+        std::fs::write(&todo_path, "Prepare release").unwrap();
+        let existing = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: None,
+            workspaces: vec![workspace(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "Work",
+                &todo_path.to_string_lossy(),
+            )],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &existing).unwrap();
+
+        let error = create_workspace_at_path(
+            catalogue_path.clone(),
+            "Personal".into(),
+            "green".into(),
+            todo_path.to_string_lossy().into_owned(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("duplicate todo file"));
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), existing);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn creating_a_workspace_rejects_unparseable_files_without_changing_the_catalogue() {
+        let directory = unique_temp_dir("unparseable-file");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let todo_path = directory.join("broken.todo");
+        std::fs::write(&todo_path, "2026-99-99 Broken date").unwrap();
+
+        let error = create_workspace_at_path(
+            catalogue_path.clone(),
+            "Work".into(),
+            "blue".into(),
+            todo_path.to_string_lossy().into_owned(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("could not be parsed"));
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), WorkspaceCatalogue::default());
         std::fs::remove_dir_all(directory).unwrap();
     }
 

@@ -40,7 +40,8 @@ pub fn run() {
             parse_todo_file,
             workspace::load_workspace_catalogue,
             workspace::save_workspace_catalogue,
-            workspace::open_workspace
+            workspace::open_workspace,
+            workspace::create_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

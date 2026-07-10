@@ -1,5 +1,9 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
-import { loadWorkspaceCatalogue, openWorkspace } from "$lib/modules/workspace/api/workspace-api";
+import {
+	createWorkspace,
+	loadWorkspaceCatalogue,
+	openWorkspace,
+} from "$lib/modules/workspace/api/workspace-api";
 import type {
 	Workspace,
 	WorkspaceCatalogue,
@@ -9,9 +13,16 @@ import type {
 type WorkspaceApi = {
 	loadWorkspaceCatalogue: () => Promise<WorkspaceCatalogue>;
 	openWorkspace: (workspaceId: string) => Promise<WorkspaceLoadResult>;
+	createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLoadResult>;
 };
 
-const workspaceApi: WorkspaceApi = { loadWorkspaceCatalogue, openWorkspace };
+export type CreateWorkspaceInput = {
+	name: string;
+	color: Workspace["color"];
+	todoPath: string;
+};
+
+const workspaceApi: WorkspaceApi = { loadWorkspaceCatalogue, openWorkspace, createWorkspace };
 
 export class WorkspaceState {
 	catalogue = $state.raw<WorkspaceCatalogue | null>(null);
@@ -21,7 +32,11 @@ export class WorkspaceState {
 	warning = $state("");
 	isLoading = $state(false);
 
-	constructor(private readonly api: WorkspaceApi = workspaceApi) {}
+	private readonly api: WorkspaceApi;
+
+	constructor(api: Partial<WorkspaceApi> = {}) {
+		this.api = { ...workspaceApi, ...api };
+	}
 
 	restore = async () => {
 		this.error = "";
@@ -45,6 +60,30 @@ export class WorkspaceState {
 		} catch (unknownError) {
 			this.clearLoadedWorkspace();
 			this.error = formatUnknownError(unknownError);
+		} finally {
+			this.isLoading = false;
+		}
+	};
+
+	create = async (input: CreateWorkspaceInput) => {
+		this.error = "";
+		this.warning = "";
+		this.isLoading = true;
+
+		try {
+			const result = await this.api.createWorkspace(input);
+			this.catalogue = {
+				version: 1,
+				active_workspace_id: result.workspace.id,
+				workspaces: [
+					...(this.catalogue?.workspaces.filter(({ id }) => id !== result.workspace.id) ?? []),
+					result.workspace,
+				],
+			};
+			this.applyLoadResult(result);
+		} catch (unknownError) {
+			this.error = formatUnknownError(unknownError);
+			throw unknownError;
 		} finally {
 			this.isLoading = false;
 		}

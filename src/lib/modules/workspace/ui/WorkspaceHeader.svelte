@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getAppState } from "$lib/app/app-context";
+	import WorkspaceCreationDialog from "./WorkspaceCreationDialog.svelte";
 
 	const appState = getAppState();
 </script>
@@ -10,4 +11,5 @@
 			{appState.workspace.activeWorkspace?.name ?? "No workspace selected"}
 		</p>
 	</div>
+	<WorkspaceCreationDialog createWorkspace={appState.workspace.create} />
 </header>

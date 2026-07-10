@@ -13,3 +13,17 @@ export async function loadWorkspaceCatalogue(): Promise<WorkspaceCatalogue> {
 export async function openWorkspace(workspaceId: string): Promise<WorkspaceLoadResult> {
 	return parseWorkspaceLoadResponse(await invoke("open_workspace", { workspaceId }));
 }
+
+export async function createWorkspace(input: {
+	name: string;
+	color: WorkspaceCatalogue["workspaces"][number]["color"];
+	todoPath: string;
+}): Promise<WorkspaceLoadResult> {
+	return parseWorkspaceLoadResponse(
+		await invoke("create_workspace", {
+			name: input.name,
+			color: input.color,
+			todoPath: input.todoPath,
+		})
+	);
+}

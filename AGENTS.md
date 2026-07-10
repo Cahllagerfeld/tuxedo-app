@@ -29,6 +29,20 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 
 shadcn-generated primitives belong in the shared layer.
 
+Use shadcn-svelte primitives by default whenever they fit the UI need (for example, Dialog,
+Button, Input, Label, and form controls). Add missing primitives with the shadcn-svelte CLI
+rather than building local substitutes. Only build a feature-owned component when the behavior
+is domain-specific or no suitable shadcn-svelte primitive exists; compose shared primitives inside it.
+
+Use Tailwind utility classes for component styling. Do not add component-scoped `<style>` blocks
+when Tailwind can express the design, including responsive and dark-mode variants.
+
+Build client-side forms with the shadcn-svelte `Form` primitives, Formsnap, Superforms, and a
+Zod schema. Follow the `Form.Field` → `Form.Control` → input → `Form.Description` /
+`Form.FieldErrors` composition so labels and validation ARIA attributes stay connected. Keep
+client-side validation responsive, but duplicate all security and persistence validation at the
+Rust command boundary.
+
 `components.json` should keep these aliases:
 
 ```json
