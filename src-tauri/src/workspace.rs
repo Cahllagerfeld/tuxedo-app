@@ -43,15 +43,10 @@ impl Default for WorkspaceCatalogue {
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
-pub struct WorkspaceLoadResult {
-    pub workspace: Workspace,
-    pub todo_file: TodoFile,
-}
-
-#[tauri::command]
-pub fn load_workspace_catalogue(app: AppHandle) -> Result<WorkspaceCatalogue, String> {
-    load_workspace_catalogue_from_path(workspace_catalogue_path(&app)?)
-        .map_err(|error| error.to_string())
+pub struct WorkspaceSessionSnapshot {
+    pub catalogue: WorkspaceCatalogue,
+    pub todo_file: Option<TodoFile>,
+    pub warning: Option<String>,
 }
 
 #[tauri::command]
@@ -65,8 +60,17 @@ pub fn save_workspace_catalogue(
 }
 
 #[tauri::command]
-pub fn open_workspace(app: AppHandle, workspace_id: String) -> Result<WorkspaceLoadResult, String> {
-    open_workspace_at_path(workspace_catalogue_path(&app)?, workspace_id)
+pub fn restore_workspace_session(app: AppHandle) -> Result<WorkspaceSessionSnapshot, String> {
+    restore_workspace_session_at_path(workspace_catalogue_path(&app)?)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn switch_workspace(
+    app: AppHandle,
+    workspace_id: String,
+) -> Result<WorkspaceSessionSnapshot, String> {
+    switch_workspace_at_path(workspace_catalogue_path(&app)?, workspace_id)
         .map_err(|error| error.to_string())
 }
 
@@ -79,10 +83,38 @@ pub fn delete_workspace(
         .map_err(|error| error.to_string())
 }
 
-fn open_workspace_at_path(
+fn restore_workspace_session_at_path(
+    catalogue_path: PathBuf,
+) -> Result<WorkspaceSessionSnapshot, WorkspaceCatalogueError> {
+    let catalogue = load_workspace_catalogue_from_path(catalogue_path)?;
+    let Some(active_workspace_id) = catalogue.active_workspace_id.as_deref() else {
+        return Ok(WorkspaceSessionSnapshot { catalogue, todo_file: None, warning: None });
+    };
+    let workspace = catalogue
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == active_workspace_id)
+        .cloned()
+        .expect("validated catalogue has an active workspace");
+
+    match load_workspace(workspace) {
+        Ok(result) => Ok(WorkspaceSessionSnapshot {
+            catalogue,
+            todo_file: Some(result.todo_file),
+            warning: None,
+        }),
+        Err(error) => Ok(WorkspaceSessionSnapshot {
+            catalogue,
+            todo_file: None,
+            warning: Some(format!("Saved workspace could not be opened: {error}")),
+        }),
+    }
+}
+
+fn switch_workspace_at_path(
     catalogue_path: PathBuf,
     workspace_id: String,
-) -> Result<WorkspaceLoadResult, WorkspaceCatalogueError> {
+) -> Result<WorkspaceSessionSnapshot, WorkspaceCatalogueError> {
     let mut catalogue = load_workspace_catalogue_from_path(catalogue_path.clone())?;
     let workspace = catalogue
         .workspaces
@@ -97,7 +129,11 @@ fn open_workspace_at_path(
     catalogue.active_workspace_id = Some(result.workspace.id.clone());
     save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
 
-    Ok(result)
+    Ok(WorkspaceSessionSnapshot {
+        catalogue,
+        todo_file: Some(result.todo_file),
+        warning: None,
+    })
 }
 
 fn delete_workspace_at_path(
@@ -127,7 +163,7 @@ pub fn create_workspace(
     name: String,
     color: String,
     todo_path: String,
-) -> Result<WorkspaceLoadResult, String> {
+) -> Result<WorkspaceSessionSnapshot, String> {
     create_workspace_at_path(workspace_catalogue_path(&app)?, name, color, todo_path)
         .map_err(|error| error.to_string())
 }
@@ -137,7 +173,7 @@ fn create_workspace_at_path(
     name: String,
     color: String,
     todo_path: String,
-) -> Result<WorkspaceLoadResult, WorkspaceCatalogueError> {
+) -> Result<WorkspaceSessionSnapshot, WorkspaceCatalogueError> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err(WorkspaceCatalogueError::Invalid(
@@ -188,18 +224,24 @@ fn create_workspace_at_path(
     catalogue.workspaces.push(workspace.clone());
     save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
 
-    Ok(WorkspaceLoadResult {
+    Ok(WorkspaceSessionSnapshot {
+        catalogue,
+        todo_file: Some(todo_file),
+        warning: None,
+    })
+}
+
+fn load_workspace(workspace: Workspace) -> Result<LoadedWorkspace, LoadError> {
+    let todo_file = load_todo_file(workspace.todo_path.clone())?;
+    Ok(LoadedWorkspace {
         workspace,
         todo_file,
     })
 }
 
-fn load_workspace(workspace: Workspace) -> Result<WorkspaceLoadResult, LoadError> {
-    let todo_file = load_todo_file(workspace.todo_path.clone())?;
-    Ok(WorkspaceLoadResult {
-        workspace,
-        todo_file,
-    })
+struct LoadedWorkspace {
+    workspace: Workspace,
+    todo_file: TodoFile,
 }
 
 fn validate_catalogue(catalogue: &WorkspaceCatalogue) -> Result<(), WorkspaceCatalogueError> {
@@ -417,6 +459,60 @@ mod tests {
     }
 
     #[test]
+    fn restoring_the_active_workspace_returns_one_snapshot_without_rewriting_the_catalogue() {
+        let directory = unique_temp_dir("restore-workspace");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let todo_path = directory.join("work.todo");
+        std::fs::write(&todo_path, "Resume work").unwrap();
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &todo_path.to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(work.id.clone()),
+            workspaces: vec![work],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let snapshot = restore_workspace_session_at_path(catalogue_path.clone()).unwrap();
+
+        assert_eq!(snapshot.catalogue, catalogue);
+        assert_eq!(snapshot.todo_file.unwrap().path, todo_path.to_string_lossy());
+        assert_eq!(snapshot.warning, None);
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn restoring_an_unreadable_active_todo_file_preserves_the_catalogue_with_a_warning() {
+        let directory = unique_temp_dir("restore-unreadable-todo");
+        std::fs::create_dir_all(&directory).unwrap();
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let work = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &directory.join("missing.todo").to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(work.id.clone()),
+            workspaces: vec![work],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+
+        let snapshot = restore_workspace_session_at_path(catalogue_path.clone()).unwrap();
+
+        assert_eq!(snapshot.catalogue, catalogue);
+        assert_eq!(snapshot.todo_file, None);
+        assert!(snapshot.warning.unwrap().contains("Saved workspace could not be opened"));
+        assert_eq!(load_workspace_catalogue_from_path(catalogue_path).unwrap(), catalogue);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn opening_a_workspace_persists_it_as_active_only_after_its_todo_file_loads() {
         let directory = unique_temp_dir("open-workspace");
         std::fs::create_dir_all(&directory).unwrap();
@@ -442,10 +538,10 @@ mod tests {
         };
         save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
 
-        let result = open_workspace_at_path(catalogue_path.clone(), personal.id.clone()).unwrap();
+        let result = switch_workspace_at_path(catalogue_path.clone(), personal.id.clone()).unwrap();
 
-        assert_eq!(result.workspace, personal);
-        assert_eq!(result.todo_file.path, personal_todo_path.to_string_lossy());
+        assert_eq!(result.catalogue.active_workspace_id, Some(personal.id.clone()));
+        assert_eq!(result.todo_file.unwrap().path, personal_todo_path.to_string_lossy());
         assert_eq!(
             load_workspace_catalogue_from_path(catalogue_path)
                 .unwrap()
@@ -477,7 +573,7 @@ mod tests {
         };
         save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
 
-        let error = open_workspace_at_path(catalogue_path.clone(), unavailable.id).unwrap_err();
+        let error = switch_workspace_at_path(catalogue_path.clone(), unavailable.id).unwrap_err();
 
         assert!(error.to_string().contains("failed to load Todo file"));
         assert_eq!(
@@ -604,14 +700,15 @@ mod tests {
         .unwrap();
 
         let catalogue = load_workspace_catalogue_from_path(catalogue_path).unwrap();
-        assert_eq!(result.workspace.name, "Work");
-        assert_eq!(result.workspace.todo_path, todo_path.to_string_lossy());
-        assert_eq!(result.todo_file.items.len(), 1);
+        let created = result.catalogue.workspaces.first().unwrap();
+        assert_eq!(created.name, "Work");
+        assert_eq!(created.todo_path, todo_path.to_string_lossy());
+        assert_eq!(result.todo_file.unwrap().items.len(), 1);
         assert_eq!(
             catalogue.active_workspace_id.as_deref(),
-            Some(result.workspace.id.as_str())
+            Some(created.id.as_str())
         );
-        assert_eq!(catalogue.workspaces, vec![result.workspace]);
+        assert_eq!(catalogue.workspaces, result.catalogue.workspaces);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

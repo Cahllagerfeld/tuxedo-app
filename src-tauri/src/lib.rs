@@ -38,9 +38,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             parse_todo_file,
-            workspace::load_workspace_catalogue,
             workspace::save_workspace_catalogue,
-            workspace::open_workspace,
+            workspace::restore_workspace_session,
+            workspace::switch_workspace,
             workspace::delete_workspace,
             workspace::create_workspace
         ])

@@ -1,5 +1,8 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
-import { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
+import {
+	InMemoryWorkspaceLifecycleAdapter,
+	WorkspaceState,
+} from "$lib/modules/workspace/state/workspace-state.svelte";
 import { describe, expect, it } from "vitest";
 import { TodoViewState } from "./todo-view-state.svelte";
 
@@ -64,6 +67,22 @@ const todoFile: TodoFile = {
 	],
 };
 
+const workspace = {
+	id: "550e8400-e29b-41d4-a716-446655440000",
+	name: "Work",
+	color: "blue" as const,
+	todo_path: "/tmp/todo.txt",
+	created_at: "2026-07-10T10:00:00+00:00",
+};
+
+function snapshot(todo_file: typeof todoFile) {
+	return {
+		catalogue: { version: 1 as const, active_workspace_id: workspace.id, workspaces: [workspace] },
+		todo_file,
+		warning: null,
+	};
+}
+
 describe("TodoViewState", () => {
 	it("starts empty before a workspace todo file is loaded", () => {
 		const workspace = new WorkspaceState();
@@ -82,11 +101,12 @@ describe("TodoViewState", () => {
 		expect(view.availablePriorities).toEqual([]);
 	});
 
-	it("derives items, skipped lines, counts, and sorted facets from workspace data", () => {
-		const workspace = new WorkspaceState();
-		const view = new TodoViewState(workspace);
-
-		workspace.todoFile = todoFile;
+	it("derives items, skipped lines, counts, and sorted facets from a loaded Todo file", async () => {
+		const workspaceState = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({ restore: snapshot(todoFile) })
+		);
+		const view = new TodoViewState(workspaceState);
+		await workspaceState.restore();
 
 		expect(view.items).toHaveLength(4);
 		expect(view.skipped).toEqual(todoFile.skipped);
@@ -101,18 +121,18 @@ describe("TodoViewState", () => {
 		expect(view.availablePriorities).toEqual(["A", "B", "C"]);
 	});
 
-	it("reacts when the workspace todo file is replaced", () => {
-		const workspace = new WorkspaceState();
-		const view = new TodoViewState(workspace);
-
-		workspace.todoFile = todoFile;
+	it("reacts when the loaded Todo file is replaced", async () => {
+		const emptyTodo = { path: workspace.todo_path, items: [], skipped: [] };
+		const workspaceState = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: snapshot(todoFile),
+				switchWorkspace: snapshot(emptyTodo),
+			})
+		);
+		const view = new TodoViewState(workspaceState);
+		await workspaceState.restore();
 		expect(view.totalCount).toBe(4);
-
-		workspace.todoFile = {
-			path: "/tmp/empty.txt",
-			items: [],
-			skipped: [],
-		};
+		await workspaceState.open(workspace.id);
 
 		expect(view.items).toEqual([]);
 		expect(view.totalCount).toBe(0);

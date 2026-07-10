@@ -12,6 +12,7 @@
 		<WorkspaceSwitcher
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
+			disabled={appState.workspace.isOperating}
 			selectWorkspace={appState.workspace.open}
 			deleteWorkspace={appState.workspace.delete}
 			openCreationDialog={() => {
@@ -22,6 +23,7 @@
 	<WorkspaceCreationDialog
 		bind:this={creationDialog}
 		showTrigger={false}
+		disabled={appState.workspace.isOperating}
 		createWorkspace={appState.workspace.create}
 	/>
 </header>

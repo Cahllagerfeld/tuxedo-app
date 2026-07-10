@@ -56,6 +56,21 @@ describe("WorkspaceSwitcher", () => {
 		expect(openCreationDialog).toHaveBeenCalledOnce();
 	});
 
+	it("disables its controls while a lifecycle operation is running", async () => {
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+			disabled: true,
+		});
+
+		await expect
+			.element(page.getByRole("button", { name: "Select workspace: Work" }))
+			.toBeDisabled();
+	});
+
 	it("requires confirmation before deleting the active workspace", async () => {
 		const deleteWorkspace = vi.fn(async () => {});
 		render(WorkspaceSwitcher, {
