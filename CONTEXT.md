@@ -15,6 +15,9 @@ _Avoid_: Workspace file, workspace root
 **Todo-file summary**:
 A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
+**Facet**:
+A distinct, locale-sorted collection of exact parsed values for one Todo-item attribute, such as Projects, Contexts, or Priorities. Facets preserve source spelling and do not merge values that differ only by case.
+
 **Project**:
 An exact `+`-prefixed token parsed from a Todo item. Projects with different spelling are distinct.
 

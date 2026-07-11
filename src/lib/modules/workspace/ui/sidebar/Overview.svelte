@@ -14,16 +14,20 @@
 		Overview
 	</h3>
 	<div class="grid grid-cols-2 gap-2">
-		<StatCard label="Open" value={appState.todos.openCount} color="text-foreground" />
-		<StatCard label="Done" value={appState.todos.completedCount} color="text-[var(--completed)]" />
+		<StatCard label="Open" value={appState.todos.counts.open} color="text-foreground" />
+		<StatCard
+			label="Done"
+			value={appState.todos.counts.completed}
+			color="text-[var(--completed)]"
+		/>
 		<StatCard
 			label="Priority"
-			value={appState.todos.priorityCount}
+			value={appState.todos.counts.priority}
 			color="text-[var(--priority-a)]"
 		/>
 		<StatCard
 			label="Projects"
-			value={appState.todos.projectCount}
+			value={appState.todos.counts.projects}
 			color="text-[var(--priority-a)]"
 		/>
 	</div>
