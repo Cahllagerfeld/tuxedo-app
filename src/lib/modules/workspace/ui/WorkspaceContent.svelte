@@ -1,7 +1,9 @@
 <script lang="ts">
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
+	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import { getAppState } from "$lib/app/app-context";
 	import * as Empty from "$lib/shared/ui/empty";
+	import { Button } from "$lib/shared/ui/button";
 
 	const appState = getAppState();
 </script>
@@ -14,12 +16,14 @@
 	<TodoList />
 {:else if !appState.workspace.isLoading}
 	<Empty.Root aria-label="No active workspace">
+		<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
 		<Empty.Header>
 			<Empty.Title>No workspace open</Empty.Title>
 			<Empty.Description
 				>Open or create a Workspace to start working with a Todo file.</Empty.Description
 			>
 		</Empty.Header>
+		<Button onclick={appState.openWorkspaceCreationDialog}>New workspace</Button>
 		{#if appState.workspace.warning}
 			<p role="status">{appState.workspace.warning}</p>
 		{/if}

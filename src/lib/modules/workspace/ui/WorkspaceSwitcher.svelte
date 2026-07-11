@@ -60,18 +60,18 @@
 				{...props}
 				variant="ghost"
 				{disabled}
-				class="max-w-64 gap-1 px-2"
+				class="w-full max-w-full justify-between gap-1 px-2"
 			>
-				<span class="truncate font-mono text-sm">
+				<span class="min-w-0 flex-1 truncate text-left font-mono text-sm">
 					{activeWorkspace?.name ?? "No workspace selected"}
 				</span>
-				<ChevronDown aria-hidden="true" />
+				<ChevronDown class="shrink-0" aria-hidden="true" />
 				<span class="sr-only"
 					>Select workspace: {activeWorkspace?.name ?? "No workspace selected"}</span
 				>
 			</Button>{/snippet}</DropdownMenu.Trigger
 	>
-	<DropdownMenu.Content class="min-w-64">
+	<DropdownMenu.Content class="w-64 max-w-[calc(100vw-2rem)]">
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}
 			{#each sortedWorkspaces as workspace}
@@ -107,8 +107,8 @@
 					isDeleteDialogOpen = true;
 				}}
 			>
-				<Trash2 aria-hidden="true" />
-				Delete {activeWorkspace.name}
+				<Trash2 class="shrink-0" aria-hidden="true" />
+				<span class="min-w-0 flex-1 truncate">Delete {activeWorkspace.name}</span>
 			</DropdownMenu.Item>
 		{/if}
 		<DropdownMenu.Separator />
