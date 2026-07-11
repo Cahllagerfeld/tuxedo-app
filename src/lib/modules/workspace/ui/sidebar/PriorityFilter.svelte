@@ -10,9 +10,7 @@
 
 	let expanded = $state(false);
 
-	const priorities = $derived(
-		[...appState.todos.availablePriorities].sort((left, right) => left.localeCompare(right))
-	);
+	const priorities = $derived(appState.todos.facets.priorities);
 	const visiblePriorities = $derived(priorities.slice(0, visibleLimit));
 	const collapsedPriorities = $derived(priorities.slice(visibleLimit));
 	const hasCollapsedPriorities = $derived(collapsedPriorities.length > 0);

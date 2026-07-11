@@ -9,7 +9,7 @@
 	<!-- <section class="summary" aria-label="Loaded todo file summary">
 		<p><strong>Loaded:</strong> {appState.workspace.todoFile.path}</p>
 		<p>
-			{appState.todos.visibleCount} of {appState.todos.totalCount} parsed items shown,
+			{appState.todos.counts.total} parsed items shown,
 			{appState.todos.skipped.length} skipped lines
 		</p>
 	</section> -->
