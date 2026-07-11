@@ -7,9 +7,8 @@ describe("WorkspaceCreationDialog", () => {
 	it("requires a name and selected Todo file before creation", async () => {
 		const selectFile = vi.fn(async () => "/tmp/work.todo");
 		const createWorkspace = vi.fn(async () => {});
-		render(WorkspaceCreationDialog, { selectFile, createWorkspace });
+		render(WorkspaceCreationDialog, { open: true, selectFile, createWorkspace });
 
-		await page.getByRole("button", { name: "New workspace" }).click();
 		const createButton = page.getByRole("button", { name: "Create workspace" });
 		await expect.element(createButton).toBeDisabled();
 
@@ -28,13 +27,13 @@ describe("WorkspaceCreationDialog", () => {
 
 	it("shows a creation failure inline and lets the user cancel", async () => {
 		render(WorkspaceCreationDialog, {
+			open: true,
 			selectFile: async () => "/tmp/work.todo",
 			createWorkspace: async () => {
 				throw new Error("duplicate workspace name: Work");
 			},
 		});
 
-		await page.getByRole("button", { name: "New workspace" }).click();
 		await page.getByLabelText("Workspace name").fill("Work");
 		await page.getByText("Choose Todo file", { exact: true }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
@@ -47,8 +46,8 @@ describe("WorkspaceCreationDialog", () => {
 	});
 
 	it("disables creation while a lifecycle operation is running", async () => {
-		render(WorkspaceCreationDialog, { createWorkspace: vi.fn(), disabled: true });
+		render(WorkspaceCreationDialog, { open: true, createWorkspace: vi.fn(), disabled: true });
 
-		await expect.element(page.getByRole("button", { name: "New workspace" })).toBeDisabled();
+		await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
 	});
 });

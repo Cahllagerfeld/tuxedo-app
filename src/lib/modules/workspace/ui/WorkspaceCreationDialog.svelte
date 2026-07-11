@@ -12,9 +12,9 @@
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {
+		open?: boolean;
 		selectFile?: () => Promise<string | null>;
 		createWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
-		showTrigger?: boolean;
 		disabled?: boolean;
 	};
 
@@ -80,23 +80,18 @@
 	];
 
 	let {
+		open = $bindable(false),
 		selectFile = selectTodoFile,
 		createWorkspace,
-		showTrigger = true,
 		disabled = false,
 	}: Props = $props();
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
 	const { form: formData } = form;
-	let isOpen = $state(false);
 	let serverError = $state("");
 	let isCreating = $state(false);
 	const canCreate = $derived(
 		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !isCreating && !disabled
 	);
-
-	export function openDialog() {
-		isOpen = true;
-	}
 
 	async function selectTodoFile(): Promise<string | null> {
 		const selected = await openFileDialog({
@@ -128,7 +123,7 @@
 		serverError = "";
 		try {
 			await createWorkspace(result.data);
-			isOpen = false;
+			open = false;
 			resetForm();
 		} catch (error) {
 			serverError = error instanceof Error ? error.message : String(error);
@@ -138,16 +133,7 @@
 	}
 </script>
 
-<Dialog.Root bind:open={isOpen}>
-	<Dialog.Trigger
-		>{#snippet child({ props })}<Button
-				{...props}
-				class={showTrigger ? undefined : "hidden"}
-				aria-hidden={!showTrigger}
-				{disabled}
-				tabindex={showTrigger ? undefined : -1}>New workspace</Button
-			>{/snippet}</Dialog.Trigger
-	>
+<Dialog.Root bind:open>
 	<Dialog.Content showCloseButton={false}>
 		<Dialog.Header
 			><Dialog.Title>Create workspace</Dialog.Title><Dialog.Description
@@ -219,7 +205,7 @@
 							variant="outline"
 							disabled={isCreating}
 							onclick={() => {
-								isOpen = false;
+								open = false;
 								resetForm();
 							}}>Cancel</Button
 						>{/snippet}</Dialog.Close
