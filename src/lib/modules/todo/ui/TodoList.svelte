@@ -12,7 +12,7 @@
 </script>
 
 {#if todoFile.items.length > 0}
-	<ul aria-label="Todo items" class="-mx-4 divide-y">
+	<ul aria-label="Todo items" class="-mx-4 w-full divide-y">
 		{#each todoFile.items as item (item.line_number)}
 			<li>
 				<TodoItem todo={item} />
