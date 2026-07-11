@@ -1,68 +1,30 @@
 <script lang="ts">
-	import { getAppState } from "$lib/app/app-context";
+	import type { TodoFile } from "$lib/modules/todo/domain/todo";
+	import * as Empty from "$lib/shared/ui/empty";
+	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
 
-	const appState = getAppState();
+	type TodoListProps = {
+		todoFile: TodoFile;
+	};
+
+	let { todoFile }: TodoListProps = $props();
 </script>
 
-{#if appState.workspace.todoFile}
-	<!-- <section class="summary" aria-label="Loaded todo file summary">
-		<p><strong>Loaded:</strong> {appState.workspace.todoFile.path}</p>
-		<p>
-			{appState.todos.counts.total} parsed items shown,
-			{appState.todos.skipped.length} skipped lines
-		</p>
-	</section> -->
-
-	{#if appState.todos.items.length > 0}
-		<ul class="space-y-1">
-			{#each appState.todos.items as item (item.line_number)}
-				<li>
-					<TodoItem todo={item} />
-					<!-- <div class="todo-main">
-							{#if item.priority}
-								<span class="priority">({item.priority})</span>
-							{/if}
-							<span>{item.description}</span>
-						</div>
-
-						<div class="todo-meta">
-							<span>line {item.line_number}</span>
-							{#if item.creation_date}
-								<span>created {item.creation_date}</span>
-							{/if}
-							{#if item.completion_date}
-								<span>completed {item.completion_date}</span>
-							{/if}
-							{#each item.projects as project (project)}
-								<span>+{project}</span>
-							{/each}
-							{#each item.contexts as context (context)}
-								<span>@{context}</span>
-							{/each}
-							{#each Object.entries(item.metadata) as [key, value] (key)}
-								<span>{key}:{value}</span>
-							{/each}
-						</div> -->
-				</li>
-			{/each}
-		</ul>
-	{:else}
-		<p>No valid todo items were found.</p>
-	{/if}
-
-	<!-- {#if appState.todos.skipped.length > 0}
-		<section class="skipped">
-			<h2>Skipped lines</h2>
-			<ul>
-				{#each appState.todos.skipped as skipped (skipped.line_number)}
-					<li>
-						<strong>Line {skipped.line_number}:</strong>
-						{skipped.reason}
-						<code>{skipped.raw}</code>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if} -->
+{#if todoFile.items.length > 0}
+	<ul aria-label="Todo items" class="-mx-4 w-full divide-y">
+		{#each todoFile.items as item (item.line_number)}
+			<li>
+				<TodoItem todo={item} />
+			</li>
+		{/each}
+	</ul>
+{:else}
+	<Empty.Root aria-label="No valid Todo items" class="min-h-full border-0 rounded-none">
+		<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
+		<Empty.Header>
+			<Empty.Title>No valid Todo items</Empty.Title>
+			<Empty.Description>This Todo file did not contain any parsed Todo items.</Empty.Description>
+		</Empty.Header>
+	</Empty.Root>
 {/if}

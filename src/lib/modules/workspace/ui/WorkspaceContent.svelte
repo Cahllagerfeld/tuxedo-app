@@ -12,8 +12,8 @@
 	<p role="alert">{appState.workspace.error}</p>
 {/if}
 
-{#if appState.workspace.activeWorkspace}
-	<TodoList />
+{#if appState.workspace.todoFile}
+	<TodoList todoFile={appState.workspace.todoFile} />
 {:else if !appState.workspace.isLoading}
 	<Empty.Root aria-label="No active workspace">
 		<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>

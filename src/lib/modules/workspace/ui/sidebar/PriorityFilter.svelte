@@ -53,16 +53,14 @@
 
 		<div class="grid grid-cols-3 gap-1">
 			{#each visiblePriorities as priority (priority)}
-				<button
-					type="button"
-					tabindex="-1"
+				<span
 					class={cn(
-						"w-full cursor-default rounded py-1.5 font-mono text-xs",
+						"flex w-full cursor-default items-center justify-center rounded py-1.5 font-mono text-xs",
 						getPriorityClass(priority)
 					)}
 				>
 					({priority})
-				</button>
+				</span>
 			{/each}
 		</div>
 
@@ -70,16 +68,14 @@
 			<Collapsible.Content>
 				<div class="grid grid-cols-3 gap-1">
 					{#each collapsedPriorities as priority (priority)}
-						<button
-							type="button"
-							tabindex="-1"
+						<span
 							class={cn(
-								"w-full cursor-default rounded py-1.5 font-mono text-xs",
+								"flex w-full cursor-default items-center justify-center rounded py-1.5 font-mono text-xs",
 								getPriorityClass(priority)
 							)}
 						>
 							({priority})
-						</button>
+						</span>
 					{/each}
 				</div>
 			</Collapsible.Content>
