@@ -15,14 +15,48 @@ export const workspaceCatalogueSchema = z.object({
 	workspaces: z.array(workspaceSchema),
 });
 
-export const workspaceLoadResultSchema = z.object({
-	workspace: workspaceSchema,
-	todo_file: todoFileSchema,
-});
+export const workspaceSessionSnapshotSchema = z
+	.object({
+		catalogue: workspaceCatalogueSchema,
+		todo_file: todoFileSchema.nullable(),
+		warning: z.string().nullable(),
+	})
+	.superRefine(({ catalogue, todo_file, warning }, context) => {
+		const activeWorkspace = catalogue.workspaces.find(
+			({ id }) => id === catalogue.active_workspace_id
+		);
+		if (!activeWorkspace) {
+			if (todo_file || warning) {
+				context.addIssue({
+					code: "custom",
+					message: "An inactive catalogue cannot include a Todo file or warning",
+				});
+			}
+			return;
+		}
+		if (!todo_file) {
+			if (!warning) {
+				context.addIssue({
+					code: "custom",
+					message: "An active workspace requires a Todo file or restoration warning",
+				});
+			}
+			return;
+		}
+		if (warning) {
+			context.addIssue({ code: "custom", message: "A loaded Todo file cannot include a warning" });
+		}
+		if (activeWorkspace.todo_path !== todo_file.path) {
+			context.addIssue({
+				code: "custom",
+				message: "Todo file must belong to the active workspace",
+			});
+		}
+	});
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type WorkspaceCatalogue = z.infer<typeof workspaceCatalogueSchema>;
-export type WorkspaceLoadResult = z.infer<typeof workspaceLoadResultSchema>;
+export type WorkspaceSessionSnapshot = z.infer<typeof workspaceSessionSnapshotSchema>;
 
 function formatSchemaIssues(error: z.ZodError): string {
 	return error.issues
@@ -40,6 +74,6 @@ export function parseWorkspaceCatalogueResponse(response: unknown): WorkspaceCat
 	return parseResponse(workspaceCatalogueSchema, response, "workspace catalogue");
 }
 
-export function parseWorkspaceLoadResponse(response: unknown): WorkspaceLoadResult {
-	return parseResponse(workspaceLoadResultSchema, response, "workspace load");
+export function parseWorkspaceSessionSnapshotResponse(response: unknown): WorkspaceSessionSnapshot {
+	return parseResponse(workspaceSessionSnapshotSchema, response, "workspace session snapshot");
 }

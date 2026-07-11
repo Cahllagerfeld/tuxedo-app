@@ -12,8 +12,35 @@ _Avoid_: Folder, project, profile
 The plain-text todo.txt-format file a Workspace references; it remains the source of truth for its tasks.
 _Avoid_: Workspace file, workspace root
 
+**Todo-file summary**:
+A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
+
+**Project**:
+An exact `+`-prefixed token parsed from a Todo item. Projects with different spelling are distinct.
+
+**Context**:
+An exact `@`-prefixed token parsed from a Todo item. Contexts with different spelling are distinct.
+
+**Skipped line**:
+A non-empty Todo-file line that could not be parsed as a Todo item. It is reported separately from parsed Todo-item counts.
+
+**Priority**:
+An uppercase priority parsed from an incomplete Todo item. A Todo-file summary counts items with a parsed Priority and exposes their distinct values as a sorted facet.
+
 **Active workspace**:
 The most recently successfully selected Workspace and the one the app attempts to open on startup. A failed switch does not change it.
+
+**Workspace session snapshot**:
+The coherent state returned after a Workspace lifecycle operation: the persisted Workspace catalogue and, when a Workspace is successfully opened or created, that active Workspace's loaded Todo file.
+
+**Workspace session**:
+The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
+
+**Workspace session restoration**:
+The startup attempt to return the Workspace session snapshot for the saved Active workspace. If its Todo file cannot open, the Workspace catalogue remains available and the app enters the Empty state with a warning.
+
+**Workspace operation failure**:
+An unsuccessful user-initiated Workspace creation, switch, or deletion. It reports an error notice, clears on the next Workspace operation, and leaves the current Workspace session snapshot unchanged.
 
 **Workspace replacement**:
 The MVP remedy for a saved Workspace whose name, color, or Todo file must change: delete it, then create a new Workspace. Direct editing is not part of the MVP.

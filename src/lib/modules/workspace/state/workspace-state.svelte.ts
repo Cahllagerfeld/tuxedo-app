@@ -1,153 +1,207 @@
-import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import {
 	createWorkspace,
 	deleteWorkspace,
-	loadWorkspaceCatalogue,
-	openWorkspace,
+	restoreWorkspaceSession,
+	switchWorkspace,
 } from "$lib/modules/workspace/api/workspace-api";
-import type {
-	Workspace,
-	WorkspaceCatalogue,
-	WorkspaceLoadResult,
+import {
+	parseWorkspaceCatalogueResponse,
+	parseWorkspaceSessionSnapshotResponse,
+	type Workspace,
+	type WorkspaceCatalogue,
+	type WorkspaceSessionSnapshot,
 } from "$lib/modules/workspace/domain/workspace";
+import type { TodoFile } from "$lib/modules/todo/domain/todo";
 
-type WorkspaceApi = {
-	loadWorkspaceCatalogue: () => Promise<WorkspaceCatalogue>;
-	openWorkspace: (workspaceId: string) => Promise<WorkspaceLoadResult>;
-	deleteWorkspace: (workspaceId: string) => Promise<WorkspaceCatalogue>;
-	createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLoadResult>;
-};
+export type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 
-export type CreateWorkspaceInput = {
-	name: string;
-	color: Workspace["color"];
-	todoPath: string;
-};
+export type WorkspaceSession =
+	| { status: "loading" }
+	| { status: "unavailable"; error: string }
+	| { status: "empty"; catalogue: WorkspaceCatalogue; warning: string | null }
+	| { status: "ready"; catalogue: WorkspaceCatalogue; todoFile: TodoFile };
 
-const workspaceApi: WorkspaceApi = {
-	loadWorkspaceCatalogue,
-	openWorkspace,
+export type WorkspaceNotice = { kind: "error"; message: string };
+
+export interface WorkspaceLifecycleAdapter {
+	restore(): Promise<unknown>;
+	create(input: CreateWorkspaceInput): Promise<unknown>;
+	switchWorkspace(workspaceId: string): Promise<unknown>;
+	deleteWorkspace(workspaceId: string): Promise<unknown>;
+}
+
+const tauriWorkspaceLifecycleAdapter: WorkspaceLifecycleAdapter = {
+	restore: restoreWorkspaceSession,
+	create: createWorkspace,
+	switchWorkspace,
 	deleteWorkspace,
-	createWorkspace,
 };
+
+type InMemoryOutcome<T, A = void> = T | Error | Promise<T> | ((argument: A) => T | Promise<T>);
+type InMemoryOutcomes = Partial<{
+	restore: InMemoryOutcome<unknown>;
+	create: InMemoryOutcome<unknown, CreateWorkspaceInput>;
+	switchWorkspace: InMemoryOutcome<unknown, string>;
+	deleteWorkspace: InMemoryOutcome<unknown, { workspaceId: string }>;
+}>;
+
+/** An adapter used by tests to drive lifecycle results without mutating session internals. */
+export class InMemoryWorkspaceLifecycleAdapter implements WorkspaceLifecycleAdapter {
+	constructor(private readonly outcomes: InMemoryOutcomes) {}
+
+	restore = () => resolveOutcome(this.outcomes.restore);
+	create = (input: CreateWorkspaceInput) => resolveOutcome(this.outcomes.create, input);
+	switchWorkspace = (workspaceId: string) =>
+		resolveOutcome(this.outcomes.switchWorkspace, workspaceId);
+	deleteWorkspace = (workspaceId: string) =>
+		resolveOutcome(this.outcomes.deleteWorkspace, { workspaceId });
+}
 
 export class WorkspaceState {
-	catalogue = $state.raw<WorkspaceCatalogue | null>(null);
-	activeWorkspace = $state.raw<Workspace | null>(null);
-	todoFile = $state.raw<TodoFile | null>(null);
-	error = $state("");
-	warning = $state("");
-	isLoading = $state(false);
+	session = $state.raw<WorkspaceSession>({ status: "loading" });
+	notice = $state.raw<WorkspaceNotice | null>(null);
+	isOperating = $state(false);
 
-	private readonly api: WorkspaceApi;
+	constructor(
+		private readonly adapter: WorkspaceLifecycleAdapter = tauriWorkspaceLifecycleAdapter
+	) {}
 
-	constructor(api: Partial<WorkspaceApi> = {}) {
-		this.api = { ...workspaceApi, ...api };
+	get catalogue(): WorkspaceCatalogue | null {
+		return this.session.status === "empty" || this.session.status === "ready"
+			? this.session.catalogue
+			: null;
+	}
+
+	get activeWorkspace(): Workspace | null {
+		const catalogue = this.catalogue;
+		return catalogue?.workspaces.find(({ id }) => id === catalogue.active_workspace_id) ?? null;
+	}
+
+	get todoFile(): TodoFile | null {
+		return this.session.status === "ready" ? this.session.todoFile : null;
+	}
+
+	get error(): string {
+		return this.session.status === "unavailable"
+			? this.session.error
+			: (this.notice?.message ?? "");
+	}
+
+	get warning(): string {
+		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
+	}
+
+	get isLoading(): boolean {
+		return this.session.status === "loading";
 	}
 
 	restore = async () => {
-		this.error = "";
-		this.warning = "";
-		this.isLoading = true;
-
+		if (!this.beginOperation())
+			throw new Error("A Workspace lifecycle operation is already running");
 		try {
-			this.catalogue = await this.api.loadWorkspaceCatalogue();
-			const activeWorkspaceId = this.catalogue.active_workspace_id;
-			if (!activeWorkspaceId) {
-				this.clearLoadedWorkspace();
-				return;
-			}
-
-			try {
-				this.applyLoadResult(await this.api.openWorkspace(activeWorkspaceId));
-			} catch (unknownError) {
-				this.clearLoadedWorkspace();
-				this.warning = `Saved workspace could not be opened: ${formatUnknownError(unknownError)}`;
-			}
-		} catch (unknownError) {
-			this.clearLoadedWorkspace();
-			this.error = formatUnknownError(unknownError);
+			this.applySnapshot(parseWorkspaceSessionSnapshotResponse(await this.adapter.restore()));
+		} catch (error) {
+			this.session = { status: "unavailable", error: formatUnknownError(error) };
 		} finally {
-			this.isLoading = false;
+			this.isOperating = false;
 		}
 	};
 
 	create = async (input: CreateWorkspaceInput) => {
-		this.error = "";
-		this.warning = "";
-		this.isLoading = true;
-
+		if (!this.beginOperation())
+			throw new Error("A Workspace lifecycle operation is already running");
 		try {
-			const result = await this.api.createWorkspace(input);
-			this.catalogue = {
-				version: 1,
-				active_workspace_id: result.workspace.id,
-				workspaces: [
-					...(this.catalogue?.workspaces.filter(({ id }) => id !== result.workspace.id) ?? []),
-					result.workspace,
-				],
-			};
-			this.applyLoadResult(result);
-		} catch (unknownError) {
-			this.error = formatUnknownError(unknownError);
-			throw unknownError;
+			this.applySnapshot(parseWorkspaceSessionSnapshotResponse(await this.adapter.create(input)));
+		} catch (error) {
+			this.attachOperationError(error);
+			throw error;
 		} finally {
-			this.isLoading = false;
+			this.isOperating = false;
 		}
 	};
 
 	open = async (workspaceId: string) => {
-		this.error = "";
-		this.warning = "";
-		this.isLoading = true;
-
+		if (!this.beginOperation())
+			throw new Error("A Workspace lifecycle operation is already running");
 		try {
-			const result = await this.api.openWorkspace(workspaceId);
-			if (this.catalogue) {
-				this.catalogue = {
-					...this.catalogue,
-					active_workspace_id: result.workspace.id,
-					workspaces: this.catalogue.workspaces.map((workspace) =>
-						workspace.id === result.workspace.id ? result.workspace : workspace
-					),
-				};
-			}
-			this.applyLoadResult(result);
-		} catch (unknownError) {
-			this.error = `Could not open workspace: ${formatUnknownError(unknownError)}`;
+			this.applySnapshot(
+				parseWorkspaceSessionSnapshotResponse(await this.adapter.switchWorkspace(workspaceId))
+			);
+		} catch (error) {
+			this.attachOperationError(error, "Could not open workspace");
 		} finally {
-			this.isLoading = false;
+			this.isOperating = false;
 		}
 	};
 
 	delete = async (workspaceId: string) => {
-		this.error = "";
-		this.warning = "";
-		this.isLoading = true;
-
+		if (!this.beginOperation())
+			throw new Error("A Workspace lifecycle operation is already running");
 		try {
-			this.catalogue = await this.api.deleteWorkspace(workspaceId);
-			if (this.activeWorkspace?.id === workspaceId) {
-				this.clearLoadedWorkspace();
-			}
-		} catch (unknownError) {
-			this.error = `Could not delete workspace: ${formatUnknownError(unknownError)}`;
+			const catalogue = parseWorkspaceCatalogueResponse(
+				await this.adapter.deleteWorkspace(workspaceId)
+			);
+			this.assertDeleteResultRetainsLoadedTodoFile(catalogue);
+			this.session = catalogue.active_workspace_id
+				? this.session.status === "ready" &&
+					this.session.catalogue.active_workspace_id === catalogue.active_workspace_id
+					? { status: "ready", catalogue, todoFile: this.session.todoFile }
+					: { status: "empty", catalogue, warning: null }
+				: { status: "empty", catalogue, warning: null };
+		} catch (error) {
+			this.attachOperationError(error, "Could not delete workspace");
 		} finally {
-			this.isLoading = false;
+			this.isOperating = false;
 		}
 	};
 
-	private applyLoadResult(result: WorkspaceLoadResult) {
-		this.activeWorkspace = result.workspace;
-		this.todoFile = result.todo_file;
+	private beginOperation(): boolean {
+		if (this.isOperating) return false;
+		this.isOperating = true;
+		this.notice = null;
+		return true;
 	}
 
-	private clearLoadedWorkspace() {
-		this.activeWorkspace = null;
-		this.todoFile = null;
+	private applySnapshot(snapshot: WorkspaceSessionSnapshot) {
+		if (snapshot.todo_file) {
+			this.session = {
+				status: "ready",
+				catalogue: snapshot.catalogue,
+				todoFile: snapshot.todo_file,
+			};
+			return;
+		}
+		this.session = { status: "empty", catalogue: snapshot.catalogue, warning: snapshot.warning };
+	}
+
+	private attachOperationError(error: unknown, prefix?: string) {
+		const message = formatUnknownError(error);
+		this.notice = { kind: "error", message: prefix ? `${prefix}: ${message}` : message };
+	}
+
+	private assertDeleteResultRetainsLoadedTodoFile(catalogue: WorkspaceCatalogue) {
+		if (this.session.status !== "ready") return;
+		if (catalogue.active_workspace_id !== this.session.catalogue.active_workspace_id) return;
+		const activeWorkspace = catalogue.workspaces.find(
+			({ id }) => id === catalogue.active_workspace_id
+		);
+		if (activeWorkspace?.todo_path !== this.session.todoFile.path) {
+			throw new Error("Unexpected workspace deletion response from Rust: active Todo file changed");
+		}
 	}
 }
 
-function formatUnknownError(unknownError: unknown): string {
-	return unknownError instanceof Error ? unknownError.message : String(unknownError);
+async function resolveOutcome<T, A>(
+	outcome: InMemoryOutcome<T, A> | undefined,
+	argument?: A
+): Promise<T> {
+	if (outcome instanceof Error) throw outcome;
+	if (typeof outcome === "function")
+		return (outcome as (argument: A) => T | Promise<T>)(argument as A);
+	if (outcome === undefined) throw new Error("No in-memory lifecycle outcome was configured");
+	return outcome;
+}
+
+function formatUnknownError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }

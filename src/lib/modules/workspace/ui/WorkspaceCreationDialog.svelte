@@ -15,6 +15,7 @@
 		selectFile?: () => Promise<string | null>;
 		createWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
 		showTrigger?: boolean;
+		disabled?: boolean;
 	};
 
 	const schema = z.object({
@@ -78,14 +79,19 @@
 		},
 	];
 
-	let { selectFile = selectTodoFile, createWorkspace, showTrigger = true }: Props = $props();
+	let {
+		selectFile = selectTodoFile,
+		createWorkspace,
+		showTrigger = true,
+		disabled = false,
+	}: Props = $props();
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
 	const { form: formData } = form;
 	let isOpen = $state(false);
 	let serverError = $state("");
 	let isCreating = $state(false);
 	const canCreate = $derived(
-		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !isCreating
+		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !isCreating && !disabled
 	);
 
 	export function openDialog() {
@@ -138,6 +144,7 @@
 				{...props}
 				class={showTrigger ? undefined : "hidden"}
 				aria-hidden={!showTrigger}
+				{disabled}
 				tabindex={showTrigger ? undefined : -1}>New workspace</Button
 			>{/snippet}</Dialog.Trigger
 	>
@@ -154,6 +161,7 @@
 							{...props}
 							bind:value={$formData.name}
 							aria-label="Workspace name"
+							{disabled}
 							autocomplete="off"
 						/>{/snippet}</Form.Control
 				>
@@ -165,6 +173,7 @@
 							{...props}
 							type="button"
 							variant="outline"
+							{disabled}
 							onclick={chooseFile}>Choose Todo file</Button
 						>{/snippet}</Form.Control
 				>
@@ -192,6 +201,7 @@
 							)}
 							aria-label={option.label}
 							aria-pressed={$formData.color === option.token}
+							{disabled}
 							onclick={() => ($formData.color = option.token)}
 							><span class="sr-only">{option.label}</span></Button
 						>{/each}

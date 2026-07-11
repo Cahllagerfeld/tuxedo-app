@@ -13,6 +13,7 @@
 		selectWorkspace: (workspaceId: string) => Promise<void>;
 		deleteWorkspace: (workspaceId: string) => Promise<void>;
 		openCreationDialog: () => void;
+		disabled?: boolean;
 	};
 
 	const colorClasses: Record<Workspace["color"], string> = {
@@ -32,6 +33,7 @@
 		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog,
+		disabled = false,
 	}: Props = $props();
 	let isDeleteDialogOpen = $state(false);
 	let workspaceToDelete = $state<Workspace | null>(null);
@@ -54,7 +56,12 @@
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		>{#snippet child({ props })}<Button {...props} variant="ghost" class="max-w-64 gap-1 px-2">
+		>{#snippet child({ props })}<Button
+				{...props}
+				variant="ghost"
+				{disabled}
+				class="max-w-64 gap-1 px-2"
+			>
 				<span class="truncate font-mono text-sm">
 					{activeWorkspace?.name ?? "No workspace selected"}
 				</span>
@@ -73,6 +80,7 @@
 						? `${workspace.name}, active`
 						: workspace.name}
 					aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
+					{disabled}
 					onclick={() => void selectWorkspace(workspace.id)}
 				>
 					<span
@@ -92,6 +100,7 @@
 			<DropdownMenu.Separator />
 			<DropdownMenu.Item
 				variant="destructive"
+				{disabled}
 				aria-label={`Delete ${activeWorkspace.name}`}
 				onclick={() => {
 					workspaceToDelete = activeWorkspace;
@@ -103,7 +112,7 @@
 			</DropdownMenu.Item>
 		{/if}
 		<DropdownMenu.Separator />
-		<DropdownMenu.Item onclick={openCreationDialog}>
+		<DropdownMenu.Item {disabled} onclick={openCreationDialog}>
 			<Plus aria-hidden="true" />
 			New workspace
 		</DropdownMenu.Item>

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseWorkspaceCatalogueResponse,
-	parseWorkspaceLoadResponse,
+	parseWorkspaceSessionSnapshotResponse,
 	workspaceCatalogueSchema,
-	workspaceLoadResultSchema,
+	workspaceSessionSnapshotSchema,
 	type WorkspaceCatalogue,
-	type WorkspaceLoadResult,
+	type WorkspaceSessionSnapshot,
 } from "./workspace";
 
 const workspace = {
@@ -22,9 +22,10 @@ const catalogue: WorkspaceCatalogue = {
 	workspaces: [workspace],
 };
 
-const loadResult: WorkspaceLoadResult = {
-	workspace,
+const snapshot: WorkspaceSessionSnapshot = {
+	catalogue,
 	todo_file: { path: workspace.todo_path, items: [], skipped: [] },
+	warning: null,
 };
 
 describe("workspace response schemas", () => {
@@ -37,20 +38,25 @@ describe("workspace response schemas", () => {
 
 	it("accepts a catalogue and loaded exact Todo file", () => {
 		expect(workspaceCatalogueSchema.safeParse(catalogue).success).toBe(true);
-		expect(workspaceLoadResultSchema.safeParse(loadResult).success).toBe(true);
+		expect(workspaceSessionSnapshotSchema.safeParse(snapshot).success).toBe(true);
 	});
 
 	it("returns validated Rust responses", () => {
 		expect(parseWorkspaceCatalogueResponse(catalogue)).toEqual(catalogue);
-		expect(parseWorkspaceLoadResponse(loadResult)).toEqual(loadResult);
+		expect(parseWorkspaceSessionSnapshotResponse(snapshot)).toEqual(snapshot);
 	});
 
 	it("reports schema drift clearly", () => {
 		expect(() =>
 			parseWorkspaceCatalogueResponse({ version: 1, active_workspace_id: null, workspaces: [{}] })
 		).toThrow(/Unexpected workspace catalogue response from Rust: workspaces.0.id:/);
-		expect(() => parseWorkspaceLoadResponse({ ...loadResult, todo_file: null })).toThrow(
-			/Unexpected workspace load response from Rust: todo_file:/
+		expect(() =>
+			parseWorkspaceSessionSnapshotResponse({
+				...snapshot,
+				todo_file: { path: "/tmp/other.todo", items: [], skipped: [] },
+			})
+		).toThrow(
+			/Unexpected workspace session snapshot response from Rust: response: Todo file must belong to the active workspace/
 		);
 	});
 });

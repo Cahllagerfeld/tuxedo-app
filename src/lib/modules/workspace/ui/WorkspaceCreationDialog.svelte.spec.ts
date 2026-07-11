@@ -45,4 +45,10 @@ describe("WorkspaceCreationDialog", () => {
 		await page.getByRole("button", { name: "Cancel" }).click();
 		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 	});
+
+	it("disables creation while a lifecycle operation is running", async () => {
+		render(WorkspaceCreationDialog, { createWorkspace: vi.fn(), disabled: true });
+
+		await expect.element(page.getByRole("button", { name: "New workspace" })).toBeDisabled();
+	});
 });
