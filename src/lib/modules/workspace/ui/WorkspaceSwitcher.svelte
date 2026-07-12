@@ -43,14 +43,12 @@
 	const activeWorkspace = $derived(workspaces.find(({ id }) => id === activeWorkspaceId) ?? null);
 
 	async function confirmDeletion() {
-		try {
-			if (workspaceToDelete) {
-				await deleteWorkspace(workspaceToDelete.id);
-			}
-		} finally {
-			isDeleteDialogOpen = false;
-			workspaceToDelete = null;
-		}
+		if (!workspaceToDelete || disabled) return;
+
+		const workspace = workspaceToDelete;
+		isDeleteDialogOpen = false;
+		workspaceToDelete = null;
+		await deleteWorkspace(workspace.id);
 	}
 </script>
 

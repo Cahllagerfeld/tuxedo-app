@@ -96,4 +96,25 @@ describe("WorkspaceSwitcher", () => {
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 	});
+
+	it("closes its delete confirmation before the deletion lifecycle operation runs", async () => {
+		let releaseDeletion!: () => void;
+		const pendingDeletion = new Promise<void>((resolve) => (releaseDeletion = resolve));
+		const deleteWorkspace = vi.fn(() => pendingDeletion);
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace,
+			openCreationDialog: vi.fn(),
+		});
+
+		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+		await page.getByRole("button", { name: "Delete workspace" }).click();
+
+		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
+		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+		releaseDeletion();
+	});
 });

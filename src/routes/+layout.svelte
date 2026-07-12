@@ -1,8 +1,8 @@
 <script lang="ts">
 	import AppHeader from "@/app/AppHeader.svelte";
+	import ReaderStatusBar from "@/app/ReaderStatusBar.svelte";
 	import Sidebar from "@/modules/workspace/ui/sidebar/index.svelte";
 	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
-	import WorkspaceStatusBar from "@/modules/workspace/ui/WorkspaceStatusBar.svelte";
 	import { setAppState } from "@/app/app-context";
 	import { AppState } from "@/app/app-state.svelte";
 	import * as Resizable from "@/shared/ui/resizable/index";
@@ -27,7 +27,7 @@
 				<Sidebar
 					workspaces={appState.workspace.catalogue?.workspaces ?? []}
 					activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
-					disabled={appState.workspace.isOperating}
+					disabled={appState.workspace.isOperating || appState.workspace.isLoading}
 					selectWorkspace={appState.workspace.open}
 					deleteWorkspace={appState.workspace.delete}
 					openCreationDialog={appState.openWorkspaceCreationDialog}
@@ -45,8 +45,12 @@
 	</main>
 	<WorkspaceCreationDialog
 		bind:open={appState.isWorkspaceCreationDialogOpen}
-		disabled={appState.workspace.isOperating}
+		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
 		createWorkspace={appState.workspace.create}
 	/>
-	<WorkspaceStatusBar />
+	<ReaderStatusBar
+		activeWorkspace={appState.workspace.activeWorkspace}
+		todoFile={appState.workspace.todoFile}
+		todoSummary={appState.todos}
+	/>
 </div>
