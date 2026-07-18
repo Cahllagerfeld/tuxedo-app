@@ -216,4 +216,22 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		});
 		expect(state.notice).toBeNull();
 	});
+
+	it("preserves the current session and reports an error when deletion is rejected", async () => {
+		const state = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: workSnapshot,
+				deleteWorkspace: new Error("workspace does not exist"),
+			})
+		);
+		await state.restore();
+
+		await state.delete(personal.id);
+
+		expect(state.session).toMatchObject({ status: "ready", todoFile: workTodo });
+		expect(state.notice).toEqual({
+			kind: "error",
+			message: "Could not delete workspace: workspace does not exist",
+		});
+	});
 });

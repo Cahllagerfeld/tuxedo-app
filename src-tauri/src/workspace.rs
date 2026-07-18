@@ -96,8 +96,12 @@ fn restore_workspace_session_at_path(
     catalogue_path: PathBuf,
 ) -> Result<WorkspaceSessionSnapshot, WorkspaceCatalogueError> {
     let catalogue = load_workspace_catalogue_from_path(catalogue_path)?;
+    Ok(workspace_session_snapshot(catalogue))
+}
+
+fn workspace_session_snapshot(catalogue: WorkspaceCatalogue) -> WorkspaceSessionSnapshot {
     let Some(active_workspace_id) = catalogue.active_workspace_id.as_deref() else {
-        return Ok(WorkspaceSessionSnapshot::NoActiveWorkspace { catalogue });
+        return WorkspaceSessionSnapshot::NoActiveWorkspace { catalogue };
     };
     let workspace = catalogue
         .workspaces
@@ -107,14 +111,14 @@ fn restore_workspace_session_at_path(
         .expect("validated catalogue has an active workspace");
 
     match load_workspace(workspace) {
-        Ok(result) => Ok(WorkspaceSessionSnapshot::ActiveWorkspaceLoaded {
+        Ok(result) => WorkspaceSessionSnapshot::ActiveWorkspaceLoaded {
             catalogue,
             todo_file: result.todo_file,
-        }),
-        Err(error) => Ok(WorkspaceSessionSnapshot::ActiveWorkspaceUnavailable {
+        },
+        Err(error) => WorkspaceSessionSnapshot::ActiveWorkspaceUnavailable {
             catalogue,
             warning: format!("Saved workspace could not be opened: {error}"),
-        }),
+        },
     }
 }
 
@@ -158,9 +162,9 @@ fn delete_workspace_at_path(
     if catalogue.active_workspace_id.as_deref() == Some(workspace_id.as_str()) {
         catalogue.active_workspace_id = None;
     }
-    save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue)?;
+    save_workspace_catalogue_to_path(catalogue_path, &catalogue)?;
 
-    restore_workspace_session_at_path(catalogue_path)
+    Ok(workspace_session_snapshot(catalogue))
 }
 
 #[tauri::command]
@@ -797,6 +801,37 @@ mod tests {
         let error = delete_workspace_at_path(catalogue_path.clone(), "unknown".into()).unwrap_err();
 
         assert!(error.to_string().contains("workspace does not exist"));
+        assert_eq!(
+            load_workspace_catalogue_from_path(catalogue_path).unwrap(),
+            catalogue
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_deletion_catalogue_write_leaves_the_catalogue_unchanged() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = unique_temp_dir("delete-write-failure");
+        let catalogue_path = directory.join(WORKSPACE_CATALOGUE_FILE);
+        let saved = workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Saved",
+            &directory.join("saved.todo").to_string_lossy(),
+        );
+        let catalogue = WorkspaceCatalogue {
+            version: 1,
+            active_workspace_id: Some(saved.id.clone()),
+            workspaces: vec![saved.clone()],
+        };
+        save_workspace_catalogue_to_path(catalogue_path.clone(), &catalogue).unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+        let result = delete_workspace_at_path(catalogue_path.clone(), saved.id);
+
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.is_err());
         assert_eq!(
             load_workspace_catalogue_from_path(catalogue_path).unwrap(),
             catalogue
