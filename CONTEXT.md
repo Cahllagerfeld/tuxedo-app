@@ -49,7 +49,7 @@ An unsuccessful user-initiated Workspace creation, switch, or deletion. It repor
 The MVP remedy for a saved Workspace whose name, color, or Todo file must change: delete it, then create a new Workspace. Direct editing is not part of the MVP.
 
 **Workspace deletion**:
-The confirmed removal of a Workspace from the saved catalogue. It never removes the referenced Todo file; deleting the Active workspace enters the Empty state.
+The confirmed removal of a Workspace from the saved catalogue followed by a refreshed Workspace session snapshot. It never removes the referenced Todo file; deleting the Active workspace enters the Empty state, while failure to reopen a remaining Active workspace enters the Empty state with a warning without undoing the deletion.
 
 **Empty state**:
 The state with no active Todo file loaded. It prompts the user to open an existing Workspace or create one, including after the Active workspace is deleted or cannot be opened.

@@ -23,9 +23,9 @@ const catalogue: WorkspaceCatalogue = {
 };
 
 const snapshot: WorkspaceSessionSnapshot = {
+	status: "active_workspace_loaded",
 	catalogue,
 	todo_file: { path: workspace.todo_path, items: [], skipped: [] },
-	warning: null,
 };
 
 describe("workspace response schemas", () => {
@@ -39,6 +39,43 @@ describe("workspace response schemas", () => {
 	it("accepts a catalogue and loaded exact Todo file", () => {
 		expect(workspaceCatalogueSchema.safeParse(catalogue).success).toBe(true);
 		expect(workspaceSessionSnapshotSchema.safeParse(snapshot).success).toBe(true);
+	});
+
+	it("accepts each tagged Workspace session outcome", () => {
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({
+				status: "no_active_workspace",
+				catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+			}).success
+		).toBe(true);
+		expect(workspaceSessionSnapshotSchema.safeParse(snapshot).success).toBe(true);
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({
+				status: "active_workspace_unavailable",
+				catalogue,
+				warning: "Todo file does not exist",
+			}).success
+		).toBe(true);
+	});
+
+	it("rejects missing, mismatched, and malformed variant data", () => {
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({ status: "active_workspace_loaded", catalogue })
+				.success
+		).toBe(false);
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({
+				status: "no_active_workspace",
+				catalogue,
+			}).success
+		).toBe(false);
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({
+				status: "active_workspace_unavailable",
+				catalogue,
+				warning: 4,
+			}).success
+		).toBe(false);
 	});
 
 	it("returns validated Rust responses", () => {

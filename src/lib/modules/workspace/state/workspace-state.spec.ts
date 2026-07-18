@@ -11,9 +11,9 @@ const work = {
 const personal = { ...work, id: "550e8400-e29b-41d4-a716-446655440001", name: "Personal" };
 const workTodo = { path: work.todo_path, items: [], skipped: [] };
 const workSnapshot = {
+	status: "active_workspace_loaded" as const,
 	catalogue: { version: 1, active_workspace_id: work.id, workspaces: [work, personal] },
 	todo_file: workTodo,
-	warning: null,
 };
 
 describe("WorkspaceState at the lifecycle adapter seam", () => {
@@ -21,9 +21,8 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		const state = new WorkspaceState(
 			new InMemoryWorkspaceLifecycleAdapter({
 				restore: {
+					status: "no_active_workspace",
 					catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
-					todo_file: null,
-					warning: null,
 				},
 			})
 		);
@@ -51,8 +50,8 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		const state = new WorkspaceState(
 			new InMemoryWorkspaceLifecycleAdapter({
 				restore: {
+					status: "active_workspace_unavailable",
 					catalogue: workSnapshot.catalogue,
-					todo_file: null,
 					warning: "Todo file does not exist",
 				},
 			})
@@ -88,9 +87,9 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		const state = new WorkspaceState(
 			new InMemoryWorkspaceLifecycleAdapter({
 				create: {
+					status: "active_workspace_loaded",
 					catalogue: { version: 1, active_workspace_id: created.id, workspaces: [created] },
 					todo_file: createdTodo,
-					warning: null,
 				},
 			})
 		);
@@ -108,7 +107,11 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		const adapter = new InMemoryWorkspaceLifecycleAdapter({
 			restore: workSnapshot,
 			switchWorkspace: new Error("Todo file does not exist"),
-			deleteWorkspace: { version: 1, active_workspace_id: work.id, workspaces: [work] },
+			deleteWorkspace: {
+				status: "active_workspace_loaded",
+				catalogue: { version: 1, active_workspace_id: work.id, workspaces: [work] },
+				todo_file: workTodo,
+			},
 		});
 		const state = new WorkspaceState(adapter);
 		await state.restore();
@@ -128,8 +131,15 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 				restore: workSnapshot,
 				deleteWorkspace: ({ workspaceId }: { workspaceId: string }) =>
 					workspaceId === personal.id
-						? { version: 1, active_workspace_id: work.id, workspaces: [work] }
-						: { version: 1, active_workspace_id: null, workspaces: [personal] },
+						? {
+								status: "active_workspace_loaded",
+								catalogue: { version: 1, active_workspace_id: work.id, workspaces: [work] },
+								todo_file: workTodo,
+							}
+						: {
+								status: "no_active_workspace",
+								catalogue: { version: 1, active_workspace_id: null, workspaces: [personal] },
+							},
 			})
 		);
 		await state.restore();
@@ -175,7 +185,7 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 	it("does not treat an active Workspace without a Todo file or warning as an Empty session", async () => {
 		const state = new WorkspaceState(
 			new InMemoryWorkspaceLifecycleAdapter({
-				restore: { catalogue: workSnapshot.catalogue, todo_file: null, warning: null },
+				restore: { status: "active_workspace_loaded", catalogue: workSnapshot.catalogue },
 			})
 		);
 
@@ -184,14 +194,14 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 		expect(state.session.status).toBe("unavailable");
 	});
 
-	it("rejects a deletion response that would retain a Todo file for a changed active path", async () => {
+	it("applies an unavailable post-deletion snapshot with its warning", async () => {
 		const state = new WorkspaceState(
 			new InMemoryWorkspaceLifecycleAdapter({
 				restore: workSnapshot,
 				deleteWorkspace: {
-					version: 1,
-					active_workspace_id: work.id,
-					workspaces: [{ ...work, todo_path: "/tmp/replaced.todo" }],
+					status: "active_workspace_unavailable",
+					catalogue: workSnapshot.catalogue,
+					warning: "Todo file does not exist",
 				},
 			})
 		);
@@ -199,7 +209,29 @@ describe("WorkspaceState at the lifecycle adapter seam", () => {
 
 		await state.delete(personal.id);
 
+		expect(state.session).toMatchObject({
+			status: "empty",
+			catalogue: workSnapshot.catalogue,
+			warning: "Todo file does not exist",
+		});
+		expect(state.notice).toBeNull();
+	});
+
+	it("preserves the current session and reports an error when deletion is rejected", async () => {
+		const state = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: workSnapshot,
+				deleteWorkspace: new Error("workspace does not exist"),
+			})
+		);
+		await state.restore();
+
+		await state.delete(personal.id);
+
 		expect(state.session).toMatchObject({ status: "ready", todoFile: workTodo });
-		expect(state.notice).toMatchObject({ kind: "error" });
+		expect(state.notice).toEqual({
+			kind: "error",
+			message: "Could not delete workspace: workspace does not exist",
+		});
 	});
 });

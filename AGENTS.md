@@ -113,6 +113,10 @@ PATH=/Users/juliankarl/.cache/codex-runtimes/codex-primary-runtime/dependencies/
 
 Vitest may try to bind a local `::1` listener. If tests pass but the process reports `listen EPERM`, rerun outside the sandbox or ask for permission to run with local binding access.
 
+## Git Workflow
+
+Never amend an existing commit. Always create a new commit so the history clearly shows what changed and when.
+
 ## Cleanup Expectations
 
 When moving files, remove unused empty folders afterward. A quick check:
@@ -122,6 +126,8 @@ find src/lib -type d -empty | sort
 ```
 
 This should return nothing unless an intentionally empty folder is documented.
+
+Remove any temporary files created during the session before finishing the work.
 
 ## Agent skills
 

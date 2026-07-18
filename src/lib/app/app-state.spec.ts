@@ -20,9 +20,9 @@ function todoFile(items: TodoFile["items"]): TodoFile {
 
 function snapshot(todo_file: TodoFile) {
 	return {
+		status: "active_workspace_loaded" as const,
 		catalogue: { version: 1 as const, active_workspace_id: workspace.id, workspaces: [workspace] },
 		todo_file,
-		warning: null,
 	};
 }
 

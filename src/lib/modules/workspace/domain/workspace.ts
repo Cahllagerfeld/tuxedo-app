@@ -16,37 +16,52 @@ export const workspaceCatalogueSchema = z.object({
 });
 
 export const workspaceSessionSnapshotSchema = z
-	.object({
-		catalogue: workspaceCatalogueSchema,
-		todo_file: todoFileSchema.nullable(),
-		warning: z.string().nullable(),
-	})
-	.superRefine(({ catalogue, todo_file, warning }, context) => {
+	.discriminatedUnion("status", [
+		z
+			.object({
+				status: z.literal("no_active_workspace"),
+				catalogue: workspaceCatalogueSchema,
+			})
+			.strict(),
+		z
+			.object({
+				status: z.literal("active_workspace_loaded"),
+				catalogue: workspaceCatalogueSchema,
+				todo_file: todoFileSchema,
+			})
+			.strict(),
+		z
+			.object({
+				status: z.literal("active_workspace_unavailable"),
+				catalogue: workspaceCatalogueSchema,
+				warning: z.string().min(1),
+			})
+			.strict(),
+	])
+	.superRefine((snapshot, context) => {
+		const { catalogue } = snapshot;
 		const activeWorkspace = catalogue.workspaces.find(
 			({ id }) => id === catalogue.active_workspace_id
 		);
+		if (snapshot.status === "no_active_workspace") {
+			if (catalogue.active_workspace_id !== null)
+				context.addIssue({
+					code: "custom",
+					message: "A no-active-workspace snapshot cannot have an active workspace",
+				});
+			return;
+		}
 		if (!activeWorkspace) {
-			if (todo_file || warning) {
-				context.addIssue({
-					code: "custom",
-					message: "An inactive catalogue cannot include a Todo file or warning",
-				});
-			}
+			context.addIssue({
+				code: "custom",
+				message: "An active-workspace snapshot requires an active workspace",
+			});
 			return;
 		}
-		if (!todo_file) {
-			if (!warning) {
-				context.addIssue({
-					code: "custom",
-					message: "An active workspace requires a Todo file or restoration warning",
-				});
-			}
-			return;
-		}
-		if (warning) {
-			context.addIssue({ code: "custom", message: "A loaded Todo file cannot include a warning" });
-		}
-		if (activeWorkspace.todo_path !== todo_file.path) {
+		if (
+			snapshot.status === "active_workspace_loaded" &&
+			activeWorkspace.todo_path !== snapshot.todo_file.path
+		) {
 			context.addIssue({
 				code: "custom",
 				message: "Todo file must belong to the active workspace",
