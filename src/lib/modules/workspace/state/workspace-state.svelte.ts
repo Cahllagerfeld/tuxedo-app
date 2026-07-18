@@ -5,7 +5,6 @@ import {
 	switchWorkspace,
 } from "$lib/modules/workspace/api/workspace-api";
 import {
-	parseWorkspaceCatalogueResponse,
 	parseWorkspaceSessionSnapshotResponse,
 	type Workspace,
 	type WorkspaceCatalogue,
@@ -138,16 +137,9 @@ export class WorkspaceState {
 		if (!this.beginOperation())
 			throw new Error("A Workspace lifecycle operation is already running");
 		try {
-			const catalogue = parseWorkspaceCatalogueResponse(
-				await this.adapter.deleteWorkspace(workspaceId)
+			this.applySnapshot(
+				parseWorkspaceSessionSnapshotResponse(await this.adapter.deleteWorkspace(workspaceId))
 			);
-			this.assertDeleteResultRetainsLoadedTodoFile(catalogue);
-			this.session = catalogue.active_workspace_id
-				? this.session.status === "ready" &&
-					this.session.catalogue.active_workspace_id === catalogue.active_workspace_id
-					? { status: "ready", catalogue, todoFile: this.session.todoFile }
-					: { status: "empty", catalogue, warning: null }
-				: { status: "empty", catalogue, warning: null };
 		} catch (error) {
 			this.attachOperationError(error, "Could not delete workspace");
 		} finally {
@@ -163,7 +155,7 @@ export class WorkspaceState {
 	}
 
 	private applySnapshot(snapshot: WorkspaceSessionSnapshot) {
-		if (snapshot.todo_file) {
+		if (snapshot.status === "active_workspace_loaded") {
 			this.session = {
 				status: "ready",
 				catalogue: snapshot.catalogue,
@@ -171,23 +163,16 @@ export class WorkspaceState {
 			};
 			return;
 		}
-		this.session = { status: "empty", catalogue: snapshot.catalogue, warning: snapshot.warning };
+		this.session = {
+			status: "empty",
+			catalogue: snapshot.catalogue,
+			warning: snapshot.status === "active_workspace_unavailable" ? snapshot.warning : null,
+		};
 	}
 
 	private attachOperationError(error: unknown, prefix?: string) {
 		const message = formatUnknownError(error);
 		this.notice = { kind: "error", message: prefix ? `${prefix}: ${message}` : message };
-	}
-
-	private assertDeleteResultRetainsLoadedTodoFile(catalogue: WorkspaceCatalogue) {
-		if (this.session.status !== "ready") return;
-		if (catalogue.active_workspace_id !== this.session.catalogue.active_workspace_id) return;
-		const activeWorkspace = catalogue.workspaces.find(
-			({ id }) => id === catalogue.active_workspace_id
-		);
-		if (activeWorkspace?.todo_path !== this.session.todoFile.path) {
-			throw new Error("Unexpected workspace deletion response from Rust: active Todo file changed");
-		}
 	}
 }
 
