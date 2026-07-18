@@ -15,7 +15,7 @@
 
 <footer
 	aria-label="Reader status"
-	class="h-8 bg-card border-t border-border flex items-center gap-2 px-4 text-xs font-mono text-muted-foreground"
+	class="flex h-8 items-center gap-2 border-t border-border bg-card px-4 font-mono text-xs text-muted-foreground"
 >
 	{#if todoFile && activeWorkspace}
 		<span>Workspace: {activeWorkspace.name}</span>

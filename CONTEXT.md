@@ -12,6 +12,24 @@ _Avoid_: Folder, project, profile
 The plain-text todo.txt-format file a Workspace references; it remains the source of truth for its tasks.
 _Avoid_: Workspace file, workspace root
 
+**Todo item**:
+A parsed task represented by one line in a Todo file. A Todo item is either open or completed.
+_Avoid_: Task, todo
+
+**Open Todo item**:
+A Todo item without a completion marker or Completion date. Uncompleting a Todo item returns it to this state while preserving its Creation date and remaining content.
+_Avoid_: Active Todo item, pending Todo item
+
+**Completed Todo item**:
+A Todo item marked as completed with the current local date that remains part of its Todo file and retains its position among the other Todo items.
+_Avoid_: Archived Todo item, removed Todo item
+
+**Completion date**:
+The local calendar date on which an open Todo item became completed.
+
+**Creation date**:
+The optional calendar date recorded for a Todo item's creation.
+
 **Todo-file summary**:
 A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
 

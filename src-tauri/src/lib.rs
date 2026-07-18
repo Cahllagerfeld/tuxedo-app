@@ -41,7 +41,8 @@ pub fn run() {
             workspace::restore_workspace_session,
             workspace::switch_workspace,
             workspace::delete_workspace,
-            workspace::create_workspace
+            workspace::create_workspace,
+            workspace::set_todo_item_completion
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

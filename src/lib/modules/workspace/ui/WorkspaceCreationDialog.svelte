@@ -180,7 +180,7 @@
 					{#each colors as option}<Button
 							type="button"
 							class={cn(
-								"rounded-full shrink-0 aspect-square",
+								"aspect-square shrink-0 rounded-full",
 								option.className,
 								$formData.color === option.token && "ring-2 ring-offset-2 ring-offset-background",
 								$formData.color === option.token && option.ringClass
@@ -194,7 +194,7 @@
 				</div>
 				<Form.FieldErrors />
 			</Form.Field>
-			{#if serverError}<p class="text-destructive text-sm font-medium" role="alert">
+			{#if serverError}<p class="text-sm font-medium text-destructive" role="alert">
 					{serverError}
 				</p>{/if}
 			<Dialog.Footer>

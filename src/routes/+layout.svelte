@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { setAppState } from "@/app/app-context";
+	import { AppState } from "@/app/app-state.svelte";
 	import AppHeader from "@/app/AppHeader.svelte";
 	import ReaderStatusBar from "@/app/ReaderStatusBar.svelte";
 	import Sidebar from "@/modules/workspace/ui/sidebar/index.svelte";
 	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
-	import { setAppState } from "@/app/app-context";
-	import { AppState } from "@/app/app-state.svelte";
 	import * as Resizable from "@/shared/ui/resizable/index";
+	import { ScrollArea } from "@/shared/ui/scroll-area";
+	import { Toaster } from "@/shared/ui/sonner";
 	import { onMount } from "svelte";
 	import "./layout.css";
-	import { ScrollArea } from "@/shared/ui/scroll-area";
 	let { children } = $props();
 
 	const appState = new AppState();
@@ -19,7 +20,8 @@
 	});
 </script>
 
-<div class="h-dvh flex flex-col font-medium antialiased overflow-hidden">
+<Toaster position="top-center" />
+<div class="flex h-dvh flex-col overflow-hidden font-medium antialiased">
 	<AppHeader />
 	<main class="flex min-h-0 flex-1 overflow-hidden">
 		<Resizable.PaneGroup direction="horizontal">

@@ -13,6 +13,204 @@ fn save_catalogue(path: PathBuf, catalogue: &WorkspaceCatalogue) {
     WorkspaceCatalogueStore::new(path).save(catalogue).unwrap();
 }
 
+fn lifecycle_with_active_todo(
+    directory: &tempfile::TempDir,
+    contents: &str,
+) -> (WorkspaceLifecycle, PathBuf) {
+    let path = catalogue_path(directory);
+    let todo_path = directory.path().join("work.todo");
+    std::fs::write(&todo_path, contents).unwrap();
+    let mut catalogue = WorkspaceCatalogue::default();
+    catalogue
+        .add(workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            &todo_path.to_string_lossy(),
+        ))
+        .unwrap();
+    save_catalogue(path.clone(), &catalogue);
+    (WorkspaceLifecycle::new(path), todo_path)
+}
+
+#[test]
+fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let original =
+        "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n";
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, original);
+
+    let todo_file = lifecycle
+        .set_todo_item_completion(
+            3,
+            "(A) 2026-07-10 Buy milk +Home".into(),
+            true,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "# keep this skipped line\r\n\r\nx 2026-07-18 2026-07-10 Buy milk +Home\r\nKeep me open\r\n"
+    );
+    let completed = todo_file
+        .items
+        .iter()
+        .find(|item| item.line_number == 3)
+        .unwrap();
+    assert!(completed.completed);
+    assert_eq!(completed.completion_date.as_deref(), Some("2026-07-18"));
+    assert_eq!(completed.priority, None);
+}
+
+#[test]
+fn uncompleting_a_todo_item_preserves_its_creation_date_and_content() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(
+        &directory,
+        "x 2026-07-18 2026-07-10 Buy milk +Home due:2026-07-20\n",
+    );
+
+    let todo_file = lifecycle
+        .set_todo_item_completion(
+            1,
+            "x 2026-07-18 2026-07-10 Buy milk +Home due:2026-07-20".into(),
+            false,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "2026-07-10 Buy milk +Home due:2026-07-20\n"
+    );
+    let item = &todo_file.items[0];
+    assert!(!item.completed);
+    assert_eq!(item.creation_date.as_deref(), Some("2026-07-10"));
+    assert_eq!(item.projects, vec!["Home"]);
+    assert_eq!(
+        item.metadata.get("due").map(String::as_str),
+        Some("2026-07-20")
+    );
+}
+
+#[test]
+fn a_stale_todo_item_is_not_completed_after_an_external_edit() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\nKeep me open\n");
+    std::fs::write(&todo_path, "Inserted externally\nBuy milk\nKeep me open\n").unwrap();
+
+    let error = lifecycle
+        .set_todo_item_completion(
+            1,
+            "Buy milk".into(),
+            true,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap_err();
+
+    assert!(error.to_string().contains("changed externally"));
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Inserted externally\nBuy milk\nKeep me open\n"
+    );
+}
+
+#[test]
+fn completing_without_a_creation_date_adds_only_the_completion_date() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
+
+    lifecycle
+        .set_todo_item_completion(
+            1,
+            "Buy milk".into(),
+            true,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "x 2026-07-18 Buy milk\n"
+    );
+}
+
+#[test]
+fn uncompleting_without_a_completion_date_removes_only_the_marker() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "x Buy milk\n");
+
+    lifecycle
+        .set_todo_item_completion(
+            1,
+            "x Buy milk".into(),
+            false,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "Buy milk\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_atomic_write_leaves_the_todo_file_unchanged() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
+    let original_permissions = std::fs::metadata(directory.path()).unwrap().permissions();
+    let mut read_only_permissions = original_permissions.clone();
+    read_only_permissions.set_mode(0o500);
+    std::fs::set_permissions(directory.path(), read_only_permissions).unwrap();
+
+    let result = lifecycle.set_todo_item_completion(
+        1,
+        "Buy milk".into(),
+        true,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+    );
+
+    std::fs::set_permissions(directory.path(), original_permissions).unwrap();
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("failed to write Todo file atomically"));
+    assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "Buy milk\n");
+}
+
+#[test]
+fn completion_round_trip_preserves_whitespace_while_removing_priority() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "  (A) Buy milk  \n");
+
+    lifecycle
+        .set_todo_item_completion(
+            1,
+            "  (A) Buy milk  ".into(),
+            true,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&todo_path).unwrap(),
+        "x 2026-07-18   Buy milk  \n"
+    );
+
+    lifecycle
+        .set_todo_item_completion(
+            1,
+            "x 2026-07-18   Buy milk  ".into(),
+            false,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "  Buy milk  \n"
+    );
+}
+
 #[test]
 fn restoring_without_an_active_workspace_returns_no_active_snapshot() {
     let directory = tempfile::tempdir().unwrap();
