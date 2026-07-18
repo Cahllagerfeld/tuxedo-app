@@ -3,6 +3,7 @@ export interface TodoFileObservationAdapter {
 	start(path: string, onChanged: () => void | Promise<void>): void | Promise<void>;
 	stop(): void | Promise<void>;
 	retarget(path: string | null): void | Promise<void>;
+	dispose(): void | Promise<void>;
 }
 
 /**
@@ -31,13 +32,10 @@ export class InMemoryTodoFileObservationAdapter implements TodoFileObservationAd
 		this.observedPath = path;
 	};
 
-	/** Inject a "Todo file may have changed" signal for tests. */
-	emitChanged = () => {
-		this.onChanged?.();
-	};
-
-	/** Like emitChanged, but awaits an async observation handler. */
-	emitChangedAsync = async () => {
+	/** Inject and await a "Todo file may have changed" signal for tests. */
+	emitChanged = async () => {
 		await this.onChanged?.();
 	};
+
+	dispose = this.stop;
 }

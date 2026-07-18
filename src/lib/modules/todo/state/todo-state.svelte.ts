@@ -35,6 +35,7 @@ export class TodoState {
 				})
 			);
 			this.session.replaceTodoFile(todoFile);
+			await this.session.refreshTodoFile();
 			return "updated";
 		} catch (error) {
 			if (isTodoMutationConflict(error)) {

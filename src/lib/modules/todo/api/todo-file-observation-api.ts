@@ -11,18 +11,26 @@ export const TODO_FILE_CHANGED_EVENT = "todo-file-changed";
 export function createTodoFileObservationAdapter(): TodoFileObservationAdapter {
 	let unlisten: UnlistenFn | null = null;
 	let onChanged: (() => void | Promise<void>) | null = null;
+	let isDisposed = false;
 
 	async function ensureListener() {
 		if (unlisten) return;
-		unlisten = await listen(TODO_FILE_CHANGED_EVENT, () => {
+		const nextUnlisten = await listen(TODO_FILE_CHANGED_EVENT, () => {
 			void onChanged?.();
 		});
+		if (isDisposed) {
+			nextUnlisten();
+			return;
+		}
+		unlisten = nextUnlisten;
 	}
 
 	return {
 		async start(path, nextOnChanged) {
+			if (isDisposed) return;
 			onChanged = nextOnChanged;
 			await ensureListener();
+			if (isDisposed) return;
 			await invoke("start_todo_file_observation", { path });
 		},
 		async stop() {
@@ -36,6 +44,13 @@ export function createTodoFileObservationAdapter(): TodoFileObservationAdapter {
 			}
 			await ensureListener();
 			await invoke("start_todo_file_observation", { path });
+		},
+		async dispose() {
+			isDisposed = true;
+			onChanged = null;
+			await invoke("stop_todo_file_observation");
+			unlisten?.();
+			unlisten = null;
 		},
 	};
 }

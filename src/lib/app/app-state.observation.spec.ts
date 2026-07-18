@@ -161,7 +161,7 @@ describe("AppState Todo-file observation", () => {
 		const appState = new AppState(workspaceState, undefined, observation);
 		await appState.restore();
 
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 
 		expect(appState.workspace.todoFile?.items[0]?.description).toBe("Plan release carefully");
 		expect(appState.todos.items[0]?.description).toBe("Plan release carefully");
@@ -190,7 +190,7 @@ describe("AppState Todo-file observation", () => {
 		const restoreDuringBusy = vi.spyOn(workspaceState, "refreshTodoFile");
 
 		const mutation = appState.todo.setCompletion(initial.items[0]!);
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 		expect(restoreDuringBusy).not.toHaveBeenCalled();
 
 		finishMutation({
@@ -205,6 +205,41 @@ describe("AppState Todo-file observation", () => {
 			],
 		});
 		await mutation;
+	});
+
+	it("reloads from disk after a successful mutation so a concurrent external edit is not lost", async () => {
+		const observation = new InMemoryTodoFileObservationAdapter();
+		const initial = todoFile(workspace.todo_path, [todoItem()]);
+		const completed = todoFile(workspace.todo_path, [
+			todoItem({
+				raw: "x 2026-07-18 Plan release",
+				completed: true,
+				completion_date: "2026-07-18",
+			}),
+		]);
+		const latestOnDisk = todoFile(workspace.todo_path, [
+			...completed.items,
+			todoItem({ line_number: 2, raw: "External edit", description: "External edit" }),
+		]);
+		let restoreCalls = 0;
+		const workspaceState = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: () => {
+					restoreCalls += 1;
+					return loadedSnapshot(restoreCalls === 1 ? initial : latestOnDisk);
+				},
+			})
+		);
+		const appState = new AppState(
+			workspaceState,
+			{ setTodoItemCompletion: async () => completed },
+			observation
+		);
+		await appState.restore();
+
+		await appState.todo.setCompletion(initial.items[0]!);
+
+		expect(appState.workspace.todoFile).toEqual(latestOnDisk);
 	});
 
 	it("ignores observation signals while a Workspace operation is in flight", async () => {
@@ -232,7 +267,7 @@ describe("AppState Todo-file observation", () => {
 		const refresh = vi.spyOn(workspaceState, "refreshTodoFile");
 
 		const switching = appState.open(personal.id);
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 		expect(refresh).not.toHaveBeenCalled();
 
 		releaseSwitch();
@@ -260,7 +295,7 @@ describe("AppState Todo-file observation", () => {
 		});
 		await appState.restore();
 
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 
 		expect(onSummaryChanged).toHaveBeenCalledOnce();
 	});
@@ -279,7 +314,32 @@ describe("AppState Todo-file observation", () => {
 		});
 		await appState.restore();
 
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
+
+		expect(onSummaryChanged).not.toHaveBeenCalled();
+	});
+
+	it("does not notify when only Todo-item metadata key order changes between parses", async () => {
+		const observation = new InMemoryTodoFileObservationAdapter();
+		const onSummaryChanged = vi.fn();
+		const firstParse = todoFile(workspace.todo_path, [
+			todoItem({ metadata: { due: "2026-07-20", rec: "1w" } }),
+		]);
+		const secondParse = todoFile(workspace.todo_path, [
+			todoItem({ metadata: { rec: "1w", due: "2026-07-20" } }),
+		]);
+		let restoreCalls = 0;
+		const workspaceState = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: () => loadedSnapshot(restoreCalls++ === 0 ? firstParse : secondParse),
+			})
+		);
+		const appState = new AppState(workspaceState, undefined, observation, {
+			onObservationSummaryChanged: onSummaryChanged,
+		});
+		await appState.restore();
+
+		await observation.emitChanged();
 
 		expect(onSummaryChanged).not.toHaveBeenCalled();
 	});
@@ -313,7 +373,7 @@ describe("AppState Todo-file observation", () => {
 		});
 		await appState.restore();
 
-		const refresh = observation.emitChangedAsync();
+		const refresh = observation.emitChanged();
 		await vi.advanceTimersByTimeAsync(UNREADABLE_TODO_FILE_DEBOUNCE_MS);
 		await refresh;
 
@@ -354,7 +414,7 @@ describe("AppState Todo-file observation", () => {
 		const appState = new AppState(workspaceState, undefined, observation);
 		await appState.restore();
 
-		const refresh = observation.emitChangedAsync();
+		const refresh = observation.emitChanged();
 		await vi.advanceTimersByTimeAsync(UNREADABLE_TODO_FILE_DEBOUNCE_MS);
 		await refresh;
 

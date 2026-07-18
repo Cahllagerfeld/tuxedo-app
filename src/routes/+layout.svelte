@@ -21,6 +21,9 @@
 
 	onMount(() => {
 		void appState.restore();
+		return () => {
+			void appState.dispose();
+		};
 	});
 </script>
 

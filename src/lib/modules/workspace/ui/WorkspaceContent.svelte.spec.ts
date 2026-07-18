@@ -100,7 +100,7 @@ describe("WorkspaceContent", () => {
 			completed: true,
 		});
 
-		finishMutation({
+		const completedTodoFile = {
 			...twoItemTodoFile,
 			items: [
 				{
@@ -111,7 +111,13 @@ describe("WorkspaceContent", () => {
 				},
 				twoItemTodoFile.items[1],
 			],
+		};
+		adapter.restore.mockResolvedValue({
+			status: "active_workspace_loaded",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todo_file: completedTodoFile,
 		});
+		finishMutation(completedTodoFile);
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
 			.toBeChecked();
@@ -301,7 +307,7 @@ describe("WorkspaceContent", () => {
 		await appState.restore();
 		renderContent(workspaceState, appState.todo);
 
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 
 		await expect.element(page.getByText("Plan release carefully")).toBeVisible();
 		await expect.element(page.getByText("Todo file updated from disk")).toBeVisible();
@@ -364,7 +370,7 @@ describe("WorkspaceContent", () => {
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
 			.toBeDisabled();
-		await observation.emitChangedAsync();
+		await observation.emitChanged();
 		finishMutation({ kind: "conflict", message: "Todo item changed externally" });
 
 		await expect

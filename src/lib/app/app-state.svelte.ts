@@ -54,22 +54,28 @@ export class AppState {
 	};
 
 	restore = async () => {
-		await this.workspace.restore();
-		await this.syncObservationTarget();
+		await this.runWorkspaceOperation(() => this.workspace.restore());
 	};
 
 	create = async (input: CreateWorkspaceInput) => {
-		await this.workspace.create(input);
-		await this.syncObservationTarget();
+		await this.runWorkspaceOperation(() => this.workspace.create(input));
 	};
 
 	open = async (workspaceId: string) => {
-		await this.workspace.open(workspaceId);
-		await this.syncObservationTarget();
+		await this.runWorkspaceOperation(() => this.workspace.open(workspaceId));
 	};
 
 	delete = async (workspaceId: string) => {
-		await this.workspace.delete(workspaceId);
+		await this.runWorkspaceOperation(() => this.workspace.delete(workspaceId));
+	};
+
+	dispose = async () => {
+		await this.observation?.dispose();
+		this.observedPath = null;
+	};
+
+	private runWorkspaceOperation = async (operation: () => Promise<void>) => {
+		await operation();
 		await this.syncObservationTarget();
 	};
 
@@ -138,7 +144,21 @@ export class AppState {
 }
 
 function todoFileSummariesEqual(left: TodoFileSummary, right: TodoFileSummary): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
+	return stableStringify(left) === stableStringify(right);
+}
+
+function stableStringify(value: unknown): string {
+	return JSON.stringify(value, (_key, nestedValue: unknown) => {
+		if (nestedValue === null || typeof nestedValue !== "object" || Array.isArray(nestedValue)) {
+			return nestedValue;
+		}
+
+		return Object.fromEntries(
+			Object.entries(nestedValue as Record<string, unknown>).sort(([leftKey], [rightKey]) =>
+				leftKey.localeCompare(rightKey)
+			)
+		);
+	});
 }
 
 function delay(ms: number) {
