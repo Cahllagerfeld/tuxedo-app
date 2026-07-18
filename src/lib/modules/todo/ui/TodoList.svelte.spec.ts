@@ -37,7 +37,12 @@ const todoFile: TodoFile = {
 
 describe("TodoList", () => {
 	it("renders parsed Todo items with useful scan details and completion controls", async () => {
-		render(TodoList, { todoFile, disabled: false, onToggleComplete: vi.fn() });
+		render(TodoList, {
+			todoFile,
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
 
 		await expect.element(page.getByRole("list", { name: "Todo items" })).toBeVisible();
 		const items = page.getByRole("listitem");
@@ -54,6 +59,10 @@ describe("TodoList", () => {
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Ship release incomplete" }))
 			.toBeChecked();
+		await expect.element(page.getByRole("button", { name: "Delete Plan" })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Delete Ship release" }))
+			.toBeInTheDocument();
 	});
 
 	it("renders a Todo-file-specific empty state when no valid items were parsed", async () => {
@@ -61,6 +70,7 @@ describe("TodoList", () => {
 			todoFile: { ...todoFile, items: [] },
 			disabled: false,
 			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
 		});
 
 		await expect.element(page.getByLabelText("No valid Todo items")).toBeVisible();
