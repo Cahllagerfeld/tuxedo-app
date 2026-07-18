@@ -86,8 +86,10 @@ import { Button } from "$lib/shared/ui/button";
 
 Rust owns filesystem access, workspace persistence, and todo.txt parsing under `src-tauri/src`.
 
-- Tauri commands are registered in `src-tauri/src/lib.rs`.
-- Workspace persistence and workspace loading live in `src-tauri/src/workspace.rs`.
+- Tauri commands are registered in `src-tauri/src/lib.rs`; the narrow Workspace command adapters
+  live in `src-tauri/src/workspace/mod.rs`.
+- Workspace lifecycle behavior lives in `src-tauri/src/workspace/lifecycle.rs`, while catalogue
+  validation and persistence live in `src-tauri/src/workspace/catalogue.rs`.
 - todo.txt parsing lives in `src-tauri/src/todo_txt`.
 - Frontend domain files should validate command responses with Zod before state applies them.
 - If a Rust command response shape changes, update the matching Zod schema, TypeScript types, and tests in the relevant frontend module.

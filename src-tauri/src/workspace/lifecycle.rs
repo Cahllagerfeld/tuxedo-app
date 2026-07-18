@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::path::PathBuf;
-use uuid::Uuid;
 
 use super::catalogue::{
     CatalogueError, Workspace, WorkspaceCatalogue, WorkspaceCatalogueStore, WORKSPACE_COLORS,
@@ -99,13 +98,7 @@ impl WorkspaceLifecycle {
         }
 
         let mut catalogue = self.catalogue_store.load()?;
-        let workspace = Workspace::new(
-            Uuid::new_v4().to_string(),
-            name,
-            color,
-            todo_path,
-            chrono::Utc::now().to_rfc3339(),
-        );
+        let workspace = Workspace::new(name, color, todo_path);
         catalogue.add(workspace)?;
         self.catalogue_store.save(&catalogue)?;
 

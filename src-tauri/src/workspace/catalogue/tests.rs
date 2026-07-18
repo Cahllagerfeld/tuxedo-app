@@ -1,13 +1,7 @@
 use super::*;
 
 fn workspace(id: &str, name: &str, todo_path: &str) -> Workspace {
-    Workspace::new(
-        id.into(),
-        name.into(),
-        "blue".into(),
-        todo_path.into(),
-        "2026-01-01T00:00:00+00:00".into(),
-    )
+    Workspace::fixture(id, name, todo_path)
 }
 
 fn store(directory: &tempfile::TempDir) -> WorkspaceCatalogueStore {

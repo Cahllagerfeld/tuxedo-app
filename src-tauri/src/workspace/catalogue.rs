@@ -19,19 +19,24 @@ pub(super) struct Workspace {
 }
 
 impl Workspace {
-    pub(super) fn new(
-        id: String,
-        name: String,
-        color: String,
-        todo_path: String,
-        created_at: String,
-    ) -> Self {
+    pub(super) fn new(name: String, color: String, todo_path: String) -> Self {
         Self {
-            id,
+            id: uuid::Uuid::new_v4().to_string(),
             name,
             color,
             todo_path,
-            created_at,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn fixture(id: &str, name: &str, todo_path: &str) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            color: "blue".into(),
+            todo_path: todo_path.into(),
+            created_at: "2026-01-01T00:00:00+00:00".into(),
         }
     }
 
