@@ -38,7 +38,7 @@
 	</div>
 	<div class="px-2"><Separator /></div>
 	<ScrollArea class="min-h-0 flex-1">
-		<div class="flex flex-col p-4 gap-5">
+		<div class="flex flex-col gap-5 p-4">
 			<Overview />
 			<PriorityFilter />
 		</div>

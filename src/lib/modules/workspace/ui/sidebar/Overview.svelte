@@ -8,9 +8,9 @@
 
 <div class="space-y-3">
 	<h3
-		class="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2"
+		class="flex items-center gap-2 text-xs font-medium tracking-wider text-muted-foreground uppercase"
 	>
-		<BarChart3 class="w-3.5 h-3.5" />
+		<BarChart3 class="h-3.5 w-3.5" />
 		Overview
 	</h3>
 	<div class="grid grid-cols-2 gap-2">
