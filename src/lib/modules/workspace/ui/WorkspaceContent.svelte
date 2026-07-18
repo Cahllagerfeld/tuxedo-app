@@ -9,6 +9,7 @@
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import { toast } from "svelte-sonner";
+	import { showTodoFileConflictNotice } from "$lib/modules/todo/ui/todo-file-notices";
 
 	type Props = {
 		workspace: WorkspaceState;
@@ -22,7 +23,7 @@
 		try {
 			const result = await todoState.setCompletion(todo);
 			if (result === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
+				showTodoFileConflictNotice();
 			}
 		} catch (error) {
 			toast.error("Could not update Todo item", {

@@ -10,13 +10,17 @@
 	import { Toaster } from "@/shared/ui/sonner";
 	import { onMount } from "svelte";
 	import "./layout.css";
+	import { createTodoFileObservationAdapter } from "$lib/modules/todo/api/todo-file-observation-api";
+	import { showTodoFileObservationNotice } from "$lib/modules/todo/ui/todo-file-notices";
 	let { children } = $props();
 
-	const appState = new AppState();
+	const appState = new AppState(undefined, undefined, createTodoFileObservationAdapter(), {
+		onObservationSummaryChanged: showTodoFileObservationNotice,
+	});
 	setAppState(appState);
 
 	onMount(() => {
-		void appState.workspace.restore();
+		void appState.restore();
 	});
 </script>
 
@@ -30,8 +34,8 @@
 					workspaces={appState.workspace.catalogue?.workspaces ?? []}
 					activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 					disabled={appState.workspace.isOperating || appState.workspace.isLoading}
-					selectWorkspace={appState.workspace.open}
-					deleteWorkspace={appState.workspace.delete}
+					selectWorkspace={appState.open}
+					deleteWorkspace={appState.delete}
 					openCreationDialog={appState.openWorkspaceCreationDialog}
 				/>
 			</Resizable.Pane>
@@ -48,7 +52,7 @@
 	<WorkspaceCreationDialog
 		bind:open={appState.isWorkspaceCreationDialogOpen}
 		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
-		createWorkspace={appState.workspace.create}
+		createWorkspace={appState.create}
 	/>
 	<ReaderStatusBar
 		activeWorkspace={appState.workspace.activeWorkspace}
