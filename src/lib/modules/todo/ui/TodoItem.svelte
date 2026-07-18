@@ -1,15 +1,18 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "$lib/shared/utils";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
 
 	type TodoItemProps = {
 		todo: TodoItem;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
+		onDelete: (todo: TodoItem) => void;
 	};
 
-	let { todo, disabled, onToggleComplete }: TodoItemProps = $props();
+	let { todo, disabled, onToggleComplete, onDelete }: TodoItemProps = $props();
 	let confirmedChecked = $derived(todo.completed);
 
 	function requestCompletionChange() {
@@ -75,5 +78,18 @@
 				{/each}
 			</div>
 		{/if}
+	</div>
+	<div class="flex shrink-0 self-center">
+		<Button
+			type="button"
+			variant="ghost"
+			size="icon-xs"
+			{disabled}
+			aria-label={`Delete ${todo.description}`}
+			class="opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0 group-hover:disabled:opacity-100 focus-visible:disabled:opacity-100"
+			onclick={() => onDelete(todo)}
+		>
+			<Trash2 aria-hidden="true" />
+		</Button>
 	</div>
 </div>

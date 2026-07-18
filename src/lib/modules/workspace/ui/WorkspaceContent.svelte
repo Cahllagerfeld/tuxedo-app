@@ -31,6 +31,19 @@
 		}
 	}
 
+	async function deleteTodoItem(todo: TodoItem) {
+		try {
+			const result = await todoState.delete(todo);
+			if (result === "conflict") {
+				toast.error("Todo file changed externally; reloaded latest version");
+			}
+		} catch (error) {
+			toast.error("Could not delete Todo item", {
+				description: errorMessage(error),
+			});
+		}
+	}
+
 	function errorMessage(error: unknown) {
 		if (error instanceof Error) return error.message;
 		if (
@@ -75,6 +88,7 @@
 			todoFile={workspace.todoFile}
 			disabled={todoState.isMutationPending}
 			onToggleComplete={toggleTodoCompletion}
+			onDelete={deleteTodoItem}
 		/>
 	{:else}
 		<Empty.Root aria-label="No active workspace">

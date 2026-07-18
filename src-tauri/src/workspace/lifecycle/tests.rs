@@ -33,6 +33,82 @@ fn lifecycle_with_active_todo(
 }
 
 #[test]
+fn deleting_an_open_todo_item_removes_its_line_and_returns_the_todo_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let original =
+        "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n";
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, original);
+
+    let todo_file = lifecycle
+        .delete_todo_item(3, "(A) 2026-07-10 Buy milk +Home".into())
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "# keep this skipped line\r\n\r\nKeep me open\r\n"
+    );
+    assert!(todo_file
+        .items
+        .iter()
+        .all(|item| item.description != "Buy milk"));
+    let remaining = todo_file
+        .items
+        .iter()
+        .find(|item| item.description == "Keep me open")
+        .unwrap();
+    assert_eq!(remaining.line_number, 3);
+}
+
+#[test]
+fn deleting_a_completed_todo_item_removes_its_line() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(
+        &directory,
+        "x 2026-07-18 2026-07-10 Buy milk +Home\nKeep me open\n",
+    );
+
+    let todo_file = lifecycle
+        .delete_todo_item(1, "x 2026-07-18 2026-07-10 Buy milk +Home".into())
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Keep me open\n"
+    );
+    assert_eq!(todo_file.items.len(), 1);
+    assert_eq!(todo_file.items[0].line_number, 1);
+    assert_eq!(todo_file.items[0].description, "Keep me open");
+}
+
+#[test]
+fn a_stale_todo_item_is_not_deleted_after_an_external_edit() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\nKeep me open\n");
+    std::fs::write(&todo_path, "Inserted externally\nBuy milk\nKeep me open\n").unwrap();
+
+    let error = lifecycle
+        .delete_todo_item(1, "Buy milk".into())
+        .unwrap_err();
+
+    assert!(error.to_string().contains("changed externally"));
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Inserted externally\nBuy milk\nKeep me open\n"
+    );
+}
+
+#[test]
+fn deleting_the_last_todo_item_leaves_an_empty_todo_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
+
+    let todo_file = lifecycle.delete_todo_item(1, "Buy milk".into()).unwrap();
+
+    assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "");
+    assert!(todo_file.items.is_empty());
+}
+
+#[test]
 fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
     let directory = tempfile::tempdir().unwrap();
     let original =

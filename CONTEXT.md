@@ -22,7 +22,11 @@ _Avoid_: Active Todo item, pending Todo item
 
 **Completed Todo item**:
 A Todo item marked as completed with the current local date that remains part of its Todo file and retains its position among the other Todo items.
-_Avoid_: Archived Todo item, removed Todo item
+_Avoid_: Archived Todo item, Done Todo item
+
+**Todo item deletion**:
+The permanent removal of a Todo item's line from its Todo file. It is distinct from completing a Todo item; the deleted line no longer exists in the file.
+_Avoid_: Archive, remove, clear
 
 **Completion date**:
 The local calendar date on which an open Todo item became completed.

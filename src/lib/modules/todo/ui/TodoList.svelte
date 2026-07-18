@@ -8,9 +8,10 @@
 		todoFile: TodoFile;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoFile["items"][number]) => void;
+		onDelete: (todo: TodoFile["items"][number]) => void;
 	};
 
-	let { todoFile, disabled, onToggleComplete }: TodoListProps = $props();
+	let { todoFile, disabled, onToggleComplete, onDelete }: TodoListProps = $props();
 </script>
 
 {#if todoFile.items.length > 0}
@@ -18,7 +19,7 @@
 		{#each todoFile.items as item (item.line_number)}
 			<li>
 				{#key item.raw}
-					<TodoItem todo={item} {disabled} {onToggleComplete} />
+					<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
 				{/key}
 			</li>
 		{/each}
