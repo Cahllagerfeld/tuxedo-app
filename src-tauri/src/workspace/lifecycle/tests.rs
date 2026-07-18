@@ -47,12 +47,10 @@ fn deleting_an_open_todo_item_removes_its_line_and_returns_the_todo_file() {
         std::fs::read_to_string(todo_path).unwrap(),
         "# keep this skipped line\r\n\r\nKeep me open\r\n"
     );
-    assert!(
-        todo_file
-            .items
-            .iter()
-            .all(|item| item.description != "Buy milk")
-    );
+    assert!(todo_file
+        .items
+        .iter()
+        .all(|item| item.description != "Buy milk"));
     let remaining = todo_file
         .items
         .iter()
@@ -73,7 +71,10 @@ fn deleting_a_completed_todo_item_removes_its_line() {
         .delete_todo_item(1, "x 2026-07-18 2026-07-10 Buy milk +Home".into())
         .unwrap();
 
-    assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "Keep me open\n");
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Keep me open\n"
+    );
     assert_eq!(todo_file.items.len(), 1);
     assert_eq!(todo_file.items[0].line_number, 1);
     assert_eq!(todo_file.items[0].description, "Keep me open");
@@ -101,9 +102,7 @@ fn deleting_the_last_todo_item_leaves_an_empty_todo_file() {
     let directory = tempfile::tempdir().unwrap();
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
 
-    let todo_file = lifecycle
-        .delete_todo_item(1, "Buy milk".into())
-        .unwrap();
+    let todo_file = lifecycle.delete_todo_item(1, "Buy milk".into()).unwrap();
 
     assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "");
     assert!(todo_file.items.is_empty());
