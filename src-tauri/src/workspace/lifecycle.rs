@@ -6,7 +6,9 @@ use super::catalogue::{
 };
 use crate::load_todo_file;
 use crate::todo_txt::error::LoadError;
+use crate::todo_txt::mutation::{self, MutationError};
 use crate::todo_txt::types::TodoFile;
+use chrono::NaiveDate;
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -107,6 +109,22 @@ impl WorkspaceLifecycle {
             todo_file,
         })
     }
+
+    pub(super) fn set_todo_item_completion(
+        &self,
+        line_number: u32,
+        expected_raw: String,
+        completed: bool,
+        today: NaiveDate,
+    ) -> Result<TodoFile, LifecycleError> {
+        let catalogue = self.catalogue_store.load()?;
+        let workspace = catalogue
+            .active_workspace()
+            .ok_or_else(|| LifecycleError::Invalid("no active workspace".into()))?;
+        let todo_path = PathBuf::from(workspace.todo_path());
+        mutation::set_completion(&todo_path, line_number, &expected_raw, completed, today)?;
+        Ok(load_todo_file(workspace.todo_path().to_owned())?)
+    }
 }
 
 fn workspace_session_snapshot(catalogue: WorkspaceCatalogue) -> WorkspaceSessionSnapshot {
@@ -145,6 +163,8 @@ pub(super) enum LifecycleError {
     Catalogue(#[from] CatalogueError),
     #[error("failed to load Todo file: {0}")]
     TodoFile(#[from] LoadError),
+    #[error(transparent)]
+    TodoMutation(#[from] MutationError),
     #[error("invalid workspace catalogue: workspace does not exist: {0}")]
     MissingWorkspace(String),
     #[error("invalid workspace catalogue: {0}")]

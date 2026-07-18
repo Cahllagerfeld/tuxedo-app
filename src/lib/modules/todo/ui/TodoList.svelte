@@ -6,21 +6,25 @@
 
 	type TodoListProps = {
 		todoFile: TodoFile;
+		disabled: boolean;
+		onToggleComplete: (todo: TodoFile["items"][number]) => void;
 	};
 
-	let { todoFile }: TodoListProps = $props();
+	let { todoFile, disabled, onToggleComplete }: TodoListProps = $props();
 </script>
 
 {#if todoFile.items.length > 0}
 	<ul aria-label="Todo items" class="-mx-4 w-full divide-y">
 		{#each todoFile.items as item (item.line_number)}
 			<li>
-				<TodoItem todo={item} />
+				{#key item.raw}
+					<TodoItem todo={item} {disabled} {onToggleComplete} />
+				{/key}
 			</li>
 		{/each}
 	</ul>
 {:else}
-	<Empty.Root aria-label="No valid Todo items" class="min-h-full border-0 rounded-none">
+	<Empty.Root aria-label="No valid Todo items" class="min-h-full rounded-none border-0">
 		<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
 		<Empty.Header>
 			<Empty.Title>No valid Todo items</Empty.Title>

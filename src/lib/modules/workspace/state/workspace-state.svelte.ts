@@ -170,6 +170,15 @@ export class WorkspaceState {
 		};
 	}
 
+	replaceTodoFile = (todoFile: TodoFile) => {
+		if (this.session.status !== "ready") return;
+		this.session = { ...this.session, todoFile };
+	};
+
+	refreshTodoFile = async () => {
+		this.applySnapshot(parseWorkspaceSessionSnapshotResponse(await this.adapter.restore()));
+	};
+
 	private attachOperationError(error: unknown, prefix?: string) {
 		const message = formatUnknownError(error);
 		this.notice = { kind: "error", message: prefix ? `${prefix}: ${message}` : message };
@@ -188,5 +197,16 @@ async function resolveOutcome<T, A>(
 }
 
 function formatUnknownError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	if (error instanceof Error) return error.message;
+	if (hasMessage(error)) return error.message;
+	return String(error);
+}
+
+function hasMessage(value: unknown): value is { message: string } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"message" in value &&
+		typeof value.message === "string"
+	);
 }

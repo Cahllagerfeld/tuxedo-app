@@ -1,5 +1,5 @@
 import { page } from "vitest/browser";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { TodoFile } from "../domain/todo";
 import TodoList from "./TodoList.svelte";
@@ -36,8 +36,8 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
-	it("renders parsed Todo items as read-only rows with useful scan details", async () => {
-		render(TodoList, { todoFile });
+	it("renders parsed Todo items with useful scan details and completion controls", async () => {
+		render(TodoList, { todoFile, disabled: false, onToggleComplete: vi.fn() });
 
 		await expect.element(page.getByRole("list", { name: "Todo items" })).toBeVisible();
 		const items = page.getByRole("listitem");
@@ -48,11 +48,20 @@ describe("TodoList", () => {
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("due:2026-07-12", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("Completed 2026-07-11", { exact: true })).toBeVisible();
-		await expect.element(page.getByRole("checkbox")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Plan complete" }))
+			.not.toBeChecked();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Ship release incomplete" }))
+			.toBeChecked();
 	});
 
 	it("renders a Todo-file-specific empty state when no valid items were parsed", async () => {
-		render(TodoList, { todoFile: { ...todoFile, items: [] } });
+		render(TodoList, {
+			todoFile: { ...todoFile, items: [] },
+			disabled: false,
+			onToggleComplete: vi.fn(),
+		});
 
 		await expect.element(page.getByLabelText("No valid Todo items")).toBeVisible();
 		await expect.element(page.getByText("No valid Todo items", { exact: true })).toBeVisible();

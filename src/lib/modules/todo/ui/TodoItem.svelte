@@ -1,14 +1,21 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "$lib/shared/utils";
-	import Circle from "@lucide/svelte/icons/circle";
-	import CircleCheck from "@lucide/svelte/icons/circle-check";
 
 	type TodoItemProps = {
 		todo: TodoItem;
+		disabled: boolean;
+		onToggleComplete: (todo: TodoItem) => void;
 	};
 
-	let { todo }: TodoItemProps = $props();
+	let { todo, disabled, onToggleComplete }: TodoItemProps = $props();
+	let confirmedChecked = $derived(todo.completed);
+
+	function requestCompletionChange() {
+		confirmedChecked = todo.completed;
+		onToggleComplete(todo);
+	}
 
 	function priorityClass(priority: string) {
 		if (priority === "A") return "bg-[var(--priority-a-muted)] text-[var(--priority-a)]";
@@ -21,15 +28,17 @@
 <div
 	class={cn(
 		"group flex gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50",
-		todo.completed && "opacity-60 text-muted-foreground"
+		todo.completed && "text-muted-foreground opacity-60"
 	)}
 >
-	<div class="pt-0.5" aria-hidden="true">
-		{#if todo.completed}
-			<CircleCheck class="size-4 text-[var(--completed)]" />
-		{:else}
-			<Circle class="size-4 text-muted-foreground" />
-		{/if}
+	<div class="pt-0.5">
+		<Checkbox
+			bind:checked={confirmedChecked}
+			{disabled}
+			aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
+			class="size-4 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
+			onCheckedChange={requestCompletionChange}
+		/>
 	</div>
 	<div class="min-w-0 flex-1 space-y-1">
 		<div class="flex min-w-0 items-baseline gap-2">

@@ -27,6 +27,42 @@ function snapshot(todo_file: TodoFile) {
 }
 
 describe("AppState", () => {
+	it("refreshes its Todo-file summary from a confirmed completion response", async () => {
+		const openItem = {
+			line_number: 1,
+			raw: "Plan release",
+			completed: false,
+			priority: null,
+			creation_date: null,
+			completion_date: null,
+			description: "Plan release",
+			projects: [],
+			contexts: [],
+			metadata: {},
+		};
+		const initialFile = todoFile([openItem]);
+		const completedFile = todoFile([
+			{
+				...openItem,
+				raw: "x 2026-07-18 Plan release",
+				completed: true,
+				completion_date: "2026-07-18",
+			},
+		]);
+		const workspaceState = new WorkspaceState(
+			new InMemoryWorkspaceLifecycleAdapter({ restore: snapshot(initialFile) })
+		);
+		const appState = new AppState(workspaceState, {
+			setTodoItemCompletion: async () => completedFile,
+		});
+		await workspaceState.restore();
+
+		await appState.todo.setCompletion(openItem);
+
+		expect(appState.todos.counts).toMatchObject({ open: 0, completed: 1 });
+		expect(appState.todos.items[0].completion_date).toBe("2026-07-18");
+	});
+
 	it("replaces every Todo-file summary fact when the loaded Todo file changes", async () => {
 		const initialFile = todoFile([
 			{
