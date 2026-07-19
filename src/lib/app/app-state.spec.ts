@@ -57,6 +57,9 @@ describe("AppState", () => {
 		);
 		const appState = new AppState(workspaceState, {
 			setTodoItemCompletion: async () => completedFile,
+			deleteTodoItem: async () => {
+				throw new Error("delete is not used in this test");
+			},
 		});
 		await workspaceState.restore();
 

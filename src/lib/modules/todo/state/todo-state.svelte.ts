@@ -1,5 +1,7 @@
 import {
+	deleteTodoItem,
 	setTodoItemCompletion,
+	type DeleteTodoItemInput,
 	type SetTodoItemCompletionInput,
 } from "$lib/modules/todo/api/todo-api";
 import { parseTodoFileResponse, type TodoFile, type TodoItem } from "../domain/todo";
@@ -11,9 +13,13 @@ export interface TodoFileSession {
 
 export interface TodoMutationAdapter {
 	setTodoItemCompletion(input: SetTodoItemCompletionInput): Promise<unknown>;
+	deleteTodoItem(input: DeleteTodoItemInput): Promise<unknown>;
 }
 
-const tauriTodoMutationAdapter: TodoMutationAdapter = { setTodoItemCompletion };
+const tauriTodoMutationAdapter: TodoMutationAdapter = {
+	setTodoItemCompletion,
+	deleteTodoItem,
+};
 
 export class TodoState {
 	isMutationPending = $state(false);
@@ -24,16 +30,29 @@ export class TodoState {
 	) {}
 
 	setCompletion = async (todo: TodoItem): Promise<"updated" | "conflict"> => {
+		return this.runMutation(() =>
+			this.adapter.setTodoItemCompletion({
+				lineNumber: todo.line_number,
+				expectedRaw: todo.raw,
+				completed: !todo.completed,
+			})
+		);
+	};
+
+	delete = async (todo: TodoItem): Promise<"updated" | "conflict"> => {
+		return this.runMutation(() =>
+			this.adapter.deleteTodoItem({
+				lineNumber: todo.line_number,
+				expectedRaw: todo.raw,
+			})
+		);
+	};
+
+	private runMutation = async (mutate: () => Promise<unknown>): Promise<"updated" | "conflict"> => {
 		if (this.isMutationPending) throw new Error("A Todo-file mutation is already running");
 		this.isMutationPending = true;
 		try {
-			const todoFile = parseTodoFileResponse(
-				await this.adapter.setTodoItemCompletion({
-					lineNumber: todo.line_number,
-					expectedRaw: todo.raw,
-					completed: !todo.completed,
-				})
-			);
+			const todoFile = parseTodoFileResponse(await mutate());
 			this.session.replaceTodoFile(todoFile);
 			await this.session.refreshTodoFile();
 			return "updated";

@@ -38,7 +38,10 @@ const todoFile = {
 
 function renderContent(
 	workspaceState: WorkspaceState,
-	todoState = new TodoState(workspaceState, { setTodoItemCompletion: vi.fn() })
+	todoState = new TodoState(workspaceState, {
+		setTodoItemCompletion: vi.fn(),
+		deleteTodoItem: vi.fn(),
+	})
 ) {
 	render(Toaster);
 	return render(WorkspaceContent, {
@@ -66,6 +69,7 @@ describe("WorkspaceContent", () => {
 		const workspaceState = new WorkspaceState(adapter);
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion,
+			deleteTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		const twoItemTodoFile = {
 			...todoFile,
@@ -130,6 +134,7 @@ describe("WorkspaceContent", () => {
 		const workspaceState = new WorkspaceState();
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion: vi.fn().mockRejectedValue(new Error("permission denied")),
+			deleteTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		workspaceState.session = {
 			status: "ready",
@@ -172,6 +177,7 @@ describe("WorkspaceContent", () => {
 			setTodoItemCompletion: vi
 				.fn()
 				.mockRejectedValue({ kind: "conflict", message: "Todo item changed externally" }),
+			deleteTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter;
 		const workspaceState = new WorkspaceState(adapter);
 		const todoState = new TodoState(workspaceState, todoAdapter);
@@ -262,6 +268,136 @@ describe("WorkspaceContent", () => {
 		renderContent(workspaceState);
 
 		await expect.element(page.getByRole("button", { name: "New workspace" })).toBeDisabled();
+	});
+
+	it("persists Todo item deletion and removes the item without a success toast", async () => {
+		let finishMutation: (value: unknown) => void = () => {};
+		const deleteTodoItem = vi.fn(
+			() =>
+				new Promise<unknown>((resolve) => {
+					finishMutation = resolve;
+				})
+		);
+		const adapter = {
+			restore: vi.fn(),
+			create: vi.fn(),
+			switchWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+		} satisfies WorkspaceLifecycleAdapter;
+		const workspaceState = new WorkspaceState(adapter);
+		const todoState = new TodoState(workspaceState, {
+			setTodoItemCompletion: vi.fn(),
+			deleteTodoItem,
+		} satisfies TodoMutationAdapter);
+		const twoItemTodoFile = {
+			...todoFile,
+			items: [
+				...todoFile.items,
+				{
+					...todoFile.items[0],
+					line_number: 2,
+					raw: "Ship release",
+					description: "Ship release",
+				},
+			],
+		};
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile: twoItemTodoFile,
+		};
+		renderContent(workspaceState, todoState);
+
+		const deleteButton = page.getByRole("button", { name: "Delete Plan release" });
+		await deleteButton.click();
+		await expect.element(deleteButton).toBeDisabled();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
+			.toBeDisabled();
+		await expect.element(page.getByText("Plan release")).toBeVisible();
+		expect(deleteTodoItem).toHaveBeenCalledWith({
+			lineNumber: 1,
+			expectedRaw: "Plan release",
+		});
+
+		const remainingTodoFile = {
+			...twoItemTodoFile,
+			items: [twoItemTodoFile.items[1]],
+		};
+		adapter.restore.mockResolvedValue({
+			status: "active_workspace_loaded",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todo_file: remainingTodoFile,
+		});
+		finishMutation(remainingTodoFile);
+		await expect.element(page.getByText("Plan release")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Ship release")).toBeVisible();
+		expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+	});
+
+	it("keeps the Todo item and shows a destructive toast when deletion fails", async () => {
+		const workspaceState = new WorkspaceState();
+		const todoState = new TodoState(workspaceState, {
+			setTodoItemCompletion: vi.fn(),
+			deleteTodoItem: vi.fn().mockRejectedValue(new Error("permission denied")),
+		} satisfies TodoMutationAdapter);
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile,
+		};
+		renderContent(workspaceState, todoState);
+
+		await page.getByRole("button", { name: "Delete Plan release" }).click();
+
+		await expect.element(page.getByText("Plan release")).toBeVisible();
+		await expect.element(page.getByText("Could not delete Todo item")).toBeVisible();
+		await expect.element(page.getByText("permission denied")).toBeVisible();
+	});
+
+	it("reloads the Todo file and reports an external-edit conflict on delete", async () => {
+		const externallyEditedTodoFile = {
+			...todoFile,
+			items: [
+				{
+					...todoFile.items[0],
+					raw: "Plan release carefully",
+					description: "Plan release carefully",
+				},
+			],
+		};
+		const adapter = {
+			restore: vi.fn().mockResolvedValue({
+				status: "active_workspace_loaded",
+				catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+				todo_file: externallyEditedTodoFile,
+			}),
+			create: vi.fn(),
+			switchWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+		} satisfies WorkspaceLifecycleAdapter;
+		const todoAdapter = {
+			setTodoItemCompletion: vi.fn(),
+			deleteTodoItem: vi
+				.fn()
+				.mockRejectedValue({ kind: "conflict", message: "Todo item changed externally" }),
+		} satisfies TodoMutationAdapter;
+		const workspaceState = new WorkspaceState(adapter);
+		const todoState = new TodoState(workspaceState, todoAdapter);
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile,
+		};
+		renderContent(workspaceState, todoState);
+
+		await page.getByRole("button", { name: "Delete Plan release" }).click();
+
+		await expect.element(page.getByText("Plan release carefully")).toBeVisible();
+		await expect
+			.element(page.getByText("Todo file changed externally; reloaded latest version"))
+			.toBeVisible();
+		expect(adapter.restore).toHaveBeenCalledOnce();
 	});
 
 	it("shows a quieter info notice when Todo-file observation changes the summary", async () => {
@@ -355,6 +491,7 @@ describe("WorkspaceContent", () => {
 						finishMutation = reject;
 					})
 			),
+			deleteTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter;
 		const workspaceState = new WorkspaceState(adapter);
 		const { AppState } = await import("$lib/app/app-state.svelte");

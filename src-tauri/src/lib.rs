@@ -45,6 +45,7 @@ pub fn run() {
             workspace::delete_workspace,
             workspace::create_workspace,
             workspace::set_todo_item_completion,
+            workspace::delete_todo_item,
             todo_file_observation::start_todo_file_observation,
             todo_file_observation::stop_todo_file_observation
         ])

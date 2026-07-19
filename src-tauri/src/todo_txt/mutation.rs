@@ -54,8 +54,40 @@ pub fn set_completion(
         return Err(MutationError::Conflict);
     }
 
+    write_todo_file(path, &rewritten)
+}
+
+pub fn delete(path: &Path, line_number: u32, expected_raw: &str) -> Result<(), MutationError> {
+    parser::parse_line(line_number, expected_raw)
+        .map_err(|error| MutationError::Invalid(error.to_string()))?;
+
+    let contents = std::fs::read_to_string(path)?;
+    let mut rewritten = String::with_capacity(contents.len());
+    let mut found = false;
+
+    for (index, line) in contents.split_inclusive('\n').enumerate() {
+        if index + 1 != line_number as usize {
+            rewritten.push_str(line);
+            continue;
+        }
+
+        found = true;
+        let (body, _) = split_line_ending(line);
+        if body != expected_raw {
+            return Err(MutationError::Conflict);
+        }
+    }
+
+    if !found {
+        return Err(MutationError::Conflict);
+    }
+
+    write_todo_file(path, &rewritten)
+}
+
+fn write_todo_file(path: &Path, contents: &str) -> Result<(), MutationError> {
     let file = AtomicFile::new(path, OverwriteBehavior::AllowOverwrite);
-    file.write(|target| target.write_all(rewritten.as_bytes()))?;
+    file.write(|target| target.write_all(contents.as_bytes()))?;
     Ok(())
 }
 
