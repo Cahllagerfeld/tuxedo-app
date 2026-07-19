@@ -1,3 +1,4 @@
+mod todo_file_observation;
 mod todo_txt;
 mod workspace;
 
@@ -36,6 +37,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(todo_file_observation::TodoFileObservation::new())
         .invoke_handler(tauri::generate_handler![
             parse_todo_file,
             workspace::restore_workspace_session,
@@ -43,7 +45,9 @@ pub fn run() {
             workspace::delete_workspace,
             workspace::create_workspace,
             workspace::set_todo_item_completion,
-            workspace::delete_todo_item
+            workspace::delete_todo_item,
+            todo_file_observation::start_todo_file_observation,
+            todo_file_observation::stop_todo_file_observation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

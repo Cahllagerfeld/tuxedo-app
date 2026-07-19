@@ -54,6 +54,7 @@ export class TodoState {
 		try {
 			const todoFile = parseTodoFileResponse(await mutate());
 			this.session.replaceTodoFile(todoFile);
+			await this.session.refreshTodoFile();
 			return "updated";
 		} catch (error) {
 			if (isTodoMutationConflict(error)) {

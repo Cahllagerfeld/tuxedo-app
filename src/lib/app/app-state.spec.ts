@@ -27,7 +27,7 @@ function snapshot(todo_file: TodoFile) {
 }
 
 describe("AppState", () => {
-	it("refreshes its Todo-file summary from a confirmed completion response", async () => {
+	it("refreshes its Todo-file summary from disk after a confirmed completion", async () => {
 		const openItem = {
 			line_number: 1,
 			raw: "Plan release",
@@ -49,8 +49,11 @@ describe("AppState", () => {
 				completion_date: "2026-07-18",
 			},
 		]);
+		let restoreCalls = 0;
 		const workspaceState = new WorkspaceState(
-			new InMemoryWorkspaceLifecycleAdapter({ restore: snapshot(initialFile) })
+			new InMemoryWorkspaceLifecycleAdapter({
+				restore: () => snapshot(restoreCalls++ === 0 ? initialFile : completedFile),
+			})
 		);
 		const appState = new AppState(workspaceState, {
 			setTodoItemCompletion: async () => completedFile,

@@ -104,7 +104,7 @@ describe("WorkspaceContent", () => {
 			completed: true,
 		});
 
-		finishMutation({
+		const completedTodoFile = {
 			...twoItemTodoFile,
 			items: [
 				{
@@ -115,7 +115,13 @@ describe("WorkspaceContent", () => {
 				},
 				twoItemTodoFile.items[1],
 			],
+		};
+		adapter.restore.mockResolvedValue({
+			status: "active_workspace_loaded",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todo_file: completedTodoFile,
 		});
+		finishMutation(completedTodoFile);
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
 			.toBeChecked();
@@ -272,7 +278,13 @@ describe("WorkspaceContent", () => {
 					finishMutation = resolve;
 				})
 		);
-		const workspaceState = new WorkspaceState();
+		const adapter = {
+			restore: vi.fn(),
+			create: vi.fn(),
+			switchWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+		} satisfies WorkspaceLifecycleAdapter;
+		const workspaceState = new WorkspaceState(adapter);
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion: vi.fn(),
 			deleteTodoItem,
@@ -308,10 +320,16 @@ describe("WorkspaceContent", () => {
 			expectedRaw: "Plan release",
 		});
 
-		finishMutation({
+		const remainingTodoFile = {
 			...twoItemTodoFile,
 			items: [twoItemTodoFile.items[1]],
+		};
+		adapter.restore.mockResolvedValue({
+			status: "active_workspace_loaded",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todo_file: remainingTodoFile,
 		});
+		finishMutation(remainingTodoFile);
 		await expect.element(page.getByText("Plan release")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Ship release")).toBeVisible();
 		expect(document.querySelector("[data-sonner-toast]")).toBeNull();
@@ -380,5 +398,121 @@ describe("WorkspaceContent", () => {
 			.element(page.getByText("Todo file changed externally; reloaded latest version"))
 			.toBeVisible();
 		expect(adapter.restore).toHaveBeenCalledOnce();
+	});
+
+	it("shows a quieter info notice when Todo-file observation changes the summary", async () => {
+		const observation = new (
+			await import("$lib/modules/todo/state/todo-file-observation")
+		).InMemoryTodoFileObservationAdapter();
+		const initial = todoFile;
+		const updated = {
+			...todoFile,
+			items: [
+				{
+					...todoFile.items[0],
+					raw: "Plan release carefully",
+					description: "Plan release carefully",
+				},
+			],
+		};
+		let restoreCalls = 0;
+		const adapter = {
+			restore: vi.fn(async () => {
+				restoreCalls += 1;
+				return {
+					status: "active_workspace_loaded" as const,
+					catalogue: {
+						version: 1 as const,
+						active_workspace_id: workspace.id,
+						workspaces: [workspace],
+					},
+					todo_file: restoreCalls === 1 ? initial : updated,
+				};
+			}),
+			create: vi.fn(),
+			switchWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+		} satisfies WorkspaceLifecycleAdapter;
+		const workspaceState = new WorkspaceState(adapter);
+		const { AppState } = await import("$lib/app/app-state.svelte");
+		const { showTodoFileObservationNotice } =
+			await import("$lib/modules/todo/ui/todo-file-notices");
+		const appState = new AppState(workspaceState, undefined, observation, {
+			onObservationSummaryChanged: showTodoFileObservationNotice,
+		});
+		await appState.restore();
+		renderContent(workspaceState, appState.todo);
+
+		await observation.emitChanged();
+
+		await expect.element(page.getByText("Plan release carefully")).toBeVisible();
+		await expect.element(page.getByText("Todo file updated from disk")).toBeVisible();
+		expect(document.querySelector("[data-sonner-toast][data-type='error']")).toBeNull();
+	});
+
+	it("does not stack an observation info notice on top of a mutation conflict toast", async () => {
+		const observation = new (
+			await import("$lib/modules/todo/state/todo-file-observation")
+		).InMemoryTodoFileObservationAdapter();
+		const initial = todoFile;
+		const externallyEditedTodoFile = {
+			...todoFile,
+			items: [
+				{
+					...todoFile.items[0],
+					raw: "Plan release carefully",
+					description: "Plan release carefully",
+				},
+			],
+		};
+		let finishMutation: (error: unknown) => void = () => {};
+		let restoreCalls = 0;
+		const adapter = {
+			restore: vi.fn(async () => {
+				restoreCalls += 1;
+				return {
+					status: "active_workspace_loaded" as const,
+					catalogue: {
+						version: 1 as const,
+						active_workspace_id: workspace.id,
+						workspaces: [workspace],
+					},
+					todo_file: restoreCalls === 1 ? initial : externallyEditedTodoFile,
+				};
+			}),
+			create: vi.fn(),
+			switchWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+		} satisfies WorkspaceLifecycleAdapter;
+		const todoAdapter = {
+			setTodoItemCompletion: vi.fn(
+				() =>
+					new Promise((_, reject) => {
+						finishMutation = reject;
+					})
+			),
+			deleteTodoItem: vi.fn(),
+		} satisfies TodoMutationAdapter;
+		const workspaceState = new WorkspaceState(adapter);
+		const { AppState } = await import("$lib/app/app-state.svelte");
+		const { showTodoFileObservationNotice } =
+			await import("$lib/modules/todo/ui/todo-file-notices");
+		const appState = new AppState(workspaceState, todoAdapter, observation, {
+			onObservationSummaryChanged: showTodoFileObservationNotice,
+		});
+		await appState.restore();
+		renderContent(workspaceState, appState.todo);
+
+		await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
+			.toBeDisabled();
+		await observation.emitChanged();
+		finishMutation({ kind: "conflict", message: "Todo item changed externally" });
+
+		await expect
+			.element(page.getByText("Todo file changed externally; reloaded latest version"))
+			.toBeVisible();
+		expect(page.getByText("Todo file updated from disk").elements().length).toBe(0);
 	});
 });
