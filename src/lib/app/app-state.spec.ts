@@ -57,6 +57,9 @@ describe("AppState", () => {
 			deleteTodoItem: async () => {
 				throw new Error("delete is not used in this test");
 			},
+			createTodoItem: async () => {
+				throw new Error("create is not used in this test");
+			},
 		});
 		await workspaceState.restore();
 

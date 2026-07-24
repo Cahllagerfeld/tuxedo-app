@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import type { TodoState } from "$lib/modules/todo/state/todo-state.svelte";
+	import TodoComposer from "$lib/modules/todo/ui/TodoComposer.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 	import type { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
@@ -44,6 +45,12 @@
 		}
 	}
 
+	function createTodoError(error: unknown) {
+		toast.error("Could not create Todo item", {
+			description: errorMessage(error),
+		});
+	}
+
 	function errorMessage(error: unknown) {
 		if (error instanceof Error) return error.message;
 		if (
@@ -84,12 +91,20 @@
 	{/if}
 
 	{#if workspace.todoFile}
-		<TodoList
-			todoFile={workspace.todoFile}
-			disabled={todoState.isMutationPending}
-			onToggleComplete={toggleTodoCompletion}
-			onDelete={deleteTodoItem}
-		/>
+		<div class="flex w-full min-w-0 flex-col">
+			<TodoComposer
+				todoFile={workspace.todoFile}
+				{todoState}
+				disabled={todoState.isMutationPending}
+				onCreateError={createTodoError}
+			/>
+			<TodoList
+				todoFile={workspace.todoFile}
+				disabled={todoState.isMutationPending}
+				onToggleComplete={toggleTodoCompletion}
+				onDelete={deleteTodoItem}
+			/>
+		</div>
 	{:else}
 		<Empty.Root aria-label="No active workspace">
 			<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>

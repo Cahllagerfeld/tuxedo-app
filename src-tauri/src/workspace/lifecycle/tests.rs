@@ -109,6 +109,159 @@ fn deleting_the_last_todo_item_leaves_an_empty_todo_file() {
 }
 
 #[test]
+fn creating_a_todo_item_appends_a_canonical_line_and_returns_the_todo_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let original =
+        "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n";
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, original);
+
+    let todo_file = lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec!["Family".into(), "Peace".into()],
+            vec!["phone".into()],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&todo_path).unwrap(),
+        "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n2026-07-24 Call Mom +Family +Peace @phone\r\n"
+    );
+    let created = todo_file
+        .items
+        .iter()
+        .find(|item| item.description == "Call Mom")
+        .unwrap();
+    assert!(!created.completed);
+    assert_eq!(created.creation_date.as_deref(), Some("2026-07-24"));
+    assert_eq!(created.projects, vec!["Family", "Peace"]);
+    assert_eq!(created.contexts, vec!["phone"]);
+    assert_eq!(created.priority, None);
+    assert!(created.metadata.is_empty());
+}
+
+#[test]
+fn creating_a_todo_item_appends_after_a_file_without_a_trailing_newline() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Keep me open");
+
+    lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec![],
+            vec![],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Keep me open\n2026-07-24 Call Mom\n"
+    );
+}
+
+#[test]
+fn creating_a_todo_item_into_an_empty_file_writes_a_single_line() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "");
+
+    let todo_file = lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec![],
+            vec![],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "2026-07-24 Call Mom\n"
+    );
+    assert_eq!(todo_file.items.len(), 1);
+    assert_eq!(todo_file.items[0].line_number, 1);
+}
+
+#[test]
+fn creating_rejects_an_empty_description_and_structured_description_tokens() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Keep me open\n");
+
+    let empty = lifecycle
+        .create_todo_item(
+            "   ".into(),
+            vec![],
+            vec![],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap_err();
+    assert!(empty.to_string().contains("Description must be non-empty"));
+
+    let structured = lifecycle
+        .create_todo_item(
+            "Call Mom +Family".into(),
+            vec![],
+            vec![],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap_err();
+    assert!(structured.to_string().contains("+Family"));
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Keep me open\n"
+    );
+}
+
+#[test]
+fn creating_rejects_invalid_and_duplicate_projects_or_contexts() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, _) = lifecycle_with_active_todo(&directory, "Keep me open\n");
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap();
+
+    let whitespace = lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec!["Bad Project".into()],
+            vec![],
+            today,
+        )
+        .unwrap_err();
+    assert!(whitespace.to_string().contains("whitespace"));
+
+    let duplicate = lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec!["Family".into(), "Family".into()],
+            vec![],
+            today,
+        )
+        .unwrap_err();
+    assert!(duplicate.to_string().contains("duplicate"));
+}
+
+#[test]
+fn creating_strips_matching_project_and_context_prefixes() {
+    let directory = tempfile::tempdir().unwrap();
+    let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Keep me open\n");
+
+    lifecycle
+        .create_todo_item(
+            "Call Mom".into(),
+            vec!["+Family".into()],
+            vec!["@phone".into()],
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 24).unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(todo_path).unwrap(),
+        "Keep me open\n2026-07-24 Call Mom +Family @phone\n"
+    );
+}
+
+#[test]
 fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
     let directory = tempfile::tempdir().unwrap();
     let original =

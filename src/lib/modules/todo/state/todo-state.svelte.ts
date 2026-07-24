@@ -1,6 +1,8 @@
 import {
+	createTodoItem,
 	deleteTodoItem,
 	setTodoItemCompletion,
+	type CreateTodoItemInput,
 	type DeleteTodoItemInput,
 	type SetTodoItemCompletionInput,
 } from "$lib/modules/todo/api/todo-api";
@@ -14,11 +16,13 @@ export interface TodoFileSession {
 export interface TodoMutationAdapter {
 	setTodoItemCompletion(input: SetTodoItemCompletionInput): Promise<unknown>;
 	deleteTodoItem(input: DeleteTodoItemInput): Promise<unknown>;
+	createTodoItem(input: CreateTodoItemInput): Promise<unknown>;
 }
 
 const tauriTodoMutationAdapter: TodoMutationAdapter = {
 	setTodoItemCompletion,
 	deleteTodoItem,
+	createTodoItem,
 };
 
 export class TodoState {
@@ -46,6 +50,10 @@ export class TodoState {
 				expectedRaw: todo.raw,
 			})
 		);
+	};
+
+	create = async (input: CreateTodoItemInput): Promise<"updated" | "conflict"> => {
+		return this.runMutation(() => this.adapter.createTodoItem(input));
 	};
 
 	private runMutation = async (mutate: () => Promise<unknown>): Promise<"updated" | "conflict"> => {
