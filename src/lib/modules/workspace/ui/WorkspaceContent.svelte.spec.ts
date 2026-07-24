@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import {
@@ -41,6 +41,7 @@ function renderContent(
 	todoState = new TodoState(workspaceState, {
 		setTodoItemCompletion: vi.fn(),
 		deleteTodoItem: vi.fn(),
+		createTodoItem: vi.fn(),
 	})
 ) {
 	render(Toaster);
@@ -70,6 +71,7 @@ describe("WorkspaceContent", () => {
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion,
 			deleteTodoItem: vi.fn(),
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		const twoItemTodoFile = {
 			...todoFile,
@@ -129,6 +131,7 @@ describe("WorkspaceContent", () => {
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion: vi.fn().mockRejectedValue(new Error("permission denied")),
 			deleteTodoItem: vi.fn(),
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		workspaceState.session = {
 			status: "ready",
@@ -172,6 +175,7 @@ describe("WorkspaceContent", () => {
 				.fn()
 				.mockRejectedValue({ kind: "conflict", message: "Todo item changed externally" }),
 			deleteTodoItem: vi.fn(),
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter;
 		const workspaceState = new WorkspaceState(adapter);
 		const todoState = new TodoState(workspaceState, todoAdapter);
@@ -276,6 +280,7 @@ describe("WorkspaceContent", () => {
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion: vi.fn(),
 			deleteTodoItem,
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		const twoItemTodoFile = {
 			...todoFile,
@@ -322,6 +327,7 @@ describe("WorkspaceContent", () => {
 		const todoState = new TodoState(workspaceState, {
 			setTodoItemCompletion: vi.fn(),
 			deleteTodoItem: vi.fn().mockRejectedValue(new Error("permission denied")),
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter);
 		workspaceState.session = {
 			status: "ready",
@@ -363,6 +369,7 @@ describe("WorkspaceContent", () => {
 			deleteTodoItem: vi
 				.fn()
 				.mockRejectedValue({ kind: "conflict", message: "Todo item changed externally" }),
+			createTodoItem: vi.fn(),
 		} satisfies TodoMutationAdapter;
 		const workspaceState = new WorkspaceState(adapter);
 		const todoState = new TodoState(workspaceState, todoAdapter);
@@ -380,5 +387,151 @@ describe("WorkspaceContent", () => {
 			.element(page.getByText("Todo file changed externally; reloaded latest version"))
 			.toBeVisible();
 		expect(adapter.restore).toHaveBeenCalledOnce();
+	});
+
+	it("shows the Todo composer when a Todo file is loaded", async () => {
+		const ready = new WorkspaceState();
+		ready.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile,
+		};
+		renderContent(ready);
+		await expect.element(page.getByRole("form", { name: "Todo composer" })).toBeVisible();
+		await expect.element(page.getByLabelText("Description")).toBeVisible();
+		await expect.element(page.getByRole("button", { name: "Add details" })).toBeVisible();
+		await expect.element(page.getByLabelText("Projects")).not.toBeVisible();
+	});
+
+	it("hides the Todo composer when no Todo file is loaded", async () => {
+		const empty = new WorkspaceState();
+		empty.session = {
+			status: "empty",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			warning: null,
+		};
+		renderContent(empty);
+		await expect.element(page.getByRole("form", { name: "Todo composer" })).not.toBeInTheDocument();
+	});
+
+	it("creates a Todo item through the composer and resets without a success toast", async () => {
+		let finishMutation: (value: unknown) => void = () => {};
+		const createTodoItem = vi.fn(
+			() =>
+				new Promise<unknown>((resolve) => {
+					finishMutation = resolve;
+				})
+		);
+		const workspaceState = new WorkspaceState();
+		const todoState = new TodoState(workspaceState, {
+			setTodoItemCompletion: vi.fn(),
+			deleteTodoItem: vi.fn(),
+			createTodoItem,
+		} satisfies TodoMutationAdapter);
+		const seededTodoFile = {
+			...todoFile,
+			items: [
+				{
+					...todoFile.items[0],
+					projects: ["Home"],
+					contexts: ["phone"],
+					raw: "Plan release +Home @phone",
+					description: "Plan release",
+				},
+			],
+		};
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile: seededTodoFile,
+		};
+		renderContent(workspaceState, todoState);
+
+		await page.getByRole("button", { name: "Add details" }).click();
+		await page.getByLabelText("Description").fill("Call Mom");
+		await page.getByLabelText("Projects").fill("Family");
+		await userEvent.keyboard("{Enter}");
+		await page.getByLabelText("Contexts").click();
+		await page.getByRole("option", { name: "@phone" }).click();
+		await page.getByRole("button", { name: "Add Todo item" }).click();
+
+		await expect.element(page.getByRole("button", { name: "Add Todo item" })).toBeDisabled();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
+			.toBeDisabled();
+		expect(createTodoItem).toHaveBeenCalledWith({
+			description: "Call Mom",
+			projects: ["Family"],
+			contexts: ["phone"],
+		});
+
+		finishMutation({
+			...seededTodoFile,
+			items: [
+				...seededTodoFile.items,
+				{
+					line_number: 2,
+					raw: "2026-07-24 Call Mom +Family @phone",
+					completed: false,
+					priority: null,
+					creation_date: "2026-07-24",
+					completion_date: null,
+					description: "Call Mom",
+					projects: ["Family"],
+					contexts: ["phone"],
+					metadata: {},
+				},
+			],
+		});
+
+		await expect.element(page.getByText("Call Mom")).toBeVisible();
+		await expect.element(page.getByLabelText("Description")).toHaveValue("");
+		expect(document.activeElement).toBe(page.getByLabelText("Description").element());
+		expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+	});
+
+	it("keeps composer values and shows a destructive toast when creation fails", async () => {
+		const workspaceState = new WorkspaceState();
+		const todoState = new TodoState(workspaceState, {
+			setTodoItemCompletion: vi.fn(),
+			deleteTodoItem: vi.fn(),
+			createTodoItem: vi.fn().mockRejectedValue(new Error("permission denied")),
+		} satisfies TodoMutationAdapter);
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile,
+		};
+		renderContent(workspaceState, todoState);
+
+		await page.getByLabelText("Description").fill("Call Mom");
+		await page.getByRole("button", { name: "Add Todo item" }).click();
+
+		await expect.element(page.getByLabelText("Description")).toHaveValue("Call Mom");
+		await expect.element(page.getByText("Could not create Todo item")).toBeVisible();
+		await expect.element(page.getByText("permission denied")).toBeVisible();
+	});
+
+	it("requires a Description and rejects structured Description tokens", async () => {
+		const workspaceState = new WorkspaceState();
+		workspaceState.session = {
+			status: "ready",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+			todoFile,
+		};
+		renderContent(workspaceState);
+
+		await page.getByRole("button", { name: "Add Todo item" }).click();
+		await expect.element(page.getByText("Enter a Description.")).toBeVisible();
+
+		await page.getByLabelText("Description").fill("Call Mom +Family");
+		await page.getByRole("button", { name: "Add Todo item" }).click();
+		await expect
+			.element(
+				page.getByText(
+					"Description cannot contain a standalone Project, Context, or Metadata token."
+				)
+			)
+			.toBeVisible();
 	});
 });

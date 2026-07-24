@@ -43,7 +43,8 @@ pub fn run() {
             workspace::delete_workspace,
             workspace::create_workspace,
             workspace::set_todo_item_completion,
-            workspace::delete_todo_item
+            workspace::delete_todo_item,
+            workspace::create_todo_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

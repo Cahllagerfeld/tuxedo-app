@@ -34,6 +34,12 @@ The local calendar date on which an open Todo item became completed.
 **Creation date**:
 The optional calendar date recorded for a Todo item's creation.
 
+**Todo item creation**:
+The addition of a new open Todo item as the final line of a Todo file. Todo items created by Tuxedo have the current local date as their Creation date and write Description, Projects, then Contexts; creation does not reorder or otherwise alter existing lines.
+
+**Todo composer**:
+The inline form for creating a Todo item. It captures a Description, Projects, and Contexts; it normalizes Description whitespace and cannot contain standalone tokens that todo.txt would parse as a Project, Context, or Metadata.
+
 **Todo-file summary**:
 A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
@@ -43,8 +49,18 @@ A distinct, locale-sorted collection of exact parsed values for one Todo-item at
 **Project**:
 An exact `+`-prefixed token parsed from a Todo item. Projects with different spelling are distinct.
 
+**Project suggestion**:
+A Project discovered from any parsed Todo item in the loaded Todo file and offered while creating a Todo item. Suggestions are not an independently stored catalogue; a Project disappears from them when no Todo item uses it.
+
 **Context**:
 An exact `@`-prefixed token parsed from a Todo item. Contexts with different spelling are distinct.
+
+**Context suggestion**:
+A Context discovered from any parsed Todo item in the loaded Todo file and offered while creating a Todo item. Suggestions are not an independently stored catalogue; a Context disappears from them when no Todo item uses it.
+
+**Metadata**:
+An exact `key:value` token parsed from a Todo item. A Todo item has at most one parsed value for each Metadata key.
+_Avoid_: Property tag, free-form tag
 
 **Skipped line**:
 A non-empty Todo-file line that could not be parsed as a Todo item. It is reported separately from parsed Todo-item counts.

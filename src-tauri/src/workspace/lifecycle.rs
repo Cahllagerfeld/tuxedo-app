@@ -139,6 +139,22 @@ impl WorkspaceLifecycle {
         mutation::delete(&todo_path, line_number, &expected_raw)?;
         Ok(load_todo_file(workspace.todo_path().to_owned())?)
     }
+
+    pub(super) fn create_todo_item(
+        &self,
+        description: String,
+        projects: Vec<String>,
+        contexts: Vec<String>,
+        today: NaiveDate,
+    ) -> Result<TodoFile, LifecycleError> {
+        let catalogue = self.catalogue_store.load()?;
+        let workspace = catalogue
+            .active_workspace()
+            .ok_or_else(|| LifecycleError::Invalid("no active workspace".into()))?;
+        let todo_path = PathBuf::from(workspace.todo_path());
+        mutation::create(&todo_path, &description, &projects, &contexts, today)?;
+        Ok(load_todo_file(workspace.todo_path().to_owned())?)
+    }
 }
 
 fn workspace_session_snapshot(catalogue: WorkspaceCatalogue) -> WorkspaceSessionSnapshot {

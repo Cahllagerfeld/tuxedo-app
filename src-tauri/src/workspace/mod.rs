@@ -81,6 +81,23 @@ pub(crate) fn delete_todo_item(
         .map_err(TodoMutationCommandError::from)
 }
 
+#[tauri::command]
+pub(crate) fn create_todo_item(
+    app: AppHandle,
+    description: String,
+    projects: Vec<String>,
+    contexts: Vec<String>,
+) -> Result<TodoFile, TodoMutationCommandError> {
+    lifecycle(&app)?
+        .create_todo_item(
+            description,
+            projects,
+            contexts,
+            chrono::Local::now().date_naive(),
+        )
+        .map_err(TodoMutationCommandError::from)
+}
+
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum TodoMutationCommandError {
