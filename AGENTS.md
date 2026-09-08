@@ -2,6 +2,16 @@
 
 Guidance for future agents working in this repository.
 
+### Project toolchain
+
+This repository uses devenv. Run project-provided tools through devenv:
+
+- `devenv shell -- gh ...`
+- `devenv shell -- node ...`
+- `devenv shell -- pnpm ...`
+
+Do not assume these tools are installed globally.
+
 ## Project Structure
 
 `src/lib` is organized by ownership, not by broad technical category.
