@@ -389,10 +389,7 @@ fn rust_serialization_matches_the_shared_workspace_session_contract_fixture() {
                 description: "Plan release".into(),
                 projects: vec!["Tuxedo".into()],
                 contexts: vec!["computer".into()],
-                metadata: std::collections::HashMap::from([(
-                    "due".into(),
-                    "2026-01-02".into(),
-                )]),
+                metadata: std::collections::HashMap::from([("due".into(), "2026-01-02".into())]),
             }],
             skipped: vec![crate::todo_txt::types::SkippedLine {
                 line_number: 2,
