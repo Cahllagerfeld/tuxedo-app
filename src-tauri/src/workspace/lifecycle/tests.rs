@@ -143,7 +143,7 @@ fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
 
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
-        "# keep this skipped line\r\n\r\nx 2026-07-18 2026-07-10 Buy milk +Home\r\nKeep me open\r\n"
+        "# keep this skipped line\r\n\r\nx 2026-07-18 (A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n"
     );
     let completed = todo_file
         .items
@@ -152,7 +152,7 @@ fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
         .unwrap();
     assert!(completed.completed);
     assert_eq!(completed.completion_date.as_deref(), Some("2026-07-18"));
-    assert_eq!(completed.priority, None);
+    assert_eq!(completed.priority, Some('A'));
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn a_failed_atomic_write_leaves_the_todo_file_unchanged() {
 }
 
 #[test]
-fn completion_round_trip_preserves_whitespace_while_removing_priority() {
+fn completion_round_trip_preserves_whitespace_and_priority() {
     let directory = tempfile::tempdir().unwrap();
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "  (A) Buy milk  \n");
 
@@ -316,20 +316,20 @@ fn completion_round_trip_preserves_whitespace_while_removing_priority() {
         .unwrap();
     assert_eq!(
         std::fs::read_to_string(&todo_path).unwrap(),
-        "x 2026-07-18   Buy milk  \n"
+        "x 2026-07-18   (A) Buy milk  \n"
     );
 
     lifecycle
         .set_todo_item_completion(
             1,
-            "x 2026-07-18   Buy milk  ".into(),
+            "x 2026-07-18   (A) Buy milk  ".into(),
             false,
             chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
         )
         .unwrap();
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
-        "  Buy milk  \n"
+        "  (A) Buy milk  \n"
     );
 }
 

@@ -40,10 +40,7 @@ pub fn set_completion(
             rewritten.push_str("x ");
             rewritten.push_str(&today.format("%Y-%m-%d").to_string());
             rewritten.push(' ');
-            rewritten.push_str(&completion_body(
-                expected_raw,
-                expected_item.priority.is_some(),
-            ));
+            rewritten.push_str(expected_raw);
         } else {
             rewritten.push_str(&uncompleted_raw(line_number, expected_raw)?);
         }
@@ -126,16 +123,6 @@ fn split_line_ending(line: &str) -> (&str, &str) {
         (body, "\n")
     } else {
         (line, "")
-    }
-}
-
-fn completion_body(raw: &str, has_priority: bool) -> String {
-    if has_priority {
-        let trimmed_start = raw.trim_start();
-        let leading = &raw[..raw.len() - trimmed_start.len()];
-        format!("{leading}{}", &trimmed_start[4..])
-    } else {
-        raw.to_owned()
     }
 }
 

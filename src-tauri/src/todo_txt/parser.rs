@@ -44,6 +44,7 @@ pub fn parse_line(line_number: u32, raw: &str) -> Result<TodoItem, ParseLineErro
 
 fn parse_completed(line_number: u32, raw: &str, rest: &str) -> Result<TodoItem, ParseLineError> {
     let (completion_date, rest) = consume_optional_date(rest)?;
+    let (priority, rest) = consume_priority(rest.trim_start());
     let (creation_date, rest) = consume_optional_date(rest)?;
     let parsed = parse_tokens(rest)?;
 
@@ -51,7 +52,7 @@ fn parse_completed(line_number: u32, raw: &str, rest: &str) -> Result<TodoItem, 
         line_number,
         raw: raw.to_string(),
         completed: true,
-        priority: None,
+        priority,
         creation_date,
         completion_date,
         description: parsed.description,
@@ -246,6 +247,16 @@ mod tests {
         assert_eq!(item.completion_date.as_deref(), Some("2011-03-03"));
         assert_eq!(item.creation_date.as_deref(), Some("2011-03-02"));
         assert_eq!(item.description, "Call Mom");
+    }
+
+    #[test]
+    fn parses_priority_preserved_on_a_completed_item() {
+        let item = parse_line(1, "x 2026-07-18 (A) 2026-07-10 Buy milk").unwrap();
+
+        assert!(item.completed);
+        assert_eq!(item.priority, Some('A'));
+        assert_eq!(item.creation_date.as_deref(), Some("2026-07-10"));
+        assert_eq!(item.description, "Buy milk");
     }
 
     #[test]
