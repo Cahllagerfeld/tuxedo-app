@@ -21,7 +21,7 @@ const personal = {
 
 describe("WorkspaceSwitcher", () => {
 	it("lists workspaces oldest first, identifies the active one, and selects another", async () => {
-		const selectWorkspace = vi.fn(async () => {});
+		const selectWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {
 			workspaces: [personal, work],
 			activeWorkspaceId: personal.id,
@@ -72,7 +72,7 @@ describe("WorkspaceSwitcher", () => {
 	});
 
 	it("requires confirmation before deleting the active workspace", async () => {
-		const deleteWorkspace = vi.fn(async () => {});
+		const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {
 			workspaces: [work],
 			activeWorkspaceId: work.id,
@@ -99,7 +99,9 @@ describe("WorkspaceSwitcher", () => {
 
 	it("closes its delete confirmation before the deletion lifecycle operation runs", async () => {
 		let releaseDeletion!: () => void;
-		const pendingDeletion = new Promise<void>((resolve) => (releaseDeletion = resolve));
+		const pendingDeletion = new Promise<{ status: "applied" }>(
+			(resolve) => (releaseDeletion = () => resolve({ status: "applied" }))
+		);
 		const deleteWorkspace = vi.fn(() => pendingDeletion);
 		render(WorkspaceSwitcher, {
 			workspaces: [work],

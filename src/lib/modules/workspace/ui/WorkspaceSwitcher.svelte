@@ -2,18 +2,25 @@
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import Plus from "@lucide/svelte/icons/plus";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
 	import { Button } from "$lib/shared/ui/button";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import type {
+		WorkspaceSessionActionResult,
+		WorkspaceSessionOperation,
+	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
+	import { toast } from "svelte-sonner";
 
 	type Props = {
 		workspaces: Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<void>;
-		deleteWorkspace: (workspaceId: string) => Promise<void>;
+		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
+		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
+		pendingOperation?: WorkspaceSessionOperation | null;
 	};
 
 	const colorClasses: Record<Workspace["color"], string> = {
@@ -34,6 +41,7 @@
 		deleteWorkspace,
 		openCreationDialog,
 		disabled = false,
+		pendingOperation = null,
 	}: Props = $props();
 	let isDeleteDialogOpen = $state(false);
 	let workspaceToDelete = $state<Workspace | null>(null);
@@ -48,7 +56,27 @@
 		const workspace = workspaceToDelete;
 		isDeleteDialogOpen = false;
 		workspaceToDelete = null;
-		await deleteWorkspace(workspace.id);
+		try {
+			const result = await deleteWorkspace(workspace.id);
+			if (result.status === "rejected")
+				toast.error("Could not delete workspace", { description: result.message });
+		} catch (error) {
+			toast.error("Could not delete workspace", { description: errorMessage(error) });
+		}
+	}
+
+	async function chooseWorkspace(workspaceId: string) {
+		try {
+			const result = await selectWorkspace(workspaceId);
+			if (result.status === "rejected")
+				toast.error("Could not open workspace", { description: result.message });
+		} catch (error) {
+			toast.error("Could not open workspace", { description: errorMessage(error) });
+		}
+	}
+
+	function errorMessage(error: unknown): string {
+		return error instanceof Error ? error.message : String(error);
 	}
 </script>
 
@@ -63,7 +91,11 @@
 				<span class="min-w-0 flex-1 truncate text-left font-mono text-sm">
 					{activeWorkspace?.name ?? "No workspace selected"}
 				</span>
-				<ChevronDown class="shrink-0" aria-hidden="true" />
+				{#if pendingOperation === "open_workspace" || pendingOperation === "delete_workspace"}
+					<LoaderCircle class="shrink-0 animate-spin" aria-hidden="true" />
+				{:else}
+					<ChevronDown class="shrink-0" aria-hidden="true" />
+				{/if}
 				<span class="sr-only"
 					>Select workspace: {activeWorkspace?.name ?? "No workspace selected"}</span
 				>
@@ -79,7 +111,7 @@
 						: workspace.name}
 					aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 					{disabled}
-					onclick={() => void selectWorkspace(workspace.id)}
+					onclick={() => void chooseWorkspace(workspace.id)}
 				>
 					<span
 						class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}

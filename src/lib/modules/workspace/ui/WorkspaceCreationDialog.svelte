@@ -8,13 +8,14 @@
 	import * as Form from "$lib/shared/ui/form";
 	import { Input } from "$lib/shared/ui/input";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-state.svelte";
 	import { cn } from "@/shared/utils";
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {
 		open?: boolean;
 		selectFile?: () => Promise<string | null>;
-		createWorkspace: (input: CreateWorkspaceInput) => Promise<void>;
+		createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceSessionActionResult>;
 		disabled?: boolean;
 	};
 
@@ -122,7 +123,11 @@
 		isCreating = true;
 		serverError = "";
 		try {
-			await createWorkspace(result.data);
+			const outcome = await createWorkspace(result.data);
+			if (outcome.status !== "applied") {
+				serverError = outcome.message;
+				return;
+			}
 			open = false;
 			resetForm();
 		} catch (error) {

@@ -1,6 +1,31 @@
 import { z } from "zod";
 
-export const todoItemSchema = z.object({
+export type TodoItem = {
+	line_number: number;
+	raw: string;
+	completed: boolean;
+	priority: string | null;
+	creation_date: string | null;
+	completion_date: string | null;
+	description: string;
+	projects: string[];
+	contexts: string[];
+	metadata: Record<string, string>;
+};
+
+export type SkippedLine = {
+	line_number: number;
+	raw: string;
+	reason: string;
+};
+
+export type TodoFile = {
+	path: string;
+	items: TodoItem[];
+	skipped: SkippedLine[];
+};
+
+export const todoItemSchema: z.ZodType<TodoItem> = z.object({
 	line_number: z.number(),
 	raw: z.string(),
 	completed: z.boolean(),
@@ -13,32 +38,14 @@ export const todoItemSchema = z.object({
 	metadata: z.record(z.string(), z.string()),
 });
 
-export const skippedLineSchema = z.object({
+export const skippedLineSchema: z.ZodType<SkippedLine> = z.object({
 	line_number: z.number(),
 	raw: z.string(),
 	reason: z.string(),
 });
 
-export const todoFileSchema = z.object({
+export const todoFileSchema: z.ZodType<TodoFile> = z.object({
 	path: z.string(),
 	items: z.array(todoItemSchema),
 	skipped: z.array(skippedLineSchema),
 });
-
-export type TodoItem = z.infer<typeof todoItemSchema>;
-export type SkippedLine = z.infer<typeof skippedLineSchema>;
-export type TodoFile = z.infer<typeof todoFileSchema>;
-
-export function parseTodoFileResponse(response: unknown): TodoFile {
-	const result = todoFileSchema.safeParse(response);
-
-	if (result.success) {
-		return result.data;
-	}
-
-	const message = result.error.issues
-		.map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`)
-		.join("; ");
-
-	throw new Error(`Unexpected todo file response from Rust: ${message}`);
-}

@@ -1,113 +1,94 @@
 mod catalogue;
 mod lifecycle;
 
-use serde::Serialize;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
-use crate::todo_txt::mutation::MutationError;
-use crate::todo_txt::types::TodoFile;
-
-use lifecycle::{WorkspaceLifecycle, WorkspaceSessionSnapshot};
+use lifecycle::{
+    LifecycleError, WorkspaceSession, WorkspaceSessionOperationOutcome, WorkspaceSessionSnapshot,
+};
 
 const WORKSPACE_CATALOGUE_FILE: &str = "workspaces.toml";
 
 #[tauri::command]
 pub(crate) fn restore_workspace_session(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
 ) -> Result<WorkspaceSessionSnapshot, String> {
-    lifecycle(&app)?
-        .restore()
-        .map_err(|error| error.to_string())
+    session.restore().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub(crate) fn switch_workspace(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
     workspace_id: String,
-) -> Result<WorkspaceSessionSnapshot, String> {
-    lifecycle(&app)?
-        .switch(workspace_id)
-        .map_err(|error| error.to_string())
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome(session.switch(workspace_id))
 }
 
 #[tauri::command]
 pub(crate) fn delete_workspace(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
     workspace_id: String,
-) -> Result<WorkspaceSessionSnapshot, String> {
-    lifecycle(&app)?
-        .delete(workspace_id)
-        .map_err(|error| error.to_string())
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome(session.delete(workspace_id))
 }
 
 #[tauri::command]
 pub(crate) fn create_workspace(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
     name: String,
     color: String,
     todo_path: String,
-) -> Result<WorkspaceSessionSnapshot, String> {
-    lifecycle(&app)?
-        .create(name, color, todo_path)
-        .map_err(|error| error.to_string())
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome(session.create(name, color, todo_path))
 }
 
 #[tauri::command]
 pub(crate) fn set_todo_item_completion(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
     line_number: u32,
     expected_raw: String,
     completed: bool,
-) -> Result<TodoFile, TodoMutationCommandError> {
-    lifecycle(&app)?
-        .set_todo_item_completion(
-            line_number,
-            expected_raw,
-            completed,
-            chrono::Local::now().date_naive(),
-        )
-        .map_err(TodoMutationCommandError::from)
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome_result(session.set_todo_item_completion(
+        line_number,
+        expected_raw,
+        completed,
+        chrono::Local::now().date_naive(),
+    ))
 }
 
 #[tauri::command]
 pub(crate) fn delete_todo_item(
-    app: AppHandle,
+    session: State<'_, WorkspaceSession>,
     line_number: u32,
     expected_raw: String,
-) -> Result<TodoFile, TodoMutationCommandError> {
-    lifecycle(&app)?
-        .delete_todo_item(line_number, expected_raw)
-        .map_err(TodoMutationCommandError::from)
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome_result(session.delete_todo_item(line_number, expected_raw))
 }
 
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum TodoMutationCommandError {
-    Conflict { message: String },
-    Failure { message: String },
+fn operation_outcome(
+    result: Result<WorkspaceSessionSnapshot, LifecycleError>,
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    operation_outcome_result(
+        result.map(|snapshot| WorkspaceSessionOperationOutcome::Applied { snapshot }),
+    )
 }
 
-impl From<String> for TodoMutationCommandError {
-    fn from(message: String) -> Self {
-        Self::Failure { message }
+fn operation_outcome_result(
+    result: Result<WorkspaceSessionOperationOutcome, LifecycleError>,
+) -> Result<WorkspaceSessionOperationOutcome, String> {
+    match result {
+        Ok(outcome) => Ok(outcome),
+        Err(LifecycleError::OperationLock) => Err(LifecycleError::OperationLock.to_string()),
+        Err(error) => Ok(WorkspaceSessionOperationOutcome::Rejected {
+            message: error.to_string(),
+        }),
     }
 }
 
-impl From<lifecycle::LifecycleError> for TodoMutationCommandError {
-    fn from(error: lifecycle::LifecycleError) -> Self {
-        let message = error.to_string();
-        match error {
-            lifecycle::LifecycleError::TodoMutation(MutationError::Conflict) => {
-                Self::Conflict { message }
-            }
-            _ => Self::Failure { message },
-        }
-    }
-}
-
-fn lifecycle(app: &AppHandle) -> Result<WorkspaceLifecycle, String> {
-    Ok(WorkspaceLifecycle::new(workspace_catalogue_path(app)?))
+pub(crate) fn workspace_session(app: &AppHandle) -> Result<WorkspaceSession, String> {
+    Ok(WorkspaceSession::new(workspace_catalogue_path(app)?))
 }
 
 fn workspace_catalogue_path(app: &AppHandle) -> Result<PathBuf, String> {

@@ -13,10 +13,20 @@ fn save_catalogue(path: PathBuf, catalogue: &WorkspaceCatalogue) {
     WorkspaceCatalogueStore::new(path).save(catalogue).unwrap();
 }
 
+fn applied_todo_file(outcome: WorkspaceSessionOperationOutcome) -> TodoFile {
+    let WorkspaceSessionOperationOutcome::Applied {
+        snapshot: WorkspaceSessionSnapshot::ActiveWorkspaceLoaded { todo_file, .. },
+    } = outcome
+    else {
+        panic!("expected an applied loaded Workspace session");
+    };
+    todo_file
+}
+
 fn lifecycle_with_active_todo(
     directory: &tempfile::TempDir,
     contents: &str,
-) -> (WorkspaceLifecycle, PathBuf) {
+) -> (WorkspaceSession, PathBuf) {
     let path = catalogue_path(directory);
     let todo_path = directory.path().join("work.todo");
     std::fs::write(&todo_path, contents).unwrap();
@@ -29,7 +39,7 @@ fn lifecycle_with_active_todo(
         ))
         .unwrap();
     save_catalogue(path.clone(), &catalogue);
-    (WorkspaceLifecycle::new(path), todo_path)
+    (WorkspaceSession::new(path), todo_path)
 }
 
 #[test]
@@ -39,9 +49,11 @@ fn deleting_an_open_todo_item_removes_its_line_and_returns_the_todo_file() {
         "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n";
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, original);
 
-    let todo_file = lifecycle
-        .delete_todo_item(3, "(A) 2026-07-10 Buy milk +Home".into())
-        .unwrap();
+    let todo_file = applied_todo_file(
+        lifecycle
+            .delete_todo_item(3, "(A) 2026-07-10 Buy milk +Home".into())
+            .unwrap(),
+    );
 
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
@@ -67,9 +79,11 @@ fn deleting_a_completed_todo_item_removes_its_line() {
         "x 2026-07-18 2026-07-10 Buy milk +Home\nKeep me open\n",
     );
 
-    let todo_file = lifecycle
-        .delete_todo_item(1, "x 2026-07-18 2026-07-10 Buy milk +Home".into())
-        .unwrap();
+    let todo_file = applied_todo_file(
+        lifecycle
+            .delete_todo_item(1, "x 2026-07-18 2026-07-10 Buy milk +Home".into())
+            .unwrap(),
+    );
 
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
@@ -86,11 +100,12 @@ fn a_stale_todo_item_is_not_deleted_after_an_external_edit() {
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\nKeep me open\n");
     std::fs::write(&todo_path, "Inserted externally\nBuy milk\nKeep me open\n").unwrap();
 
-    let error = lifecycle
-        .delete_todo_item(1, "Buy milk".into())
-        .unwrap_err();
+    let outcome = lifecycle.delete_todo_item(1, "Buy milk".into()).unwrap();
 
-    assert!(error.to_string().contains("changed externally"));
+    assert!(matches!(
+        outcome,
+        WorkspaceSessionOperationOutcome::Conflict { .. }
+    ));
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
         "Inserted externally\nBuy milk\nKeep me open\n"
@@ -102,7 +117,7 @@ fn deleting_the_last_todo_item_leaves_an_empty_todo_file() {
     let directory = tempfile::tempdir().unwrap();
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
 
-    let todo_file = lifecycle.delete_todo_item(1, "Buy milk".into()).unwrap();
+    let todo_file = applied_todo_file(lifecycle.delete_todo_item(1, "Buy milk".into()).unwrap());
 
     assert_eq!(std::fs::read_to_string(todo_path).unwrap(), "");
     assert!(todo_file.items.is_empty());
@@ -115,14 +130,16 @@ fn completing_a_todo_item_updates_only_its_line_and_returns_the_todo_file() {
         "# keep this skipped line\r\n\r\n(A) 2026-07-10 Buy milk +Home\r\nKeep me open\r\n";
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, original);
 
-    let todo_file = lifecycle
-        .set_todo_item_completion(
-            3,
-            "(A) 2026-07-10 Buy milk +Home".into(),
-            true,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
-        )
-        .unwrap();
+    let todo_file = applied_todo_file(
+        lifecycle
+            .set_todo_item_completion(
+                3,
+                "(A) 2026-07-10 Buy milk +Home".into(),
+                true,
+                chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+            )
+            .unwrap(),
+    );
 
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
@@ -146,14 +163,16 @@ fn uncompleting_a_todo_item_preserves_its_creation_date_and_content() {
         "x 2026-07-18 2026-07-10 Buy milk +Home due:2026-07-20\n",
     );
 
-    let todo_file = lifecycle
-        .set_todo_item_completion(
-            1,
-            "x 2026-07-18 2026-07-10 Buy milk +Home due:2026-07-20".into(),
-            false,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
-        )
-        .unwrap();
+    let todo_file = applied_todo_file(
+        lifecycle
+            .set_todo_item_completion(
+                1,
+                "x 2026-07-18 2026-07-10 Buy milk +Home due:2026-07-20".into(),
+                false,
+                chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+            )
+            .unwrap(),
+    );
 
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
@@ -175,20 +194,47 @@ fn a_stale_todo_item_is_not_completed_after_an_external_edit() {
     let (lifecycle, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\nKeep me open\n");
     std::fs::write(&todo_path, "Inserted externally\nBuy milk\nKeep me open\n").unwrap();
 
-    let error = lifecycle
+    let outcome = lifecycle
         .set_todo_item_completion(
             1,
             "Buy milk".into(),
             true,
             chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
         )
-        .unwrap_err();
+        .unwrap();
 
-    assert!(error.to_string().contains("changed externally"));
+    assert!(matches!(
+        outcome,
+        WorkspaceSessionOperationOutcome::Conflict { .. }
+    ));
     assert_eq!(
         std::fs::read_to_string(todo_path).unwrap(),
         "Inserted externally\nBuy milk\nKeep me open\n"
     );
+}
+
+#[test]
+fn a_todo_item_conflict_returns_the_latest_workspace_session_snapshot() {
+    let directory = tempfile::tempdir().unwrap();
+    let (session, todo_path) = lifecycle_with_active_todo(&directory, "Buy milk\n");
+    std::fs::write(&todo_path, "Buy oat milk\n").unwrap();
+
+    let outcome = session
+        .set_todo_item_completion(
+            1,
+            "Buy milk".into(),
+            true,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 18).unwrap(),
+        )
+        .unwrap();
+
+    let WorkspaceSessionOperationOutcome::Conflict { snapshot, .. } = outcome else {
+        panic!("expected a conflict outcome");
+    };
+    let WorkspaceSessionSnapshot::ActiveWorkspaceLoaded { todo_file, .. } = snapshot else {
+        panic!("expected the latest loaded Workspace session");
+    };
+    assert_eq!(todo_file.items[0].description, "Buy oat milk");
 }
 
 #[test]
@@ -290,7 +336,7 @@ fn completion_round_trip_preserves_whitespace_while_removing_priority() {
 #[test]
 fn restoring_without_an_active_workspace_returns_no_active_snapshot() {
     let directory = tempfile::tempdir().unwrap();
-    let lifecycle = WorkspaceLifecycle::new(catalogue_path(&directory));
+    let lifecycle = WorkspaceSession::new(catalogue_path(&directory));
 
     assert_eq!(
         lifecycle.restore().unwrap(),
@@ -313,6 +359,56 @@ fn session_snapshot_serializes_with_the_shared_status_tag() {
 }
 
 #[test]
+fn rust_serialization_matches_the_shared_workspace_session_contract_fixture() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../src/lib/modules/workspace/domain/workspace-session-contract.fixture.json"
+    ))
+    .unwrap();
+    let empty = WorkspaceSessionSnapshot::NoActiveWorkspace {
+        catalogue: WorkspaceCatalogue::default(),
+    };
+    let mut catalogue = WorkspaceCatalogue::default();
+    catalogue
+        .add(workspace(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Work",
+            "/tmp/work.todo",
+        ))
+        .unwrap();
+    let loaded = WorkspaceSessionSnapshot::ActiveWorkspaceLoaded {
+        catalogue: catalogue.clone(),
+        todo_file: TodoFile {
+            path: "/tmp/work.todo".into(),
+            items: vec![],
+            skipped: vec![],
+        },
+    };
+    let unavailable = WorkspaceSessionSnapshot::ActiveWorkspaceUnavailable {
+        catalogue,
+        warning: "Saved workspace could not be opened".into(),
+    };
+
+    assert_eq!(
+        fixture["snapshots"],
+        serde_json::to_value([empty.clone(), loaded.clone(), unavailable]).unwrap()
+    );
+    assert_eq!(
+        fixture["outcomes"],
+        serde_json::to_value([
+            WorkspaceSessionOperationOutcome::Applied { snapshot: empty },
+            WorkspaceSessionOperationOutcome::Conflict {
+                message: "Todo item changed externally".into(),
+                snapshot: loaded,
+            },
+            WorkspaceSessionOperationOutcome::Rejected {
+                message: "workspace does not exist".into(),
+            },
+        ])
+        .unwrap()
+    );
+}
+
+#[test]
 fn restoring_a_loadable_active_workspace_returns_its_todo_file() {
     let directory = tempfile::tempdir().unwrap();
     let path = catalogue_path(&directory);
@@ -328,7 +424,7 @@ fn restoring_a_loadable_active_workspace_returns_its_todo_file() {
         .unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path).restore().unwrap();
+    let snapshot = WorkspaceSession::new(path).restore().unwrap();
 
     let WorkspaceSessionSnapshot::ActiveWorkspaceLoaded {
         catalogue: restored,
@@ -355,7 +451,7 @@ fn restoring_an_unavailable_active_workspace_returns_a_warning() {
         .unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path).restore().unwrap();
+    let snapshot = WorkspaceSession::new(path).restore().unwrap();
 
     let WorkspaceSessionSnapshot::ActiveWorkspaceUnavailable {
         catalogue: restored,
@@ -373,7 +469,7 @@ fn creation_loads_the_todo_file_before_reading_the_catalogue() {
     let directory = tempfile::tempdir().unwrap();
     let path = catalogue_path(&directory);
     std::fs::write(&path, "malformed = [toml").unwrap();
-    let lifecycle = WorkspaceLifecycle::new(path);
+    let lifecycle = WorkspaceSession::new(path);
 
     let error = lifecycle
         .create(
@@ -396,7 +492,7 @@ fn successful_creation_persists_a_loaded_active_workspace() {
     let path = catalogue_path(&directory);
     let todo_path = directory.path().join("work.todo");
     std::fs::write(&todo_path, "Prepare release").unwrap();
-    let lifecycle = WorkspaceLifecycle::new(path.clone());
+    let lifecycle = WorkspaceSession::new(path.clone());
 
     let snapshot = lifecycle
         .create(
@@ -425,13 +521,52 @@ fn successful_creation_persists_a_loaded_active_workspace() {
 }
 
 #[test]
+fn concurrent_workspace_creations_are_serialized_by_the_workspace_session() {
+    use std::sync::{Arc, Barrier};
+
+    let directory = tempfile::tempdir().unwrap();
+    let session = Arc::new(WorkspaceSession::new(catalogue_path(&directory)));
+    let barrier = Arc::new(Barrier::new(7));
+    let mut handles = Vec::new();
+
+    for index in 0..6 {
+        let todo_path = directory.path().join(format!("workspace-{index}.todo"));
+        std::fs::write(&todo_path, format!("Todo {index}")).unwrap();
+        let session = Arc::clone(&session);
+        let barrier = Arc::clone(&barrier);
+        handles.push(std::thread::spawn(move || {
+            barrier.wait();
+            session
+                .create(
+                    format!("Workspace {index}"),
+                    "blue".into(),
+                    todo_path.to_string_lossy().into(),
+                )
+                .unwrap();
+        }));
+    }
+
+    barrier.wait();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let snapshot = session.restore().unwrap();
+    let WorkspaceSessionSnapshot::ActiveWorkspaceLoaded { catalogue, .. } = snapshot else {
+        panic!("expected a loaded Active workspace");
+    };
+    let serialized = serde_json::to_value(catalogue).unwrap();
+    assert_eq!(serialized["workspaces"].as_array().unwrap().len(), 6);
+}
+
+#[test]
 fn creation_rejects_invalid_input_before_touching_persistence() {
     let directory = tempfile::tempdir().unwrap();
     let path = catalogue_path(&directory);
     std::fs::write(&path, "malformed = [toml").unwrap();
     let todo_path = directory.path().join("work.todo");
     std::fs::write(&todo_path, "Task").unwrap();
-    let lifecycle = WorkspaceLifecycle::new(path);
+    let lifecycle = WorkspaceSession::new(path);
 
     let empty_name = lifecycle
         .create(
@@ -472,7 +607,7 @@ fn creation_rejects_unparseable_and_duplicate_workspaces_without_changing_catalo
     let mut catalogue = WorkspaceCatalogue::default();
     catalogue.add(existing).unwrap();
     save_catalogue(path.clone(), &catalogue);
-    let lifecycle = WorkspaceLifecycle::new(path.clone());
+    let lifecycle = WorkspaceSession::new(path.clone());
 
     let unparseable = lifecycle
         .create(
@@ -532,7 +667,7 @@ fn successful_switch_persists_and_returns_the_new_active_workspace() {
     catalogue.add(second.clone()).unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path.clone())
+    let snapshot = WorkspaceSession::new(path.clone())
         .switch(second.id().into())
         .unwrap();
 
@@ -573,7 +708,7 @@ fn failed_switch_keeps_the_saved_active_workspace() {
     catalogue.activate(current.id()).unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let error = WorkspaceLifecycle::new(path.clone())
+    let error = WorkspaceSession::new(path.clone())
         .switch(unavailable.id().into())
         .unwrap_err();
 
@@ -604,7 +739,7 @@ fn deleting_the_active_workspace_removes_only_metadata() {
     catalogue.add(active.clone()).unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path.clone())
+    let snapshot = WorkspaceSession::new(path.clone())
         .delete(active.id().into())
         .unwrap();
 
@@ -644,7 +779,7 @@ fn deleting_an_inactive_workspace_refreshes_the_active_todo_file() {
     catalogue.add(active.clone()).unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path)
+    let snapshot = WorkspaceSession::new(path)
         .delete(inactive.id().into())
         .unwrap();
 
@@ -673,7 +808,7 @@ fn post_deletion_todo_failure_is_a_successful_unavailable_snapshot() {
     catalogue.add(active).unwrap();
     save_catalogue(path.clone(), &catalogue);
 
-    let snapshot = WorkspaceLifecycle::new(path)
+    let snapshot = WorkspaceSession::new(path)
         .delete(inactive.id().into())
         .unwrap();
 
@@ -690,7 +825,7 @@ fn unknown_deletion_leaves_the_catalogue_unchanged() {
     let catalogue = WorkspaceCatalogue::default();
     save_catalogue(path.clone(), &catalogue);
 
-    let error = WorkspaceLifecycle::new(path.clone())
+    let error = WorkspaceSession::new(path.clone())
         .delete("unknown".into())
         .unwrap_err();
 
@@ -718,7 +853,7 @@ fn failed_deletion_catalogue_write_leaves_the_catalogue_unchanged() {
     save_catalogue(path.clone(), &catalogue);
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
 
-    let result = WorkspaceLifecycle::new(path.clone()).delete(saved.id().into());
+    let result = WorkspaceSession::new(path.clone()).delete(saved.id().into());
 
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     assert!(result.is_err());
