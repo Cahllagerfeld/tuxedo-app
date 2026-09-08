@@ -61,6 +61,9 @@ The coherent state returned after a Workspace lifecycle operation: the persisted
 **Workspace session**:
 The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
 
+**Workspace session operation**:
+An operation that can replace the current Workspace session snapshot, including restoration, Workspace creation, switching or deletion, and Todo-item completion or deletion. Workspace session operations do not overlap.
+
 **Workspace session restoration**:
 The startup attempt to return the Workspace session snapshot for the saved Active workspace. If its Todo file cannot open, the Workspace catalogue remains available and the app enters the Empty state with a warning.
 

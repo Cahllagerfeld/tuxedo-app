@@ -6,7 +6,7 @@ import WorkspaceCreationDialog from "./WorkspaceCreationDialog.svelte";
 describe("WorkspaceCreationDialog", () => {
 	it("requires a name and selected Todo file before creation", async () => {
 		const selectFile = vi.fn(async () => "/tmp/work.todo");
-		const createWorkspace = vi.fn(async () => {});
+		const createWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceCreationDialog, { open: true, selectFile, createWorkspace });
 
 		const createButton = page.getByRole("button", { name: "Create workspace" });
@@ -29,9 +29,10 @@ describe("WorkspaceCreationDialog", () => {
 		render(WorkspaceCreationDialog, {
 			open: true,
 			selectFile: async () => "/tmp/work.todo",
-			createWorkspace: async () => {
-				throw new Error("duplicate workspace name: Work");
-			},
+			createWorkspace: async () => ({
+				status: "rejected" as const,
+				message: "duplicate workspace name: Work",
+			}),
 		});
 
 		await page.getByLabelText("Workspace name").fill("Work");

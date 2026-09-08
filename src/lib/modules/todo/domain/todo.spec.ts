@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTodoFileResponse, todoFileSchema, type TodoFile } from "./todo";
+import { todoFileSchema, type TodoFile } from "./todo";
 
 const validTodoFileResponse: TodoFile = {
 	path: "/tmp/todo.txt",
@@ -46,8 +46,12 @@ describe("todoFileSchema", () => {
 	});
 
 	it("rejects schema drift in nested todo items", () => {
-		const response = structuredClone(validTodoFileResponse);
-		response.items[0].line_number = "1" as unknown as number;
+		const response = {
+			...validTodoFileResponse,
+			items: validTodoFileResponse.items.map((item, index) =>
+				index === 0 ? { ...item, line_number: "1" } : item
+			),
+		};
 
 		const result = todoFileSchema.safeParse(response);
 
@@ -58,8 +62,12 @@ describe("todoFileSchema", () => {
 	});
 
 	it("rejects schema drift in skipped lines", () => {
-		const response = structuredClone(validTodoFileResponse);
-		response.skipped[0].reason = null as unknown as string;
+		const response = {
+			...validTodoFileResponse,
+			skipped: validTodoFileResponse.skipped.map((line, index) =>
+				index === 0 ? { ...line, reason: null } : line
+			),
+		};
 
 		const result = todoFileSchema.safeParse(response);
 
@@ -67,23 +75,5 @@ describe("todoFileSchema", () => {
 		if (!result.success) {
 			expect(result.error.issues[0]?.path).toEqual(["skipped", 0, "reason"]);
 		}
-	});
-});
-
-describe("parseTodoFileResponse", () => {
-	it("returns the parsed response when validation succeeds", () => {
-		const parsed = parseTodoFileResponse(validTodoFileResponse);
-
-		expect(parsed.items).toHaveLength(2);
-		expect(parsed.items[0]?.projects).toEqual(["TuxedoApp"]);
-		expect(parsed.skipped[0]?.line_number).toBe(3);
-	});
-
-	it("throws a readable error when validation fails", () => {
-		const response = { ...validTodoFileResponse, path: 123 };
-
-		expect(() => parseTodoFileResponse(response)).toThrow(
-			/Unexpected todo file response from Rust: path:/
-		);
 	});
 });

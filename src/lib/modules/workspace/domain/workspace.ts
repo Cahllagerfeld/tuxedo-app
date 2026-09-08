@@ -1,7 +1,40 @@
 import { z } from "zod";
 import { todoFileSchema } from "$lib/modules/todo/domain/todo";
+import type { TodoFile } from "$lib/modules/todo/domain/todo";
 
-export const workspaceSchema = z.object({
+export type Workspace = {
+	readonly id: string;
+	readonly name: string;
+	readonly color: "blue" | "green" | "amber" | "red" | "violet" | "pink" | "cyan" | "orange";
+	readonly todo_path: string;
+	readonly created_at: string;
+};
+
+export type WorkspaceCatalogue = {
+	readonly version: 1;
+	readonly active_workspace_id: string | null;
+	readonly workspaces: readonly Workspace[];
+};
+
+export type WorkspaceSessionSnapshot =
+	| { status: "no_active_workspace"; catalogue: WorkspaceCatalogue }
+	| {
+			status: "active_workspace_loaded";
+			catalogue: WorkspaceCatalogue;
+			todo_file: TodoFile;
+	  }
+	| {
+			status: "active_workspace_unavailable";
+			catalogue: WorkspaceCatalogue;
+			warning: string;
+	  };
+
+export type WorkspaceSessionOperationOutcome =
+	| { outcome: "applied"; snapshot: WorkspaceSessionSnapshot }
+	| { outcome: "conflict"; message: string; snapshot: WorkspaceSessionSnapshot }
+	| { outcome: "rejected"; message: string };
+
+export const workspaceSchema: z.ZodType<Workspace> = z.object({
 	id: z.uuid(),
 	name: z.string().min(1),
 	color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
@@ -9,13 +42,13 @@ export const workspaceSchema = z.object({
 	created_at: z.iso.datetime({ offset: true }),
 });
 
-export const workspaceCatalogueSchema = z.object({
+export const workspaceCatalogueSchema: z.ZodType<WorkspaceCatalogue> = z.object({
 	version: z.literal(1),
 	active_workspace_id: z.string().uuid().nullable(),
 	workspaces: z.array(workspaceSchema),
 });
 
-export const workspaceSessionSnapshotSchema = z
+export const workspaceSessionSnapshotSchema: z.ZodType<WorkspaceSessionSnapshot> = z
 	.discriminatedUnion("status", [
 		z
 			.object({
@@ -69,26 +102,25 @@ export const workspaceSessionSnapshotSchema = z
 		}
 	});
 
-export type Workspace = z.infer<typeof workspaceSchema>;
-export type WorkspaceCatalogue = z.infer<typeof workspaceCatalogueSchema>;
-export type WorkspaceSessionSnapshot = z.infer<typeof workspaceSessionSnapshotSchema>;
-
-function formatSchemaIssues(error: z.ZodError): string {
-	return error.issues
-		.map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`)
-		.join("; ");
-}
-
-function parseResponse<T>(schema: z.ZodType<T>, response: unknown, label: string): T {
-	const result = schema.safeParse(response);
-	if (result.success) return result.data;
-	throw new Error(`Unexpected ${label} response from Rust: ${formatSchemaIssues(result.error)}`);
-}
-
-export function parseWorkspaceCatalogueResponse(response: unknown): WorkspaceCatalogue {
-	return parseResponse(workspaceCatalogueSchema, response, "workspace catalogue");
-}
-
-export function parseWorkspaceSessionSnapshotResponse(response: unknown): WorkspaceSessionSnapshot {
-	return parseResponse(workspaceSessionSnapshotSchema, response, "workspace session snapshot");
-}
+export const workspaceSessionOperationOutcomeSchema: z.ZodType<WorkspaceSessionOperationOutcome> =
+	z.discriminatedUnion("outcome", [
+		z
+			.object({
+				outcome: z.literal("applied"),
+				snapshot: workspaceSessionSnapshotSchema,
+			})
+			.strict(),
+		z
+			.object({
+				outcome: z.literal("conflict"),
+				message: z.string().min(1),
+				snapshot: workspaceSessionSnapshotSchema,
+			})
+			.strict(),
+		z
+			.object({
+				outcome: z.literal("rejected"),
+				message: z.string().min(1),
+			})
+			.strict(),
+	]);

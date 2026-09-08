@@ -11,7 +11,7 @@ pub fn set_completion(
     expected_raw: &str,
     completed: bool,
     today: NaiveDate,
-) -> Result<(), MutationError> {
+) -> Result<MutationOutcome, MutationError> {
     let contents = std::fs::read_to_string(path)?;
     let expected_item = parser::parse_line(line_number, expected_raw)
         .map_err(|error| MutationError::Invalid(error.to_string()))?;
@@ -33,17 +33,14 @@ pub fn set_completion(
         found = true;
         let (body, ending) = split_line_ending(line);
         if body != expected_raw {
-            return Err(MutationError::Conflict);
+            return Ok(MutationOutcome::Conflict(contents.clone()));
         }
 
         if completed {
             rewritten.push_str("x ");
             rewritten.push_str(&today.format("%Y-%m-%d").to_string());
             rewritten.push(' ');
-            rewritten.push_str(&completion_body(
-                expected_raw,
-                expected_item.priority.is_some(),
-            ));
+            rewritten.push_str(expected_raw);
         } else {
             rewritten.push_str(&uncompleted_raw(line_number, expected_raw)?);
         }
@@ -51,13 +48,18 @@ pub fn set_completion(
     }
 
     if !found {
-        return Err(MutationError::Conflict);
+        return Ok(MutationOutcome::Conflict(contents));
     }
 
-    write_todo_file(path, &rewritten)
+    write_todo_file(path, &rewritten)?;
+    Ok(MutationOutcome::Updated(rewritten))
 }
 
-pub fn delete(path: &Path, line_number: u32, expected_raw: &str) -> Result<(), MutationError> {
+pub fn delete(
+    path: &Path,
+    line_number: u32,
+    expected_raw: &str,
+) -> Result<MutationOutcome, MutationError> {
     parser::parse_line(line_number, expected_raw)
         .map_err(|error| MutationError::Invalid(error.to_string()))?;
 
@@ -74,15 +76,16 @@ pub fn delete(path: &Path, line_number: u32, expected_raw: &str) -> Result<(), M
         found = true;
         let (body, _) = split_line_ending(line);
         if body != expected_raw {
-            return Err(MutationError::Conflict);
+            return Ok(MutationOutcome::Conflict(contents.clone()));
         }
     }
 
     if !found {
-        return Err(MutationError::Conflict);
+        return Ok(MutationOutcome::Conflict(contents));
     }
 
-    write_todo_file(path, &rewritten)
+    write_todo_file(path, &rewritten)?;
+    Ok(MutationOutcome::Updated(rewritten))
 }
 
 fn write_todo_file(path: &Path, contents: &str) -> Result<(), MutationError> {
@@ -123,24 +126,18 @@ fn split_line_ending(line: &str) -> (&str, &str) {
     }
 }
 
-fn completion_body(raw: &str, has_priority: bool) -> String {
-    if has_priority {
-        let trimmed_start = raw.trim_start();
-        let leading = &raw[..raw.len() - trimmed_start.len()];
-        format!("{leading}{}", &trimmed_start[4..])
-    } else {
-        raw.to_owned()
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum MutationError {
-    #[error("Todo item changed externally")]
-    Conflict,
     #[error("invalid Todo item mutation: {0}")]
     Invalid(String),
     #[error("failed to read Todo file: {0}")]
     Read(#[from] std::io::Error),
     #[error("failed to write Todo file atomically: {0}")]
     AtomicWrite(#[from] atomicwrites::Error<std::io::Error>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MutationOutcome {
+    Updated(String),
+    Conflict(String),
 }

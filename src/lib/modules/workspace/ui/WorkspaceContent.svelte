@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
-	import type { TodoState } from "$lib/modules/todo/state/todo-state.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
-	import type { WorkspaceState } from "$lib/modules/workspace/state/workspace-state.svelte";
+	import type { WorkspaceSessionState } from "$lib/modules/workspace/state/workspace-session-state.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -11,18 +10,19 @@
 	import { toast } from "svelte-sonner";
 
 	type Props = {
-		workspace: WorkspaceState;
-		todoState: TodoState;
+		workspace: WorkspaceSessionState;
 		openWorkspaceCreationDialog: () => void;
 	};
 
-	let { workspace, todoState, openWorkspaceCreationDialog }: Props = $props();
+	let { workspace, openWorkspaceCreationDialog }: Props = $props();
 
 	async function toggleTodoCompletion(todo: TodoItem) {
 		try {
-			const result = await todoState.setCompletion(todo);
-			if (result === "conflict") {
+			const result = await workspace.setCompletion(todo);
+			if (result.status === "conflict") {
 				toast.error("Todo file changed externally; reloaded latest version");
+			} else if (result.status === "rejected") {
+				toast.error("Could not update Todo item", { description: result.message });
 			}
 		} catch (error) {
 			toast.error("Could not update Todo item", {
@@ -33,9 +33,11 @@
 
 	async function deleteTodoItem(todo: TodoItem) {
 		try {
-			const result = await todoState.delete(todo);
-			if (result === "conflict") {
+			const result = await workspace.deleteTodo(todo);
+			if (result.status === "conflict") {
 				toast.error("Todo file changed externally; reloaded latest version");
+			} else if (result.status === "rejected") {
+				toast.error("Could not delete Todo item", { description: result.message });
 			}
 		} catch (error) {
 			toast.error("Could not delete Todo item", {
@@ -76,17 +78,16 @@
 		</Alert.Root>
 	</Empty.Root>
 {:else}
-	{#if workspace.notice}
-		<Alert.Root variant="destructive" class="mb-4">
-			<Alert.Title>Workspace operation failed</Alert.Title>
-			<Alert.Description>{workspace.notice.message}</Alert.Description>
-		</Alert.Root>
-	{/if}
-
 	{#if workspace.todoFile}
+		{#if workspace.pendingOperation === "set_todo_item_completion" || workspace.pendingOperation === "delete_todo_item"}
+			<p class="mb-2 flex items-center gap-2 text-sm text-muted-foreground" role="status">
+				<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+				Updating Todo file…
+			</p>
+		{/if}
 		<TodoList
 			todoFile={workspace.todoFile}
-			disabled={todoState.isMutationPending}
+			disabled={workspace.isOperating}
 			onToggleComplete={toggleTodoCompletion}
 			onDelete={deleteTodoItem}
 		/>

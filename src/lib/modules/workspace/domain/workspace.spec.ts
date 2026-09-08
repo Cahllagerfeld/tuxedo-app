@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-	parseWorkspaceCatalogueResponse,
-	parseWorkspaceSessionSnapshotResponse,
 	workspaceCatalogueSchema,
 	workspaceSessionSnapshotSchema,
+	workspaceSessionOperationOutcomeSchema,
 	type WorkspaceCatalogue,
 	type WorkspaceSessionSnapshot,
 } from "./workspace";
+import contractFixture from "./workspace-session-contract.fixture.json";
 
 const workspace = {
 	id: "550e8400-e29b-41d4-a716-446655440000",
@@ -29,6 +29,17 @@ const snapshot: WorkspaceSessionSnapshot = {
 };
 
 describe("workspace response schemas", () => {
+	it("accepts every Rust-serialized Workspace session contract fixture", () => {
+		expect(contractFixture.snapshots[1]?.todo_file?.items).toHaveLength(1);
+		expect(contractFixture.snapshots[1]?.todo_file?.skipped).toHaveLength(1);
+		for (const snapshot of contractFixture.snapshots) {
+			expect(workspaceSessionSnapshotSchema.safeParse(snapshot).success).toBe(true);
+		}
+		for (const outcome of contractFixture.outcomes) {
+			expect(workspaceSessionOperationOutcomeSchema.safeParse(outcome).success).toBe(true);
+		}
+	});
+
 	it("accepts the first-run empty catalogue", () => {
 		expect(
 			workspaceCatalogueSchema.safeParse({ version: 1, active_workspace_id: null, workspaces: [] })
@@ -78,22 +89,19 @@ describe("workspace response schemas", () => {
 		).toBe(false);
 	});
 
-	it("returns validated Rust responses", () => {
-		expect(parseWorkspaceCatalogueResponse(catalogue)).toEqual(catalogue);
-		expect(parseWorkspaceSessionSnapshotResponse(snapshot)).toEqual(snapshot);
-	});
-
-	it("reports schema drift clearly", () => {
-		expect(() =>
-			parseWorkspaceCatalogueResponse({ version: 1, active_workspace_id: null, workspaces: [{}] })
-		).toThrow(/Unexpected workspace catalogue response from Rust: workspaces.0.id:/);
-		expect(() =>
-			parseWorkspaceSessionSnapshotResponse({
+	it("detects contract drift without parsing routine command responses", () => {
+		expect(
+			workspaceCatalogueSchema.safeParse({
+				version: 1,
+				active_workspace_id: null,
+				workspaces: [{}],
+			}).success
+		).toBe(false);
+		expect(
+			workspaceSessionSnapshotSchema.safeParse({
 				...snapshot,
 				todo_file: { path: "/tmp/other.todo", items: [], skipped: [] },
-			})
-		).toThrow(
-			/Unexpected workspace session snapshot response from Rust: response: Todo file must belong to the active workspace/
-		);
+			}).success
+		).toBe(false);
 	});
 });

@@ -30,8 +30,9 @@
 					workspaces={appState.workspace.catalogue?.workspaces ?? []}
 					activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 					disabled={appState.workspace.isOperating || appState.workspace.isLoading}
+					pendingOperation={appState.workspace.pendingOperation}
 					selectWorkspace={appState.workspace.open}
-					deleteWorkspace={appState.workspace.delete}
+					deleteWorkspace={appState.workspace.deleteWorkspace}
 					openCreationDialog={appState.openWorkspaceCreationDialog}
 				/>
 			</Resizable.Pane>

@@ -2,6 +2,7 @@ mod todo_txt;
 mod workspace;
 
 use std::path::PathBuf;
+use tauri::Manager;
 use todo_txt::error::LoadError;
 use todo_txt::types::TodoFile;
 
@@ -36,6 +37,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            app.manage(workspace::workspace_session(app.handle())?);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             parse_todo_file,
             workspace::restore_workspace_session,

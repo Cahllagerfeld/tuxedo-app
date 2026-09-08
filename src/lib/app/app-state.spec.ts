@@ -1,8 +1,8 @@
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import {
-	InMemoryWorkspaceLifecycleAdapter,
-	WorkspaceState,
-} from "$lib/modules/workspace/state/workspace-state.svelte";
+	InMemoryWorkspaceSessionAdapter,
+	WorkspaceSessionState,
+} from "$lib/modules/workspace/state/workspace-session-state.svelte";
 import { describe, expect, it } from "vitest";
 import { AppState } from "./app-state.svelte";
 
@@ -49,18 +49,19 @@ describe("AppState", () => {
 				completion_date: "2026-07-18",
 			},
 		]);
-		const workspaceState = new WorkspaceState(
-			new InMemoryWorkspaceLifecycleAdapter({ restore: snapshot(initialFile) })
+		const workspaceState = new WorkspaceSessionState(
+			new InMemoryWorkspaceSessionAdapter({
+				restore: snapshot(initialFile),
+				setTodoItemCompletion: {
+					outcome: "applied",
+					snapshot: snapshot(completedFile),
+				},
+			})
 		);
-		const appState = new AppState(workspaceState, {
-			setTodoItemCompletion: async () => completedFile,
-			deleteTodoItem: async () => {
-				throw new Error("delete is not used in this test");
-			},
-		});
+		const appState = new AppState(workspaceState);
 		await workspaceState.restore();
 
-		await appState.todo.setCompletion(openItem);
+		await appState.workspace.setCompletion(openItem);
 
 		expect(appState.todos.counts).toMatchObject({ open: 0, completed: 1 });
 		expect(appState.todos.items[0].completion_date).toBe("2026-07-18");
@@ -82,10 +83,13 @@ describe("AppState", () => {
 			},
 		]);
 		const replacementFile = todoFile([]);
-		const workspaceState = new WorkspaceState(
-			new InMemoryWorkspaceLifecycleAdapter({
+		const workspaceState = new WorkspaceSessionState(
+			new InMemoryWorkspaceSessionAdapter({
 				restore: snapshot(initialFile),
-				switchWorkspace: snapshot(replacementFile),
+				switchWorkspace: {
+					outcome: "applied",
+					snapshot: snapshot(replacementFile),
+				},
 			})
 		);
 		const appState = new AppState(workspaceState);

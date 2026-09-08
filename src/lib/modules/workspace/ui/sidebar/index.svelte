@@ -1,5 +1,9 @@
 <script lang="ts">
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import type {
+		WorkspaceSessionActionResult,
+		WorkspaceSessionOperation,
+	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
 	import { Separator } from "$lib/shared/ui/separator";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
@@ -7,12 +11,13 @@
 	import PriorityFilter from "./PriorityFilter.svelte";
 
 	type Props = {
-		workspaces: Workspace[];
+		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<void>;
-		deleteWorkspace: (workspaceId: string) => Promise<void>;
+		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
+		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
+		pendingOperation?: WorkspaceSessionOperation | null;
 	};
 
 	let {
@@ -22,6 +27,7 @@
 		deleteWorkspace,
 		openCreationDialog,
 		disabled = false,
+		pendingOperation = null,
 	}: Props = $props();
 </script>
 
@@ -31,6 +37,7 @@
 			{workspaces}
 			{activeWorkspaceId}
 			{disabled}
+			{pendingOperation}
 			{selectWorkspace}
 			{deleteWorkspace}
 			{openCreationDialog}

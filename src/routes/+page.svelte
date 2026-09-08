@@ -8,7 +8,6 @@
 <div class="flex min-h-full w-full p-4">
 	<WorkspaceContent
 		workspace={appState.workspace}
-		todoState={appState.todo}
 		openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
 	/>
 </div>
