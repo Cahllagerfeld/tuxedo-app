@@ -35,6 +35,16 @@ const applied = (next = snapshot): WorkspaceSessionOperationOutcome => ({
 });
 
 describe("WorkspaceSessionState", () => {
+	it("exposes a recursively read-only session projection", () => {
+		const state = new WorkspaceSessionState(new InMemoryWorkspaceSessionAdapter({}));
+
+		// @ts-expect-error Workspace session projections cannot be mutated by renderer consumers.
+		state.catalogue?.workspaces.push(workspace);
+		// @ts-expect-error Todo file projections cannot be mutated by renderer consumers.
+		state.todoFile?.items.push(todo);
+		expect(state.session.status).toBe("loading");
+	});
+
 	it("restores one coherent Ready Workspace session", async () => {
 		const state = new WorkspaceSessionState(
 			new InMemoryWorkspaceSessionAdapter({ restore: snapshot })

@@ -14,7 +14,7 @@
 	import { toast } from "svelte-sonner";
 
 	type Props = {
-		workspaces: Workspace[];
+		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
@@ -160,7 +160,7 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action variant="destructive" onclick={confirmDeletion}
+			<AlertDialog.Action variant="destructive" {disabled} onclick={confirmDeletion}
 				>Delete workspace</AlertDialog.Action
 			>
 		</AlertDialog.Footer>

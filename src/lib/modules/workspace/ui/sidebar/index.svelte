@@ -11,7 +11,7 @@
 	import PriorityFilter from "./PriorityFilter.svelte";
 
 	type Props = {
-		workspaces: Workspace[];
+		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;

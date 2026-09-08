@@ -30,6 +30,8 @@ const snapshot: WorkspaceSessionSnapshot = {
 
 describe("workspace response schemas", () => {
 	it("accepts every Rust-serialized Workspace session contract fixture", () => {
+		expect(contractFixture.snapshots[1]?.todo_file?.items).toHaveLength(1);
+		expect(contractFixture.snapshots[1]?.todo_file?.skipped).toHaveLength(1);
 		for (const snapshot of contractFixture.snapshots) {
 			expect(workspaceSessionSnapshotSchema.safeParse(snapshot).success).toBe(true);
 		}

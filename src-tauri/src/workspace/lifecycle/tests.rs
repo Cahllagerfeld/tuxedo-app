@@ -379,8 +379,26 @@ fn rust_serialization_matches_the_shared_workspace_session_contract_fixture() {
         catalogue: catalogue.clone(),
         todo_file: TodoFile {
             path: "/tmp/work.todo".into(),
-            items: vec![],
-            skipped: vec![],
+            items: vec![crate::todo_txt::types::TodoItem {
+                line_number: 1,
+                raw: "(A) 2026-01-01 Plan release +Tuxedo @computer due:2026-01-02".into(),
+                completed: false,
+                priority: Some('A'),
+                creation_date: Some("2026-01-01".into()),
+                completion_date: None,
+                description: "Plan release".into(),
+                projects: vec!["Tuxedo".into()],
+                contexts: vec!["computer".into()],
+                metadata: std::collections::HashMap::from([(
+                    "due".into(),
+                    "2026-01-02".into(),
+                )]),
+            }],
+            skipped: vec![crate::todo_txt::types::SkippedLine {
+                line_number: 2,
+                raw: "2026-99-99 Invalid date".into(),
+                reason: "date must use YYYY-MM-DD format".into(),
+            }],
         },
     };
     let unavailable = WorkspaceSessionSnapshot::ActiveWorkspaceUnavailable {

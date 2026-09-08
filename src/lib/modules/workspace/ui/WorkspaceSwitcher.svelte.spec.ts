@@ -71,6 +71,24 @@ describe("WorkspaceSwitcher", () => {
 			.toBeDisabled();
 	});
 
+	it("disables an already-open deletion confirmation when another operation starts", async () => {
+		const props = {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+			disabled: false,
+		};
+		const view = await render(WorkspaceSwitcher, props);
+		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+
+		await view.rerender({ ...props, disabled: true });
+
+		await expect.element(page.getByRole("button", { name: "Delete workspace" })).toBeDisabled();
+	});
+
 	it("requires confirmation before deleting the active workspace", async () => {
 		const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {

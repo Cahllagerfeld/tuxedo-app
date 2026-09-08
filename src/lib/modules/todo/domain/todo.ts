@@ -1,28 +1,28 @@
 import { z } from "zod";
 
 export type TodoItem = {
-	line_number: number;
-	raw: string;
-	completed: boolean;
-	priority: string | null;
-	creation_date: string | null;
-	completion_date: string | null;
-	description: string;
-	projects: string[];
-	contexts: string[];
-	metadata: Record<string, string>;
+	readonly line_number: number;
+	readonly raw: string;
+	readonly completed: boolean;
+	readonly priority: string | null;
+	readonly creation_date: string | null;
+	readonly completion_date: string | null;
+	readonly description: string;
+	readonly projects: readonly string[];
+	readonly contexts: readonly string[];
+	readonly metadata: Readonly<Record<string, string>>;
 };
 
 export type SkippedLine = {
-	line_number: number;
-	raw: string;
-	reason: string;
+	readonly line_number: number;
+	readonly raw: string;
+	readonly reason: string;
 };
 
 export type TodoFile = {
-	path: string;
-	items: TodoItem[];
-	skipped: SkippedLine[];
+	readonly path: string;
+	readonly items: readonly TodoItem[];
+	readonly skipped: readonly SkippedLine[];
 };
 
 export const todoItemSchema: z.ZodType<TodoItem> = z.object({

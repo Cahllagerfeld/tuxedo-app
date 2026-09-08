@@ -3,17 +3,17 @@ import { todoFileSchema } from "$lib/modules/todo/domain/todo";
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 
 export type Workspace = {
-	id: string;
-	name: string;
-	color: "blue" | "green" | "amber" | "red" | "violet" | "pink" | "cyan" | "orange";
-	todo_path: string;
-	created_at: string;
+	readonly id: string;
+	readonly name: string;
+	readonly color: "blue" | "green" | "amber" | "red" | "violet" | "pink" | "cyan" | "orange";
+	readonly todo_path: string;
+	readonly created_at: string;
 };
 
 export type WorkspaceCatalogue = {
-	version: 1;
-	active_workspace_id: string | null;
-	workspaces: Workspace[];
+	readonly version: 1;
+	readonly active_workspace_id: string | null;
+	readonly workspaces: readonly Workspace[];
 };
 
 export type WorkspaceSessionSnapshot =

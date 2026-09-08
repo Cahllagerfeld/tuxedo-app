@@ -101,8 +101,11 @@ Rust owns filesystem access, workspace persistence, and todo.txt parsing under `
 - Workspace lifecycle behavior lives in `src-tauri/src/workspace/lifecycle.rs`, while catalogue
   validation and persistence live in `src-tauri/src/workspace/catalogue.rs`.
 - todo.txt parsing lives in `src-tauri/src/todo_txt`.
-- Frontend domain files should validate command responses with Zod before state applies them.
-- If a Rust command response shape changes, update the matching Zod schema, TypeScript types, and tests in the relevant frontend module.
+- Treat Rust command responses as typed wire values rather than routinely parsing trusted Tauri
+  output in the renderer. Detect contract drift with explicit TypeScript wire types, matching Zod
+  schemas, and shared fixtures serialized by Rust and validated by frontend tests.
+- If a Rust command response shape changes, update the matching TypeScript type, Zod contract
+  schema, shared fixture, and tests in the relevant frontend module.
 
 ## Verification
 
