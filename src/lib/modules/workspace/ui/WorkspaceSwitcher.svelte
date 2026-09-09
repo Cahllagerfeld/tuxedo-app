@@ -12,6 +12,8 @@
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
 	import { toast } from "svelte-sonner";
+	import ShortcutHint from "$lib/app/ShortcutHint.svelte";
+	import { shortcuts } from "$lib/app/shortcuts";
 
 	type Props = {
 		workspaces: readonly Workspace[];
@@ -21,6 +23,7 @@
 		openCreationDialog: () => void;
 		disabled?: boolean;
 		pendingOperation?: WorkspaceSessionOperation | null;
+		open?: boolean;
 	};
 
 	const colorClasses: Record<Workspace["color"], string> = {
@@ -42,6 +45,7 @@
 		openCreationDialog,
 		disabled = false,
 		pendingOperation = null,
+		open = $bindable(false),
 	}: Props = $props();
 	let isDeleteDialogOpen = $state(false);
 	let workspaceToDelete = $state<Workspace | null>(null);
@@ -80,7 +84,7 @@
 	}
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root bind:open>
 	<DropdownMenu.Trigger
 		>{#snippet child({ props })}<Button
 				{...props}
@@ -91,6 +95,7 @@
 				<span class="min-w-0 flex-1 truncate text-left font-mono text-sm">
 					{activeWorkspace?.name ?? "No workspace selected"}
 				</span>
+				<span aria-hidden="true"><ShortcutHint hotkey={shortcuts.workspaceSwitcher.hotkey} /></span>
 				{#if pendingOperation === "open_workspace" || pendingOperation === "delete_workspace"}
 					<LoaderCircle class="shrink-0 animate-spin" aria-hidden="true" />
 				{:else}
@@ -145,6 +150,9 @@
 		<DropdownMenu.Item {disabled} onclick={openCreationDialog}>
 			<Plus aria-hidden="true" />
 			New workspace
+			<span class="ml-auto" aria-hidden="true"
+				><ShortcutHint hotkey={shortcuts.createWorkspace.hotkey} /></span
+			>
 		</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

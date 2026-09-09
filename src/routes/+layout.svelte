@@ -22,7 +22,12 @@
 
 <Toaster position="top-center" />
 <div class="flex h-dvh flex-col overflow-hidden font-medium antialiased">
-	<AppHeader />
+	<AppHeader
+		bind:workspaceSwitcherOpen={appState.isWorkspaceSwitcherOpen}
+		bind:workspaceCreationOpen={appState.isWorkspaceCreationDialogOpen}
+		bind:shortcutHelpOpen={appState.isShortcutHelpOpen}
+		workspaceActionsDisabled={appState.workspace.isOperating || appState.workspace.isLoading}
+	/>
 	<main class="flex min-h-0 flex-1 overflow-hidden">
 		<Resizable.PaneGroup direction="horizontal">
 			<Resizable.Pane maxSize={30} minSize={12} defaultSize={15}>
@@ -34,6 +39,7 @@
 					selectWorkspace={appState.workspace.open}
 					deleteWorkspace={appState.workspace.deleteWorkspace}
 					openCreationDialog={appState.openWorkspaceCreationDialog}
+					bind:workspaceSwitcherOpen={appState.isWorkspaceSwitcherOpen}
 				/>
 			</Resizable.Pane>
 			<Resizable.Handle withHandle />

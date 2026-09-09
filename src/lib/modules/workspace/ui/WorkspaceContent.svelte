@@ -85,12 +85,14 @@
 				Updating Todo file…
 			</p>
 		{/if}
-		<TodoList
-			todoFile={workspace.todoFile}
-			disabled={workspace.isOperating}
-			onToggleComplete={toggleTodoCompletion}
-			onDelete={deleteTodoItem}
-		/>
+		{#key workspace.activeWorkspace?.id}
+			<TodoList
+				todoFile={workspace.todoFile}
+				disabled={workspace.isOperating}
+				onToggleComplete={toggleTodoCompletion}
+				onDelete={deleteTodoItem}
+			/>
+		{/key}
 	{:else}
 		<Empty.Root aria-label="No active workspace">
 			<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>

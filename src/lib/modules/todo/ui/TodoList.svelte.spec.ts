@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { TodoFile } from "../domain/todo";
@@ -63,6 +63,50 @@ describe("TodoList", () => {
 		await expect
 			.element(page.getByRole("button", { name: "Delete Ship release" }))
 			.toBeInTheDocument();
+	});
+
+	it("moves row focus with arrows and Home/End without wrapping", async () => {
+		render(TodoList, {
+			todoFile,
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+
+		const rows = page.getByRole("listitem");
+		await userEvent.click(rows.nth(0));
+		await userEvent.keyboard("{ArrowDown}");
+		await expect.element(rows.nth(1)).toHaveFocus();
+		await userEvent.keyboard("{ArrowDown}");
+		await expect.element(rows.nth(1)).toHaveFocus();
+		await userEvent.keyboard("{Home}");
+		await expect.element(rows.nth(0)).toHaveFocus();
+		await userEvent.keyboard("{ArrowUp}");
+		await expect.element(rows.nth(0)).toHaveFocus();
+		await userEvent.keyboard("{End}");
+		await expect.element(rows.nth(1)).toHaveFocus();
+	});
+
+	it("toggles the focused row once with Space but preserves native nested controls", async () => {
+		const onToggleComplete = vi.fn();
+		render(TodoList, {
+			todoFile,
+			disabled: false,
+			onToggleComplete,
+			onDelete: vi.fn(),
+		});
+
+		const firstRow = page.getByRole("listitem").nth(0);
+		await userEvent.click(firstRow);
+		await userEvent.keyboard(" ");
+		expect(onToggleComplete).toHaveBeenCalledOnce();
+		expect(onToggleComplete).toHaveBeenCalledWith(todoFile.items[0]);
+
+		onToggleComplete.mockClear();
+		await userEvent.tab();
+		await expect.element(page.getByRole("checkbox", { name: "Mark Plan complete" })).toHaveFocus();
+		await userEvent.keyboard(" ");
+		expect(onToggleComplete).toHaveBeenCalledOnce();
 	});
 
 	it("renders a Todo-file-specific empty state when no valid items were parsed", async () => {

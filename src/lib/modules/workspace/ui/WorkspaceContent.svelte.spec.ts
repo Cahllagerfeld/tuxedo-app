@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import {
@@ -85,8 +85,10 @@ describe("WorkspaceContent", () => {
 		});
 		renderContent(state);
 
+		const row = page.getByRole("listitem");
+		await userEvent.click(row);
+		await userEvent.keyboard(" ");
 		const checkbox = page.getByRole("checkbox", { name: "Mark Plan release complete" });
-		await checkbox.click();
 		await expect.element(checkbox).toBeDisabled();
 		await expect.element(checkbox).not.toBeChecked();
 		await expect.element(page.getByText("Updating Todo file…")).toBeVisible();
@@ -95,6 +97,7 @@ describe("WorkspaceContent", () => {
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
 			.toBeChecked();
+		await expect.element(page.getByRole("listitem")).toHaveFocus();
 	});
 
 	it("applies a conflict snapshot and reports the external edit", async () => {
@@ -178,5 +181,6 @@ describe("WorkspaceContent", () => {
 		await page.getByRole("button", { name: "Delete Plan release" }).click();
 
 		await expect.element(page.getByText("Plan release")).not.toBeInTheDocument();
+		await expect.element(page.getByLabelText("No valid Todo items")).toHaveFocus();
 	});
 });

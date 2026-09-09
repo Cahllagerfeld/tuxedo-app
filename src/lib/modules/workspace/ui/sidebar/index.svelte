@@ -18,6 +18,7 @@
 		openCreationDialog: () => void;
 		disabled?: boolean;
 		pendingOperation?: WorkspaceSessionOperation | null;
+		workspaceSwitcherOpen?: boolean;
 	};
 
 	let {
@@ -28,6 +29,7 @@
 		openCreationDialog,
 		disabled = false,
 		pendingOperation = null,
+		workspaceSwitcherOpen = $bindable(false),
 	}: Props = $props();
 </script>
 
@@ -41,6 +43,7 @@
 			{selectWorkspace}
 			{deleteWorkspace}
 			{openCreationDialog}
+			bind:open={workspaceSwitcherOpen}
 		/>
 	</div>
 	<div class="px-2"><Separator /></div>

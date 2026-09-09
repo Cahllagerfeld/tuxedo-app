@@ -29,6 +29,8 @@ This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for
 ## Frontend Conventions
 
 - Write Svelte 5 runes-style components and state.
+- Route application keyboard shortcuts and keyboard-navigation bindings through TanStack Hotkeys;
+  do not add ad hoc `keydown`/`keyup` handlers for them.
 - Avoid `$effect`. It is almost never the right tool: prefer `$derived` for computed values,
   event handlers for user-driven work, and explicit functions/component APIs for coordination.
   Use `$effect` only when synchronizing with an external system cannot be expressed through those

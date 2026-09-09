@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
@@ -20,6 +20,21 @@ const personal = {
 };
 
 describe("WorkspaceSwitcher", () => {
+	it("supports opening the real switcher from app composition", async () => {
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+			open: true,
+		});
+
+		await expect.element(page.getByRole("menu")).toBeVisible();
+		await expect.element(page.getByRole("menuitem", { name: "Work, active" })).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	});
 	it("lists workspaces oldest first, identifies the active one, and selects another", async () => {
 		const selectWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {

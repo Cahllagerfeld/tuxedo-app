@@ -8,6 +8,8 @@ export class AppState {
 	workspace: WorkspaceSessionState;
 	todos: TodoFileSummary;
 	isWorkspaceCreationDialogOpen = $state(false);
+	isWorkspaceSwitcherOpen = $state(false);
+	isShortcutHelpOpen = $state(false);
 
 	constructor(workspace = new WorkspaceSessionState()) {
 		this.workspace = workspace;
