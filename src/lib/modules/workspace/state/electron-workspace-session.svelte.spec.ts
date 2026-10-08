@@ -166,3 +166,42 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 	await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Original");
 	await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
 });
+
+test("a confirmed switch opens its intended Workspace through the shared cache", async () => {
+	const workspace = {
+		id: "550e8400-e29b-41d4-a716-446655440000",
+		name: "Switched",
+		color: "blue" as const,
+		todo_path: "/tmp/switched.todo",
+		created_at: "2026-07-10T10:00:00Z",
+	};
+	let requestedId: string | undefined;
+	render(ElectronSessionHarness, {
+		desktop: {
+			readSession: async () => confirmed(5, null),
+			restoreSession: async () => confirmed(5, null),
+			selectTodoFile: async () => null,
+			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			switchWorkspace: async ({ workspaceId }) => {
+				requestedId = workspaceId;
+				return {
+					status: "applied",
+					confirmed: {
+						scope,
+						revision: 6,
+						session: {
+							status: "ready",
+							catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+							todo_file: { path: workspace.todo_path, items: [], skipped: [] },
+						},
+					},
+				};
+			},
+		},
+	});
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
+	await page.getByRole("button", { name: "Switch" }).click();
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
+	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Switched");
+	expect(requestedId).toBe(workspace.id);
+});
