@@ -6,7 +6,7 @@ Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organize
 
 Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR.
 
-The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. Svelte Query holds one confirmed renderer session; counts and facets derive from its Todo file.
+The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. A Svelte session controller holds confirmed renderer data and tracks one operation at a time; counts and facets derive from its Todo file.
 
 Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
 

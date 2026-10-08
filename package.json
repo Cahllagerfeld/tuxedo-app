@@ -35,7 +35,6 @@
 		"@sveltejs/kit": "^2.70.3",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@tailwindcss/vite": "^4.3.3",
-		"@tanstack/svelte-query": "^6.3.1",
 		"@types/node": "^24.19.1",
 		"@vitest/browser-playwright": "^4.1.11",
 		"bits-ui": "^2.19.5",

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. Svelte Query owns confirmed renderer data.
+Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. A Svelte session controller holds confirmed renderer data.
 
 Run tools via devenv: `devenv shell -- pnpm|gh|node ...`.
 

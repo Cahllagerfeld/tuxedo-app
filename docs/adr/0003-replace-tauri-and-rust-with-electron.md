@@ -8,6 +8,8 @@ Workspace metadata will use a versioned JSON file with atomic writes. This metad
 
 Workspace lifecycle operations retain coherent backend responses, and Svelte Query manages backend data in the renderer. ADR-0004 supersedes the Rust ownership described in ADR-0001 and ADR-0002.
 
+[ADR-0005](0005-use-a-svelte-controller-for-the-workspace-session.md) supersedes the Svelte Query choice; the Electron platform and backend ownership decisions remain.
+
 The implementation specification is [issue #53](https://github.com/Cahllagerfeld/tuxedo-app/issues/53).
 
 The rewrite migrates current functionality only. Todo-item creation, automatic observation of external Todo-file edits, and new keyboard shortcuts/focus navigation remain separate issues and are outside this migration. Workspace setup redesign is also deferred.

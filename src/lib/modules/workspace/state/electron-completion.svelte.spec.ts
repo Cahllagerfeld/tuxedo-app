@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import Harness from "./ElectronCompletionHarness.svelte";
+import Harness from "./ElectronTodoHarness.svelte";
 import type {
 	ConfirmedSession,
 	DesktopAPI,
@@ -89,6 +89,9 @@ test("completion binds target and preserves confirmed controls and summary until
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete" }).click();
 	await expect.element(page.getByRole("button", { name: "Restore" })).toBeDisabled();
 	await expect
+		.element(page.getByLabelText("Pending target"))
+		.toHaveTextContent('{"workspaceId":"550e8400-e29b-41d4-a716-446655440000","lineNumber":1}');
+	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Call Mom complete" }))
 		.not.toBeChecked();
 	expect(request).toEqual({
@@ -104,9 +107,10 @@ test("completion binds target and preserves confirmed controls and summary until
 		.element(page.getByRole("checkbox", { name: "Mark Call Mom incomplete" }))
 		.toBeChecked();
 	await expect.element(page.getByLabelText("Open count")).toHaveTextContent("0");
+	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 });
 test.each(["rejected", "conflict", "old", "wrong-workspace", "wrong-scope"])(
-	"completion handles %s through confirmed Query cache",
+	"completion handles %s while preserving scoped confirmed state",
 	async (kind) => {
 		const response = updated();
 		if (kind === "old") response.revision = 4;

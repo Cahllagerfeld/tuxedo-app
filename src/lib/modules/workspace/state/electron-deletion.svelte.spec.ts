@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import ElectronTodoDeletionHarness from "./ElectronTodoDeletionHarness.svelte";
+import ElectronTodoHarness from "./ElectronTodoHarness.svelte";
 import type { ConfirmedSession, DesktopAPI } from "$lib/shared/desktop/contract";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
@@ -62,7 +62,7 @@ function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 test("row deletion is bound to the confirmed Workspace and keeps controls and summaries pending until confirmation", async () => {
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) => void;
 	let request: unknown;
-	render(ElectronTodoDeletionHarness, {
+	render(ElectronTodoHarness, {
 		desktop: desktop((input) => {
 			request = input;
 			return new Promise((resolve) => {
@@ -81,6 +81,9 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 	});
 	await expect.element(page.getByRole("button", { name: "Switch", exact: true })).toBeDisabled();
 	await expect
+		.element(page.getByLabelText("Pending target"))
+		.toHaveTextContent('{"workspaceId":"550e8400-e29b-41d4-a716-446655440000","lineNumber":1}');
+	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Finished incomplete" }))
 		.toBeDisabled();
 	await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
@@ -97,6 +100,7 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 	await expect.element(page.getByLabelText("Open items")).toHaveTextContent("0");
 	await expect.element(page.getByLabelText("Completed items")).toHaveTextContent("1");
 	await expect.element(page.getByLabelText("Projects")).toHaveTextContent("Home");
+	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 	await expect
 		.element(page.getByRole("button", { name: "Delete Delete", exact: true }))
 		.not.toBeInTheDocument();
@@ -104,7 +108,7 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 
 test("a completed row deletion conflict replaces list and summary with current disk content", async () => {
 	const changed = { ...open, raw: "Changed +Fresh", description: "Changed", projects: ["Fresh"] };
-	render(ElectronTodoDeletionHarness, {
+	render(ElectronTodoHarness, {
 		desktop: desktop(async () => ({
 			status: "conflict",
 			message: "Changed on disk",
@@ -128,7 +132,7 @@ test.each(["rejected", "transport"])(
 	"deletion failure (%s) preserves the confirmed list and releases pending controls without retrying",
 	async (failure) => {
 		let attempts = 0;
-		render(ElectronTodoDeletionHarness, {
+		render(ElectronTodoHarness, {
 			desktop: desktop(async () => {
 				attempts++;
 				if (failure === "transport") throw Error("Cannot write file");
@@ -149,7 +153,7 @@ test.each(["rejected", "transport"])(
 test.each(["older", "scope", "workspace", "path"])(
 	"late or wrong-scope deletion result (%s) cannot overwrite the confirmed Todo file",
 	async (kind) => {
-		render(ElectronTodoDeletionHarness, {
+		render(ElectronTodoHarness, {
 			desktop: desktop(async () => ({
 				status: "applied",
 				confirmed: {

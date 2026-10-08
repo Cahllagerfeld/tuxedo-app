@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { tick } from "svelte";
 import ElectronSessionHarness from "./ElectronSessionHarness.svelte";
 import type { ConfirmedSession } from "$lib/shared/desktop/contract";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -13,6 +14,37 @@ const confirmed = (revision: number, warning: string | null): ConfirmedSession =
 		warning,
 	},
 });
+test.each(["older snapshot", "transport failure"])(
+	"a delayed initial read with %s cannot replace a restored session",
+	async (result) => {
+		let finish!: () => void;
+		render(ElectronSessionHarness, {
+			desktop: {
+				readSession: () =>
+					new Promise((resolve, reject) => {
+						finish = () =>
+							result === "older snapshot"
+								? resolve(confirmed(1, "Outdated"))
+								: reject(Error("Initial read failed"));
+					}),
+				restoreSession: async () => confirmed(2, "Restored"),
+				setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+				deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+				switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
+				selectTodoFile: async () => null,
+				deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+				createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			},
+		});
+		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("loading");
+		await page.getByRole("button", { name: "Restore" }).click();
+		await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Restored");
+		finish();
+		await tick();
+		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
+		await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Restored");
+	}
+);
 test("confirmed restoration rejects older results and exposes pending lifecycle state", async () => {
 	let finish!: (value: ConfirmedSession) => void;
 	render(ElectronSessionHarness, {
@@ -179,7 +211,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 	await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
 });
 
-test("a confirmed switch opens its intended Workspace through the shared cache", async () => {
+test("a confirmed switch opens its intended Workspace with coherent session data", async () => {
 	const workspace = {
 		id: "550e8400-e29b-41d4-a716-446655440000",
 		name: "Switched",

@@ -1,4 +1,3 @@
-import { createMutation, createQuery, QueryClient } from "@tanstack/svelte-query";
 import {
 	confirmedSessionSchema,
 	confirmedTodoSchema,
@@ -9,10 +8,11 @@ import {
 } from "$lib/shared/desktop/contract";
 import type {
 	WorkspaceSessionActionResult,
+	PendingWorkspaceSessionOperation,
 	WorkspaceSessionOperation,
+	WorkspaceSessionOperationTarget,
 } from "./workspace-session-types";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
-const sessionKey = ["desktop", "workspace-session"] as const;
 export function reconcileConfirmedSession(
 	previous: ConfirmedSession | undefined,
 	incoming: ConfirmedSession
@@ -43,134 +43,58 @@ export function reconcileConfirmedTodo(
 	};
 }
 export class ElectronWorkspaceSessionState {
-	readonly client = new QueryClient({
-		defaultOptions: {
-			queries: {
-				networkMode: "always",
-				retry: false,
-				staleTime: Infinity,
-				refetchOnWindowFocus: false,
-				refetchOnReconnect: false,
-				refetchOnMount: false,
-				refetchInterval: false,
-			},
-			mutations: { networkMode: "always", retry: false },
-		},
-	});
-	private readonly query;
-	private readonly restoration;
-	private readonly creation;
-	private readonly switching;
-	private readonly completion;
-	private readonly todoDeletion;
-	private readonly deletion;
-	// Admission must be synchronous; Query observer notifications are batched.
-	private operationAdmitted = $state(false);
-	private applySessionOutcome = (outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) => {
-		if (outcome.status === "applied")
-			this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-				reconcileConfirmedSession(previous, outcome.confirmed)
-			);
-	};
-	private applyTodoOutcome = (outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) => {
-		if (outcome.status !== "rejected")
-			this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-				reconcileConfirmedTodo(previous, outcome.confirmed)
-			);
-	};
+	private confirmed = $state.raw<ConfirmedSession>();
+	private readError = $state<string | null>(null);
+	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
+
 	constructor(private readonly desktop: DesktopAPI) {
-		this.query = createQuery(
-			() => ({
-				queryKey: sessionKey,
-				queryFn: () => desktop.readSession({}),
-				structuralSharing: (previous, incoming) =>
-					reconcileConfirmedSession(
-						previous as ConfirmedSession | undefined,
-						incoming as ConfirmedSession
-					),
-			}),
-			() => this.client
-		);
-		this.restoration = createMutation(
-			() => ({
-				mutationFn: () => desktop.restoreSession({}),
-				onSuccess: (incoming: ConfirmedSession) =>
-					this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-						reconcileConfirmedSession(previous, incoming)
-					),
-			}),
-			() => this.client
-		);
-		this.creation = createMutation(
-			() => ({
-				mutationFn: (input: DesktopRequest<"createWorkspace">) => desktop.createWorkspace(input),
-				onSuccess: this.applySessionOutcome,
-			}),
-			() => this.client
-		);
-		this.switching = createMutation(
-			() => ({
-				mutationFn: (input: DesktopRequest<"switchWorkspace">) => desktop.switchWorkspace(input),
-				onSuccess: this.applySessionOutcome,
-			}),
-			() => this.client
-		);
-		this.deletion = createMutation(
-			() => ({
-				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
-				onSuccess: this.applySessionOutcome,
-			}),
-			() => this.client
-		);
-		this.completion = createMutation(
-			() => ({
-				mutationFn: (input: DesktopRequest<"setTodoCompletion">) =>
-					desktop.setTodoCompletion(input),
-				onSuccess: this.applyTodoOutcome,
-			}),
-			() => this.client
-		);
-		this.todoDeletion = createMutation(
-			() => ({
-				mutationFn: (input: DesktopRequest<"deleteTodo">) => desktop.deleteTodo(input),
-				onSuccess: this.applyTodoOutcome,
-			}),
-			() => this.client
-		);
+		void this.readInitialSession();
 	}
+
+	private async readInitialSession() {
+		try {
+			this.acceptSession(await this.desktop.readSession({}));
+		} catch (error) {
+			// Restoration may already have supplied a newer confirmed session.
+			if (!this.confirmed) this.readError = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	private acceptSession(incoming: ConfirmedSession) {
+		this.confirmed = reconcileConfirmedSession(this.confirmed, incoming);
+		this.readError = null;
+	}
+
+	private applySessionOutcome(outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) {
+		if (outcome.status === "applied") this.acceptSession(outcome.confirmed);
+		return outcome;
+	}
+
+	private applyTodoOutcome(outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) {
+		if (outcome.status !== "rejected")
+			this.confirmed = reconcileConfirmedTodo(this.confirmed, outcome.confirmed);
+		return outcome;
+	}
+
 	get session() {
-		return this.query.error
-			? { status: "unavailable" as const, error: this.query.error.message }
-			: (this.query.data?.session ?? { status: "loading" as const });
+		return (
+			this.confirmed?.session ??
+			(this.readError !== null
+				? { status: "unavailable" as const, error: this.readError }
+				: { status: "loading" as const })
+		);
 	}
 	get isLoading() {
-		return this.query.isPending;
+		return this.session.status === "loading";
 	}
 	get pendingOperation(): WorkspaceSessionOperation | null {
-		return this.restoration.isPending
-			? "restore"
-			: this.creation.isPending
-				? "create_workspace"
-				: this.switching.isPending
-					? "open_workspace"
-					: this.deletion.isPending
-						? "delete_workspace"
-						: this.completion.isPending
-							? "set_todo_item_completion"
-							: this.todoDeletion.isPending
-								? "delete_todo_item"
-								: null;
+		return this.pending?.operation ?? null;
+	}
+	get pendingTarget(): WorkspaceSessionOperationTarget | null {
+		return this.pending?.target ?? null;
 	}
 	get isOperating() {
-		return (
-			this.operationAdmitted ||
-			this.restoration.isPending ||
-			this.creation.isPending ||
-			this.switching.isPending ||
-			this.completion.isPending ||
-			this.deletion.isPending ||
-			this.todoDeletion.isPending
-		);
+		return this.pending !== null;
 	}
 	get catalogue() {
 		return this.session.status === "empty" || this.session.status === "ready"
@@ -186,19 +110,20 @@ export class ElectronWorkspaceSessionState {
 		return this.session.status === "ready" ? this.session.todo_file : null;
 	}
 	get error() {
-		return (
-			this.query.error?.message ?? (this.session.status === "unavailable" ? this.session.error : "")
-		);
+		return this.session.status === "unavailable" ? this.session.error : "";
 	}
 	get warning() {
 		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
 	}
 	private async runAction(
-		action: () => Promise<WorkspaceSessionActionResult>
+		operation: WorkspaceSessionOperation,
+		action: () => Promise<WorkspaceSessionActionResult>,
+		target: WorkspaceSessionOperationTarget | null = null
 	): Promise<WorkspaceSessionActionResult> {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
-		this.operationAdmitted = true;
+		// Admission and pending UI share one synchronous state transition.
+		this.pending = { operation, target };
 		try {
 			const outcome = await action();
 			return outcome.status === "applied"
@@ -210,28 +135,47 @@ export class ElectronWorkspaceSessionState {
 				message: error instanceof Error ? error.message : String(error),
 			};
 		} finally {
-			this.operationAdmitted = false;
+			this.pending = null;
 		}
 	}
 	restore = () =>
-		this.runAction(async () => {
-			await this.restoration.mutateAsync();
+		this.runAction("restore", async () => {
+			this.acceptSession(await this.desktop.restoreSession({}));
 			return { status: "applied" };
 		});
 	create = (input: DesktopRequest<"createWorkspace">) =>
-		this.runAction(() => this.creation.mutateAsync(input));
-	open = (workspaceId: string) => this.runAction(() => this.switching.mutateAsync({ workspaceId }));
+		this.runAction(
+			"create_workspace",
+			async () => this.applySessionOutcome(await this.desktop.createWorkspace(input)),
+			{ todoPath: input.todoPath }
+		);
+	open = (workspaceId: string) =>
+		this.runAction(
+			"open_workspace",
+			async () => this.applySessionOutcome(await this.desktop.switchWorkspace({ workspaceId })),
+			{ workspaceId }
+		);
 	deleteWorkspace = (workspaceId: string) =>
-		this.runAction(() => this.deletion.mutateAsync({ workspaceId }));
+		this.runAction(
+			"delete_workspace",
+			async () => this.applySessionOutcome(await this.desktop.deleteWorkspace({ workspaceId })),
+			{ workspaceId }
+		);
 	setCompletion = (todo: TodoItem) =>
-		this.runAction(async () => {
-			const input = this.todoMutationTarget(todo);
-			if (!input)
-				return { status: "rejected", message: "No Active workspace Todo file is loaded." };
-			return this.completion.mutateAsync({ ...input, completed: !todo.completed });
-		});
+		this.runAction(
+			"set_todo_item_completion",
+			async () => {
+				const input = this.todoMutationTarget(todo);
+				if (!input)
+					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				return this.applyTodoOutcome(
+					await this.desktop.setTodoCompletion({ ...input, completed: !todo.completed })
+				);
+			},
+			this.todoOperationTarget(todo)
+		);
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> | null {
-		const confirmed = this.query.data;
+		const confirmed = this.confirmed;
 		if (
 			!confirmed ||
 			confirmed.session.status !== "ready" ||
@@ -246,11 +190,19 @@ export class ElectronWorkspaceSessionState {
 			expectedRaw: todo.raw,
 		};
 	}
+	private todoOperationTarget(todo: TodoItem): WorkspaceSessionOperationTarget | null {
+		const workspaceId = this.catalogue?.active_workspace_id;
+		return workspaceId ? { workspaceId, lineNumber: todo.line_number } : null;
+	}
 	deleteTodo = (todo: TodoItem) =>
-		this.runAction(async () => {
-			const input = this.todoMutationTarget(todo);
-			if (!input)
-				return { status: "rejected", message: "No Active workspace Todo file is loaded." };
-			return this.todoDeletion.mutateAsync(input);
-		});
+		this.runAction(
+			"delete_todo_item",
+			async () => {
+				const input = this.todoMutationTarget(todo);
+				if (!input)
+					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				return this.applyTodoOutcome(await this.desktop.deleteTodo(input));
+			},
+			this.todoOperationTarget(todo)
+		);
 }
