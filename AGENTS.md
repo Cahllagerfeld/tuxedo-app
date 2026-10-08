@@ -2,6 +2,8 @@
 
 Guidance for future agents working in this repository.
 
+**When writing or reviewing frontend or Rust code, read [CODING_STANDARDS.md](CODING_STANDARDS.md) first.** It holds the Svelte, shadcn, import-boundary, and frontend/Rust contract rules.
+
 ### Project toolchain
 
 This repository uses devenv. Run project-provided tools through devenv:
@@ -9,8 +11,6 @@ This repository uses devenv. Run project-provided tools through devenv:
 - `devenv shell -- gh ...`
 - `devenv shell -- node ...`
 - `devenv shell -- pnpm ...`
-
-Do not assume these tools are installed globally.
 
 ## Project Structure
 
@@ -26,87 +26,6 @@ Do not recreate old semantic buckets such as `src/lib/components`, `src/lib/stat
 
 This is a Tauri + SvelteKit app. The frontend is statically adapted as a SPA for Tauri, and Svelte runes mode is forced for project files in `svelte.config.js`.
 
-## Frontend Conventions
-
-- Write Svelte 5 runes-style components and state.
-- Avoid `$effect`. It is almost never the right tool: prefer `$derived` for computed values,
-  event handlers for user-driven work, and explicit functions/component APIs for coordination.
-  Use `$effect` only when synchronizing with an external system cannot be expressed through those
-  mechanisms, and explain the necessity in the code review.
-- Keep app-wide state composition in `src/lib/app/app-state.svelte.ts`.
-- Keep Svelte context setup/getters in `src/lib/app/app-context.ts`.
-- Use the existing `@/*` alias for `src/lib/*` or `$lib/*`; do not add extra aliases unless there is a strong project-wide reason.
-- `src/routes/+layout.svelte` is the shell: workspace header, view toggler, resizable sidebar/content panes, status bar, and app state initialization.
-- `src/routes/+page.svelte` should stay thin and render module UI rather than owning feature logic.
-
-## shadcn Components
-
-shadcn-generated primitives belong in the shared layer.
-
-Always use a shadcn-svelte primitive whenever a suitable one exists (for example, Dialog,
-Button, Input, Label, and form controls). Add missing primitives with the shadcn-svelte CLI
-rather than building local substitutes. Build a feature-owned component only when the behavior
-is domain-specific or no suitable shadcn-svelte primitive exists; compose shared primitives inside it.
-
-Use Tailwind utility classes for component styling. Do not add component-scoped `<style>` blocks
-when Tailwind can express the design, including responsive and dark-mode variants.
-
-Build client-side forms with the shadcn-svelte `Form` primitives, Formsnap, Superforms, and a
-Zod schema. Follow the `Form.Field` → `Form.Control` → input → `Form.Description` /
-`Form.FieldErrors` composition so labels and validation ARIA attributes stay connected. Keep
-client-side validation responsive, but duplicate all security and persistence validation at the
-Rust command boundary.
-
-`components.json` should keep these aliases:
-
-```json
-{
-	"components": "$lib/shared",
-	"utils": "$lib/shared/utils",
-	"ui": "$lib/shared/ui",
-	"hooks": "$lib/shared/hooks",
-	"lib": "$lib"
-}
-```
-
-Feature-specific components are not shadcn primitives. Keep them inside their owning module, for example:
-
-- Todo UI: `src/lib/modules/todo/ui`
-- Workspace UI: `src/lib/modules/workspace/ui`
-- Workspace sidebar UI: `src/lib/modules/workspace/ui/sidebar`
-
-## Import Boundaries
-
-- Routes may import app composition, module UI, and shared UI directly.
-- Feature modules may import from their own module and from `src/lib/shared`.
-- Cross-module imports should be explicit and only used for real domain coupling.
-- Shared code must not import from feature modules.
-- Keep shadcn component `index.ts` barrel files. Avoid adding feature-level barrel files unless there is a clear reason.
-- Keep tests close to the code they validate inside the owning module.
-
-Preferred examples:
-
-```ts
-import { AppState } from "$lib/app/app-state.svelte";
-import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
-import { Button } from "$lib/shared/ui/button";
-```
-
-## Frontend/Rust Contract
-
-Rust owns filesystem access, workspace persistence, and todo.txt parsing under `src-tauri/src`.
-
-- Tauri commands are registered in `src-tauri/src/lib.rs`; the narrow Workspace command adapters
-  live in `src-tauri/src/workspace/mod.rs`.
-- Workspace lifecycle behavior lives in `src-tauri/src/workspace/lifecycle.rs`, while catalogue
-  validation and persistence live in `src-tauri/src/workspace/catalogue.rs`.
-- todo.txt parsing lives in `src-tauri/src/todo_txt`.
-- Treat Rust command responses as typed wire values rather than routinely parsing trusted Tauri
-  output in the renderer. Detect contract drift with explicit TypeScript wire types, matching Zod
-  schemas, and shared fixtures serialized by Rust and validated by frontend tests.
-- If a Rust command response shape changes, update the matching TypeScript type, Zod contract
-  schema, shared fixture, and tests in the relevant frontend module.
-
 ## Verification
 
 After structural changes, run:
@@ -117,16 +36,6 @@ pnpm test:unit
 pnpm test:rust
 pnpm lint
 ```
-
-The intended package manager is `pnpm@11.2.2`.
-
-In Codex sandboxed shells, `pnpm` or `npm` may be unavailable on `PATH`. The bundled Node runtime can run local binaries by prefixing `PATH` with:
-
-```sh
-PATH=/Users/juliankarl/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH
-```
-
-Vitest may try to bind a local `::1` listener. If tests pass but the process reports `listen EPERM`, rerun outside the sandbox or ask for permission to run with local binding access.
 
 ## Git Workflow
 
