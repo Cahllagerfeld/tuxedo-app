@@ -10,10 +10,9 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem) => void;
-		onSelect?: (todo: TodoItem) => void;
 	};
 
-	let { todo, disabled, onToggleComplete, onDelete, onSelect }: TodoItemProps = $props();
+	let { todo, disabled, onToggleComplete, onDelete }: TodoItemProps = $props();
 	let confirmedChecked = $derived(todo.completed);
 
 	function requestCompletionChange() {
@@ -50,24 +49,9 @@
 	>
 		{todo.priority ? `(${todo.priority})` : "—"}
 	</span>
-	{#if onSelect}
-		<Button
-			type="button"
-			variant="ghost"
-			aria-label={`View details for ${todo.description}`}
-			class={cn(
-				"h-auto min-w-0 flex-1 justify-start rounded-none px-0 py-1 text-left text-sm font-normal hover:bg-transparent",
-				todo.completed && "line-through"
-			)}
-			onclick={() => onSelect(todo)}
-		>
-			<span class="truncate">{todo.description}</span>
-		</Button>
-	{:else}
-		<p class={cn("min-w-0 flex-1 truncate text-sm", todo.completed && "line-through")}>
-			{todo.description}
-		</p>
-	{/if}
+	<p class={cn("min-w-0 flex-1 truncate text-sm", todo.completed && "line-through")}>
+		{todo.description}
+	</p>
 	<div
 		class="hidden max-w-[35%] shrink-0 items-center gap-2 overflow-hidden font-mono text-xs text-muted-foreground sm:flex"
 	>

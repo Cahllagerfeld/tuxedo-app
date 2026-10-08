@@ -246,6 +246,40 @@ try {
 	assert.equal(deletionConflict.status, "conflict");
 	assert.equal(deletionConflict.confirmed.todo_file.items[0].description, "Changed externally");
 	assert.equal(await readFile(deletionPath, "utf8"), "Changed externally\r\n");
+
+	// Exercise appearance with enough real Todo items to overflow the reader.
+	await writeFile(
+		deletionPath,
+		Array.from({ length: 80 }, (_, index) => `Item ${index + 1}`).join("\n")
+	);
+	await page.reload();
+	await page.getByText("Item 80", { exact: true }).waitFor();
+	const switcher = page.getByRole("button", { name: "Select workspace: Deletion" });
+	await switcher.hover();
+	await page.waitForTimeout(250); // Allow the button's color transition to settle.
+	const hoverContrast = await switcher.evaluate((element) => {
+		const background = getComputedStyle(element).backgroundColor;
+		const sidebar = getComputedStyle(
+			element.closest('[data-slot="sidebar-inner"]')
+		).backgroundColor;
+		return background !== "rgba(0, 0, 0, 0)" && background !== sidebar;
+	});
+	await page.locator('[data-slot="scroll-area"]').hover();
+	const thumb = page.locator('[data-slot="scroll-area-thumb"]');
+	await thumb.waitFor({ state: "visible" });
+	const thumbVisible = await thumb.isVisible();
+	assert.ok(
+		hoverContrast && thumbVisible,
+		`Workspace hover contrast: ${hoverContrast}; ScrollArea thumb visible: ${thumbVisible}`
+	);
+	const viewport = page.locator('[data-slot="scroll-area-viewport"]');
+	await viewport.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+	});
+	await page.waitForFunction(
+		() => document.querySelector('[data-slot="scroll-area-viewport"]').scrollTop > 0
+	);
+	assert.ok(await page.getByText("Item 80", { exact: true }).isVisible());
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

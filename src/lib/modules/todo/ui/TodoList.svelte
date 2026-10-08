@@ -9,17 +9,16 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoFile["items"][number]) => void;
 		onDelete: (todo: TodoFile["items"][number]) => void;
-		onSelect?: (todo: TodoFile["items"][number]) => void;
 	};
 
-	let { todoFile, disabled, onToggleComplete, onDelete, onSelect }: TodoListProps = $props();
+	let { todoFile, disabled, onToggleComplete, onDelete }: TodoListProps = $props();
 </script>
 
 {#if todoFile.items.length > 0}
 	<ul aria-label="Todo items" class="w-full divide-y divide-border/50">
 		{#each todoFile.items as item (item.line_number)}
 			<li>
-				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} {onSelect} />
+				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
 			</li>
 		{/each}
 	</ul>

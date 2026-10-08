@@ -6,15 +6,10 @@
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import { Toaster } from "$lib/shared/ui/sonner";
-	let {
-		desktop,
-		onSessionReady,
-	}: { desktop: DesktopAPI; onSessionReady?: (workspace: ElectronWorkspaceSessionState) => void } =
-		$props();
+	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
 	onMount(() => {
-		onSessionReady?.(app.workspace);
 		void app.workspace.initialize();
 	});
 </script>
