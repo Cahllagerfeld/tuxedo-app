@@ -59,6 +59,23 @@ try {
 		true
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
+
+	// The inset shell gives the Todo file more room when navigation is collapsed.
+	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
+	await sidebarToggle.waitFor({ timeout: 5000 });
+	const expandedWidth = (await page.getByRole("main").boundingBox()).width;
+	await sidebarToggle.click();
+	await page.waitForFunction(
+		(width) => document.querySelector("main").getBoundingClientRect().width > width + 100,
+		expandedWidth
+	);
+	await page.getByText("No workspace open", { exact: true }).waitFor();
+	await sidebarToggle.click();
+	await page.waitForFunction(
+		(width) => Math.abs(document.querySelector("main").getBoundingClientRect().width - width) < 2,
+		expandedWidth
+	);
+
 	const preferences = await application.evaluate(({ BrowserWindow }) =>
 		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
 	);
