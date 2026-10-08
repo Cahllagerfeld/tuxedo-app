@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
+	switchWorkspaceRequestSchema,
 	type ConfirmedSession,
 	type DesktopAPI,
 } from "../../src/lib/shared/desktop/contract";
@@ -51,6 +52,30 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 		return { scope, revision: revision++, session };
 	};
 	return {
+		switchWorkspace: (request) =>
+			serialize(async () => {
+				try {
+					const { workspaceId } = switchWorkspaceRequestSchema.parse(request);
+					const existing = await load();
+					if (existing.session.status === "unavailable") throw Error(existing.session.error);
+					const workspace = existing.session.catalogue.workspaces.find((w) => w.id === workspaceId);
+					if (!workspace) throw Error("Workspace does not exist.");
+					const todo_file = await readTodoFile(workspace.todo_path);
+					const catalogue = { ...existing.session.catalogue, active_workspace_id: workspaceId };
+					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
+					confirmed = {
+						scope,
+						revision: revision++,
+						session: { status: "ready", catalogue, todo_file },
+					};
+					return { status: "applied" as const, confirmed };
+				} catch (error) {
+					return {
+						status: "rejected" as const,
+						message: `Cannot open Workspace: ${error instanceof Error ? error.message : String(error)}`,
+					};
+				}
+			}),
 		createWorkspace: (request) =>
 			serialize(async () => {
 				try {
