@@ -80,11 +80,7 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 			)
 				throw Error("The Active workspace changed.");
 			const expected = parseTodoFile(workspace.todo_path, input.expectedRaw);
-			if (
-				expected.items.length !== 1 ||
-				expected.skipped.length ||
-				/\n/.test(input.expectedRaw)
-			)
+			if (expected.items.length !== 1 || expected.skipped.length || /\n/.test(input.expectedRaw))
 				throw Error("Invalid Todo item target.");
 			const contents = await readTodoContents(workspace.todo_path);
 			const current = parseTodoFile(workspace.todo_path, contents);

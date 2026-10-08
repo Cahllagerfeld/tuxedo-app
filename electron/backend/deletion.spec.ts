@@ -184,3 +184,18 @@ test("serialized switching rejects a queued deletion bound to the previous Works
 	expect(await readFile(todoPath, "utf8")).toBe("Delete me");
 	expect(await readFile(otherPath, "utf8")).toBe("Other");
 });
+
+test("deletion preserves lone carriage returns within untouched raw Todo lines", async () => {
+	const { todoPath, backend, confirmed } = await setup("Delete\rthis\nKeep\rthat");
+	const result = await backend.deleteTodo({
+		scope: confirmed.scope,
+		revision: confirmed.revision,
+		workspaceId: confirmed.session.catalogue.active_workspace_id!,
+		lineNumber: 1,
+		expectedRaw: "Delete\rthis",
+	});
+	expect(result.status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toBe("Keep\rthat");
+	if (result.status !== "applied") throw Error(result.message);
+	expect(result.confirmed.todo_file.items[0].raw).toBe("Keep\rthat");
+});
