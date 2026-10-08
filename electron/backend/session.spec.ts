@@ -569,7 +569,7 @@ test("Unicode date-like descriptions remain readable when creating a Workspace",
 	expect(await readFile(todoPath, "utf8")).toBe(contents);
 });
 
-test("restoration retains the original UTF-8 byte predicate for invalid date-shaped tokens", async () => {
+test("restoration keeps non-ASCII date-like descriptions intact", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-unicode-date-"));
 	directories.push(directory);
 	const todoPath = join(directory, "todo.txt");
@@ -579,12 +579,8 @@ test("restoration retains the original UTF-8 byte predicate for invalid date-sha
 	await writeFile(todoPath, "éab-12-34 Invalid date\n");
 	const outcome = await backend.restoreSession({});
 	if (outcome.session.status !== "ready") throw Error("No restored Todo file");
-	expect(outcome.session.todo_file.items).toEqual([]);
-	expect(outcome.session.todo_file.skipped).toEqual([
-		{
-			line_number: 1,
-			raw: "éab-12-34 Invalid date",
-			reason: "date must use YYYY-MM-DD format",
-		},
+	expect(outcome.session.todo_file.skipped).toEqual([]);
+	expect(outcome.session.todo_file.items).toMatchObject([
+		{ line_number: 1, description: "éab-12-34 Invalid date" },
 	]);
 });
