@@ -88,6 +88,39 @@ try {
 	);
 	assert.equal(switched.status, "applied");
 	assert.equal(switched.confirmed.session.todo_file.items[0].description, "Call Mom");
+
+	const completionTarget = {
+		scope: switched.confirmed.scope,
+		revision: switched.confirmed.revision,
+		workspaceId: switched.confirmed.session.catalogue.active_workspace_id,
+		lineNumber: 1,
+		expectedRaw: switched.confirmed.session.todo_file.items[0].raw,
+		completed: true,
+	};
+	const completed = await page.evaluate(
+		(input) => window.desktop.setTodoCompletion(input),
+		completionTarget
+	);
+	assert.equal(completed.status, "applied");
+	assert.equal(completed.confirmed.todo_file.items[0].completed, true);
+	assert.match(await readFile(todoPath, "utf8"), /^x \d{4}-\d{2}-\d{2} \(A\) Call Mom/);
+	const uncompleted = await page.evaluate((input) => window.desktop.setTodoCompletion(input), {
+		...completionTarget,
+		revision: completed.confirmed.revision,
+		expectedRaw: completed.confirmed.todo_file.items[0].raw,
+		completed: false,
+	});
+	assert.equal(uncompleted.status, "applied");
+	assert.equal(uncompleted.confirmed.todo_file.items[0].raw, "(A) Call Mom +Family @phone");
+	await writeFile(todoPath, "Externally changed\nx 2026-07-10 Finished\n");
+	const conflict = await page.evaluate((input) => window.desktop.setTodoCompletion(input), {
+		...completionTarget,
+		revision: uncompleted.confirmed.revision,
+	});
+	assert.equal(conflict.status, "conflict");
+	assert.equal(conflict.confirmed.todo_file.items[0].raw, "Externally changed");
+	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
+	await page.evaluate(() => window.desktop.restoreSession({}));
 	const missing = await page.evaluate(() =>
 		window.desktop.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
 	);

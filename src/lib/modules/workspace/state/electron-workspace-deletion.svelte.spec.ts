@@ -21,6 +21,8 @@ const initial: ConfirmedSession = {
 };
 function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 	return {
+		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
 		restoreSession: async () => initial,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
