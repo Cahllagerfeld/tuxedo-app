@@ -10,6 +10,6 @@ Workspace lifecycle operations retain coherent backend responses, and Svelte Que
 
 The implementation specification is [issue #53](https://github.com/Cahllagerfeld/tuxedo-app/issues/53).
 
-The first rewrite includes current functionality plus Todo-item creation, observation of external Todo-file edits, and keyboard navigation. Redesigning the Workspace setup workflow remains a separate scope question rather than a prerequisite for replacing the desktop runtime.
+The rewrite migrates current functionality only. Todo-item creation, automatic observation of external Todo-file edits, and new keyboard shortcuts/focus navigation remain separate issues and are outside this migration. Workspace setup redesign is also deferred.
 
 Initial delivery includes a development command and a locally packaged macOS app. Signing, public distribution, and automatic updates are deferred.
