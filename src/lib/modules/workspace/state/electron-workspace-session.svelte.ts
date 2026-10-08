@@ -64,6 +64,8 @@ export class ElectronWorkspaceSessionState {
 	private readonly completion;
 	private readonly todoDeletion;
 	private readonly deletion;
+	// Admission must be synchronous; Query observer notifications are batched.
+	private operationAdmitted = $state(false);
 	private applySessionOutcome = (outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) => {
 		if (outcome.status === "applied")
 			this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
@@ -161,6 +163,7 @@ export class ElectronWorkspaceSessionState {
 	}
 	get isOperating() {
 		return (
+			this.operationAdmitted ||
 			this.restoration.isPending ||
 			this.creation.isPending ||
 			this.switching.isPending ||
@@ -190,58 +193,14 @@ export class ElectronWorkspaceSessionState {
 	get warning() {
 		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
 	}
-	restore = async () => {
-		if (this.isOperating) return;
-		await this.restoration.mutateAsync();
-	};
-	create = async (
-		input: DesktopRequest<"createWorkspace">
-	): Promise<WorkspaceSessionActionResult> => {
+	private async runAction(
+		action: () => Promise<WorkspaceSessionActionResult>
+	): Promise<WorkspaceSessionActionResult> {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
+		this.operationAdmitted = true;
 		try {
-			const outcome = await this.creation.mutateAsync(input);
-			return outcome.status === "applied" ? { status: "applied" } : outcome;
-		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	};
-	open = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
-		if (this.isOperating)
-			return { status: "rejected", message: "A Workspace session operation is already running." };
-		try {
-			const outcome = await this.switching.mutateAsync({ workspaceId });
-			return outcome.status === "applied" ? { status: "applied" } : outcome;
-		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	};
-	deleteWorkspace = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
-		if (this.isOperating)
-			return { status: "rejected", message: "A Workspace session operation is already running." };
-		try {
-			const outcome = await this.deletion.mutateAsync({ workspaceId });
-			return outcome.status === "applied" ? { status: "applied" } : outcome;
-		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	};
-	setCompletion = async (todo: TodoItem): Promise<WorkspaceSessionActionResult> => {
-		if (this.isOperating)
-			return { status: "rejected", message: "A Workspace session operation is already running." };
-		const input = this.todoMutationTarget(todo);
-		if (!input) return { status: "rejected", message: "No Active workspace Todo file is loaded." };
-		try {
-			const outcome = await this.completion.mutateAsync({ ...input, completed: !todo.completed });
+			const outcome = await action();
 			return outcome.status === "applied"
 				? { status: "applied" }
 				: { status: outcome.status, message: outcome.message };
@@ -250,8 +209,27 @@ export class ElectronWorkspaceSessionState {
 				status: "rejected",
 				message: error instanceof Error ? error.message : String(error),
 			};
+		} finally {
+			this.operationAdmitted = false;
 		}
-	};
+	}
+	restore = () =>
+		this.runAction(async () => {
+			await this.restoration.mutateAsync();
+			return { status: "applied" };
+		});
+	create = (input: DesktopRequest<"createWorkspace">) =>
+		this.runAction(() => this.creation.mutateAsync(input));
+	open = (workspaceId: string) => this.runAction(() => this.switching.mutateAsync({ workspaceId }));
+	deleteWorkspace = (workspaceId: string) =>
+		this.runAction(() => this.deletion.mutateAsync({ workspaceId }));
+	setCompletion = (todo: TodoItem) =>
+		this.runAction(async () => {
+			const input = this.todoMutationTarget(todo);
+			if (!input)
+				return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+			return this.completion.mutateAsync({ ...input, completed: !todo.completed });
+		});
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> | null {
 		const confirmed = this.query.data;
 		if (
@@ -268,21 +246,11 @@ export class ElectronWorkspaceSessionState {
 			expectedRaw: todo.raw,
 		};
 	}
-	deleteTodo = async (todo: TodoItem): Promise<WorkspaceSessionActionResult> => {
-		if (this.isOperating)
-			return { status: "rejected", message: "A Workspace session operation is already running." };
-		const input = this.todoMutationTarget(todo);
-		if (!input) return { status: "rejected", message: "No Active workspace Todo file is loaded." };
-		try {
-			const outcome = await this.todoDeletion.mutateAsync(input);
-			return outcome.status === "applied"
-				? { status: "applied" }
-				: { status: outcome.status, message: outcome.message };
-		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	};
+	deleteTodo = (todo: TodoItem) =>
+		this.runAction(async () => {
+			const input = this.todoMutationTarget(todo);
+			if (!input)
+				return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+			return this.todoDeletion.mutateAsync(input);
+		});
 }

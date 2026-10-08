@@ -220,3 +220,58 @@ test("a confirmed switch opens its intended Workspace through the shared cache",
 	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Switched");
 	expect(requestedId).toBe(workspace.id);
 });
+
+test.each([
+	["Create", "rejected"],
+	["Switch", "thrown"],
+	["Restore", "rejected"],
+])("same-turn %s is blocked until creation finishes with a %s failure", async (next, failure) => {
+	const requests: string[] = [];
+	let finish!: () => void;
+	render(ElectronSessionHarness, {
+		desktop: {
+			readSession: async () => confirmed(1, null),
+			restoreSession: async () => {
+				requests.push("restore");
+				return confirmed(2, null);
+			},
+			createWorkspace: () => {
+				requests.push("create");
+				if (requests.length > 1)
+					return Promise.resolve({ status: "rejected", message: "Retry admitted" });
+				return new Promise((resolve, reject) => {
+					finish = () =>
+						failure === "thrown"
+							? reject(Error("Creation failed"))
+							: resolve({ status: "rejected", message: "Creation failed" });
+				});
+			},
+			switchWorkspace: async () => {
+				requests.push("switch");
+				return { status: "rejected", message: "Unexpected switch" };
+			},
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			selectTodoFile: async () => null,
+		},
+	});
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
+	const buttons = Array.from(document.querySelectorAll("button"));
+	const create = buttons.find((button) => button.textContent === "Create")!;
+	const second = buttons.find((button) => button.textContent === next)!;
+	// Native clicks keep both actions in the same turn, before reactive DOM updates.
+	create.click();
+	second.click();
+	await expect
+		.element(page.getByLabelText("Pending operation"))
+		.toHaveTextContent("create_workspace");
+	expect(requests).toEqual(["create"]);
+	await expect.element(page.getByRole("button", { name: "Create" })).toBeDisabled();
+	finish();
+	await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Creation failed");
+	await expect.element(page.getByRole("button", { name: "Create" })).toBeEnabled();
+	await page.getByRole("button", { name: "Create" }).click();
+	await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Retry admitted");
+	expect(requests).toEqual(["create", "create"]);
+});
