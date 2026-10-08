@@ -61,6 +61,7 @@ export class ElectronWorkspaceSessionState {
 	private readonly restoration;
 	private readonly creation;
 	private readonly switching;
+	private readonly deletion;
 	private readonly completion;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
@@ -122,6 +123,18 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.deletion = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
+				onSuccess: (outcome) => {
+					if (outcome.status === "applied")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedSession(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 	}
 	get session() {
 		return this.query.error
@@ -138,15 +151,18 @@ export class ElectronWorkspaceSessionState {
 				? "create_workspace"
 				: this.switching.isPending
 					? "open_workspace"
-					: this.completion.isPending
-						? "set_todo_item_completion"
-						: null;
+					: this.deletion.isPending
+						? "delete_workspace"
+						: this.completion.isPending
+							? "set_todo_item_completion"
+							: null;
 	}
 	get isOperating() {
 		return (
 			this.restoration.isPending ||
 			this.creation.isPending ||
 			this.switching.isPending ||
+			this.deletion.isPending ||
 			this.completion.isPending
 		);
 	}
@@ -207,7 +223,19 @@ export class ElectronWorkspaceSessionState {
 			};
 		}
 	};
-	deleteWorkspace = (_id: string) => this.unavailable();
+	deleteWorkspace = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		try {
+			const outcome = await this.deletion.mutateAsync({ workspaceId });
+			return outcome.status === "applied" ? { status: "applied" } : outcome;
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
 	setCompletion = async (todo: TodoItem): Promise<WorkspaceSessionActionResult> => {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
