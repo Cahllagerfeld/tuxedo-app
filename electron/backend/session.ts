@@ -83,7 +83,7 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 			if (
 				expected.items.length !== 1 ||
 				expected.skipped.length ||
-				/[\r\n]/.test(input.expectedRaw)
+				/\n/.test(input.expectedRaw)
 			)
 				throw Error("Invalid Todo item target.");
 			const contents = await readTodoContents(workspace.todo_path);
