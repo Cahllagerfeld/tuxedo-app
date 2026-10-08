@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getAppState } from "$lib/app/app-context";
 	import * as Collapsible from "$lib/shared/ui/collapsible";
-	import { cn } from "@/shared/utils";
+	import { cn } from "cn";
 	import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 	import Star from "@lucide/svelte/icons/star";
 

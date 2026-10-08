@@ -2,7 +2,8 @@
 	import { AlertDialog as AlertDialogPrimitive } from "bits-ui";
 	import AlertDialogPortal from "./alert-dialog-portal.svelte";
 	import AlertDialogOverlay from "./alert-dialog-overlay.svelte";
-	import { cn, type WithoutChild, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { cn } from "cn";
+	import { type WithoutChild, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
 	import type { ComponentProps } from "svelte";
 
 	let {

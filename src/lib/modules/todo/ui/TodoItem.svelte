@@ -2,7 +2,7 @@
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
-	import { cn } from "$lib/shared/utils";
+	import { cn } from "cn";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 
 	type TodoItemProps = {

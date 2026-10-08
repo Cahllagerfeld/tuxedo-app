@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as ResizablePrimitive from "paneforge";
-	import { cn } from "$lib/shared/utils.js";
+	import { cn } from "cn";
 
 	let {
 		ref = $bindable(null),

@@ -8,7 +8,7 @@
 	import { Input } from "$lib/shared/ui/input";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
 	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-types";
-	import { cn } from "@/shared/utils";
+	import { cn } from "cn";
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from "@/shared/utils";
+	import { cn } from "cn";
 
 	type StatCardProps = {
 		label: string;
