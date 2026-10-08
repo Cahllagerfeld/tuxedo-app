@@ -26,4 +26,4 @@ Run `devenv shell -- pnpm package:macos` on macOS. Forge packages the bundled ES
 
 Local package checks were performed on macOS 26.6.2 arm64 with Node 24.20.0. This is local unsigned delivery; Windows/Linux, signing, notarization, installers, and public distribution are unverified.
 
-Native macOS picker selection/cancellation remains unverified: Computer Use was not approved to control Tuxedo during this implementation session. The packaged automated IPC checks use a deterministic dialog replacement and do not verify the native picker.
+Native macOS picker selection/cancellation remains unverified: Computer Use was not approved to control Tuxedo during this implementation session. The packaged automated IPC checks do not exercise file selection or the native picker.
