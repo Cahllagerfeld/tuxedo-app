@@ -75,6 +75,23 @@ try {
 		}),
 		true
 	);
+	const secondPath = join(directory, "second.todo");
+	await writeFile(secondPath, "Second item");
+	await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Second",
+		color: "blue",
+		todoPath: secondPath,
+	});
+	const switched = await page.evaluate(
+		(workspaceId) => window.desktop.switchWorkspace({ workspaceId }),
+		created.confirmed.session.catalogue.active_workspace_id
+	);
+	assert.equal(switched.status, "applied");
+	assert.equal(switched.confirmed.session.todo_file.items[0].description, "Call Mom");
+	const missing = await page.evaluate(() =>
+		window.desktop.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
+	);
+	assert.equal(missing.status, "rejected");
 	await page.reload();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	console.log(

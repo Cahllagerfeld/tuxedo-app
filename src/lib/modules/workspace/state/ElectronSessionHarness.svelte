@@ -6,6 +6,10 @@
 	// svelte-ignore state_referenced_locally
 	const session = new ElectronWorkspaceSessionState(desktop);
 	let result = $state("");
+	async function open() {
+		const outcome = await session.open("550e8400-e29b-41d4-a716-446655440000");
+		result = outcome.status === "applied" ? "Applied" : outcome.message;
+	}
 	async function create() {
 		const outcome = await session.create({
 			name: "Personal",
@@ -26,3 +30,5 @@
 <p aria-label="Active workspace">{session.activeWorkspace?.name}</p>
 
 <p aria-label="Action result">{result}</p>
+
+<button disabled={session.isOperating} onclick={open}>Switch</button>

@@ -17,6 +17,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	let finish!: (value: ConfirmedSession) => void;
 	render(ElectronSessionHarness, {
 		desktop: {
+			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
@@ -49,6 +50,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 		desktop: {
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => confirmed(1, null),
+			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 			createWorkspace: () =>
 				new Promise((resolve) => {
@@ -121,6 +123,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 		desktop: {
 			readSession: async () => initial,
 			restoreSession: async () => initial,
+			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 			createWorkspace: async () => ({ status: "rejected", message: "Duplicate Workspace name" }),
 		},
@@ -132,4 +135,34 @@ test("rejected creation preserves the current confirmed file and summary", async
 		.toHaveTextContent("Duplicate Workspace name");
 	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Existing");
 	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
+});
+
+test("switching preserves a confirmed session on rejection and exposes pending controls", async () => {
+	let finish!: (
+		outcome: Awaited<
+			ReturnType<import("$lib/shared/desktop/contract").DesktopAPI["switchWorkspace"]>
+		>
+	) => void;
+	render(ElectronSessionHarness, {
+		desktop: {
+			readSession: async () => confirmed(5, "Original"),
+			restoreSession: async () => confirmed(5, "Original"),
+			selectTodoFile: async () => null,
+			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			switchWorkspace: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		},
+	});
+	await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Original");
+	await page.getByRole("button", { name: "Switch" }).click();
+	await expect
+		.element(page.getByLabelText("Pending operation"))
+		.toHaveTextContent("open_workspace");
+	await expect.element(page.getByRole("button", { name: "Create" })).toBeDisabled();
+	finish({ status: "rejected", message: "Cannot open file" });
+	await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Cannot open file");
+	await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Original");
+	await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
 });
