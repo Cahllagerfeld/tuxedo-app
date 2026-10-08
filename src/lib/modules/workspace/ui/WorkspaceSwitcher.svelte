@@ -86,9 +86,15 @@
 				{...props}
 				variant="ghost"
 				{disabled}
-				class="w-full max-w-full justify-between gap-1 px-2"
+				class="h-10 w-full max-w-full justify-between gap-2 px-2 hover:bg-sidebar-accent"
 			>
-				<span class="min-w-0 flex-1 truncate text-left font-mono text-sm">
+				{#if activeWorkspace}
+					<span
+						class={`size-2.5 shrink-0 rounded-full ${colorClasses[activeWorkspace.color]}`}
+						aria-hidden="true"
+					></span>
+				{/if}
+				<span class="min-w-0 flex-1 truncate text-left text-sm font-semibold">
 					{activeWorkspace?.name ?? "No workspace selected"}
 				</span>
 				{#if pendingOperation === "open_workspace" || pendingOperation === "delete_workspace"}

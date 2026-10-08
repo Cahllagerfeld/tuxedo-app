@@ -18,7 +18,7 @@
 
 <footer
 	aria-label="Reader status"
-	class="flex h-8 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-card px-4 font-mono text-xs text-muted-foreground"
+	class="flex h-8 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-background px-4 text-[11px] text-muted-foreground"
 >
 	{#if todoFile && activeWorkspace}
 		<div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap">

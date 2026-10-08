@@ -5,7 +5,7 @@
 	const appState = getAppState();
 </script>
 
-<div class="flex min-h-full w-full p-4">
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceContent
 		workspace={appState.workspace}
 		openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
