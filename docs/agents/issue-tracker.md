@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
 ## Conventions
 
@@ -18,6 +18,8 @@ Infer the repo from `git remote -v` — `gh` does this automatically when run in
 **PRs as a request surface: no.**
 
 External pull requests are not part of the triage queue. Collaborators' in-flight PRs are always left alone.
+
+GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
 ## When a skill says "publish to the issue tracker"
 
