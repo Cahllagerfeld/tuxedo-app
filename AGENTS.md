@@ -1,12 +1,12 @@
 # AGENTS.md
 
-Tauri + SvelteKit SPA; Rust owns filesystem, persistence, todo.txt parsing.
+Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. Svelte Query owns confirmed renderer data.
 
 Run tools via devenv: `devenv shell -- pnpm|gh|node ...`.
 
 ## Context pointers
 
-- Before writing or reviewing code (Svelte, TypeScript, UI, forms, Tauri commands, wire types): [CODING_STANDARDS.md](CODING_STANDARDS.md).
+- Before writing or reviewing code (Svelte, TypeScript, UI, forms, desktop IPC, backend operations, wire types): [CODING_STANDARDS.md](CODING_STANDARDS.md).
 
 ## Agent skills
 
@@ -25,5 +25,5 @@ Before exploring the codebase, read the single-context `GLOSSARY.md` and relevan
 ## Finishing work
 
 - New commit per change, never amend.
-- After structural changes: `pnpm check`, `pnpm test:unit`, `pnpm test:rust`, `pnpm lint`.
+- After structural changes: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, `pnpm test:electron`.
 - Delete emptied folders and session temp files.

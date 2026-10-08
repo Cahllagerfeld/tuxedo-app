@@ -18,8 +18,8 @@ Single-context repo (this repo):
 /
 ├── GLOSSARY.md
 ├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
+│   ├── 0003-replace-tauri-and-rust-with-electron.md
+│   └── 0004-own-domain-operations-in-the-electron-main-process.md
 └── src/
 ```
 

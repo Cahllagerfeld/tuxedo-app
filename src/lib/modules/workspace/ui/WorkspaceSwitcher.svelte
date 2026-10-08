@@ -10,7 +10,7 @@
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
-	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
+	} from "$lib/modules/workspace/state/workspace-session-types";
 	import { toast } from "svelte-sonner";
 
 	type Props = {

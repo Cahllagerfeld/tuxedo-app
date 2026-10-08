@@ -1,40 +1,19 @@
-# Tauri + SvelteKit + TypeScript
+# Tuxedo
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organizes existing todo.txt files into saved Workspaces and supports completion, uncompletion, and precise Todo-item deletion.
 
-## Recommended IDE Setup
+## Development
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR. `pnpm dev:electron` is an equivalent explicit desktop command.
 
-## Electron migration development
+The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. Svelte Query holds one confirmed renderer session; counts and facets derive from its Todo file.
 
-Run `devenv shell -- pnpm install`, then `devenv shell -- pnpm dev:electron`.
-`vite-plugin-electron` builds and watches main and preload alongside the SvelteKit
-renderer. Main changes restart Electron; preload changes reload the window.
-`pnpm build:electron` builds the SPA and desktop bundles together, keeping a
-self-contained CommonJS preload for the sandboxed renderer.
-This builds the TypeScript main process and bundled sandboxed preload, starts the
-SvelteKit SPA on the explicit loopback origin `http://127.0.0.1:1420`, and launches
-Electron. Stop it with Ctrl-C; renderer changes use Vite HMR. The existing `pnpm tauri dev` command remains usable
-until the migration is complete.
+Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
 
-Electron starts a fresh catalogue at `Tuxedo Electron/workspaces.json` under the
-platform application-data directory (`~/Library/Application Support` on macOS).
-The legacy Tauri catalogue and external Todo files are preserved. Catalogue JSON
-uses version 1 and the Workspace domain field names; unreadable or invalid files
-are preserved and shown as unavailable. Active-file restoration and Workspace
-mutations are implemented by subsequent migration slices.
+## Verification
 
-Run `devenv shell -- pnpm check`, `pnpm test:backend`, `pnpm test:unit`,
-`pnpm test:rust`, and `pnpm lint` through devenv. `pnpm test:electron` builds the
-SPA and crosses the real Electron preload/IPC boundary using an isolated temporary
-data location; it verifies the Empty state and sandbox/isolation settings.
+Run these commands through `devenv shell --`: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, and `pnpm test:electron`. `check` covers Svelte/renderer types, backend/main/preload/contract types, and import restrictions. Unit tests include Chromium renderer behavior; install its browser with `pnpm exec playwright install chromium` when needed. Backend tests use real temporary files and preserve framework-independent todo.txt fixtures in `electron/backend/fixtures`.
 
-The desktop contract is `src/lib/shared/desktop/contract.ts`; backend operations
-are serialized in `electron/backend/session.ts`. Confirmed renderer data lives in
-Svelte Query with scoped ordered revisions, no automatic refetching, and no
-mutation retries. Electron-local operations use `networkMode: "always"` so they
-remain available offline. `pnpm check` also enforces renderer import boundaries and
-checks main/preload separately. Security follows the primary
-[Electron guidance](https://www.electronjs.org/docs/latest/tutorial/security);
-query integration follows [Svelte Query](https://tanstack.com/query/latest/docs/framework/svelte/overview).
+`pnpm build` produces the static SPA in `build` and desktop bundles in `dist-electron`. `pnpm test:electron` builds and launches real Electron to exercise production protocol loading, trusted preload/IPC, runtime input validation, Workspace lifecycle, completion, conflicts, and deletion with temporary data. `pnpm test:electron:dev` verifies development startup. macOS CI runs types, formatting, browser/backend tests, production build, and real Electron integration. Local application packaging is tracked in #61; signed distribution, automatic updates, and Windows/Linux verification are deferred.
+
+Application icons retained from the previous runtime live in `assets` for packaging.

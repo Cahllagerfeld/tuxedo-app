@@ -206,6 +206,6 @@ export function createDesktopClient(
 }
 declare global {
 	interface Window {
-		desktop?: DesktopAPI;
+		desktop: DesktopAPI;
 	}
 }

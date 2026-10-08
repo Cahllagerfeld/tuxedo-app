@@ -23,10 +23,6 @@
     };
   };
 
-  languages.rust = {
-    enable = true;
-  };
-
   languages.typescript = {
     enable = true;
   };

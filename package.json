@@ -1,22 +1,20 @@
 {
-	"name": "tauri-app",
+	"name": "tuxedo",
 	"version": "0.1.0",
 	"description": "",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"dev": "vite --mode electron --host 127.0.0.1",
+		"build": "vite build --mode electron",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && pnpm check:electron && pnpm check:boundaries",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"tauri": "tauri",
 		"lint": "prettier --check .",
 		"format": "prettier --write .",
 		"prepare": "svelte-kit sync || echo ''",
 		"test:unit": "vitest --run",
 		"test:unit:watch": "vitest",
-		"test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-		"test": "pnpm test:unit && pnpm test:rust",
+		"test": "pnpm test:unit && pnpm test:backend",
 		"dev:electron": "vite --mode electron --host 127.0.0.1",
 		"build:electron": "vite build --mode electron",
 		"check:electron": "tsc -p tsconfig.electron.json",
@@ -26,11 +24,6 @@
 		"test:electron:dev": "pnpm build:electron && node scripts/test-electron-dev.mjs"
 	},
 	"license": "MIT",
-	"dependencies": {
-		"@tauri-apps/api": "^2.12.1",
-		"@tauri-apps/plugin-dialog": "^2.8.1",
-		"@tauri-apps/plugin-opener": "^2.7.0"
-	},
 	"devDependencies": {
 		"@fontsource-variable/figtree": "^5.3.0",
 		"@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -41,7 +34,6 @@
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/svelte-query": "^6.3.1",
-		"@tauri-apps/cli": "^2.12.1",
 		"@types/node": "^24.19.1",
 		"@vitest/browser-playwright": "^4.1.11",
 		"bits-ui": "^2.19.5",
