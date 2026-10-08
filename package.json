@@ -21,10 +21,14 @@
 		"test:backend": "vitest run --config vitest.backend.config.ts",
 		"check:boundaries": "node scripts/check-desktop-boundaries.mjs",
 		"test:electron": "pnpm build:electron && node scripts/test-electron.mjs && node scripts/test-electron-deletion.mjs",
-		"test:electron:dev": "pnpm build:electron && node scripts/test-electron-dev.mjs"
+		"test:electron:dev": "pnpm build:electron && node scripts/test-electron-dev.mjs",
+		"package:macos": "pnpm build && node scripts/package-macos.mjs",
+		"test:package": "pnpm package:macos && node scripts/test-package.mjs"
 	},
 	"license": "MIT",
 	"devDependencies": {
+		"@electron-forge/cli": "^8.0.1",
+		"@electron/asar": "^4.3.1",
 		"@fontsource-variable/figtree": "^5.3.0",
 		"@fontsource-variable/jetbrains-mono": "^5.3.0",
 		"@internationalized/date": "^3.12.4",

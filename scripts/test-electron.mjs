@@ -9,11 +9,11 @@ let application;
 try {
 	application = await electron.launch({
 		timeout: 20000,
-		executablePath: electronPath,
-		args: [resolve("dist-electron/main.js")],
+		executablePath: process.env.TUXEDO_PACKAGED_EXECUTABLE ?? electronPath,
+		args: process.env.TUXEDO_PACKAGED_EXECUTABLE ? [] : [resolve("dist-electron/main.js")],
 		env: { ...process.env, TUXEDO_USER_DATA: directory },
 	});
-	const page = await application.firstWindow();
+	let page = await application.firstWindow();
 	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(confirmed.session.status, "empty");
@@ -127,6 +127,24 @@ try {
 	assert.equal(missing.status, "rejected");
 	await page.reload();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
+	await application.close();
+	application = await electron.launch({
+		timeout: 20000,
+		executablePath: process.env.TUXEDO_PACKAGED_EXECUTABLE ?? electronPath,
+		args: process.env.TUXEDO_PACKAGED_EXECUTABLE ? [] : [resolve("dist-electron/main.js")],
+		env: { ...process.env, TUXEDO_USER_DATA: directory },
+	});
+	page = await application.firstWindow();
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	const restored = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(
+		restored.session.catalogue.active_workspace_id,
+		created.confirmed.session.catalogue.active_workspace_id
+	);
+	assert.deepEqual(
+		restored.session.catalogue.workspaces.map((workspace) => workspace.name),
+		["Personal", "Second"]
+	);
 	const deleted = await page.evaluate(
 		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
 		created.confirmed.session.catalogue.active_workspace_id

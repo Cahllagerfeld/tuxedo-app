@@ -57,3 +57,6 @@ jobs:
 
       - name: Test real Electron preload and IPC
         run: pnpm test:electron
+
+      - name: Package and test local macOS application
+        run: pnpm test:package

@@ -9,8 +9,8 @@ let application;
 try {
 	application = await electron.launch({
 		timeout: 20000,
-		executablePath: electronPath,
-		args: [resolve("dist-electron/main.js")],
+		executablePath: process.env.TUXEDO_PACKAGED_EXECUTABLE ?? electronPath,
+		args: process.env.TUXEDO_PACKAGED_EXECUTABLE ? [] : [resolve("dist-electron/main.js")],
 		env: { ...process.env, TUXEDO_USER_DATA: directory },
 	});
 	const page = await application.firstWindow();
