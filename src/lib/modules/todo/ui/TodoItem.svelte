@@ -10,9 +10,10 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem) => void;
+		onSelect?: (todo: TodoItem) => void;
 	};
 
-	let { todo, disabled, onToggleComplete, onDelete }: TodoItemProps = $props();
+	let { todo, disabled, onToggleComplete, onDelete, onSelect }: TodoItemProps = $props();
 	let confirmedChecked = $derived(todo.completed);
 
 	function requestCompletionChange() {
@@ -30,66 +31,58 @@
 
 <div
 	class={cn(
-		"group flex gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50",
-		todo.completed && "text-muted-foreground opacity-60"
+		"group flex h-10 min-w-0 items-center gap-3 px-4 transition-colors hover:bg-muted/50",
+		todo.completed && "text-muted-foreground"
 	)}
 >
-	<div class="pt-0.5">
-		<Checkbox
-			bind:checked={confirmedChecked}
-			{disabled}
-			aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
-			class="size-4 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
-			onCheckedChange={requestCompletionChange}
-		/>
-	</div>
-	<div class="min-w-0 flex-1 space-y-1">
-		<div class="flex min-w-0 items-baseline gap-2">
-			{#if todo.priority}
-				<span
-					class={cn(
-						"shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium",
-						priorityClass(todo.priority)
-					)}
-				>
-					({todo.priority})
-				</span>
-			{/if}
-			<p class={cn("min-w-0 text-sm leading-5", todo.completed && "line-through")}>
-				{todo.description}
-			</p>
-		</div>
-		{#if todo.creation_date || todo.completion_date || todo.projects.length || todo.contexts.length || Object.keys(todo.metadata).length}
-			<div class="flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-xs text-muted-foreground">
-				{#if todo.completed && todo.completion_date}
-					<span>Completed {todo.completion_date}</span>
-				{/if}
-				{#if todo.creation_date}
-					<span>Created {todo.creation_date}</span>
-				{/if}
-				{#each todo.projects as project (project)}
-					<span class="text-[var(--priority-b)]">+{project}</span>
-				{/each}
-				{#each todo.contexts as context (context)}
-					<span class="text-[var(--priority-c)]">@{context}</span>
-				{/each}
-				{#each Object.entries(todo.metadata) as [key, value] (key)}
-					<span>{key}:{value}</span>
-				{/each}
-			</div>
-		{/if}
-	</div>
-	<div class="flex shrink-0 self-center">
+	<Checkbox
+		bind:checked={confirmedChecked}
+		{disabled}
+		aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
+		class="size-4 shrink-0 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
+		onCheckedChange={requestCompletionChange}
+	/>
+	<span
+		class={cn(
+			"w-6 shrink-0 text-center font-mono text-xs",
+			todo.priority ? priorityClass(todo.priority) : "text-muted-foreground"
+		)}
+	>
+		{todo.priority ? `(${todo.priority})` : "—"}
+	</span>
+	{#if onSelect}
 		<Button
 			type="button"
 			variant="ghost"
-			size="icon-xs"
-			{disabled}
-			aria-label={`Delete ${todo.description}`}
-			class="opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0 group-hover:disabled:opacity-100 focus-visible:disabled:opacity-100"
-			onclick={() => onDelete(todo)}
+			aria-label={`View details for ${todo.description}`}
+			class={cn(
+				"h-auto min-w-0 flex-1 justify-start rounded-none px-0 py-1 text-left text-sm font-normal hover:bg-transparent",
+				todo.completed && "line-through"
+			)}
+			onclick={() => onSelect(todo)}
 		>
-			<Trash2 aria-hidden="true" />
+			<span class="truncate">{todo.description}</span>
 		</Button>
+	{:else}
+		<p class={cn("min-w-0 flex-1 truncate text-sm", todo.completed && "line-through")}>
+			{todo.description}
+		</p>
+	{/if}
+	<div
+		class="hidden max-w-[35%] shrink-0 items-center gap-2 overflow-hidden font-mono text-xs text-muted-foreground sm:flex"
+	>
+		{#each todo.projects as project (project)}<span class="truncate text-[var(--priority-b)]"
+				>+{project}</span
+			>{/each}
+		{#each todo.contexts as context (context)}<span class="truncate">@{context}</span>{/each}
 	</div>
+	<Button
+		type="button"
+		variant="ghost"
+		size="icon-xs"
+		{disabled}
+		aria-label={`Delete ${todo.description}`}
+		class="shrink-0 opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0 group-hover:disabled:opacity-100 focus-visible:disabled:opacity-100"
+		onclick={() => onDelete(todo)}><Trash2 aria-hidden="true" /></Button
+	>
 </div>

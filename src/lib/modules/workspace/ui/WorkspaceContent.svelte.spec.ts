@@ -2,6 +2,7 @@ import { page } from "vitest/browser";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
+import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -192,4 +193,126 @@ test("confirmed final deletion clears all App summary facts", async () => {
 	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0/0");
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
+});
+
+test("Todo-item details expose complete parsed attributes on demand and can close", async () => {
+	const detailed = {
+		...todo,
+		priority: "A",
+		creation_date: "2026-07-10",
+		contexts: ["desk"],
+		metadata: { due: "2026-07-12" },
+	};
+	if (initial.session.status !== "ready") throw Error("No initial file");
+	const session = {
+		...initial,
+		session: { ...initial.session, todo_file: { ...initial.session.todo_file, items: [detailed] } },
+	};
+	render(Harness, { desktop: adapter({ restoreSession: async () => session }) });
+	await page.getByRole("button", { name: "View details for Plan release" }).click();
+	const dialog = page.getByRole("dialog", { name: "Plan release" });
+	await expect.element(dialog).toBeVisible();
+	await expect.element(dialog).toHaveTextContent("Created 2026-07-10");
+	await expect.element(dialog).toHaveTextContent("due:2026-07-12");
+	await expect.element(dialog).toHaveTextContent("@desk");
+	await page.getByRole("button", { name: "Close", exact: true }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+});
+
+test("selected Todo-item details retain confirmed state during completion and close after deletion", async () => {
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+	render(Harness, {
+		desktop: adapter({
+			setTodoCompletion: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+			deleteTodo: async () => ({
+				status: "applied",
+				confirmed: { ...confirmedTodo([]), revision: 3 },
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "View details for Plan release" }).click();
+	const dialog = page.getByRole("dialog", { name: "Plan release" });
+	const complete = page.getByRole("button", { name: "Complete Todo item", exact: true });
+	await complete.click();
+	await expect.element(complete).toBeDisabled();
+	await expect.element(dialog).toHaveTextContent("Open");
+	finish({
+		status: "applied",
+		confirmed: confirmedTodo([
+			{
+				...todo,
+				completed: true,
+				completion_date: "2026-07-18",
+				raw: "x 2026-07-18 Plan release +Work",
+			},
+		]),
+	});
+	await expect.element(dialog).toHaveTextContent("Completed 2026-07-18");
+	await expect.element(page.getByRole("button", { name: "Reopen Todo item" })).toBeEnabled();
+	await page.getByRole("button", { name: "Delete Todo item", exact: true }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0/0");
+});
+
+test("Workspace switches close details and returning does not restore a stale selection", async () => {
+	if (initial.session.status !== "ready") throw Error("No initial file");
+	const firstSession = initial.session;
+	const secondId = "550e8400-e29b-41d4-a716-446655440001";
+	const catalogue = {
+		...firstSession.catalogue,
+		workspaces: [
+			...firstSession.catalogue.workspaces,
+			{
+				...firstSession.catalogue.workspaces[0],
+				id: secondId,
+				name: "Personal",
+				todo_path: "/tmp/personal.todo",
+			},
+		],
+	};
+	let revision = 1;
+	let workspace!: ElectronWorkspaceSessionState;
+	render(Harness, {
+		onSessionReady: (session) => {
+			workspace = session;
+		},
+		desktop: adapter({
+			restoreSession: async () => ({ ...initial, session: { ...firstSession, catalogue } }),
+			switchWorkspace: async ({ workspaceId: target }) => ({
+				status: "applied",
+				confirmed: {
+					scope,
+					revision: ++revision,
+					session: {
+						...firstSession,
+						catalogue: { ...catalogue, active_workspace_id: target },
+						todo_file:
+							target === secondId
+								? {
+										path: "/tmp/personal.todo",
+										skipped: [],
+										items: [{ ...todo, description: "Read book", raw: "Read book", projects: [] }],
+									}
+								: firstSession.todo_file,
+					},
+				},
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "View details for Plan release" }).click();
+	await expect.element(page.getByRole("dialog")).toBeVisible();
+	// A confirmed lifecycle result can arrive while details are open.
+	await workspace.open(secondId);
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "View details for Read book" }))
+		.toBeVisible();
+	await workspace.open(workspaceId);
+	await expect
+		.element(page.getByRole("button", { name: "View details for Plan release" }))
+		.toBeVisible();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 });
