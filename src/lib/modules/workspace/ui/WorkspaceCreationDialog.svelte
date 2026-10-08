@@ -95,6 +95,7 @@
 	);
 
 	async function selectTodoFile(): Promise<string | null> {
+		if (window.desktop) return window.desktop.selectTodoFile({});
 		const selected = await openFileDialog({
 			multiple: false,
 			directory: false,
@@ -111,7 +112,8 @@
 	async function chooseFile() {
 		serverError = "";
 		try {
-			$formData.todoPath = (await selectFile()) ?? "";
+			const selected = await selectFile();
+			if (selected !== null) $formData.todoPath = selected;
 		} catch (error) {
 			serverError = error instanceof Error ? error.message : String(error);
 		}

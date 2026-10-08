@@ -20,3 +20,14 @@ registerDesktopOperation(
 	// @ts-expect-error Main results must be serialized confirmed outcomes.
 	async () => ({ revision: "invalid" })
 );
+
+// @ts-expect-error Creation requests require a palette color and a Todo-file reference.
+api.createWorkspace({ name: "Work", color: "purple" });
+registerDesktopOperation(
+	ipc,
+	window,
+	() => true,
+	"createWorkspace",
+	// @ts-expect-error Creation must return a serialized domain outcome, not a session.
+	api.readSession
+);
