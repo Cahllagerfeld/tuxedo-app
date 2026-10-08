@@ -52,44 +52,60 @@ test("read-only session queries retain confirmed data while explicit restoration
 		session: { status: "unavailable" },
 	});
 });
-test.each(["duplicate-name", "untrimmed-name", "empty-path"])(
-	"catalogue domain invariant %s is rejected without replacement",
-	async (invariant) => {
-		const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
-		directories.push(directory);
-		const path = join(directory, "workspaces.json");
-		const workspace = {
-			id: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
-			name: "Work",
-			color: "blue",
-			todo_path: "/tmp/work.todo",
-			created_at: "2026-07-10T10:00:00Z",
-		};
-		const workspaces =
-			invariant === "duplicate-name"
-				? [
-						workspace,
-						{
-							...workspace,
-							id: "550e8400-e29b-41d4-a716-446655440000",
-							name: "work",
-							todo_path: "/tmp/other.todo",
-						},
-					]
-				: [
-						{
-							...workspace,
-							...(invariant === "untrimmed-name" ? { name: " Work " } : { todo_path: "   " }),
-						},
-					];
-		const content = JSON.stringify({ version: 1, active_workspace_id: null, workspaces });
-		await writeFile(path, content);
-		expect(await createSessionBackend(path).readSession({})).toMatchObject({
-			session: { status: "unavailable" },
-		});
-		expect(await readFile(path, "utf8")).toBe(content);
-	}
-);
+test.each([
+	"duplicate-name",
+	"duplicate-id",
+	"duplicate-path",
+	"untrimmed-name",
+	"blank-name",
+	"empty-path",
+	"invalid-id",
+	"invalid-color",
+	"invalid-date",
+])("catalogue domain invariant %s is rejected without replacement", async (invariant) => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
+	directories.push(directory);
+	const path = join(directory, "workspaces.json");
+	const workspace = {
+		id: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
+		name: "Work",
+		color: "blue",
+		todo_path: "/tmp/work.todo",
+		created_at: "2026-07-10T10:00:00Z",
+	};
+	const workspaces = invariant.startsWith("duplicate-")
+		? [
+				workspace,
+				{
+					...workspace,
+					id: invariant === "duplicate-id" ? workspace.id : "550e8400-e29b-41d4-a716-446655440000",
+					name: invariant === "duplicate-name" ? "work" : "Other",
+					todo_path: invariant === "duplicate-path" ? workspace.todo_path : "/tmp/other.todo",
+				},
+			]
+		: [
+				{
+					...workspace,
+					...(invariant === "untrimmed-name"
+						? { name: " Work " }
+						: invariant === "blank-name"
+							? { name: "" }
+							: invariant === "invalid-id"
+								? { id: "invalid" }
+								: invariant === "invalid-color"
+									? { color: "purple" }
+									: invariant === "invalid-date"
+										? { created_at: "tomorrow" }
+										: { todo_path: "   " }),
+				},
+			];
+	const content = JSON.stringify({ version: 1, active_workspace_id: null, workspaces });
+	await writeFile(path, content);
+	expect(await createSessionBackend(path).readSession({})).toMatchObject({
+		session: { status: "unavailable" },
+	});
+	expect(await readFile(path, "utf8")).toBe(content);
+});
 test("an unreadable catalogue remains unavailable without replacing its location", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
@@ -188,7 +204,7 @@ test.each([
 		expect.stringMatching(/\.tmp$/)
 	);
 });
-test("restoration preserves Rust parser fixtures, skipped lines, and exact source values", async () => {
+test("restoration preserves todo.txt fixtures, skipped lines, and exact source values", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-parser-"));
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
@@ -197,7 +213,7 @@ test("restoration preserves Rust parser fixtures, skipped lines, and exact sourc
 	const backend = createSessionBackend(path);
 	const created = await backend.createWorkspace({ name: "Parser", color: "cyan", todoPath });
 	if (created.status !== "applied") throw Error(created.message);
-	await writeFile(todoPath, await readFile("src-tauri/tests/fixtures/mixed_real_world.todo.txt"));
+	await writeFile(todoPath, await readFile("electron/backend/fixtures/mixed_real_world.todo.txt"));
 	const restored = await backend.restoreSession({});
 	expect(restored.session.status).toBe("ready");
 	if (restored.session.status !== "ready") throw Error("No file");
@@ -228,7 +244,7 @@ test("restoration preserves Rust parser fixtures, skipped lines, and exact sourc
 			reason: "task description is empty",
 		},
 	]);
-	await writeFile(todoPath, await readFile("src-tauri/tests/fixtures/spec_examples.todo.txt"));
+	await writeFile(todoPath, await readFile("electron/backend/fixtures/spec_examples.todo.txt"));
 	const examples = await backend.restoreSession({});
 	if (examples.session.status !== "ready") throw Error("No examples");
 	expect(examples.session.todo_file.items).toHaveLength(18);
@@ -373,3 +389,155 @@ test.each(["missing-file", "save-failure", "unknown-id", "invalid-catalogue"])(
 		expect(await readFile(path, "utf8")).toBe(before);
 	}
 );
+
+test("concurrent Workspace creations retain both entries in creation order", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-concurrent-"));
+	directories.push(directory);
+	const firstPath = join(directory, "first.todo"),
+		secondPath = join(directory, "second.todo");
+	await writeFile(firstPath, "First");
+	await writeFile(secondPath, "Second");
+	const backend = createSessionBackend(join(directory, "workspaces.json"));
+	const results = await Promise.all([
+		backend.createWorkspace({ name: "First", color: "blue", todoPath: firstPath }),
+		backend.createWorkspace({ name: "Second", color: "green", todoPath: secondPath }),
+	]);
+	expect(results.map((result) => result.status)).toEqual(["applied", "applied"]);
+	const session = await backend.readSession({});
+	if (session.session.status !== "ready") throw Error("No session");
+	expect(session.session.catalogue.workspaces.map((workspace) => workspace.name)).toEqual([
+		"First",
+		"Second",
+	]);
+	expect(session.session.todo_file.items[0].description).toBe("Second");
+});
+
+test("Workspace creation preserves date positions and description-token grammar", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-parser-parity-"));
+	directories.push(directory);
+	const todoPath = join(directory, "todo.txt");
+	await writeFile(
+		todoPath,
+		[
+			"2011-03-02 Document +TodoTxt",
+			"x 2011-03-03 2011-03-02 Call Mom",
+			"x Call Mom +Family @phone",
+			"Really gotta call Mom (A) @phone",
+			"(A) Call Mom 2011-03-02",
+			"@GroceryStore pies",
+			"Email SoAndSo at soandso@example.com key:value:extra key: :value",
+			"Learn how to add 2+2",
+			"(A) Call Mom +Family +PeaceLoveAndHappiness @iphone @phone",
+		].join("\n")
+	);
+	const result = await createSessionBackend(join(directory, "workspaces.json")).createWorkspace({
+		name: "Grammar",
+		color: "cyan",
+		todoPath,
+	});
+	if (result.status !== "applied" || result.confirmed.session.status !== "ready")
+		throw Error("No parsed file");
+	expect(
+		result.confirmed.session.todo_file.items.map((item) => ({
+			description: item.description,
+			priority: item.priority,
+			creation: item.creation_date,
+			completion: item.completion_date,
+			completed: item.completed,
+			projects: item.projects,
+			contexts: item.contexts,
+			metadata: item.metadata,
+		}))
+	).toEqual([
+		{
+			description: "Document",
+			priority: null,
+			creation: "2011-03-02",
+			completion: null,
+			completed: false,
+			projects: ["TodoTxt"],
+			contexts: [],
+			metadata: {},
+		},
+		{
+			description: "Call Mom",
+			priority: null,
+			creation: "2011-03-02",
+			completion: "2011-03-03",
+			completed: true,
+			projects: [],
+			contexts: [],
+			metadata: {},
+		},
+		{
+			description: "Call Mom",
+			priority: null,
+			creation: null,
+			completion: null,
+			completed: true,
+			projects: ["Family"],
+			contexts: ["phone"],
+			metadata: {},
+		},
+		{
+			description: "Really gotta call Mom (A)",
+			priority: null,
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: [],
+			contexts: ["phone"],
+			metadata: {},
+		},
+		{
+			description: "Call Mom 2011-03-02",
+			priority: "A",
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: [],
+			contexts: [],
+			metadata: {},
+		},
+		{
+			description: "pies",
+			priority: null,
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: [],
+			contexts: ["GroceryStore"],
+			metadata: {},
+		},
+		{
+			description: "Email SoAndSo at soandso@example.com key:value:extra key: :value",
+			priority: null,
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: [],
+			contexts: [],
+			metadata: {},
+		},
+		{
+			description: "Learn how to add 2+2",
+			priority: null,
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: [],
+			contexts: [],
+			metadata: {},
+		},
+		{
+			description: "Call Mom",
+			priority: "A",
+			creation: null,
+			completion: null,
+			completed: false,
+			projects: ["Family", "PeaceLoveAndHappiness"],
+			contexts: ["iphone", "phone"],
+			metadata: {},
+		},
+	]);
+});

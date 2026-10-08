@@ -39,6 +39,7 @@ async function check(directory, renderer = true) {
 			if (
 				(renderer && builtinModules.includes(value)) ||
 				value === "electron" ||
+				value.startsWith("@tauri-apps/") ||
 				(renderer && value.startsWith("node:")) ||
 				(renderer && value.includes("/electron/")) ||
 				(renderer && /(^|\/)backend\//.test(value))

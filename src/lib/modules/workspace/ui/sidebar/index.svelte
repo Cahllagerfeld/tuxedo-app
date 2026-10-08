@@ -3,7 +3,7 @@
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
-	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
+	} from "$lib/modules/workspace/state/workspace-session-types";
 	import { Separator } from "$lib/shared/ui/separator";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";

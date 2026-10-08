@@ -1,5 +1,7 @@
 # Persist workspace metadata in TOML
 
+Historical decision: runtime ownership and metadata format are superseded by [ADR-0003](0003-replace-tauri-and-rust-with-electron.md) and [ADR-0004](0004-own-domain-operations-in-the-electron-main-process.md). The integrity principles remain applicable.
+
 The app persists the workspace catalogue and active workspace ID in a versioned `workspaces.toml` file in its OS-specific application-config directory. Rust owns this file and writes it atomically; each todo file remains the source of truth for task data and is read again whenever its Workspace opens.
 
 ## Considered Options

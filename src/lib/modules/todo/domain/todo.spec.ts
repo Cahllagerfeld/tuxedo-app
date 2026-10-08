@@ -39,7 +39,7 @@ const validTodoFileResponse: TodoFile = {
 };
 
 describe("todoFileSchema", () => {
-	it("accepts the Rust todo file response shape", () => {
+	it("accepts the desktop Todo-file response shape", () => {
 		const result = todoFileSchema.safeParse(validTodoFileResponse);
 
 		expect(result.success).toBe(true);

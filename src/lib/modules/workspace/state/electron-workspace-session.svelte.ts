@@ -10,7 +10,7 @@ import {
 import type {
 	WorkspaceSessionActionResult,
 	WorkspaceSessionOperation,
-} from "./workspace-session-state.svelte";
+} from "./workspace-session-types";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 const sessionKey = ["desktop", "workspace-session"] as const;
 export function reconcileConfirmedSession(
@@ -207,10 +207,6 @@ export class ElectronWorkspaceSessionState {
 		if (this.isOperating) return;
 		await this.restoration.mutateAsync();
 	};
-	private unavailable = async (): Promise<WorkspaceSessionActionResult> => ({
-		status: "rejected",
-		message: "This operation is not available yet in the Electron migration.",
-	});
 	create = async (
 		input: DesktopRequest<"createWorkspace">
 	): Promise<WorkspaceSessionActionResult> => {
