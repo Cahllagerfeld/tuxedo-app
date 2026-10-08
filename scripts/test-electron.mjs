@@ -4,15 +4,42 @@ import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+const development = process.argv.includes("--dev");
+const packagedExecutable = process.env.TUXEDO_PACKAGED_EXECUTABLE;
+if (development && packagedExecutable) throw Error("Development tests require unpackaged Electron");
 const directory = await mkdtemp(join(tmpdir(), "tuxedo-electron-"));
 let application;
-try {
-	application = await electron.launch({
+let vite;
+const environment = { ...process.env, TUXEDO_USER_DATA: directory };
+if (!packagedExecutable) delete environment.TUXEDO_RENDERER_ORIGIN;
+const launchApplication = () =>
+	electron.launch({
 		timeout: 20000,
-		executablePath: process.env.TUXEDO_PACKAGED_EXECUTABLE ?? electronPath,
-		args: process.env.TUXEDO_PACKAGED_EXECUTABLE ? [] : [resolve("dist-electron/main.js")],
-		env: { ...process.env, TUXEDO_USER_DATA: directory },
+		executablePath: packagedExecutable ?? electronPath,
+		args: packagedExecutable ? [] : [resolve("dist-electron/main.js")],
+		env: environment,
 	});
+try {
+	if (development) {
+		vite = spawn(
+			process.execPath,
+			["node_modules/vite/bin/vite.js", "--mode", "electron", "--host", "127.0.0.1"],
+			{ stdio: "ignore", env: { ...process.env, ELECTRON_STARTUP_PREVENT: "1" } }
+		);
+		const origin = "http://127.0.0.1:1420";
+		for (let attempt = 0; attempt < 100; attempt++) {
+			if (vite.exitCode !== null) throw Error("Renderer server exited");
+			try {
+				if ((await fetch(origin)).ok) break;
+			} catch {}
+			if (attempt === 99) throw Error("Renderer startup timed out");
+			await new Promise((resolve) => setTimeout(resolve, 200));
+		}
+		environment.TUXEDO_RENDERER_ORIGIN = origin;
+	}
+	application = await launchApplication();
 	let page = await application.firstWindow();
 	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
@@ -128,12 +155,7 @@ try {
 	await page.reload();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	await application.close();
-	application = await electron.launch({
-		timeout: 20000,
-		executablePath: process.env.TUXEDO_PACKAGED_EXECUTABLE ?? electronPath,
-		args: process.env.TUXEDO_PACKAGED_EXECUTABLE ? [] : [resolve("dist-electron/main.js")],
-		env: { ...process.env, TUXEDO_USER_DATA: directory },
-	});
+	application = await launchApplication();
 	page = await application.firstWindow();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	const restored = await page.evaluate(() => window.desktop.readSession({}));
@@ -164,10 +186,57 @@ try {
 		),
 		["Second"]
 	);
+	const deletionPath = join(directory, "deletion.todo");
+	await writeFile(deletionPath, "First +Work\r\nx 2026-07-10 Finished +Home");
+	const deletionWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Deletion",
+		color: "blue",
+		todoPath: deletionPath,
+	});
+	assert.equal(deletionWorkspace.status, "applied");
+	const deletionTarget = {
+		scope: deletionWorkspace.confirmed.scope,
+		revision: deletionWorkspace.confirmed.revision,
+		workspaceId: deletionWorkspace.confirmed.session.catalogue.active_workspace_id,
+		lineNumber: 2,
+		expectedRaw: "x 2026-07-10 Finished +Home",
+	};
+	const itemDeleted = await page.evaluate(
+		(input) => window.desktop.deleteTodo(input),
+		deletionTarget
+	);
+	assert.equal(itemDeleted.status, "applied");
+	assert.equal(itemDeleted.confirmed.workspaceId, deletionTarget.workspaceId);
+	assert.deepEqual(
+		itemDeleted.confirmed.todo_file.items.map((item) => item.description),
+		["First"]
+	);
+	assert.equal(await readFile(deletionPath, "utf8"), "First +Work\r\n");
+	await writeFile(deletionPath, "Changed externally\r\n");
+	const deletionConflict = await page.evaluate((input) => window.desktop.deleteTodo(input), {
+		...deletionTarget,
+		revision: itemDeleted.confirmed.revision,
+		lineNumber: 1,
+		expectedRaw: "First +Work",
+	});
+	assert.equal(deletionConflict.status, "conflict");
+	assert.equal(deletionConflict.confirmed.todo_file.items[0].description, "Changed externally");
+	assert.equal(await readFile(deletionPath, "utf8"), "Changed externally\r\n");
 	console.log(
-		"Real Electron preload/IPC creation, loaded Todo file, runtime validation, and isolation checks passed."
+		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);
 } finally {
-	await application?.close();
-	await rm(directory, { recursive: true, force: true });
+	try {
+		await application?.close();
+	} finally {
+		try {
+			if (vite && vite.exitCode === null && vite.signalCode === null) {
+				const exited = once(vite, "exit", { signal: AbortSignal.timeout(5000) });
+				vite.kill();
+				await exited;
+			}
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	}
 }

@@ -78,14 +78,12 @@ try {
 	await rm(directory, { recursive: true, force: true });
 }
 
-for (const script of ["scripts/test-electron.mjs", "scripts/test-electron-deletion.mjs"]) {
-	const result = spawnSync(process.execPath, [script], {
-		stdio: "inherit",
-		env: {
-			...process.env,
-			TUXEDO_PACKAGED_EXECUTABLE: executablePath,
-			TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
-		},
-	});
-	assert.equal(result.status, 0, script);
-}
+const result = spawnSync(process.execPath, ["scripts/test-electron.mjs"], {
+	stdio: "inherit",
+	env: {
+		...process.env,
+		TUXEDO_PACKAGED_EXECUTABLE: executablePath,
+		TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
+	},
+});
+assert.equal(result.status, 0, "Packaged Electron workflow suite");

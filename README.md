@@ -4,7 +4,7 @@ Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organize
 
 ## Development
 
-Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR. `pnpm dev:electron` is an equivalent explicit desktop command.
+Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR.
 
 The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. Svelte Query holds one confirmed renderer session; counts and facets derive from its Todo file.
 
@@ -14,7 +14,7 @@ Metadata is stored in Electron's application-data directory as `workspaces.json`
 
 Run these commands through `devenv shell --`: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, and `pnpm test:electron`. `check` covers Svelte/renderer types, backend/main/preload/contract types, and import restrictions. Unit tests include Chromium renderer behavior; install its browser with `pnpm exec playwright install chromium` when needed. Backend tests use real temporary files and preserve framework-independent todo.txt fixtures in `electron/backend/fixtures`.
 
-`pnpm build` produces the static SPA in `build` and desktop bundles in `dist-electron`. `pnpm test:electron` builds and launches real Electron to exercise production protocol loading, trusted preload/IPC, runtime input validation, Workspace lifecycle, completion, conflicts, and deletion with temporary data. `pnpm test:electron:dev` verifies development startup. macOS CI runs types, formatting, browser/backend tests, production build, and real Electron integration. `pnpm test:package` builds an unsigned Forge macOS app and launches its actual executable to repeat the transport/workflow checks, verify bundled assets, route fallback/reload, and reject protocol traversal. Development renderer origin configuration is ignored in packaged apps. Signed distribution, automatic updates, and Windows/Linux verification are deferred.
+`pnpm build` produces the static SPA in `build` and desktop bundles in `dist-electron`. `pnpm test:electron` builds and launches real Electron to exercise production protocol loading, trusted preload/IPC, runtime input validation, Workspace lifecycle, completion, conflicts, and deletion with temporary data. `pnpm test:electron:dev` runs the same workflow suite against the development renderer using its `--dev` option. macOS CI runs types, formatting, browser/backend tests, production build, and real Electron integration. `pnpm test:package` builds an unsigned Forge macOS app and launches its actual executable to repeat the same workflow suite, verify bundled assets, route fallback/reload, and reject protocol traversal. Development renderer origin configuration is ignored in packaged apps. Signed distribution, automatic updates, and Windows/Linux verification are deferred.
 
 Application icons retained from the previous runtime live in `assets` for packaging.
 
