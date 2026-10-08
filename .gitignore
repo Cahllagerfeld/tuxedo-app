@@ -22,3 +22,5 @@ devenv.local.yaml
 
 reference
 /dist-electron
+
+/out

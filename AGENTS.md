@@ -25,5 +25,5 @@ Before exploring the codebase, read the single-context `GLOSSARY.md` and relevan
 ## Finishing work
 
 - New commit per change, never amend.
-- After structural changes: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, `pnpm test:electron`.
+- After structural changes: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, `pnpm test:electron`, `pnpm test:package` (macOS).
 - Delete emptied folders and session temp files.

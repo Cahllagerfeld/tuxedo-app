@@ -14,7 +14,7 @@ app.setPath(
 protocol.registerSchemesAsPrivileged([
 	{ scheme: "tuxedo", privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
-const devOrigin = process.env.TUXEDO_RENDERER_ORIGIN;
+const devOrigin = app.isPackaged ? undefined : process.env.TUXEDO_RENDERER_ORIGIN;
 if (devOrigin && !/^http:\/\/127\.0\.0\.1:\d+$/.test(devOrigin))
 	throw Error("Development requires a configured loopback origin");
 const trusted = (url: string) => {
