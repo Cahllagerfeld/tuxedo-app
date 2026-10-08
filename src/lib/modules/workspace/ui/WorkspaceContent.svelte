@@ -79,12 +79,6 @@
 	</Empty.Root>
 {:else}
 	{#if workspace.todoFile}
-		{#if workspace.pendingOperation === "set_todo_item_completion" || workspace.pendingOperation === "delete_todo_item"}
-			<p class="mb-2 flex items-center gap-2 text-sm text-muted-foreground" role="status">
-				<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-				Updating Todo file…
-			</p>
-		{/if}
 		<TodoList
 			todoFile={workspace.todoFile}
 			disabled={workspace.isOperating}

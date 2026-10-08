@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
 import Harness from "./WorkspaceContentHarness.svelte";
+import "../../../../routes/layout.css";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 const todo: TodoFile["items"][number] = {
@@ -64,7 +65,7 @@ test("loading is a non-actionable Workspace session", async () => {
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
-test("completion displays only confirmed data and refreshes the App summary", async () => {
+test("completion and uncompletion keep row controls and list position stable while applying confirmed data", async () => {
 	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
 	render(Harness, {
 		desktop: adapter({
@@ -75,10 +76,15 @@ test("completion displays only confirmed data and refreshes the App summary", as
 		}),
 	});
 	const checkbox = page.getByRole("checkbox", { name: "Mark Plan release complete" });
+	await expect.element(checkbox).toBeVisible();
+	const originalCheckbox = document.querySelector('[role="checkbox"]');
+	const list = document.querySelector('ul[aria-label="Todo items"]')!;
+	const initialTop = list.getBoundingClientRect().top;
 	await checkbox.click();
 	await expect.element(checkbox).toBeDisabled();
 	await expect.element(checkbox).not.toBeChecked();
 	await expect.element(page.getByText("Updating Todo file…")).toBeVisible();
+	const pendingTop = list.getBoundingClientRect().top;
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/0/1");
 	finish({
 		status: "applied",
@@ -95,6 +101,23 @@ test("completion displays only confirmed data and refreshes the App summary", as
 		.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
 		.toBeChecked();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/1/1");
+	expect({
+		pendingShift: pendingTop - initialTop,
+		confirmedShift: list.getBoundingClientRect().top - initialTop,
+		sameCheckbox: document.querySelector('[role="checkbox"]') === originalCheckbox,
+	}).toEqual({ pendingShift: 0, confirmedShift: 0, sameCheckbox: true });
+
+	const completedCheckbox = page.getByRole("checkbox", { name: "Mark Plan release incomplete" });
+	await completedCheckbox.click();
+	await expect.element(completedCheckbox).toBeDisabled();
+	await expect.element(completedCheckbox).toBeChecked();
+	await expect.element(page.getByText("Updating Todo file…")).toBeVisible();
+	expect(list.getBoundingClientRect().top).toBe(initialTop);
+	finish({ status: "applied", confirmed: { ...confirmedTodo([todo]), revision: 3 } });
+	await expect.element(checkbox).not.toBeChecked();
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/0/1");
+	expect(document.querySelector('[role="checkbox"]')).toBe(originalCheckbox);
+	expect(list.getBoundingClientRect().top).toBe(initialTop);
 });
 test("conflicts display current confirmed content and an external edit notice", async () => {
 	render(Harness, {

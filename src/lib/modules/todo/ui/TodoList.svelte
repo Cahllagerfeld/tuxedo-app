@@ -18,9 +18,7 @@
 	<ul aria-label="Todo items" class="-mx-4 w-full divide-y">
 		{#each todoFile.items as item (item.line_number)}
 			<li>
-				{#key item.raw}
-					<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
-				{/key}
+				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
 			</li>
 		{/each}
 	</ul>

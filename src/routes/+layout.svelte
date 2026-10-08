@@ -55,5 +55,6 @@
 		activeWorkspace={appState.workspace.activeWorkspace}
 		todoFile={appState.workspace.todoFile}
 		todoSummary={appState.todos}
+		pendingOperation={appState.workspace.pendingOperation}
 	/>
 </div>

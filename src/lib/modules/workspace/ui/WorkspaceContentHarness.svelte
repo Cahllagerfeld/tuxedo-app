@@ -3,6 +3,7 @@
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
+	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import { Toaster } from "$lib/shared/ui/sonner";
 	let { desktop }: { desktop: DesktopAPI } = $props();
@@ -19,3 +20,9 @@
 </p>
 <p aria-label="Summary facets">{app.todos.facets.projects.join(",")}</p>
 <WorkspaceContent workspace={app.workspace} openWorkspaceCreationDialog={() => {}} />
+<ReaderStatusBar
+	activeWorkspace={app.workspace.activeWorkspace}
+	todoFile={app.workspace.todoFile}
+	todoSummary={app.todos}
+	pendingOperation={app.workspace.pendingOperation}
+/>
