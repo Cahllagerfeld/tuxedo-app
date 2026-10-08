@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { tick } from "svelte";
 import ElectronSessionHarness from "./ElectronSessionHarness.svelte";
+import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
 import type { ConfirmedSession } from "$lib/shared/desktop/contract";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const confirmed = (revision: number, warning: string | null): ConfirmedSession => ({
@@ -14,39 +14,79 @@ const confirmed = (revision: number, warning: string | null): ConfirmedSession =
 		warning,
 	},
 });
-test.each(["older snapshot", "transport failure"])(
-	"a delayed initial read with %s cannot replace a restored session",
+test("initialization restores the session explicitly with one backend request", async () => {
+	const requests: string[] = [];
+	const session = new ElectronWorkspaceSessionState({
+		readSession: async () => {
+			requests.push("read");
+			return confirmed(1, "Initial");
+		},
+		restoreSession: async () => {
+			requests.push("restore");
+			return requests.length === 1 ? confirmed(1, "Initial") : confirmed(2, "Refreshed");
+		},
+		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		selectTodoFile: async () => null,
+		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+	});
+	expect(requests).toEqual([]);
+	expect(session.isLoading).toBe(true);
+	await session.initialize();
+	expect(requests).toEqual(["restore"]);
+	expect(session.warning).toBe("Initial");
+	await session.restore();
+	expect(requests).toEqual(["restore", "restore"]);
+	expect(session.warning).toBe("Refreshed");
+});
+test.each(["success", "transport failure"])(
+	"initialization blocks overlapping operations and releases admission after %s",
 	async (result) => {
 		let finish!: () => void;
-		render(ElectronSessionHarness, {
-			desktop: {
-				readSession: () =>
-					new Promise((resolve, reject) => {
-						finish = () =>
-							result === "older snapshot"
-								? resolve(confirmed(1, "Outdated"))
-								: reject(Error("Initial read failed"));
-					}),
-				restoreSession: async () => confirmed(2, "Restored"),
-				setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
-				deleteTodo: async () => ({ status: "rejected", message: "unused" }),
-				switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
-				selectTodoFile: async () => null,
-				deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
-				createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		let restores = 0;
+		const session = new ElectronWorkspaceSessionState({
+			readSession: async () => confirmed(1, "Unused"),
+			restoreSession: () => {
+				if (restores++ > 0) return Promise.resolve(confirmed(2, "Restored"));
+				return new Promise((resolve, reject) => {
+					finish = () =>
+						result === "success"
+							? resolve(confirmed(1, "Initial"))
+							: reject(Error("Could not load session"));
+				});
 			},
+			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		});
-		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("loading");
-		await page.getByRole("button", { name: "Restore" }).click();
-		await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Restored");
+		const initialization = session.initialize();
+		expect(session.initialize()).toBe(initialization);
+		expect(session.pendingOperation).toBe("restore");
+		expect(await session.restore()).toMatchObject({ status: "rejected" });
+		expect(await session.open("550e8400-e29b-41d4-a716-446655440000")).toMatchObject({
+			status: "rejected",
+		});
+		expect(restores).toBe(1);
 		finish();
-		await tick();
-		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
-		await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Restored");
+		await initialization;
+		expect(session.isOperating).toBe(false);
+		expect(session.error).toBe(result === "success" ? "" : "Could not load session");
+		await session.initialize();
+		expect(restores).toBe(1);
+		await session.restore();
+		expect(restores).toBe(2);
+		expect(session.error).toBe("");
+		expect(session.warning).toBe("Restored");
 	}
 );
 test("confirmed restoration rejects older results and exposes pending lifecycle state", async () => {
 	let finish!: (value: ConfirmedSession) => void;
+	let restores = 0;
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
@@ -56,10 +96,12 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
-			restoreSession: () =>
-				new Promise((resolve) => {
+			restoreSession: () => {
+				if (restores++ === 0) return Promise.resolve(confirmed(5, "Confirmed"));
+				return new Promise((resolve) => {
 					finish = resolve;
-				}),
+				});
+			},
 		},
 	});
 	await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Confirmed");
@@ -260,10 +302,15 @@ test.each([
 ])("same-turn %s is blocked until creation finishes with a %s failure", async (next, failure) => {
 	const requests: string[] = [];
 	let finish!: () => void;
+	let initialized = false;
 	render(ElectronSessionHarness, {
 		desktop: {
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => {
+				if (!initialized) {
+					initialized = true;
+					return confirmed(1, null);
+				}
 				requests.push("restore");
 				return confirmed(2, null);
 			},

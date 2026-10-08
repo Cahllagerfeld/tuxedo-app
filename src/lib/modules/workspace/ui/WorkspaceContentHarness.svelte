@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
@@ -7,6 +8,9 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	onMount(() => {
+		void app.workspace.initialize();
+	});
 </script>
 
 <Toaster />

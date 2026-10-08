@@ -60,7 +60,7 @@ function confirmedTodo(items: TodoFile["items"]) {
 	};
 }
 test("loading is a non-actionable Workspace session", async () => {
-	render(Harness, { desktop: adapter({ readSession: () => new Promise(() => {}) }) });
+	render(Harness, { desktop: adapter({ restoreSession: () => new Promise(() => {}) }) });
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
@@ -134,7 +134,7 @@ test("rejected deletion preserves confirmed content and reports its contextual e
 test("an unavailable catalogue offers no actions", async () => {
 	render(Harness, {
 		desktop: adapter({
-			readSession: async () => ({
+			restoreSession: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "unavailable", error: "invalid catalogue" },
@@ -149,7 +149,7 @@ test("Empty state retains restoration warnings", async () => {
 	const catalogue = initial.session.catalogue;
 	render(Harness, {
 		desktop: adapter({
-			readSession: async () => ({
+			restoreSession: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "empty", catalogue, warning: "Could not open /tmp/work.todo" },

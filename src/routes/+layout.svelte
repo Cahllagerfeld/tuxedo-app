@@ -16,7 +16,7 @@
 	setAppState(appState);
 
 	onMount(() => {
-		void appState.workspace.restore();
+		void appState.workspace.initialize();
 	});
 </script>
 

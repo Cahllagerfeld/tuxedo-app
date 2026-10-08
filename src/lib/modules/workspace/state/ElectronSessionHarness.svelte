@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new ElectronWorkspaceSessionState(desktop);
+	onMount(() => {
+		void session.initialize();
+	});
 	let result = $state("");
 	async function open() {
 		const outcome = await session.open("550e8400-e29b-41d4-a716-446655440000");

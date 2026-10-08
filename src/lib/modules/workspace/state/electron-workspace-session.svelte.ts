@@ -46,19 +46,15 @@ export class ElectronWorkspaceSessionState {
 	private confirmed = $state.raw<ConfirmedSession>();
 	private readError = $state<string | null>(null);
 	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
+	private initialization: Promise<WorkspaceSessionActionResult> | undefined;
 
-	constructor(private readonly desktop: DesktopAPI) {
-		void this.readInitialSession();
-	}
+	constructor(private readonly desktop: DesktopAPI) {}
 
-	private async readInitialSession() {
-		try {
-			this.acceptSession(await this.desktop.readSession({}));
-		} catch (error) {
-			// Restoration may already have supplied a newer confirmed session.
-			if (!this.confirmed) this.readError = error instanceof Error ? error.message : String(error);
-		}
-	}
+	initialize = () =>
+		(this.initialization ??= this.restore().then((outcome) => {
+			if (outcome.status !== "applied" && !this.confirmed) this.readError = outcome.message;
+			return outcome;
+		}));
 
 	private acceptSession(incoming: ConfirmedSession) {
 		this.confirmed = reconcileConfirmedSession(this.confirmed, incoming);

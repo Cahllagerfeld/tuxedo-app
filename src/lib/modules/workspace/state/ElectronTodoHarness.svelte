@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
@@ -7,6 +8,9 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new ElectronWorkspaceSessionState(desktop);
+	onMount(() => {
+		void session.initialize();
+	});
 	let result = $state("");
 	const summary = $derived(summarizeTodoFile(session.todoFile));
 	async function remove(todo: TodoItem) {
