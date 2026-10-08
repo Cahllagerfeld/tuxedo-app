@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { todoFileSchema } from "./todo";
 export const workspaceSchema = z.strictObject({
 	id: z.uuid(),
 	name: z
@@ -31,33 +32,9 @@ export const catalogueSchema = z
 		)
 			ctx.addIssue({ code: "custom", message: "Active workspace is missing" });
 	});
-export const todoItemSchema = z.strictObject({
-	line_number: z.number().int().positive(),
-	raw: z.string(),
-	completed: z.boolean(),
-	priority: z
-		.string()
-		.regex(/^[A-Z]$/)
-		.nullable(),
-	creation_date: z.string().nullable(),
-	completion_date: z.string().nullable(),
-	description: z.string().min(1),
-	projects: z.array(z.string()),
-	contexts: z.array(z.string()),
-	metadata: z.record(z.string(), z.string()),
-});
-export const todoFileSchema = z.strictObject({
-	path: z.string().min(1),
-	items: z.array(todoItemSchema),
-	skipped: z.array(
-		z.strictObject({
-			line_number: z.number().int().positive(),
-			raw: z.string(),
-			reason: z.string().min(1),
-		})
-	),
-});
-export type TodoFile = z.infer<typeof todoFileSchema>;
+export { todoItemSchema, todoFileSchema } from "./todo";
+export type { TodoFile } from "./todo";
+export type Catalogue = z.infer<typeof catalogueSchema>;
 export const createWorkspaceRequestSchema = z.strictObject({
 	name: z.string().trim().min(1),
 	color: workspaceSchema.shape.color,

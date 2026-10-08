@@ -1,11 +1,14 @@
 import { readFile } from "node:fs/promises";
 import type { TodoFile } from "../../src/lib/shared/desktop/contract";
+// Rust's char::is_whitespace uses Unicode White_Space; a BOM is source content.
+const trimStart = (value: string) => value.replace(/^\p{White_Space}+/u, "");
+const trim = (value: string) => trimStart(value).replace(/\p{White_Space}+$/u, "");
 function parseLine(line_number: number, raw: string): TodoFile["items"][number] {
-	let rest = raw.trim();
+	let rest = trim(raw);
 	const completed = rest.startsWith("x ");
 	if (completed) rest = rest.slice(2);
 	const consumeDate = (): string | null => {
-		const token = rest.trimStart().split(/\s/, 1)[0];
+		const token = trimStart(rest).split(/\p{White_Space}/u, 1)[0];
 		if (token.length !== 10 || token[4] !== "-" || token[7] !== "-") return null;
 		if (
 			!/^\d{4}-\d{2}-\d{2}$/.test(token) ||
@@ -32,11 +35,11 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 				][Number(token.slice(5, 7)) - 1]
 		)
 			throw Error("date must use YYYY-MM-DD format");
-		rest = rest.trimStart().slice(10).trimStart();
+		rest = trimStart(trimStart(rest).slice(10));
 		return token;
 	};
 	const completion_date = completed ? consumeDate() : null;
-	rest = rest.trimStart();
+	rest = trimStart(rest);
 	const match = /^\(([A-Z])\) /.exec(rest);
 	const priority = match?.[1] ?? null;
 	if (match) rest = rest.slice(4);
@@ -45,7 +48,7 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 	const contexts: string[] = [];
 	const metadata: Record<string, string> = {};
 	const description: string[] = [];
-	for (const token of rest.trim().split(/\s+/)) {
+	for (const token of trim(rest).split(/\p{White_Space}+/u)) {
 		if (token.startsWith("+") && token.length > 1) projects.push(token.slice(1));
 		else if (token.startsWith("@") && token.length > 1) contexts.push(token.slice(1));
 		else {
@@ -75,7 +78,7 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 	};
 }
 export async function readTodoContents(path: string): Promise<string> {
-	return new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path));
+	return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await readFile(path));
 }
 export async function readTodoFile(path: string): Promise<TodoFile> {
 	return parseTodoFile(path, await readTodoContents(path));
@@ -89,7 +92,7 @@ export function parseTodoFile(path: string, contents: string): TodoFile {
 			line.endsWith("\r") && (index < lines.length - 1 || contents.endsWith("\n"))
 				? line.slice(0, -1)
 				: line;
-		if (!raw.trim()) return;
+		if (!trim(raw)) return;
 		try {
 			result.items.push(parseLine(index + 1, raw));
 		} catch (error) {

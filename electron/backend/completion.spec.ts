@@ -146,3 +146,35 @@ test("a lone carriage return remains raw Todo-item content rather than a line se
 	expect(result.status).toBe("applied");
 	expect(await readFile(path, "utf8")).toMatch(/^x \d{4}-\d{2}-\d{2} Buy\rmilk\nSecond$/);
 });
+
+test("uncompletion consumes a tab after the Completion date", async () => {
+	const { backend, path, target } = await setup("x 2020-01-01\tBuy milk\r\nSecond");
+	const result = await backend.setTodoCompletion({ ...target, completed: false });
+	expect(result.status).toBe("applied");
+	expect(await readFile(path)).toEqual(Buffer.from("Buy milk\r\nSecond"));
+	if (result.status !== "applied") throw Error("uncompletion failed");
+	expect(result.confirmed.todo_file.items[0]).toMatchObject({
+		creation_date: null,
+		completion_date: null,
+		description: "Buy milk",
+	});
+});
+
+test("editing a later Todo item preserves the first line UTF-8 BOM bytes", async () => {
+	const initial = "\uFEFF(A) Buy milk\r\nx 2020-01-01 Second\n";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({
+		...target,
+		lineNumber: 2,
+		expectedRaw: "x 2020-01-01 Second",
+		completed: false,
+	});
+	expect(result.status).toBe("applied");
+	expect(await readFile(path)).toEqual(Buffer.from("\uFEFF(A) Buy milk\r\nSecond\n"));
+	if (result.status !== "applied") throw Error("uncompletion failed");
+	expect(result.confirmed.todo_file.items[0]).toMatchObject({
+		raw: "\uFEFF(A) Buy milk",
+		priority: null,
+		description: "\uFEFF(A) Buy milk",
+	});
+});
