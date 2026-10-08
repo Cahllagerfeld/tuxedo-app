@@ -101,7 +101,43 @@ export const sessionOutcomeSchema = z.discriminatedUnion("status", [
 	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
 ]);
 export const switchWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
+export const todoMutationRequestSchema = z.strictObject({
+	scope: z.uuid(),
+	revision: z.number().int().nonnegative(),
+	workspaceId: z.uuid(),
+	lineNumber: z.number().int().positive(),
+	expectedRaw: z.string(),
+});
+export const confirmedTodoSchema = z.strictObject({
+	scope: z.uuid(),
+	revision: z.number().int().nonnegative(),
+	workspaceId: z.uuid(),
+	todo_file: todoFileSchema,
+});
+export type ConfirmedTodo = z.infer<typeof confirmedTodoSchema>;
+export const todoOutcomeSchema = z.discriminatedUnion("status", [
+	z.strictObject({ status: z.literal("applied"), confirmed: confirmedTodoSchema }),
+	z.strictObject({
+		status: z.literal("conflict"),
+		confirmed: confirmedTodoSchema,
+		message: z.string().min(1),
+	}),
+	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
+]);
+export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
+	completed: z.boolean(),
+});
 export const desktopContract = {
+	setTodoCompletion: {
+		channel: "tuxedo:set-todo-completion",
+		request: setTodoCompletionRequestSchema,
+		response: todoOutcomeSchema,
+	},
+	deleteTodo: {
+		channel: "tuxedo:delete-todo",
+		request: todoMutationRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	switchWorkspace: {
 		channel: "tuxedo:switch-workspace",
 		request: switchWorkspaceRequestSchema,
@@ -152,6 +188,8 @@ export function createDesktopClient(
 		) as z.infer<(typeof desktopContract)[K]["response"]>;
 	};
 	return {
+		setTodoCompletion: (request) => call("setTodoCompletion", request),
+		deleteTodo: (request) => call("deleteTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),

@@ -1,6 +1,8 @@
 import { createMutation, createQuery, QueryClient } from "@tanstack/svelte-query";
 import {
 	confirmedSessionSchema,
+	confirmedTodoSchema,
+	type ConfirmedTodo,
 	type ConfirmedSession,
 	type DesktopAPI,
 	type DesktopRequest,
@@ -19,6 +21,26 @@ export function reconcileConfirmedSession(
 	if (previous && (previous.scope !== parsed.scope || previous.revision > parsed.revision))
 		return previous;
 	return parsed;
+}
+export function reconcileConfirmedTodo(
+	previous: ConfirmedSession | undefined,
+	incoming: ConfirmedTodo
+): ConfirmedSession | undefined {
+	const parsed = confirmedTodoSchema.parse(incoming);
+	if (
+		!previous ||
+		previous.scope !== parsed.scope ||
+		previous.revision > parsed.revision ||
+		previous.session.status !== "ready" ||
+		previous.session.catalogue.active_workspace_id !== parsed.workspaceId ||
+		previous.session.todo_file.path !== parsed.todo_file.path
+	)
+		return previous;
+	return {
+		...previous,
+		revision: parsed.revision,
+		session: { ...previous.session, todo_file: parsed.todo_file },
+	};
 }
 export class ElectronWorkspaceSessionState {
 	readonly client = new QueryClient({
@@ -39,6 +61,7 @@ export class ElectronWorkspaceSessionState {
 	private readonly restoration;
 	private readonly creation;
 	private readonly switching;
+	private readonly completion;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
 			() => ({
@@ -86,6 +109,19 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.completion = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"setTodoCompletion">) =>
+					desktop.setTodoCompletion(input),
+				onSuccess: (outcome) => {
+					if (outcome.status !== "rejected")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedTodo(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 	}
 	get session() {
 		return this.query.error
@@ -102,10 +138,17 @@ export class ElectronWorkspaceSessionState {
 				? "create_workspace"
 				: this.switching.isPending
 					? "open_workspace"
-					: null;
+					: this.completion.isPending
+						? "set_todo_item_completion"
+						: null;
 	}
 	get isOperating() {
-		return this.restoration.isPending || this.creation.isPending || this.switching.isPending;
+		return (
+			this.restoration.isPending ||
+			this.creation.isPending ||
+			this.switching.isPending ||
+			this.completion.isPending
+		);
 	}
 	get catalogue() {
 		return this.session.status === "empty" || this.session.status === "ready"
@@ -165,6 +208,38 @@ export class ElectronWorkspaceSessionState {
 		}
 	};
 	deleteWorkspace = (_id: string) => this.unavailable();
-	setCompletion = (_todo: TodoItem) => this.unavailable();
+	setCompletion = async (todo: TodoItem): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		const input = this.todoMutationTarget(todo);
+		if (!input) return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+		try {
+			const outcome = await this.completion.mutateAsync({ ...input, completed: !todo.completed });
+			return outcome.status === "applied"
+				? { status: "applied" }
+				: { status: outcome.status, message: outcome.message };
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
+	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> | null {
+		const confirmed = this.query.data;
+		if (
+			!confirmed ||
+			confirmed.session.status !== "ready" ||
+			!confirmed.session.catalogue.active_workspace_id
+		)
+			return null;
+		return {
+			scope: confirmed.scope,
+			revision: confirmed.revision,
+			workspaceId: confirmed.session.catalogue.active_workspace_id,
+			lineNumber: todo.line_number,
+			expectedRaw: todo.raw,
+		};
+	}
 	deleteTodo = (_todo: TodoItem) => this.unavailable();
 }

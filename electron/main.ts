@@ -87,6 +87,14 @@ void app.whenReady().then(async () => {
 	});
 	window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 	registerDesktopOperation(ipcMain, window, trusted, "readSession", backend.readSession);
+	registerDesktopOperation(
+		ipcMain,
+		window,
+		trusted,
+		"setTodoCompletion",
+		backend.setTodoCompletion
+	);
+	registerDesktopOperation(ipcMain, window, trusted, "deleteTodo", backend.deleteTodo);
 	registerDesktopOperation(ipcMain, window, trusted, "switchWorkspace", backend.switchWorkspace);
 	registerDesktopOperation(ipcMain, window, trusted, "restoreSession", backend.restoreSession);
 	registerDesktopOperation(ipcMain, window, trusted, "createWorkspace", backend.createWorkspace);

@@ -1,11 +1,15 @@
 import { readFile, realpath } from "node:fs/promises";
 import { atomicWrite } from "./atomic-write";
-import { readTodoFile } from "./todo-file";
+import { readTodoFile, readTodoContents, parseTodoFile } from "./todo-file";
 import { randomUUID } from "node:crypto";
 import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
 	switchWorkspaceRequestSchema,
+	todoMutationRequestSchema,
+	setTodoCompletionRequestSchema,
+	type DesktopRequest,
+	type TodoFile,
 	type ConfirmedSession,
 	type DesktopAPI,
 } from "../../src/lib/shared/desktop/contract";
@@ -51,7 +55,106 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 		}
 		return { scope, revision: revision++, session };
 	};
+	const mutateTodo = async (
+		request: DesktopRequest<"deleteTodo">,
+		transform: (contents: string, item: TodoFile["items"][number]) => string
+	): Promise<Awaited<ReturnType<DesktopAPI["deleteTodo"]>>> => {
+		try {
+			const input = todoMutationRequestSchema.parse(request);
+			const previous = (confirmed ??= await load());
+			if (
+				previous.scope !== input.scope ||
+				previous.revision !== input.revision ||
+				previous.session.status !== "ready" ||
+				previous.session.catalogue.active_workspace_id !== input.workspaceId
+			)
+				throw Error("The Workspace session changed. Try again with its current Todo file.");
+			const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
+			const workspace = catalogue.workspaces.find((w) => w.id === input.workspaceId);
+			if (
+				catalogue.active_workspace_id !== input.workspaceId ||
+				!workspace ||
+				workspace.todo_path !== previous.session.todo_file.path
+			)
+				throw Error("The Active workspace changed.");
+			const expected = parseTodoFile(workspace.todo_path, input.expectedRaw);
+			if (
+				expected.items.length !== 1 ||
+				expected.skipped.length ||
+				/[\r\n]/.test(input.expectedRaw)
+			)
+				throw Error("Invalid Todo item target.");
+			const contents = await readTodoContents(workspace.todo_path);
+			const current = parseTodoFile(workspace.todo_path, contents);
+			const item = current.items.find((item) => item.line_number === input.lineNumber);
+			if (!item || item.raw !== input.expectedRaw) {
+				confirmed = {
+					scope,
+					revision: revision++,
+					session: { ...previous.session, todo_file: current },
+				};
+				return {
+					status: "conflict",
+					message: "The Todo item changed on disk. Review its current contents.",
+					confirmed: {
+						scope,
+						revision: confirmed.revision,
+						workspaceId: input.workspaceId,
+						todo_file: current,
+					},
+				};
+			}
+			const rewritten = transform(contents, item);
+			const todo_file = parseTodoFile(workspace.todo_path, rewritten);
+			await atomicWrite(workspace.todo_path, rewritten);
+			confirmed = { scope, revision: revision++, session: { ...previous.session, todo_file } };
+			return {
+				status: "applied",
+				confirmed: {
+					scope,
+					revision: confirmed.revision,
+					workspaceId: input.workspaceId,
+					todo_file,
+				},
+			};
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
+
 	return {
+		deleteTodo: () =>
+			serialize(async () => ({ status: "rejected" as const, message: "Not yet available" })),
+		setTodoCompletion: (request) =>
+			serialize(async () => {
+				const parsed = setTodoCompletionRequestSchema.safeParse(request);
+				if (!parsed.success)
+					return { status: "rejected" as const, message: "Invalid completion request." };
+				const { completed, ...target } = parsed.data;
+				return mutateTodo(target, (contents, item) => {
+					if (item.completed === completed)
+						throw Error("Todo item already has the requested completion state.");
+					const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+					const line = lines[item.line_number - 1];
+					const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
+					let raw: string;
+					if (completed) {
+						const date = new Date();
+						const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+						raw = `x ${today} ${item.raw}`;
+					} else {
+						const marker = /^(\s*)x /.exec(item.raw)!;
+						let rest = item.raw.slice(marker[0].length);
+						if (item.completion_date) rest = rest.replace(/^\s*\d{4}-\d{2}-\d{2} /, "");
+						raw = marker[1] + rest;
+					}
+					lines[item.line_number - 1] = raw + ending;
+					return lines.join("");
+				});
+			}),
 		switchWorkspace: (request) =>
 			serialize(async () => {
 				try {
