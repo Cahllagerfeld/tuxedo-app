@@ -70,6 +70,13 @@ try {
 		expandedWidth
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
+	// Collapsed navigation must not leave keyboard focus on offscreen controls.
+	await sidebarToggle.focus();
+	await page.keyboard.press("Shift+Tab");
+	const focusedLeft = await page.evaluate(
+		() => document.activeElement.getBoundingClientRect().left
+	);
+	assert.ok(focusedLeft >= 0, "Collapsed sidebar navigation must be excluded from keyboard focus");
 	await sidebarToggle.click();
 	await page.waitForFunction(
 		(width) => Math.abs(document.querySelector("main").getBoundingClientRect().width - width) < 2,

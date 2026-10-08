@@ -80,6 +80,7 @@
 		></div>
 		<div
 			data-slot="sidebar-container"
+			inert={sidebar.state === "collapsed" && collapsible === "offcanvas"}
 			data-side={side}
 			class={cn(
 				"fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:start-0 data-[side=left]:group-data-[collapsible=offcanvas]:start-[calc(var(--sidebar-width)_*_-1)] data-[side=right]:end-0 data-[side=right]:group-data-[collapsible=offcanvas]:end-[calc(var(--sidebar-width)_*_-1)] md:flex",
