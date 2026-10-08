@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
 import type { TodoFile } from "../../src/lib/shared/desktop/contract";
 // Rust's char::is_whitespace uses Unicode White_Space; a BOM is source content.
 const trimStart = (value: string) => value.replace(/^\p{White_Space}+/u, "");
@@ -9,7 +10,9 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 	if (completed) rest = rest.slice(2);
 	const consumeDate = (): string | null => {
 		const token = trimStart(rest).split(/\p{White_Space}/u, 1)[0];
-		if (token.length !== 10 || token[4] !== "-" || token[7] !== "-") return null;
+		// Match the original parser's UTF-8 byte positions, including non-ASCII text.
+		const bytes = Buffer.from(token, "utf8");
+		if (bytes.length !== 10 || bytes[4] !== 0x2d || bytes[7] !== 0x2d) return null;
 		if (
 			!/^\d{4}-\d{2}-\d{2}$/.test(token) ||
 			Number(token.slice(5, 7)) < 1 ||

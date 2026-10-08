@@ -541,3 +541,50 @@ test("Workspace creation preserves date positions and description-token grammar"
 		},
 	]);
 });
+
+test("Unicode date-like descriptions remain readable when creating a Workspace", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-unicode-"));
+	directories.push(directory);
+	const todoPath = join(directory, "todo.txt");
+	const contents = "café-au-la Prepare menu\nx café-au-la Finished menu\n";
+	await writeFile(todoPath, contents);
+	const outcome = await createSessionBackend(join(directory, "workspaces.json")).createWorkspace({
+		name: "Unicode",
+		color: "cyan",
+		todoPath,
+	});
+	expect(outcome.status).toBe("applied");
+	if (outcome.status !== "applied" || outcome.confirmed.session.status !== "ready")
+		throw Error("Workspace creation did not load the Unicode Todo file");
+	expect(outcome.confirmed.session.todo_file.skipped).toEqual([]);
+	expect(outcome.confirmed.session.todo_file.items).toMatchObject([
+		{ description: "café-au-la Prepare menu", completed: false, creation_date: null },
+		{
+			description: "café-au-la Finished menu",
+			completed: true,
+			creation_date: null,
+			completion_date: null,
+		},
+	]);
+	expect(await readFile(todoPath, "utf8")).toBe(contents);
+});
+
+test("restoration retains the original UTF-8 byte predicate for invalid date-shaped tokens", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-unicode-date-"));
+	directories.push(directory);
+	const todoPath = join(directory, "todo.txt");
+	const backend = createSessionBackend(join(directory, "workspaces.json"));
+	await writeFile(todoPath, "Seed");
+	await backend.createWorkspace({ name: "Unicode", color: "cyan", todoPath });
+	await writeFile(todoPath, "éab-12-34 Invalid date\n");
+	const outcome = await backend.restoreSession({});
+	if (outcome.session.status !== "ready") throw Error("No restored Todo file");
+	expect(outcome.session.todo_file.items).toEqual([]);
+	expect(outcome.session.todo_file.skipped).toEqual([
+		{
+			line_number: 1,
+			raw: "éab-12-34 Invalid date",
+			reason: "date must use YYYY-MM-DD format",
+		},
+	]);
+});
