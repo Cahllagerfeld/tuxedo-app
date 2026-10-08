@@ -285,3 +285,91 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 		catalogue: { active_workspace_id: expect.any(String) },
 	});
 });
+
+test("switching persists selection, keeps creation order, and restores on startup", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "tuxedo-switch-"));
+	directories.push(directory);
+	const path = join(directory, "workspaces.json");
+	const firstPath = join(directory, "first.todo"),
+		secondPath = join(directory, "second.todo");
+	await writeFile(firstPath, "First");
+	await writeFile(secondPath, "Second");
+	const backend = createSessionBackend(path);
+	const first = await backend.createWorkspace({
+		name: "First",
+		color: "blue",
+		todoPath: firstPath,
+	});
+	const second = await backend.createWorkspace({
+		name: "Second",
+		color: "green",
+		todoPath: secondPath,
+	});
+	if (
+		first.status !== "applied" ||
+		second.status !== "applied" ||
+		first.confirmed.session.status !== "ready"
+	)
+		throw Error("Creation failed");
+	const workspaceId = first.confirmed.session.catalogue.active_workspace_id!;
+	await writeFile(firstPath, "First changed\n+Only\n");
+	const switched = await backend.switchWorkspace({ workspaceId });
+	expect(switched.status).toBe("applied");
+	if (switched.status !== "applied") throw Error(switched.message);
+	expect(switched.confirmed.session).toMatchObject({
+		status: "ready",
+		catalogue: {
+			active_workspace_id: workspaceId,
+			workspaces: [{ name: "First" }, { name: "Second" }],
+		},
+		todo_file: { items: [{ description: "First changed" }], skipped: [{ raw: "+Only" }] },
+	});
+	expect(switched.confirmed.revision).toBeGreaterThan(second.confirmed.revision);
+	expect((await createSessionBackend(path).restoreSession({})).session).toEqual(
+		switched.confirmed.session
+	);
+});
+
+test.each(["missing-file", "save-failure", "unknown-id", "invalid-catalogue"])(
+	"failed switch (%s) preserves saved selection and confirmed file",
+	async (failure) => {
+		const directory = await mkdtemp(join(tmpdir(), "tuxedo-switch-failure-"));
+		directories.push(directory);
+		const path = join(directory, "workspaces.json"),
+			firstPath = join(directory, "first.todo"),
+			secondPath = join(directory, "second.todo");
+		await writeFile(firstPath, "First");
+		await writeFile(secondPath, "Second");
+		const backend = createSessionBackend(path);
+		const first = await backend.createWorkspace({
+			name: "First",
+			color: "blue",
+			todoPath: firstPath,
+		});
+		const second = await backend.createWorkspace({
+			name: "Second",
+			color: "green",
+			todoPath: secondPath,
+		});
+		if (
+			first.status !== "applied" ||
+			second.status !== "applied" ||
+			first.confirmed.session.status !== "ready"
+		)
+			throw Error("Failed creation");
+		if (failure === "missing-file") await rm(firstPath);
+		if (failure === "invalid-catalogue") await writeFile(path, "broken");
+		const before = await readFile(path, "utf8");
+		if (failure === "save-failure") await chmod(directory, 0o500);
+		const outcome = await backend.switchWorkspace({
+			workspaceId:
+				failure === "unknown-id"
+					? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+					: first.confirmed.session.catalogue.active_workspace_id!,
+		});
+		if (failure === "save-failure") await chmod(directory, 0o700);
+		expect(outcome.status).toBe("rejected");
+		expect(await backend.readSession({})).toEqual(second.confirmed);
+		expect(await readFile(path, "utf8")).toBe(before);
+	}
+);

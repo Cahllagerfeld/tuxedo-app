@@ -75,6 +75,23 @@ try {
 		}),
 		true
 	);
+	const secondPath = join(directory, "second.todo");
+	await writeFile(secondPath, "Second item");
+	await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Second",
+		color: "blue",
+		todoPath: secondPath,
+	});
+	const switched = await page.evaluate(
+		(workspaceId) => window.desktop.switchWorkspace({ workspaceId }),
+		created.confirmed.session.catalogue.active_workspace_id
+	);
+	assert.equal(switched.status, "applied");
+	assert.equal(switched.confirmed.session.todo_file.items[0].description, "Call Mom");
+	const missing = await page.evaluate(() =>
+		window.desktop.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
+	);
+	assert.equal(missing.status, "rejected");
 	await page.reload();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	const deleted = await page.evaluate(
@@ -84,14 +101,17 @@ try {
 	assert.equal(deleted.status, "applied");
 	assert.equal(deleted.confirmed.session.status, "empty");
 	assert.equal(deleted.confirmed.session.catalogue.active_workspace_id, null);
-	assert.deepEqual(deleted.confirmed.session.catalogue.workspaces, []);
+	assert.equal(deleted.confirmed.session.catalogue.workspaces.length, 1);
+	assert.equal(deleted.confirmed.session.catalogue.workspaces[0].name, "Second");
 	assert.equal(
 		await readFile(todoPath, "utf8"),
 		"(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n"
 	);
 	assert.deepEqual(
-		JSON.parse(await readFile(join(directory, "workspaces.json"), "utf8")).workspaces,
-		[]
+		JSON.parse(await readFile(join(directory, "workspaces.json"), "utf8")).workspaces.map(
+			(workspace) => workspace.name
+		),
+		["Second"]
 	);
 	console.log(
 		"Real Electron preload/IPC creation, loaded Todo file, runtime validation, and isolation checks passed."

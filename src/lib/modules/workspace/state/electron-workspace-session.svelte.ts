@@ -38,6 +38,7 @@ export class ElectronWorkspaceSessionState {
 	private readonly query;
 	private readonly restoration;
 	private readonly creation;
+	private readonly switching;
 	private readonly deletion;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
@@ -74,6 +75,18 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.switching = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"switchWorkspace">) => desktop.switchWorkspace(input),
+				onSuccess: (outcome) => {
+					if (outcome.status === "applied")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedSession(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 		this.deletion = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
@@ -100,12 +113,19 @@ export class ElectronWorkspaceSessionState {
 			? "restore"
 			: this.creation.isPending
 				? "create_workspace"
-				: this.deletion.isPending
-					? "delete_workspace"
-					: null;
+				: this.switching.isPending
+					? "open_workspace"
+					: this.deletion.isPending
+						? "delete_workspace"
+						: null;
 	}
 	get isOperating() {
-		return this.restoration.isPending || this.creation.isPending || this.deletion.isPending;
+		return (
+			this.restoration.isPending ||
+			this.creation.isPending ||
+			this.switching.isPending ||
+			this.deletion.isPending
+		);
 	}
 	get catalogue() {
 		return this.session.status === "empty" || this.session.status === "ready"
@@ -151,7 +171,19 @@ export class ElectronWorkspaceSessionState {
 			};
 		}
 	};
-	open = (_id: string) => this.unavailable();
+	open = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		try {
+			const outcome = await this.switching.mutateAsync({ workspaceId });
+			return outcome.status === "applied" ? { status: "applied" } : outcome;
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
 	deleteWorkspace = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
