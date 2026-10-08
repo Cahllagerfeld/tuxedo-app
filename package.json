@@ -22,7 +22,7 @@
 		"check:electron": "tsc -p tsconfig.electron.json",
 		"test:backend": "vitest run --config vitest.backend.config.ts",
 		"check:boundaries": "node scripts/check-desktop-boundaries.mjs",
-		"test:electron": "pnpm build:electron && node scripts/test-electron.mjs",
+		"test:electron": "pnpm build:electron && node scripts/test-electron.mjs && node scripts/test-electron-deletion.mjs",
 		"test:electron:dev": "pnpm build:electron && node scripts/test-electron-dev.mjs"
 	},
 	"license": "MIT",

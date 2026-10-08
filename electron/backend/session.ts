@@ -1,12 +1,13 @@
 import { readFile, realpath } from "node:fs/promises";
+import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
 import { readTodoFile, readTodoContents, parseTodoFile } from "./todo-file";
 import { randomUUID } from "node:crypto";
 import {
 	catalogueSchema,
-	deleteWorkspaceRequestSchema,
 	createWorkspaceRequestSchema,
 	switchWorkspaceRequestSchema,
+	deleteWorkspaceRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	type DesktopRequest,
@@ -165,9 +166,15 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 					};
 				}
 			}),
-
-		deleteTodo: () =>
-			serialize(async () => ({ status: "rejected" as const, message: "Not yet available" })),
+		deleteTodo: (request) =>
+			serialize(async () => {
+				const outcome = await mutateTodo(request, (contents) =>
+					deleteTodoLine(contents, request.lineNumber)
+				);
+				return outcome.status === "rejected"
+					? { ...outcome, message: `Cannot delete Todo item: ${outcome.message}` }
+					: outcome;
+			}),
 		setTodoCompletion: (request) =>
 			serialize(async () => {
 				const parsed = setTodoCompletionRequestSchema.safeParse(request);

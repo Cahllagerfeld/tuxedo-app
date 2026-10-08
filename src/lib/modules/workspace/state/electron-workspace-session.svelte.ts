@@ -61,8 +61,9 @@ export class ElectronWorkspaceSessionState {
 	private readonly restoration;
 	private readonly creation;
 	private readonly switching;
-	private readonly deletion;
 	private readonly completion;
+	private readonly todoDeletion;
+	private readonly deletion;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
 			() => ({
@@ -110,6 +111,18 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.deletion = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
+				onSuccess: (outcome) => {
+					if (outcome.status === "applied")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedSession(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 		this.completion = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"setTodoCompletion">) =>
@@ -123,13 +136,13 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
-		this.deletion = createMutation(
+		this.todoDeletion = createMutation(
 			() => ({
-				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
+				mutationFn: (input: DesktopRequest<"deleteTodo">) => desktop.deleteTodo(input),
 				onSuccess: (outcome) => {
-					if (outcome.status === "applied")
+					if (outcome.status !== "rejected")
 						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedSession(previous, outcome.confirmed)
+							reconcileConfirmedTodo(previous, outcome.confirmed)
 						);
 				},
 			}),
@@ -155,15 +168,18 @@ export class ElectronWorkspaceSessionState {
 						? "delete_workspace"
 						: this.completion.isPending
 							? "set_todo_item_completion"
-							: null;
+							: this.todoDeletion.isPending
+								? "delete_todo_item"
+								: null;
 	}
 	get isOperating() {
 		return (
 			this.restoration.isPending ||
 			this.creation.isPending ||
 			this.switching.isPending ||
+			this.completion.isPending ||
 			this.deletion.isPending ||
-			this.completion.isPending
+			this.todoDeletion.isPending
 		);
 	}
 	get catalogue() {
@@ -269,5 +285,21 @@ export class ElectronWorkspaceSessionState {
 			expectedRaw: todo.raw,
 		};
 	}
-	deleteTodo = (_todo: TodoItem) => this.unavailable();
+	deleteTodo = async (todo: TodoItem): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		const input = this.todoMutationTarget(todo);
+		if (!input) return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+		try {
+			const outcome = await this.todoDeletion.mutateAsync(input);
+			return outcome.status === "applied"
+				? { status: "applied" }
+				: { status: outcome.status, message: outcome.message };
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
 }

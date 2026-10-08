@@ -101,6 +101,7 @@ export const sessionOutcomeSchema = z.discriminatedUnion("status", [
 	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
 ]);
 export const switchWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
+export const deleteWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
 export const todoMutationRequestSchema = z.strictObject({
 	scope: z.uuid(),
 	revision: z.number().int().nonnegative(),
@@ -127,14 +128,12 @@ export const todoOutcomeSchema = z.discriminatedUnion("status", [
 export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
 	completed: z.boolean(),
 });
-export const deleteWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
 export const desktopContract = {
 	deleteWorkspace: {
 		channel: "tuxedo:delete-workspace",
 		request: deleteWorkspaceRequestSchema,
 		response: sessionOutcomeSchema,
 	},
-
 	setTodoCompletion: {
 		channel: "tuxedo:set-todo-completion",
 		request: setTodoCompletionRequestSchema,
