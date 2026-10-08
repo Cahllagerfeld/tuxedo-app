@@ -7,3 +7,5 @@ The backend may be rewritten rather than ported mechanically. Ordinary todo.txt 
 Workspace metadata persistence, Workspace lifecycle design, and compatibility with existing app metadata remain open decisions. This decision reopens the Rust ownership described in ADR-0001 and ADR-0002; their other choices are still under review.
 
 The first rewrite includes current functionality plus Todo-item creation, observation of external Todo-file edits, and keyboard navigation. Redesigning the Workspace setup workflow remains a separate scope question rather than a prerequisite for replacing the desktop runtime.
+
+Initial delivery includes a development command and a locally packaged macOS app. Signing, public distribution, and automatic updates are deferred.
