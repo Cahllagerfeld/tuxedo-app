@@ -9,10 +9,13 @@ This template should help get you started developing with Tauri, SvelteKit and T
 ## Electron migration development
 
 Run `devenv shell -- pnpm install`, then `devenv shell -- pnpm dev:electron`.
+`vite-plugin-electron` builds and watches main and preload alongside the SvelteKit
+renderer. Main changes restart Electron; preload changes reload the window.
+`pnpm build:electron` builds the SPA and desktop bundles together, keeping a
+self-contained CommonJS preload for the sandboxed renderer.
 This builds the TypeScript main process and bundled sandboxed preload, starts the
 SvelteKit SPA on the explicit loopback origin `http://127.0.0.1:1420`, and launches
-Electron. Stop it with Ctrl-C. Restart the command after changing main/preload code;
-renderer changes use Vite HMR. The existing `pnpm tauri dev` command remains usable
+Electron. Stop it with Ctrl-C; renderer changes use Vite HMR. The existing `pnpm tauri dev` command remains usable
 until the migration is complete.
 
 Electron starts a fresh catalogue at `Tuxedo Electron/workspaces.json` under the
