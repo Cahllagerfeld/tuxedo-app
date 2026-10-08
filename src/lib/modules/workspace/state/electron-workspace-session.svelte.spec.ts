@@ -18,6 +18,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	render(ElectronSessionHarness, {
 		desktop: {
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
 			restoreSession: () =>
@@ -50,6 +51,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => confirmed(1, null),
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: () =>
 				new Promise((resolve) => {
 					finish = resolve;
@@ -122,6 +124,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 			readSession: async () => initial,
 			restoreSession: async () => initial,
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "Duplicate Workspace name" }),
 		},
 	});

@@ -89,6 +89,7 @@ void app.whenReady().then(async () => {
 	registerDesktopOperation(ipcMain, window, trusted, "readSession", backend.readSession);
 	registerDesktopOperation(ipcMain, window, trusted, "restoreSession", backend.restoreSession);
 	registerDesktopOperation(ipcMain, window, trusted, "createWorkspace", backend.createWorkspace);
+	registerDesktopOperation(ipcMain, window, trusted, "deleteWorkspace", backend.deleteWorkspace);
 	registerDesktopOperation(ipcMain, window, trusted, "selectTodoFile", async () => {
 		const result = await dialog.showOpenDialog(window, {
 			title: "Choose Todo file",
