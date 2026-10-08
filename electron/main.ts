@@ -1,10 +1,9 @@
-import { app, BrowserWindow, ipcMain, net, protocol, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from "electron";
 import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createSessionBackend } from "./backend/session";
-import type { DesktopAPI } from "../src/lib/shared/desktop/contract";
 import { registerDesktopOperation } from "./ipc";
 const here = dirname(fileURLToPath(import.meta.url));
 app.setName("Tuxedo Electron");
@@ -29,9 +28,7 @@ const trusted = (url: string) => {
 	}
 };
 void app.whenReady().then(async () => {
-	const backend: DesktopAPI = createSessionBackend(
-		join(app.getPath("userData"), "workspaces.json")
-	);
+	const backend = createSessionBackend(join(app.getPath("userData"), "workspaces.json"));
 	protocol.handle("tuxedo", (request) => {
 		const url = new URL(request.url);
 		if (url.host !== "app" || request.method !== "GET")
@@ -91,6 +88,14 @@ void app.whenReady().then(async () => {
 	window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 	registerDesktopOperation(ipcMain, window, trusted, "readSession", backend.readSession);
 	registerDesktopOperation(ipcMain, window, trusted, "restoreSession", backend.restoreSession);
+	registerDesktopOperation(ipcMain, window, trusted, "createWorkspace", backend.createWorkspace);
+	registerDesktopOperation(ipcMain, window, trusted, "selectTodoFile", async () => {
+		const result = await dialog.showOpenDialog(window, {
+			title: "Choose Todo file",
+			properties: ["openFile"],
+		});
+		return result.canceled ? null : (result.filePaths[0] ?? null);
+	});
 	await window.loadURL(devOrigin ?? "tuxedo://app/");
 	app.on("window-all-closed", () => app.quit());
 });

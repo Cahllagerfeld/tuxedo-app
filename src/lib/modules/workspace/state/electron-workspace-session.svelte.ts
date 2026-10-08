@@ -3,6 +3,7 @@ import {
 	confirmedSessionSchema,
 	type ConfirmedSession,
 	type DesktopAPI,
+	type DesktopRequest,
 } from "$lib/shared/desktop/contract";
 import type {
 	WorkspaceSessionActionResult,
@@ -36,6 +37,7 @@ export class ElectronWorkspaceSessionState {
 	});
 	private readonly query;
 	private readonly restoration;
+	private readonly creation;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
 			() => ({
@@ -59,6 +61,18 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.creation = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"createWorkspace">) => desktop.createWorkspace(input),
+				onSuccess: (outcome) => {
+					if (outcome.status === "applied")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedSession(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 	}
 	get session() {
 		return this.query.error
@@ -69,13 +83,19 @@ export class ElectronWorkspaceSessionState {
 		return this.query.isPending;
 	}
 	get pendingOperation(): WorkspaceSessionOperation | null {
-		return this.restoration.isPending ? "restore" : null;
+		return this.restoration.isPending
+			? "restore"
+			: this.creation.isPending
+				? "create_workspace"
+				: null;
 	}
 	get isOperating() {
-		return this.restoration.isPending;
+		return this.restoration.isPending || this.creation.isPending;
 	}
 	get catalogue() {
-		return this.session.status === "empty" ? this.session.catalogue : null;
+		return this.session.status === "empty" || this.session.status === "ready"
+			? this.session.catalogue
+			: null;
 	}
 	get activeWorkspace() {
 		return (
@@ -83,7 +103,7 @@ export class ElectronWorkspaceSessionState {
 		);
 	}
 	get todoFile() {
-		return null;
+		return this.session.status === "ready" ? this.session.todo_file : null;
 	}
 	get error() {
 		return (
@@ -94,13 +114,28 @@ export class ElectronWorkspaceSessionState {
 		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
 	}
 	restore = async () => {
+		if (this.isOperating) return;
 		await this.restoration.mutateAsync();
 	};
 	private unavailable = async (): Promise<WorkspaceSessionActionResult> => ({
 		status: "rejected",
 		message: "This operation is not available yet in the Electron migration.",
 	});
-	create = (_input: unknown) => this.unavailable();
+	create = async (
+		input: DesktopRequest<"createWorkspace">
+	): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		try {
+			const outcome = await this.creation.mutateAsync(input);
+			return outcome.status === "applied" ? { status: "applied" } : outcome;
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
 	open = (_id: string) => this.unavailable();
 	deleteWorkspace = (_id: string) => this.unavailable();
 	setCompletion = (_todo: TodoItem) => this.unavailable();

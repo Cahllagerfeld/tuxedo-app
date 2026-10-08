@@ -17,6 +17,8 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	let finish!: (value: ConfirmedSession) => void;
 	render(ElectronSessionHarness, {
 		desktop: {
+			selectTodoFile: async () => null,
+			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
 			restoreSession: () =>
 				new Promise((resolve) => {
@@ -31,4 +33,103 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	finish(confirmed(4, "Stale"));
 	await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
 	await expect.element(page.getByLabelText("Session warning")).toHaveTextContent("Confirmed");
+});
+test("creation keeps the confirmed summary while pending and applies a coherent Ready session", async () => {
+	let finish!: (
+		value: Awaited<ReturnType<import("$lib/shared/desktop/contract").DesktopAPI["createWorkspace"]>>
+	) => void;
+	const workspace = {
+		id: "550e8400-e29b-41d4-a716-446655440000",
+		name: "Personal",
+		color: "blue" as const,
+		todo_path: "/tmp/todo.txt",
+		created_at: "2026-07-10T10:00:00Z",
+	};
+	render(ElectronSessionHarness, {
+		desktop: {
+			readSession: async () => confirmed(1, null),
+			restoreSession: async () => confirmed(1, null),
+			selectTodoFile: async () => null,
+			createWorkspace: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		},
+	});
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
+	await page.getByRole("button", { name: "Create" }).click();
+	await expect
+		.element(page.getByLabelText("Pending operation"))
+		.toHaveTextContent("create_workspace");
+	await expect.element(page.getByLabelText("Item count")).toHaveTextContent("0");
+	finish({
+		status: "applied",
+		confirmed: {
+			scope,
+			revision: 2,
+			session: {
+				status: "ready",
+				catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+				todo_file: {
+					path: workspace.todo_path,
+					items: [
+						{
+							line_number: 1,
+							raw: "Call Mom +Family",
+							completed: false,
+							priority: null,
+							creation_date: null,
+							completion_date: null,
+							description: "Call Mom",
+							projects: ["Family"],
+							contexts: [],
+							metadata: {},
+						},
+					],
+					skipped: [],
+				},
+			},
+		},
+	});
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
+	await expect.element(page.getByLabelText("Item count")).toHaveTextContent("1");
+	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Personal");
+});
+test("rejected creation preserves the current confirmed file and summary", async () => {
+	const initial: ConfirmedSession = {
+		scope,
+		revision: 4,
+		session: {
+			status: "ready",
+			catalogue: {
+				version: 1,
+				active_workspace_id: "550e8400-e29b-41d4-a716-446655440000",
+				workspaces: [
+					{
+						id: "550e8400-e29b-41d4-a716-446655440000",
+						name: "Existing",
+						color: "blue",
+						todo_path: "/tmp/existing.todo",
+						created_at: "2026-07-10T10:00:00Z",
+					},
+				],
+			},
+			todo_file: { path: "/tmp/existing.todo", items: [], skipped: [] },
+		},
+	};
+	render(ElectronSessionHarness, {
+		desktop: {
+			readSession: async () => initial,
+			restoreSession: async () => initial,
+			selectTodoFile: async () => null,
+			createWorkspace: async () => ({ status: "rejected", message: "Duplicate Workspace name" }),
+		},
+	});
+	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Existing");
+	await page.getByRole("button", { name: "Create" }).click();
+	await expect
+		.element(page.getByLabelText("Action result"))
+		.toHaveTextContent("Duplicate Workspace name");
+	await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("Existing");
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
 });
