@@ -6,7 +6,7 @@ The backend may be rewritten rather than ported mechanically. Ordinary todo.txt 
 
 Workspace metadata will use a versioned JSON file with atomic writes. This metadata is managed by the application rather than intended for manual editing, so Node's built-in JSON support avoids a TOML dependency. The rewrite starts a fresh catalogue without migrating legacy app metadata and preserves the old catalogue and external Todo files. This supersedes ADR-0001's TOML format choice; its atomic-write and Todo-file source-of-truth principles remain.
 
-Workspace lifecycle and frontend state-management design remain under review. ADR-0004 supersedes the Rust ownership described in ADR-0001 and ADR-0002.
+Workspace lifecycle operations retain coherent backend responses, and Svelte Query manages backend data in the renderer. ADR-0004 supersedes the Rust ownership described in ADR-0001 and ADR-0002. The implementation plan lives in `docs/plans/electron-migration.md`.
 
 The first rewrite includes current functionality plus Todo-item creation, observation of external Todo-file edits, and keyboard navigation. Redesigning the Workspace setup workflow remains a separate scope question rather than a prerequisite for replacing the desktop runtime.
 
