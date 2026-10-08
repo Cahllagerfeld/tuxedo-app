@@ -64,6 +64,18 @@ export class ElectronWorkspaceSessionState {
 	private readonly completion;
 	private readonly todoDeletion;
 	private readonly deletion;
+	private applySessionOutcome = (outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) => {
+		if (outcome.status === "applied")
+			this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+				reconcileConfirmedSession(previous, outcome.confirmed)
+			);
+	};
+	private applyTodoOutcome = (outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) => {
+		if (outcome.status !== "rejected")
+			this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+				reconcileConfirmedTodo(previous, outcome.confirmed)
+			);
+	};
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
 			() => ({
@@ -90,36 +102,21 @@ export class ElectronWorkspaceSessionState {
 		this.creation = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"createWorkspace">) => desktop.createWorkspace(input),
-				onSuccess: (outcome) => {
-					if (outcome.status === "applied")
-						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedSession(previous, outcome.confirmed)
-						);
-				},
+				onSuccess: this.applySessionOutcome,
 			}),
 			() => this.client
 		);
 		this.switching = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"switchWorkspace">) => desktop.switchWorkspace(input),
-				onSuccess: (outcome) => {
-					if (outcome.status === "applied")
-						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedSession(previous, outcome.confirmed)
-						);
-				},
+				onSuccess: this.applySessionOutcome,
 			}),
 			() => this.client
 		);
 		this.deletion = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
-				onSuccess: (outcome) => {
-					if (outcome.status === "applied")
-						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedSession(previous, outcome.confirmed)
-						);
-				},
+				onSuccess: this.applySessionOutcome,
 			}),
 			() => this.client
 		);
@@ -127,24 +124,14 @@ export class ElectronWorkspaceSessionState {
 			() => ({
 				mutationFn: (input: DesktopRequest<"setTodoCompletion">) =>
 					desktop.setTodoCompletion(input),
-				onSuccess: (outcome) => {
-					if (outcome.status !== "rejected")
-						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedTodo(previous, outcome.confirmed)
-						);
-				},
+				onSuccess: this.applyTodoOutcome,
 			}),
 			() => this.client
 		);
 		this.todoDeletion = createMutation(
 			() => ({
 				mutationFn: (input: DesktopRequest<"deleteTodo">) => desktop.deleteTodo(input),
-				onSuccess: (outcome) => {
-					if (outcome.status !== "rejected")
-						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
-							reconcileConfirmedTodo(previous, outcome.confirmed)
-						);
-				},
+				onSuccess: this.applyTodoOutcome,
 			}),
 			() => this.client
 		);

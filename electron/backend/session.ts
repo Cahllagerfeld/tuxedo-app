@@ -10,6 +10,7 @@ import {
 	deleteWorkspaceRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
+	type Catalogue,
 	type DesktopRequest,
 	type TodoFile,
 	type ConfirmedSession,
@@ -25,23 +26,24 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 		queue = next.catch(() => undefined);
 		return next;
 	};
+	const projectCatalogue = async (catalogue: Catalogue): Promise<ConfirmedSession["session"]> => {
+		const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
+		if (!active) return { status: "empty", catalogue, warning: null };
+		try {
+			return { status: "ready", catalogue, todo_file: await readTodoFile(active.todo_path) };
+		} catch {
+			return {
+				status: "empty",
+				catalogue,
+				warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
+			};
+		}
+	};
 	const load = async (): Promise<ConfirmedSession> => {
 		let session: ConfirmedSession["session"];
 		try {
 			const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
-			const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
-			if (!active) session = { status: "empty", catalogue, warning: null };
-			else {
-				try {
-					session = { status: "ready", catalogue, todo_file: await readTodoFile(active.todo_path) };
-				} catch {
-					session = {
-						status: "empty",
-						catalogue,
-						warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
-					};
-				}
-			}
+			session = await projectCatalogue(catalogue);
 		} catch (error) {
 			if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
 				session = {
@@ -140,23 +142,7 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 							previous.active_workspace_id === workspaceId ? null : previous.active_workspace_id,
 					});
 					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
-					let session: ConfirmedSession["session"] = { status: "empty", catalogue, warning: null };
-					const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
-					if (active) {
-						try {
-							session = {
-								status: "ready",
-								catalogue,
-								todo_file: await readTodoFile(active.todo_path),
-							};
-						} catch {
-							session = {
-								status: "empty",
-								catalogue,
-								warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
-							};
-						}
-					}
+					const session = await projectCatalogue(catalogue);
 					confirmed = { scope, revision: revision++, session };
 					return { status: "applied" as const, confirmed };
 				} catch (error) {
@@ -193,9 +179,9 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 						const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 						raw = `x ${today} ${item.raw}`;
 					} else {
-						const marker = /^(\s*)x /.exec(item.raw)!;
+						const marker = /^(\p{White_Space}*)x /u.exec(item.raw)!;
 						let rest = item.raw.slice(marker[0].length);
-						if (item.completion_date) rest = rest.replace(/^\s*\d{4}-\d{2}-\d{2} /, "");
+						if (item.completion_date) rest = rest.slice(11);
 						raw = marker[1] + rest;
 					}
 					lines[item.line_number - 1] = raw + ending;
