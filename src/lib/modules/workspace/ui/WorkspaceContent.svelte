@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
-	import type { WorkspaceSessionState } from "$lib/modules/workspace/state/workspace-session-state.svelte";
+	import type { AppState } from "$lib/app/app-state.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -10,7 +10,7 @@
 	import { toast } from "svelte-sonner";
 
 	type Props = {
-		workspace: WorkspaceSessionState;
+		workspace: AppState["workspace"];
 		openWorkspaceCreationDialog: () => void;
 	};
 
