@@ -129,7 +129,11 @@ export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
 	completed: z.boolean(),
 });
 export const desktopContract = {
- deleteWorkspace: {channel:"tuxedo:delete-workspace",request:deleteWorkspaceRequestSchema,response:sessionOutcomeSchema},
+	deleteWorkspace: {
+		channel: "tuxedo:delete-workspace",
+		request: deleteWorkspaceRequestSchema,
+		response: sessionOutcomeSchema,
+	},
 	setTodoCompletion: {
 		channel: "tuxedo:set-todo-completion",
 		request: setTodoCompletionRequestSchema,
@@ -190,7 +194,8 @@ export function createDesktopClient(
 		) as z.infer<(typeof desktopContract)[K]["response"]>;
 	};
 	return {
- deleteWorkspace: request=>call("deleteWorkspace",request),		setTodoCompletion: (request) => call("setTodoCompletion", request),
+		deleteWorkspace: (request) => call("deleteWorkspace", request),
+		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		deleteTodo: (request) => call("deleteTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
