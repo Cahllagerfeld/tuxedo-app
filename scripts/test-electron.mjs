@@ -94,6 +94,25 @@ try {
 	assert.equal(missing.status, "rejected");
 	await page.reload();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
+	const deleted = await page.evaluate(
+		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
+		created.confirmed.session.catalogue.active_workspace_id
+	);
+	assert.equal(deleted.status, "applied");
+	assert.equal(deleted.confirmed.session.status, "empty");
+	assert.equal(deleted.confirmed.session.catalogue.active_workspace_id, null);
+	assert.equal(deleted.confirmed.session.catalogue.workspaces.length, 1);
+	assert.equal(deleted.confirmed.session.catalogue.workspaces[0].name, "Second");
+	assert.equal(
+		await readFile(todoPath, "utf8"),
+		"(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n"
+	);
+	assert.deepEqual(
+		JSON.parse(await readFile(join(directory, "workspaces.json"), "utf8")).workspaces.map(
+			(workspace) => workspace.name
+		),
+		["Second"]
+	);
 	console.log(
 		"Real Electron preload/IPC creation, loaded Todo file, runtime validation, and isolation checks passed."
 	);

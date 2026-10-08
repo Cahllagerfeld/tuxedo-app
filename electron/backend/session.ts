@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
+	deleteWorkspaceRequestSchema,
 	switchWorkspaceRequestSchema,
 	type ConfirmedSession,
 	type DesktopAPI,
@@ -52,6 +53,48 @@ export function createSessionBackend(cataloguePath: string): Omit<DesktopAPI, "s
 		return { scope, revision: revision++, session };
 	};
 	return {
+		deleteWorkspace: (request) =>
+			serialize(async () => {
+				try {
+					const { workspaceId } = deleteWorkspaceRequestSchema.parse(request);
+					const existing = await load();
+					if (existing.session.status === "unavailable") throw Error(existing.session.error);
+					const previous = existing.session.catalogue;
+					if (!previous.workspaces.some((w) => w.id === workspaceId))
+						throw Error("Workspace does not exist.");
+					const catalogue = catalogueSchema.parse({
+						...previous,
+						workspaces: previous.workspaces.filter((w) => w.id !== workspaceId),
+						active_workspace_id:
+							previous.active_workspace_id === workspaceId ? null : previous.active_workspace_id,
+					});
+					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
+					let session: ConfirmedSession["session"] = { status: "empty", catalogue, warning: null };
+					const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
+					if (active) {
+						try {
+							session = {
+								status: "ready",
+								catalogue,
+								todo_file: await readTodoFile(active.todo_path),
+							};
+						} catch {
+							session = {
+								status: "empty",
+								catalogue,
+								warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
+							};
+						}
+					}
+					confirmed = { scope, revision: revision++, session };
+					return { status: "applied" as const, confirmed };
+				} catch (error) {
+					return {
+						status: "rejected" as const,
+						message: `Cannot delete Workspace: ${error instanceof Error ? error.message : String(error)}`,
+					};
+				}
+			}),
 		switchWorkspace: (request) =>
 			serialize(async () => {
 				try {

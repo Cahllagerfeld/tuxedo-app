@@ -39,6 +39,7 @@ export class ElectronWorkspaceSessionState {
 	private readonly restoration;
 	private readonly creation;
 	private readonly switching;
+	private readonly deletion;
 	constructor(private readonly desktop: DesktopAPI) {
 		this.query = createQuery(
 			() => ({
@@ -86,6 +87,18 @@ export class ElectronWorkspaceSessionState {
 			}),
 			() => this.client
 		);
+		this.deletion = createMutation(
+			() => ({
+				mutationFn: (input: DesktopRequest<"deleteWorkspace">) => desktop.deleteWorkspace(input),
+				onSuccess: (outcome) => {
+					if (outcome.status === "applied")
+						this.client.setQueryData<ConfirmedSession>(sessionKey, (previous) =>
+							reconcileConfirmedSession(previous, outcome.confirmed)
+						);
+				},
+			}),
+			() => this.client
+		);
 	}
 	get session() {
 		return this.query.error
@@ -102,10 +115,17 @@ export class ElectronWorkspaceSessionState {
 				? "create_workspace"
 				: this.switching.isPending
 					? "open_workspace"
-					: null;
+					: this.deletion.isPending
+						? "delete_workspace"
+						: null;
 	}
 	get isOperating() {
-		return this.restoration.isPending || this.creation.isPending || this.switching.isPending;
+		return (
+			this.restoration.isPending ||
+			this.creation.isPending ||
+			this.switching.isPending ||
+			this.deletion.isPending
+		);
 	}
 	get catalogue() {
 		return this.session.status === "empty" || this.session.status === "ready"
@@ -164,7 +184,19 @@ export class ElectronWorkspaceSessionState {
 			};
 		}
 	};
-	deleteWorkspace = (_id: string) => this.unavailable();
+	deleteWorkspace = async (workspaceId: string): Promise<WorkspaceSessionActionResult> => {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		try {
+			const outcome = await this.deletion.mutateAsync({ workspaceId });
+			return outcome.status === "applied" ? { status: "applied" } : outcome;
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	};
 	setCompletion = (_todo: TodoItem) => this.unavailable();
 	deleteTodo = (_todo: TodoItem) => this.unavailable();
 }

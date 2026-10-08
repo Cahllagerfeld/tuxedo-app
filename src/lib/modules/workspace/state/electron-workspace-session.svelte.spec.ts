@@ -19,6 +19,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 		desktop: {
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
 			restoreSession: () =>
@@ -52,6 +53,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 			restoreSession: async () => confirmed(1, null),
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: () =>
 				new Promise((resolve) => {
 					finish = resolve;
@@ -125,6 +127,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 			restoreSession: async () => initial,
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "Duplicate Workspace name" }),
 		},
 	});
@@ -149,6 +152,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 			restoreSession: async () => confirmed(5, "Original"),
 			selectTodoFile: async () => null,
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			switchWorkspace: () =>
 				new Promise((resolve) => {
 					finish = resolve;
@@ -182,6 +186,7 @@ test("a confirmed switch opens its intended Workspace through the shared cache",
 			restoreSession: async () => confirmed(5, null),
 			selectTodoFile: async () => null,
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			switchWorkspace: async ({ workspaceId }) => {
 				requestedId = workspaceId;
 				return {

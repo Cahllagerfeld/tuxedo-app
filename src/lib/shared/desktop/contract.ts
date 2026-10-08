@@ -101,7 +101,13 @@ export const sessionOutcomeSchema = z.discriminatedUnion("status", [
 	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
 ]);
 export const switchWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
+export const deleteWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
 export const desktopContract = {
+	deleteWorkspace: {
+		channel: "tuxedo:delete-workspace",
+		request: deleteWorkspaceRequestSchema,
+		response: sessionOutcomeSchema,
+	},
 	switchWorkspace: {
 		channel: "tuxedo:switch-workspace",
 		request: switchWorkspaceRequestSchema,
@@ -152,6 +158,7 @@ export function createDesktopClient(
 		) as z.infer<(typeof desktopContract)[K]["response"]>;
 	};
 	return {
+		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),
