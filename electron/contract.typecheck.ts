@@ -6,15 +6,16 @@ import type { BrowserWindow, IpcMain } from "electron";
 declare const api: DesktopAPI;
 declare const ipc: IpcMain;
 declare const window: BrowserWindow;
+const getWindow = () => window;
 // @ts-expect-error No generic filesystem operation is exposed.
 api.readFile("/etc/passwd");
 // @ts-expect-error Read-session requests cannot carry arbitrary filesystem paths.
 api.readSession({ path: "/etc/passwd" });
 // @ts-expect-error Main cannot register an unknown operation/channel.
-registerDesktopOperation(ipc, window, () => true, "arbitraryChannel", api.readSession);
+registerDesktopOperation(ipc, getWindow, () => true, "arbitraryChannel", api.readSession);
 registerDesktopOperation(
 	ipc,
-	window,
+	getWindow,
 	() => true,
 	"readSession",
 	// @ts-expect-error Main results must be serialized confirmed outcomes.
@@ -25,7 +26,7 @@ registerDesktopOperation(
 api.createWorkspace({ name: "Work", color: "purple" });
 registerDesktopOperation(
 	ipc,
-	window,
+	getWindow,
 	() => true,
 	"createWorkspace",
 	// @ts-expect-error Creation must return a serialized domain outcome, not a session.
