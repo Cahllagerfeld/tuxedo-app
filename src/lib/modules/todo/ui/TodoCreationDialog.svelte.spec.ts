@@ -37,10 +37,30 @@ const todoFile: TodoFile = {
 	skipped: [],
 };
 
+const crowdedTodoFile: TodoFile = {
+	...todoFile,
+	items: [
+		...todoFile.items,
+		...Array.from({ length: 12 }, (_, index) => ({
+			line_number: index + 3,
+			raw: `Item ${index} @Context${index}`,
+			completed: false,
+			priority: null,
+			creation_date: null,
+			completion_date: null,
+			description: `Item ${index}`,
+			projects: [],
+			contexts: [`Context${index}`],
+			metadata: {},
+		})),
+	],
+};
+
 function renderDialog(
-	createTodoItem: (input: CreateTodoItemInput) => Promise<CreateTodoItemResult>
+	createTodoItem: (input: CreateTodoItemInput) => Promise<CreateTodoItemResult>,
+	file = todoFile
 ) {
-	return render(TodoCreationDialog, { todoFile, createTodoItem });
+	return render(TodoCreationDialog, { todoFile: file, createTodoItem });
 }
 
 function openDialog() {
@@ -87,6 +107,38 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 			projects: ["typedProject"],
 			contexts: [],
 		});
+});
+
+test("keeps the bottom tag suggestion hit-testable inside the modal", async () => {
+	const createTodoItem = async () => ({ status: "applied" as const });
+	renderDialog(createTodoItem, crowdedTodoFile);
+	await openDialog();
+
+	const contextInput = page.getByPlaceholder("Choose or create a Context");
+	await contextInput.click();
+	const input = contextInput.element() as HTMLInputElement;
+	for (let index = 0; index < 12; index += 1) {
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+	await expect
+		.poll(
+			() =>
+				document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')?.textContent
+		)
+		.toBe("Context9");
+
+	const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+	const bottomOption = options.find((option) => option.textContent === "Context9");
+	expect(bottomOption).toBeDefined();
+	const bounds = bottomOption!.getBoundingClientRect();
+	const hit = document.elementFromPoint(
+		bounds.left + bounds.width / 2,
+		bounds.top + bounds.height / 2
+	);
+	expect(hit === bottomOption || hit?.closest('[role="option"]') === bottomOption).toBe(true);
+	await page.getByRole("option", { name: "Context9" }).click();
+	await expect.element(page.getByText("@Context9", { exact: true })).toBeVisible();
 });
 
 test("rejects todo tokens in Description and exact duplicate tags", async () => {
