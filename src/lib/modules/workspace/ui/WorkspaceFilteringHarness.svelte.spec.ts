@@ -175,7 +175,7 @@ test("searches bounded facet values and remembers a Priority across status chang
 		.element(page.getByRole("button", { name: "Show all Projects values" }))
 		.toBeVisible();
 	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	const search = page.getByRole("searchbox", { name: "Search Projects" });
+	const search = page.getByPlaceholder("Search projects…");
 	await search.fill("read");
 	await expect.element(page.getByRole("option", { name: "+Reading", exact: true })).toBeVisible();
 	await expect

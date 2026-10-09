@@ -5,6 +5,9 @@
 	import CircleDot from "@lucide/svelte/icons/circle-dot";
 	import Folder from "@lucide/svelte/icons/folder";
 	import Tag from "@lucide/svelte/icons/tag";
+	import * as Button from "$lib/shared/ui/button";
+	import * as Command from "$lib/shared/ui/command";
+	import * as Popover from "$lib/shared/ui/popover";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import { cn } from "$lib/shared/utils.js";
 
@@ -20,18 +23,10 @@
 	let { label, values, selected, prefix = "", disabled = false, onSelect }: Props = $props();
 
 	let open = $state(false);
-	let search = $state("");
-	let highlightedIndex = $state(0);
-	let trigger = $state<HTMLButtonElement>();
-	let searchInput = $state<HTMLInputElement>();
+	let trigger = $state<HTMLButtonElement | null>(null);
 	const visibleValues = $derived(values.slice(0, 5));
 	const selectedOutsideVisible = $derived(
 		selected !== null && !visibleValues.includes(selected) ? selected : null
-	);
-	const filteredValues = $derived(
-		values.filter((value) =>
-			displayValue(value).toLocaleLowerCase().includes(search.toLocaleLowerCase())
-		)
 	);
 
 	function displayValue(value: string) {
@@ -41,38 +36,11 @@
 	function choose(value: string) {
 		onSelect(value);
 		open = false;
-		search = "";
 		void tick().then(() => trigger?.focus());
 	}
 
 	function toggleOpen() {
 		open = !open;
-		if (open) {
-			search = "";
-			highlightedIndex = 0;
-			void tick().then(() => searchInput?.focus());
-		}
-	}
-
-	function keydown(event: KeyboardEvent) {
-		if (event.key === "Escape") {
-			event.preventDefault();
-			open = false;
-			void tick().then(() => trigger?.focus());
-			return;
-		}
-		if (filteredValues.length === 0) return;
-		if (event.key === "ArrowDown") {
-			event.preventDefault();
-			highlightedIndex = (highlightedIndex + 1) % filteredValues.length;
-		} else if (event.key === "ArrowUp") {
-			event.preventDefault();
-			highlightedIndex =
-				(highlightedIndex - 1 + filteredValues.length) % filteredValues.length;
-		} else if (event.key === "Enter") {
-			event.preventDefault();
-			choose(filteredValues[highlightedIndex]);
-		}
 	}
 </script>
 
@@ -135,62 +103,51 @@
 				{/if}
 				{#if values.length > 5}
 					<li>
-						<button
-							bind:this={trigger}
-							type="button"
-							aria-haspopup="dialog"
-							aria-expanded={open}
-							class="flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-							aria-label={`Show all ${label} values`}
-							disabled={disabled}
-							onclick={toggleOpen}
-						>
-							<span>Show all ({values.length})</span>
-							<ChevronDown class="size-4" aria-hidden="true" />
-						</button>
-						{#if open}
-							<div
-								role="dialog"
-								aria-label={`All ${label}`}
-								class="z-50 mt-1 w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-							>
-								<input
-									bind:this={searchInput}
-									value={search}
-									type="search"
-									aria-label={`Search ${label}`}
-									placeholder={`Search ${label.toLocaleLowerCase()}…`}
-									oninput={(event) => {
-										search = (event.currentTarget as HTMLInputElement).value;
-										highlightedIndex = 0;
-									}}
-									onkeydown={keydown}
-									class="mb-1 h-8 w-full rounded-sm border bg-transparent px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring"
-								/>
-								<div role="listbox" class="max-h-56 overflow-y-auto">
-									{#if filteredValues.length > 0}
-										{#each filteredValues as value, index (value)}
-											<button
-												type="button"
-												role="option"
-												aria-selected={index === highlightedIndex}
-												class={cn(
-													"block w-full rounded-sm px-2 py-1.5 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground",
-													index === highlightedIndex && "bg-accent text-accent-foreground"
-												)}
-												onclick={() => choose(value)}
-											>
-												{displayValue(value)}
-											</button>
-										{/each}
-									{:else}
-										<div class="px-2 py-3 text-center text-sm text-muted-foreground">
-											No {label.toLocaleLowerCase()} found.
-										</div>
-									{/if}
-								</div>
-							</div>
-						{/if}
+						<Popover.Root bind:open>
+							<Popover.Trigger bind:ref={trigger}>
+								{#snippet child({ props })}
+									<Button.Root
+										{...props}
+										variant="ghost"
+										class="flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-xs font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+										aria-label={`Show all ${label} values`}
+										aria-haspopup="dialog"
+										aria-expanded={open}
+										{disabled}
+									>
+										<span>Show all ({values.length})</span>
+										<ChevronDown class="size-4" aria-hidden="true" />
+									</Button.Root>
+								{/snippet}
+							</Popover.Trigger>
+							<Popover.Content align="start" class="w-56 p-0">
+								<Command.Root label={`Search ${label}`} loop>
+									<Command.Input
+										type="search"
+										placeholder={`Search ${label.toLocaleLowerCase()}…`}
+										aria-label={`Search ${label}`}
+										class="px-3"
+									/>
+									<Command.List>
+										<Command.Empty>No {label.toLocaleLowerCase()} found.</Command.Empty>
+										<Command.Group>
+											{#each values as value (value)}
+												<Command.Item value={displayValue(value)} onSelect={() => choose(value)}>
+													<span>{displayValue(value)}</span>
+													<Check
+														class={cn(
+															"ml-auto size-4",
+															selected === value ? "opacity-100" : "opacity-0"
+														)}
+														aria-hidden="true"
+													/>
+												</Command.Item>
+											{/each}
+										</Command.Group>
+									</Command.List>
+								</Command.Root>
+							</Popover.Content>
+						</Popover.Root>
 					</li>
 				{/if}
 			</ul>
