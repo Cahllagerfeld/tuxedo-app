@@ -19,7 +19,9 @@
 	{app.todos.counts.open}/{app.todos.counts.completed}/{app.todos.counts.projects}
 </p>
 <p aria-label="Summary facets">{app.todos.facets.projects.join(",")}</p>
-<WorkspaceContent workspace={app.workspace} openWorkspaceCreationDialog={() => {}} />
+<div class="flex h-96 flex-col">
+	<WorkspaceContent workspace={app.workspace} openWorkspaceCreationDialog={() => {}} />
+</div>
 <ReaderStatusBar
 	activeWorkspace={app.workspace.activeWorkspace}
 	todoFile={app.workspace.todoFile}

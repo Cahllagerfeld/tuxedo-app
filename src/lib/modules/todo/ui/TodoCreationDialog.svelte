@@ -96,9 +96,7 @@
 	}
 
 	function resetForm() {
-		$formData.description = "";
-		$formData.projects = [];
-		$formData.contexts = [];
+		form.reset();
 		descriptionError = "";
 		tagErrors.projects = "";
 		tagErrors.contexts = "";
@@ -109,7 +107,7 @@
 	}
 
 	function handleOpenChange(nextOpen: boolean) {
-		if (!nextOpen && isCreating) {
+		if (!nextOpen && controlsDisabled) {
 			open = true;
 			return;
 		}
@@ -136,11 +134,10 @@
 			? "Use the Project and Context inputs for tags. Metadata is not supported here."
 			: "";
 		if (descriptionError) return;
-		const result = await form.validateForm();
-		if (!result.valid) return;
-
 		isCreating = true;
 		try {
+			const result = await form.validateForm({ update: true });
+			if (!result.valid) return;
 			const outcome = await createTodoItem({
 				description: normalizedDescription(result.data.description),
 				projects: [...result.data.projects],
@@ -187,7 +184,10 @@
 		aria-label="Add Todo item"
 		onclick={() => (open = true)}>+ Add Todo item</Button
 	>
-	<Dialog.Content class="max-h-[calc(100dvh-2rem)] overflow-visible sm:max-w-xl">
+	<Dialog.Content
+		class="max-h-[calc(100dvh-2rem)] overflow-visible sm:max-w-xl"
+		closeButtonDisabled={controlsDisabled}
+	>
 		<Dialog.Header>
 			<Dialog.Title>New Todo item</Dialog.Title>
 			<Dialog.Description>{targetLabel}</Dialog.Description>
