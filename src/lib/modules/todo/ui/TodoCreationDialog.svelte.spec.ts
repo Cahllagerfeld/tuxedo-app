@@ -185,3 +185,24 @@ test("retains the draft on conflicts and resets it on cancel", async () => {
 	await openDialog();
 	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveValue("");
 });
+
+test("retains spaces while editing Description and normalizes them only on submission", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const description = page.getByPlaceholder("What needs doing?");
+	await description.fill("Buy ");
+	// Let reactive validation finish before typing the next word.
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	await expect.element(description).toHaveValue("Buy ");
+	await description.fill("Buy  groceries ");
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	await expect.element(description).toHaveValue("Buy  groceries ");
+	await submitDialog();
+	await expect
+		.poll(() => calls)
+		.toEqual([{ description: "Buy groceries", projects: [], contexts: [] }]);
+});

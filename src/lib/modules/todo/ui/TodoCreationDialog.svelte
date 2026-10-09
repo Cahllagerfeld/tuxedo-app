@@ -24,8 +24,7 @@
 	const schema = z.object({
 		description: z
 			.string()
-			.trim()
-			.min(1, "Enter a Description.")
+			.refine((value) => value.trim().length > 0, "Enter a Description.")
 			.refine(
 				(value) => !containsTodoToken(value),
 				"Use the Project and Context inputs for tags. Metadata is not supported here."
