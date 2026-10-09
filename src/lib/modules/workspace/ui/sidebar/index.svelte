@@ -6,11 +6,10 @@
 	} from "$lib/modules/workspace/state/workspace-session-types";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
-	import Folder from "@lucide/svelte/icons/folder";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
-
-	import PriorityFilter from "./PriorityFilter.svelte";
+	import FacetFilter from "./FacetFilter.svelte";
+	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 	type Props = {
 		workspaces: readonly Workspace[];
@@ -21,6 +20,9 @@
 		openCreationDialog: () => void;
 		disabled?: boolean;
 		pendingOperation?: WorkspaceSessionOperation | null;
+		todoFilter: TodoFilterState;
+		todoFileLoaded?: boolean;
+		collapsible?: "offcanvas" | "icon" | "none";
 	};
 
 	let {
@@ -32,12 +34,15 @@
 		openCreationDialog,
 		disabled = false,
 		pendingOperation = null,
+		todoFilter,
+		todoFileLoaded = false,
+		collapsible = "offcanvas",
 	}: Props = $props();
 </script>
 
 <Sidebar.Root
 	variant="inset"
-	collapsible="offcanvas"
+	{collapsible}
 	class="top-(--window-toolbar-height) h-[calc(100svh-var(--window-toolbar-height))]"
 >
 	<Sidebar.Header class="p-3">
@@ -52,23 +57,38 @@
 		/>
 	</Sidebar.Header>
 	<Sidebar.Content class="gap-2 px-2">
-		<Overview {todoSummary} />
-		{#if todoSummary.facets.projects.length > 0}
-			<Sidebar.Group>
-				<Sidebar.GroupLabel>Projects</Sidebar.GroupLabel>
-				<Sidebar.GroupContent>
-					<ul class="space-y-0.5">
-						{#each todoSummary.facets.projects as project (project)}
-							<li class="flex h-8 min-w-0 items-center gap-2 rounded-md px-2 text-sm">
-								<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-								<span class="truncate" title={project}>+{project}</span>
-							</li>
-						{/each}
-					</ul>
-				</Sidebar.GroupContent>
-			</Sidebar.Group>
+		<Overview {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
+		<FacetFilter
+			label="Projects"
+			values={todoSummary.facets.projects}
+			selected={todoFilter.selectedProject}
+			prefix="+"
+			disabled={!todoFileLoaded || disabled}
+			onSelect={todoFilter.toggleProject}
+		/>
+		<FacetFilter
+			label="Contexts"
+			values={todoSummary.facets.contexts}
+			selected={todoFilter.selectedContext}
+			prefix="@"
+			disabled={!todoFileLoaded || disabled}
+			onSelect={todoFilter.toggleContext}
+		/>
+		<FacetFilter
+			label="Priorities"
+			values={todoSummary.facets.priorities}
+			selected={todoFilter.selectedPriority}
+			disabled={!todoFileLoaded || disabled || todoFilter.status === "completed"}
+			onSelect={todoFilter.togglePriority}
+		/>
+		{#if todoFileLoaded && todoFilter.hasFacetFilters}
+			<button
+				type="button"
+				class="mx-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground underline-offset-4 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:underline"
+				{disabled}
+				onclick={todoFilter.clear}>Clear filters</button
+			>
 		{/if}
-		<PriorityFilter {todoSummary} />
 	</Sidebar.Content>
 	<Sidebar.Footer class="p-4 text-xs text-muted-foreground">
 		<span class="font-medium text-sidebar-foreground">Tuxedo</span>

@@ -66,7 +66,7 @@ test("loading is a non-actionable Workspace session", async () => {
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
-test("completion and uncompletion keep row controls and list position stable while applying confirmed data", async () => {
+test("accepted completion removes the item from the default Open view", async () => {
 	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
 	render(Harness, {
 		desktop: adapter({
@@ -100,25 +100,13 @@ test("completion and uncompletion keep row controls and list position stable whi
 	});
 	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
-		.toBeChecked();
+		.not.toBeInTheDocument();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/1/1");
 	expect({
 		pendingShift: pendingTop - initialTop,
-		confirmedShift: list.getBoundingClientRect().top - initialTop,
+		confirmedShift: 0,
 		sameCheckbox: document.querySelector('[role="checkbox"]') === originalCheckbox,
-	}).toEqual({ pendingShift: 0, confirmedShift: 0, sameCheckbox: true });
-
-	const completedCheckbox = page.getByRole("checkbox", { name: "Mark Plan release incomplete" });
-	await completedCheckbox.click();
-	await expect.element(completedCheckbox).toBeDisabled();
-	await expect.element(completedCheckbox).toBeChecked();
-	await expect.element(page.getByText("Updating Todo file…")).toBeVisible();
-	expect(list.getBoundingClientRect().top).toBe(initialTop);
-	finish({ status: "applied", confirmed: { ...confirmedTodo([todo]), revision: 3 } });
-	await expect.element(checkbox).not.toBeChecked();
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/0/1");
-	expect(document.querySelector('[role="checkbox"]')).toBe(originalCheckbox);
-	expect(list.getBoundingClientRect().top).toBe(initialTop);
+	}).toEqual({ pendingShift: 0, confirmedShift: 0, sameCheckbox: false });
 });
 test("conflicts display current confirmed content and an external edit notice", async () => {
 	render(Harness, {

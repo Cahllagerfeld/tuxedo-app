@@ -30,6 +30,8 @@
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 			todoSummary={appState.todos}
+			todoFilter={appState.todoFilter}
+			todoFileLoaded={appState.workspace.todoFile !== null}
 			disabled={appState.workspace.isOperating || appState.workspace.isLoading}
 			pendingOperation={appState.workspace.pendingOperation}
 			selectWorkspace={appState.workspace.open}
