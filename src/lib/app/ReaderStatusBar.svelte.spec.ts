@@ -52,12 +52,12 @@ describe("ReaderStatusBar", () => {
 		});
 
 		const status = page.getByLabelText("Reader status");
-		await expect.element(status).toHaveTextContent("Workspace: Work");
-		await expect.element(status).toHaveTextContent("Todo file: work.todo");
-		await expect.element(status).toHaveTextContent("2 parsed");
-		await expect.element(status).toHaveTextContent("1 completed");
-		await expect.element(status).toHaveTextContent("1 pending");
-		await expect.element(status).toHaveTextContent("1 skipped line");
+		await expect.element(status).toMatchTextContent("Workspace: Work");
+		await expect.element(status).toMatchTextContent("Todo file: work.todo");
+		await expect.element(status).toMatchTextContent("2 parsed");
+		await expect.element(status).toMatchTextContent("1 completed");
+		await expect.element(status).toMatchTextContent("1 pending");
+		await expect.element(status).toMatchTextContent("1 skipped line");
 	});
 
 	it("omits skipped-line detail when the Todo file has no skipped lines", async () => {
@@ -70,6 +70,6 @@ describe("ReaderStatusBar", () => {
 
 		await expect
 			.element(page.getByLabelText("Reader status"))
-			.not.toHaveTextContent("skipped line");
+			.not.toMatchTextContent("skipped line");
 	});
 });

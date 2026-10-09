@@ -32,7 +32,7 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 	};
 }
 async function confirm() {
-	await page.getByRole("button", { name: "Select workspace: Work" }).click();
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Delete Work", exact: true }).click();
 	await expect.element(page.getByRole("alertdialog")).toBeVisible();
 	await page.getByRole("button", { name: "Delete workspace", exact: true }).click();
@@ -49,7 +49,7 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 			});
 		}),
 	});
-	await page.getByRole("button", { name: "Select workspace: Work" }).click();
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Delete Work", exact: true }).click();
 	await page.getByRole("button", { name: "Cancel" }).click();
 	expect(calls).toBe(0);
@@ -58,7 +58,7 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 	await expect
 		.element(page.getByLabelText("Pending operation"))
 		.toHaveTextContent("delete_workspace");
-	await expect.element(page.getByRole("button", { name: "Select workspace: Work" })).toBeDisabled();
+	await expect.element(page.getByRole("button", { name: /Select workspace: Work/ })).toBeDisabled();
 	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
 	finish({
 		status: "applied",
@@ -75,7 +75,7 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("0");
 	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("empty");
 	await expect
-		.element(page.getByRole("button", { name: "Select workspace: No workspace selected" }))
+		.element(page.getByRole("button", { name: /Select workspace: No workspace selected/ }))
 		.toBeEnabled();
 });
 test.each(["rejected", "old", "wrong-scope"])(
@@ -104,7 +104,7 @@ test.each(["rejected", "old", "wrong-scope"])(
 		await confirm();
 		await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
 		await expect
-			.element(page.getByRole("button", { name: "Select workspace: Work" }))
+			.element(page.getByRole("button", { name: /Select workspace: Work/ }))
 			.toBeEnabled();
 		await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
 		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");

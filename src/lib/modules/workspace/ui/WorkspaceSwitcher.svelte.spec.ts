@@ -30,10 +30,10 @@ describe("WorkspaceSwitcher", () => {
 			openCreationDialog: vi.fn(),
 		});
 
-		await page.getByRole("button", { name: "Select workspace: Personal" }).click();
+		await page.getByRole("button", { name: /Select workspace: Personal/ }).click();
 		const entries = page.getByRole("menuitem");
-		await expect.element(entries.nth(0)).toHaveTextContent("Work");
-		await expect.element(entries.nth(1)).toHaveTextContent("Personal");
+		await expect.element(entries.nth(0)).toMatchTextContent("Work");
+		await expect.element(entries.nth(1)).toMatchTextContent("Personal");
 		await expect.element(page.getByRole("menuitem", { name: "Personal, active" })).toBeVisible();
 
 		await page.getByRole("menuitem", { name: "Work", exact: true }).click();
@@ -50,7 +50,7 @@ describe("WorkspaceSwitcher", () => {
 			openCreationDialog,
 		});
 
-		await page.getByRole("button", { name: "Select workspace: No workspace selected" }).click();
+		await page.getByRole("button", { name: /Select workspace: No workspace selected/ }).click();
 		await expect.element(page.getByText("No saved workspaces yet.")).toBeVisible();
 		await page.getByRole("menuitem", { name: "New workspace" }).click();
 		expect(openCreationDialog).toHaveBeenCalledOnce();
@@ -67,7 +67,7 @@ describe("WorkspaceSwitcher", () => {
 		});
 
 		await expect
-			.element(page.getByRole("button", { name: "Select workspace: Work" }))
+			.element(page.getByRole("button", { name: /Select workspace: Work/ }))
 			.toBeDisabled();
 	});
 
@@ -81,7 +81,7 @@ describe("WorkspaceSwitcher", () => {
 			disabled: false,
 		};
 		const view = await render(WorkspaceSwitcher, props);
-		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Delete Work" }).click();
 
 		await view.rerender({ ...props, disabled: true });
@@ -99,7 +99,7 @@ describe("WorkspaceSwitcher", () => {
 			openCreationDialog: vi.fn(),
 		});
 
-		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Delete Work" }).click();
 		await expect.element(page.getByRole("alertdialog")).toBeVisible();
 		await expect.element(page.getByText("Delete Workspace?", { exact: true })).toBeVisible();
@@ -108,7 +108,7 @@ describe("WorkspaceSwitcher", () => {
 		await page.getByRole("button", { name: "Cancel" }).click();
 		expect(deleteWorkspace).not.toHaveBeenCalled();
 
-		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Delete Work" }).click();
 		await page.getByRole("button", { name: "Delete workspace" }).click();
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
@@ -129,7 +129,7 @@ describe("WorkspaceSwitcher", () => {
 			openCreationDialog: vi.fn(),
 		});
 
-		await page.getByRole("button", { name: "Select workspace: Work" }).click();
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Delete Work" }).click();
 		await page.getByRole("button", { name: "Delete workspace" }).click();
 
