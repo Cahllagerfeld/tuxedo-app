@@ -27,6 +27,7 @@ test("initialization restores the session explicitly with one backend request", 
 		},
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		selectTodoFile: async () => null,
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -59,6 +60,7 @@ test.each(["success", "transport failure"])(
 			},
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -91,6 +93,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -127,6 +130,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => confirmed(1, null),
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -203,6 +207,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => initial,
 			restoreSession: async () => initial,
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -230,6 +235,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Original"),
 			restoreSession: async () => confirmed(5, "Original"),
 			selectTodoFile: async () => null,
@@ -266,6 +272,7 @@ test("a confirmed switch opens its intended Workspace with coherent session data
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, null),
 			restoreSession: async () => confirmed(5, null),
 			selectTodoFile: async () => null,
@@ -331,6 +338,7 @@ test.each([
 			},
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+			createTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			selectTodoFile: async () => null,
 		},

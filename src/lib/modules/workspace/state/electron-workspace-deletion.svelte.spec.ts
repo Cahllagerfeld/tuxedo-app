@@ -29,6 +29,7 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 		selectTodoFile: async () => null,
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace,
+		createTodo: async () => ({ status: "rejected", message: "unused" }),
 	};
 }
 async function confirm() {

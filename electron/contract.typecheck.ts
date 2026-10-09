@@ -32,3 +32,22 @@ registerDesktopOperation(
 	// @ts-expect-error Creation must return a serialized domain outcome, not a session.
 	api.readSession
 );
+api.createTodo({
+	scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
+	revision: 0,
+	workspaceId: "550e8400-e29b-41d4-a716-446655440000",
+	description: "Buy milk",
+	projects: ["Home"],
+	contexts: ["errands"],
+});
+// @ts-expect-error Todo creation requires the scoped mutation target and ordered tag lists.
+api.createTodo({ description: "Buy milk" });
+registerDesktopOperation(ipc, getWindow, () => true, "createTodo", api.createTodo);
+registerDesktopOperation(
+	ipc,
+	getWindow,
+	() => true,
+	"createTodo",
+	// @ts-expect-error Creation must return a serialized Todo mutation outcome.
+	api.readSession
+);

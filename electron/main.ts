@@ -110,6 +110,7 @@ void app.whenReady().then(async () => {
 		backend.setTodoCompletion
 	);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteTodo", backend.deleteTodo);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "createTodo", backend.createTodo);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "switchWorkspace", backend.switchWorkspace);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "restoreSession", backend.restoreSession);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "createWorkspace", backend.createWorkspace);
