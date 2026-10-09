@@ -89,33 +89,39 @@ export function createSessionBackend(cataloguePath: string): SessionBackend {
 		confirmedTodoContents = todoContents;
 		return next;
 	};
+	const todoMutationContext = async (
+		target: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
+	) => {
+		if (!confirmed) {
+			const loaded = await load();
+			confirmed = loaded.confirmed;
+			confirmedTodoContents = loaded.todoContents;
+		}
+		const previous = confirmed;
+		if (
+			previous.scope !== target.scope ||
+			previous.revision !== target.revision ||
+			previous.session.status !== "ready" ||
+			previous.session.catalogue.active_workspace_id !== target.workspaceId
+		)
+			throw Error("The Workspace session changed. Try again with its current Todo file.");
+		const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
+		const workspace = catalogue.workspaces.find((workspace) => workspace.id === target.workspaceId);
+		if (
+			catalogue.active_workspace_id !== target.workspaceId ||
+			!workspace ||
+			workspace.todo_path !== previous.session.todo_file.path
+		)
+			throw Error("The Active workspace changed.");
+		return { previous: { ...previous, session: previous.session }, workspace };
+	};
 	const mutateTodo = async (
 		request: DesktopRequest<"deleteTodo">,
 		transform: (contents: string, item: TodoFile["items"][number]) => string
 	): Promise<Awaited<ReturnType<DesktopAPI["deleteTodo"]>>> => {
 		try {
 			const input = todoMutationRequestSchema.parse(request);
-			if (!confirmed) {
-				const loaded = await load();
-				confirmed = loaded.confirmed;
-				confirmedTodoContents = loaded.todoContents;
-			}
-			const previous = confirmed;
-			if (
-				previous.scope !== input.scope ||
-				previous.revision !== input.revision ||
-				previous.session.status !== "ready" ||
-				previous.session.catalogue.active_workspace_id !== input.workspaceId
-			)
-				throw Error("The Workspace session changed. Try again with its current Todo file.");
-			const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
-			const workspace = catalogue.workspaces.find((w) => w.id === input.workspaceId);
-			if (
-				catalogue.active_workspace_id !== input.workspaceId ||
-				!workspace ||
-				workspace.todo_path !== previous.session.todo_file.path
-			)
-				throw Error("The Active workspace changed.");
+			const { previous, workspace } = await todoMutationContext(input);
 			const expected = parseTodoFile(workspace.todo_path, input.expectedRaw);
 			if (expected.items.length !== 1 || expected.skipped.length || /\n/.test(input.expectedRaw))
 				throw Error("Invalid Todo item target.");
@@ -157,31 +163,7 @@ export function createSessionBackend(cataloguePath: string): SessionBackend {
 			serialize(async () => {
 				try {
 					const input = createTodoRequestSchema.parse(request);
-					if (!confirmed) {
-						const loaded = await load();
-						confirmed = loaded.confirmed;
-						confirmedTodoContents = loaded.todoContents;
-					}
-					const previous = confirmed;
-					if (
-						previous.scope !== input.scope ||
-						previous.revision !== input.revision ||
-						previous.session.status !== "ready" ||
-						previous.session.catalogue.active_workspace_id !== input.workspaceId
-					)
-						throw Error("The Workspace session changed. Try again with its current Todo file.");
-					const catalogue = catalogueSchema.parse(
-						JSON.parse(await readFile(cataloguePath, "utf8"))
-					);
-					const workspace = catalogue.workspaces.find(
-						(workspace) => workspace.id === input.workspaceId
-					);
-					if (
-						catalogue.active_workspace_id !== input.workspaceId ||
-						!workspace ||
-						workspace.todo_path !== previous.session.todo_file.path
-					)
-						throw Error("The Active workspace changed.");
+					const { previous, workspace } = await todoMutationContext(input);
 					const contents = await readTodoContents(workspace.todo_path);
 					if (contents !== confirmedTodoContents) {
 						const todo_file = parseTodoFile(workspace.todo_path, contents);
