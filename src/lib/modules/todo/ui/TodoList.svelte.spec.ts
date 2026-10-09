@@ -46,8 +46,8 @@ describe("TodoList", () => {
 
 		await expect.element(page.getByRole("list", { name: "Todo items" })).toBeVisible();
 		const items = page.getByRole("listitem");
-		await expect.element(items.nth(0)).toHaveTextContent("Plan");
-		await expect.element(items.nth(1)).toHaveTextContent("Ship release");
+		await expect.element(items.nth(0)).toMatchTextContent("Plan");
+		await expect.element(items.nth(1)).toMatchTextContent("Ship release");
 		await expect.element(page.getByText("(A)", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();

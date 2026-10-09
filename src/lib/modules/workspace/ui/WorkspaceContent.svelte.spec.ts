@@ -164,7 +164,7 @@ test("an unavailable catalogue offers no actions", async () => {
 			}),
 		}),
 	});
-	await expect.element(page.getByRole("alert")).toHaveTextContent("invalid catalogue");
+	await expect.element(page.getByRole("alert")).toMatchTextContent("invalid catalogue");
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
 test("Empty state retains restoration warnings", async () => {
