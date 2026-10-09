@@ -119,7 +119,6 @@ test.each([
 	["project token in description", { description: "Plan +Project" }],
 	["context token in description", { description: "Plan @home" }],
 	["metadata token in description", { description: "Plan due:tomorrow" }],
-	["standalone plus in description", { description: "Plan +" }],
 	["duplicate projects", { projects: ["Work", "+Work"] }],
 	["whitespace in context", { contexts: ["at home"] }],
 ] as const)("rejects %s without changing file bytes or confirmed data", async (_name, values) => {
@@ -130,6 +129,20 @@ test.each([
 	expect(outcome.status).toBe("rejected");
 	expect(await readFile(todoPath, "utf8")).toBe(initial);
 	expect(await backend.readSession({})).toEqual(confirmed);
+});
+
+test("allows description tokens that the parser keeps as description text", async () => {
+	const { backend, todoPath, confirmed, workspaceId } = await setup("Keep\n");
+	const outcome = await backend.createTodo(
+		request(confirmed, workspaceId, {
+			description: "Plan + https://example.test/a:b:extra",
+		})
+	);
+
+	expect(outcome.status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toContain(
+		`${today()} Plan + https://example.test/a:b:extra`
+	);
 });
 
 test("returns a conflict and confirms externally changed contents without appending", async () => {

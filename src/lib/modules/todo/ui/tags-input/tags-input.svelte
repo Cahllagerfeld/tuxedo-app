@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from "svelte";
 	import { cn } from "$lib/shared/utils.js";
 	import type { TagsInputProps } from "./types";
 	import TagsInputSuggestion from "./tags-input-suggestion.svelte";
@@ -54,24 +53,13 @@
 	const filteredSuggestions = $derived.by(() => {
 		if (!suggestions) return [];
 		const available = suggestions.filter((suggestion) => !value.includes(suggestion));
-		return inputValue.length === 0 ? available : filterSuggestions(inputValue, available);
+		const searchValue =
+			prefix && inputValue.startsWith(prefix) ? inputValue.slice(prefix.length) : inputValue;
+		return searchValue.length === 0 ? available : filterSuggestions(searchValue, available);
 	});
 	const showSuggestions = $derived(
 		inputFocused && filteredSuggestions.length > 0 && tagIndex === undefined
 	);
-
-	$effect(() => {
-		filteredSuggestions;
-		untrack(() => (suggestionIndex = undefined));
-	});
-
-	$effect(() => {
-		inputValue;
-		untrack(() => {
-			invalid = false;
-			onInvalidChange?.(undefined);
-		});
-	});
 
 	function selectSuggestion(suggestion: string) {
 		const validated = validate(suggestion, value);
@@ -113,6 +101,7 @@
 
 	function deleteIndex(index: number) {
 		value = [...value.slice(0, index), ...value.slice(index + 1)];
+		suggestionIndex = undefined;
 		onValueChange?.(value);
 	}
 
@@ -224,6 +213,11 @@
 		{disabled}
 		{placeholder}
 		data-invalid={invalid}
+		oninput={() => {
+			suggestionIndex = undefined;
+			invalid = false;
+			onInvalidChange?.(undefined);
+		}}
 		onkeydown={keydown}
 		role={suggestions ? "combobox" : undefined}
 		aria-expanded={suggestions ? showSuggestions : undefined}

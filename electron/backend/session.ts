@@ -5,7 +5,6 @@ import {
 	appendTodoLine,
 	confirmedTodo,
 	createTodoLine,
-	createTodoRequestSchema,
 	type CreateTodoOperation,
 } from "./create-todo";
 import { readTodoContents, parseTodoFile } from "./todo-file";
@@ -15,6 +14,7 @@ import {
 	createWorkspaceRequestSchema,
 	switchWorkspaceRequestSchema,
 	deleteWorkspaceRequestSchema,
+	createTodoRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	type Catalogue,

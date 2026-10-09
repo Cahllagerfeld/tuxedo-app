@@ -71,6 +71,8 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 	const projectInput = page.getByPlaceholder("Choose or create a Project");
 	await projectInput.click();
 	await expect.element(page.getByRole("option", { name: "Archive" })).toBeVisible();
+	await projectInput.fill("+work");
+	await expect.element(page.getByRole("option", { name: "Work" })).toBeVisible();
 	await projectInput.fill("+typedProject");
 	await pressEnter(projectInput);
 	await expect.element(page.getByText("+typedProject", { exact: true })).toBeVisible();

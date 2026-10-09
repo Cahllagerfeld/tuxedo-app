@@ -16,7 +16,7 @@ function normalizeDescription(value: string): string {
 	const description = value.trim().replace(/\p{White_Space}+/gu, " ");
 	if (!description) throw Error("Description is required.");
 	for (const token of description.split(" ")) {
-		if (token === "+" || token === "@" || /^[+@]\S+$/u.test(token) || /^\S+:\S+$/u.test(token))
+		if (/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token))
 			throw Error("Description cannot contain Project, Context, or metadata tokens.");
 	}
 	return description;

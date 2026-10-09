@@ -59,7 +59,12 @@
 	}
 
 	function containsTodoToken(value: string) {
-		return value.split(/\s+/).some((token) => /^[+@]/.test(token) || /^\S+:\S+$/.test(token));
+		return value
+			.split(/\s+/)
+			.some(
+				(token) =>
+					/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token)
+			);
 	}
 
 	function normalizedDescription(value: string) {
