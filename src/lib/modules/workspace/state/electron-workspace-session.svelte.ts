@@ -13,6 +13,10 @@ import type {
 	WorkspaceSessionOperationTarget,
 } from "./workspace-session-types";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
+
+type CreateTodoRequest = DesktopRequest<"createTodo">;
+export type CreateTodoDraft = Pick<CreateTodoRequest, "description" | "projects" | "contexts">;
+
 export function reconcileConfirmedSession(
 	previous: ConfirmedSession | undefined,
 	incoming: ConfirmedSession
@@ -70,6 +74,24 @@ export class ElectronWorkspaceSessionState {
 		if (outcome.status !== "rejected")
 			this.confirmed = reconcileConfirmedTodo(this.confirmed, outcome.confirmed);
 		return outcome;
+	}
+
+	private todoCreationTarget(): Pick<
+		CreateTodoRequest,
+		"scope" | "revision" | "workspaceId"
+	> | null {
+		const confirmed = this.confirmed;
+		if (
+			!confirmed ||
+			confirmed.session.status !== "ready" ||
+			!confirmed.session.catalogue.active_workspace_id
+		)
+			return null;
+		return {
+			scope: confirmed.scope,
+			revision: confirmed.revision,
+			workspaceId: confirmed.session.catalogue.active_workspace_id,
+		};
 	}
 
 	get session() {
@@ -201,4 +223,19 @@ export class ElectronWorkspaceSessionState {
 			},
 			this.todoOperationTarget(todo)
 		);
+	createTodo = (draft: CreateTodoDraft) =>
+		this.runAction(
+			"create_todo_item",
+			async () => {
+				const target = this.todoCreationTarget();
+				if (!target)
+					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				return this.applyTodoOutcome(await this.desktop.createTodo({ ...target, ...draft }));
+			},
+			this.todoOperationTargetForActiveWorkspace()
+		);
+	private todoOperationTargetForActiveWorkspace(): WorkspaceSessionOperationTarget | null {
+		const workspaceId = this.catalogue?.active_workspace_id;
+		return workspaceId ? { workspaceId } : null;
+	}
 }

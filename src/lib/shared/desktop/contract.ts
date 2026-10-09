@@ -105,6 +105,23 @@ export const todoOutcomeSchema = z.discriminatedUnion("status", [
 export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
 	completed: z.boolean(),
 });
+const todoTagSchema = z
+	.string()
+	.min(1)
+	.refine((value) => value === value.trim(), "Todo tags must be trimmed")
+	.refine((value) => !/\s/u.test(value), "Todo tags must not contain whitespace")
+	.refine((value) => !/^[+@]/u.test(value), "Todo tags must not include their prefix");
+const todoTagListSchema = z
+	.array(todoTagSchema)
+	.refine((values) => new Set(values).size === values.length, "Todo tags must be unique");
+export const createTodoRequestSchema = z.strictObject({
+	scope: z.uuid(),
+	revision: z.number().int().nonnegative(),
+	workspaceId: z.uuid(),
+	description: z.string().trim().min(1),
+	projects: todoTagListSchema,
+	contexts: todoTagListSchema,
+});
 export const desktopContract = {
 	deleteWorkspace: {
 		channel: "tuxedo:delete-workspace",
@@ -119,6 +136,11 @@ export const desktopContract = {
 	deleteTodo: {
 		channel: "tuxedo:delete-todo",
 		request: todoMutationRequestSchema,
+		response: todoOutcomeSchema,
+	},
+	createTodo: {
+		channel: "tuxedo:create-todo",
+		request: createTodoRequestSchema,
 		response: todoOutcomeSchema,
 	},
 	switchWorkspace: {
@@ -174,6 +196,7 @@ export function createDesktopClient(
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		deleteTodo: (request) => call("deleteTodo", request),
+		createTodo: (request) => call("createTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),

@@ -49,6 +49,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	};
 }
@@ -193,3 +194,184 @@ test("confirmed final deletion clears all App summary facts", async () => {
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0/0");
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
 });
+
+test("duplicate creation submissions keep dismissal blocked until the admitted save settles", async () => {
+	let calls = 0;
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["createTodo"]>>) => void;
+	render(Harness, {
+		desktop: adapter({
+			createTodo: () => {
+				calls++;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			},
+		}),
+	});
+	const trigger = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0);
+	await trigger.click();
+	const description = page.getByPlaceholder("What needs doing?");
+	await description.fill("Keep this draft");
+	const form = document.querySelector<HTMLFormElement>('[role="dialog"] form')!;
+	form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+	form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+	await expect.poll(() => calls).toBe(1);
+	// Allow both validation continuations and any busy rejection to settle.
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	const close = page.getByRole("button", { name: "Close", exact: true });
+	await expect.element(close).toBeDisabled();
+	await expect.element(description).toBeDisabled();
+	await expect.element(page.getByPlaceholder("Choose or create a Project")).toBeDisabled();
+	await expect.element(page.getByPlaceholder("Choose or create a Context")).toBeDisabled();
+	await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+	expect(
+		document.querySelector<HTMLButtonElement>('button[aria-label="Delete Plan release"]')?.disabled
+	).toBe(true);
+	(close.element() as HTMLButtonElement).click();
+	description
+		.element()
+		.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+	await new Promise((resolve) => setTimeout(resolve, 150));
+	await expect.element(page.getByRole("dialog")).toBeVisible();
+	await expect.element(description).toHaveValue("Keep this draft");
+	finish({ status: "rejected", message: "Creation blocked by permissions" });
+	await expect.element(description).toBeEnabled();
+	await expect.element(page.getByText("Creation blocked by permissions")).toBeVisible();
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	await expect.element(trigger).toHaveFocus();
+});
+
+test("creation updates confirmed items, counts, and suggestions without moving the list, then resets and restores focus", async () => {
+	if (initial.session.status !== "ready") throw Error("No initial file");
+	const items = Array.from({ length: 40 }, (_, index) => ({
+		...todo,
+		line_number: index + 1,
+		raw: `Existing item ${index} +Work`,
+		description: `Existing item ${index}`,
+	}));
+	const loaded: ConfirmedSession = {
+		...initial,
+		session: { ...initial.session, todo_file: { ...initial.session.todo_file, items } },
+	};
+	const created = {
+		...todo,
+		line_number: 41,
+		raw: "2026-10-09 Ship the release +work @Desk",
+		description: "Ship the release",
+		creation_date: "2026-10-09",
+		projects: ["work"],
+		contexts: ["Desk"],
+	};
+	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => loaded,
+			createTodo: async (input) => {
+				request = input;
+				return { status: "applied", confirmed: confirmedTodo([...items, created]) };
+			},
+		}),
+	});
+	const trigger = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0);
+	await expect.element(trigger).toBeEnabled();
+	const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+	viewport.scrollTop = 200;
+	expect(viewport.scrollTop).toBe(200);
+	await trigger.click();
+	const description = page.getByPlaceholder("What needs doing?");
+	await expect.element(description).toHaveFocus();
+	await expect.element(page.getByText("Work · work.todo", { exact: true })).toBeVisible();
+	const submit = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1);
+	await description.fill("   ");
+	await submit.click();
+	await expect.element(page.getByText("Enter a Description.")).toBeVisible();
+	await expect.element(submit).toBeEnabled();
+	await description.fill("  Ship   the release  ");
+	const projects = page.getByPlaceholder("Choose or create a Project");
+	await projects.fill("+work");
+	await expect.element(page.getByRole("option", { name: "Work", exact: true })).toBeVisible();
+	projects.element().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+	const contexts = page.getByPlaceholder("Choose or create a Context");
+	await contexts.fill("@Desk");
+	contexts.element().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+	await submit.click();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect.element(trigger).toHaveFocus();
+	expect(request).toEqual({
+		scope,
+		revision: 1,
+		workspaceId,
+		description: "Ship the release",
+		projects: ["work"],
+		contexts: ["Desk"],
+	});
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("41/0/2");
+	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("work,Work");
+	expect(document.querySelector('ul[aria-label="Todo items"]')?.textContent).toContain(
+		"Ship the release"
+	);
+	expect(viewport.scrollTop).toBe(200);
+	expect(document.querySelector('[data-sonner-toast][data-type="success"]')).toBeNull();
+	await trigger.click();
+	await expect.element(description).toHaveFocus();
+	await expect.element(description).toHaveValue("");
+	await projects.click();
+	await expect.element(page.getByRole("option", { name: "work", exact: true })).toBeVisible();
+	await expect.element(page.getByRole("option", { name: "Work", exact: true })).toBeVisible();
+	await contexts.click();
+	await expect.element(page.getByRole("option", { name: "Desk", exact: true })).toBeVisible();
+});
+
+test.each(["conflict", "rejected"] as const)(
+	"creation %s retains the draft and cancellation discards it",
+	async (status) => {
+		render(Harness, {
+			desktop: adapter({
+				createTodo: async () =>
+					status === "conflict"
+						? {
+								status,
+								message: "Changed on disk",
+								confirmed: confirmedTodo([{ ...todo, projects: ["External"] }]),
+							}
+						: { status, message: "Permission denied" },
+			}),
+		});
+		const trigger = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0);
+		await trigger.click();
+		const description = page.getByPlaceholder("What needs doing?");
+		await description.fill("Retain this draft");
+		const projects = page.getByPlaceholder("Choose or create a Project");
+		await projects.fill("Draft");
+		projects.element().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+		await page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1).click();
+		await expect.element(description).toBeEnabled();
+		await expect.element(description).toHaveValue("Retain this draft");
+		await expect.element(page.getByText("+Draft", { exact: true })).toBeVisible();
+		await expect
+			.element(
+				page
+					.getByText(
+						status === "conflict"
+							? "Todo file changed externally; reloaded latest version"
+							: "Permission denied"
+					)
+					.last()
+			)
+			.toBeVisible();
+		if (status === "conflict") {
+			await projects.click();
+			await expect
+				.element(page.getByRole("option", { name: "External", exact: true }))
+				.toBeVisible();
+			await expect
+				.element(page.getByRole("option", { name: "Work", exact: true }))
+				.not.toBeInTheDocument();
+		}
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		await expect.element(trigger).toHaveFocus();
+		await trigger.click();
+		await expect.element(description).toHaveValue("");
+		await expect.element(page.getByText("+Draft", { exact: true })).not.toBeInTheDocument();
+	}
+);

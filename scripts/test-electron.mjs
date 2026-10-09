@@ -105,6 +105,22 @@ try {
 		(await page.evaluate(() => window.desktop.readSession({}))).session,
 		created.confirmed.session
 	);
+	const createdTodo = await page.evaluate((input) => window.desktop.createTodo(input), {
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		description: "Plan sprint",
+		projects: ["Planning"],
+		contexts: ["desk"],
+	});
+	assert.equal(createdTodo.status, "applied");
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).description, "Plan sprint");
+	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).projects, ["Planning"]);
+	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).contexts, ["desk"]);
+	assert.match(
+		await readFile(todoPath, "utf8"),
+		/\n\d{4}-\d{2}-\d{2} Plan sprint \+Planning @desk\n$/
+	);
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",

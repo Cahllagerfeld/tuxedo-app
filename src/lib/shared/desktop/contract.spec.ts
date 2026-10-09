@@ -54,3 +54,51 @@ test.each([
 	const desktop = createDesktopClient(async () => ({ scope, revision: 1, session }));
 	await expect(desktop.readSession({})).rejects.toThrow();
 });
+
+const createTodoRequest = {
+	scope,
+	revision: 1,
+	workspaceId,
+	description: "Buy milk",
+	projects: ["Home"],
+	contexts: ["errands"],
+};
+const confirmedTodo = {
+	scope,
+	revision: 2,
+	workspaceId,
+	todo_file,
+};
+test("desktop transport validates and forwards a create Todo mutation", async () => {
+	let invoked: { channel: string; request: unknown } | undefined;
+	const response = { status: "applied" as const, confirmed: confirmedTodo };
+	const desktop = createDesktopClient(async (channel, request) => {
+		invoked = { channel, request };
+		return response;
+	});
+
+	expect(await desktop.createTodo(createTodoRequest)).toEqual(response);
+	expect(invoked).toEqual({
+		channel: "tuxedo:create-todo",
+		request: createTodoRequest,
+	});
+});
+test.each([
+	{ ...createTodoRequest, projects: ["Home", "Home"] },
+	{ ...createTodoRequest, contexts: ["errands", "errands"] },
+	{ ...createTodoRequest, projects: ["+Home"] },
+	{ ...createTodoRequest, contexts: ["phone home"] },
+	{ ...createTodoRequest, description: "   " },
+])("desktop transport rejects malformed create Todo requests %#", async (request) => {
+	const desktop = createDesktopClient(async () => {
+		throw Error("should not invoke");
+	});
+	await expect(desktop.createTodo(request)).rejects.toThrow();
+});
+test("desktop transport rejects malformed create Todo responses", async () => {
+	const desktop = createDesktopClient(async () => ({
+		status: "applied",
+		confirmed: { ...confirmedTodo, todo_file: { ...todo_file, path: "" } },
+	}));
+	await expect(desktop.createTodo(createTodoRequest)).rejects.toThrow();
+});
