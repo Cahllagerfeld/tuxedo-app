@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { Portal } from "bits-ui";
 	import { cn } from "$lib/shared/utils.js";
 	import type { TagsInputProps } from "./types";
 	import TagsInputSuggestion from "./tags-input-suggestion.svelte";
@@ -42,26 +41,7 @@
 	let inputFocused = $state(false);
 	let suggestionIndex = $state<number>();
 	let listboxId = $props.id();
-	let inputEl = $state<HTMLInputElement>();
 	let listboxEl = $state<HTMLElement>();
-	let listboxStyle = $state("");
-
-	function updateListboxPosition() {
-		if (!inputEl) return;
-		const bounds = inputEl.getBoundingClientRect();
-		listboxStyle = `position: fixed; top: ${bounds.bottom + 4}px; left: ${bounds.left}px; width: ${bounds.width}px;`;
-	}
-
-	$effect(() => {
-		if (!showSuggestions || !inputEl) return;
-		updateListboxPosition();
-		window.addEventListener("resize", updateListboxPosition);
-		window.addEventListener("scroll", updateListboxPosition, true);
-		return () => {
-			window.removeEventListener("resize", updateListboxPosition);
-			window.removeEventListener("scroll", updateListboxPosition, true);
-		};
-	});
 
 	$effect(() => {
 		if (suggestionIndex !== undefined && listboxEl) {
@@ -225,7 +205,6 @@
 	{/each}
 	<input
 		{...rest}
-		bind:this={inputEl}
 		bind:value={inputValue}
 		onblur={blur}
 		onfocus={() => (inputFocused = true)}
@@ -250,23 +229,20 @@
 		class="min-w-16 shrink grow basis-0 border-none bg-transparent px-2 outline-hidden placeholder:text-muted-foreground focus:outline-hidden disabled:cursor-not-allowed data-[invalid=true]:text-red-500 md:text-sm"
 	/>
 	{#if showSuggestions}
-		<Portal>
-			<div
-				bind:this={listboxEl}
-				id={listboxId}
-				role="listbox"
-				style={listboxStyle}
-				class="pointer-events-auto z-[100] max-h-50 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-			>
-				{#each filteredSuggestions as suggestion, index (suggestion)}
-					<TagsInputSuggestion
-						id={`${listboxId}-${index}`}
-						value={suggestion}
-						active={index === suggestionIndex}
-						onSelect={selectSuggestion}
-					/>
-				{/each}
-			</div>
-		</Portal>
+		<div
+			bind:this={listboxEl}
+			id={listboxId}
+			role="listbox"
+			class="absolute top-full right-0 left-0 z-50 mt-1 max-h-50 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+		>
+			{#each filteredSuggestions as suggestion, index (suggestion)}
+				<TagsInputSuggestion
+					id={`${listboxId}-${index}`}
+					value={suggestion}
+					active={index === suggestionIndex}
+					onSelect={selectSuggestion}
+				/>
+			{/each}
+		</div>
 	{/if}
 </div>

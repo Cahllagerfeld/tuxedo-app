@@ -187,7 +187,7 @@
 		aria-label="Add Todo item"
 		onclick={() => (open = true)}>+ Add Todo item</Button
 	>
-	<Dialog.Content class="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="max-h-[calc(100dvh-2rem)] overflow-visible sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>New Todo item</Dialog.Title>
 			<Dialog.Description>{targetLabel}</Dialog.Description>
