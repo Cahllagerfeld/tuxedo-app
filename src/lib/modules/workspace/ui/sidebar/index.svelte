@@ -35,7 +35,11 @@
 	}: Props = $props();
 </script>
 
-<Sidebar.Root variant="inset" collapsible="offcanvas">
+<Sidebar.Root
+	variant="inset"
+	collapsible="offcanvas"
+	class="top-(--window-toolbar-height) h-[calc(100svh-var(--window-toolbar-height))]"
+>
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
 			{workspaces}

@@ -67,6 +67,7 @@ void app.whenReady().then(async () => {
 	const window = new BrowserWindow({
 		width: 1200,
 		height: 850,
+		...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
 		webPreferences: {
 			preload: join(here, "preload.cjs"),
 			sandbox: true,
