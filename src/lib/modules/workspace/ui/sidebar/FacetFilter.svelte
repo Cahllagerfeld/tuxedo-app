@@ -39,8 +39,8 @@
 		void tick().then(() => trigger?.focus());
 	}
 
-	function toggleOpen() {
-		open = !open;
+	function substringFilter(value: string, search: string) {
+		return value.toLocaleLowerCase().includes(search.toLocaleLowerCase()) ? 1 : 0;
 	}
 </script>
 
@@ -49,6 +49,15 @@
 		<Sidebar.GroupLabel>{label}</Sidebar.GroupLabel>
 		<Sidebar.GroupContent>
 			<ul class="space-y-0.5">
+				{#snippet facetIcon()}
+					{#if label === "Projects"}
+						<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+					{:else if label === "Priorities"}
+						<CircleDot class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+					{:else}
+						<Tag class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+					{/if}
+				{/snippet}
 				{#each visibleValues as value (value)}
 					<li>
 						<button
@@ -62,13 +71,7 @@
 							{disabled}
 							onclick={() => onSelect(value)}
 						>
-							{#if label === "Projects"}
-								<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{:else if label === "Priorities"}
-								<CircleDot class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{:else}
-								<Tag class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{/if}
+							{@render facetIcon()}
 							<span class="truncate" title={displayValue(value)}>{displayValue(value)}</span>
 							{#if selected === value}<Check
 									class="ml-auto size-4 shrink-0"
@@ -87,13 +90,7 @@
 							{disabled}
 							onclick={() => onSelect(selectedOutsideVisible)}
 						>
-							{#if label === "Projects"}
-								<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{:else if label === "Priorities"}
-								<CircleDot class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{:else}
-								<Tag class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-							{/if}
+							{@render facetIcon()}
 							<span class="truncate" title={displayValue(selectedOutsideVisible)}
 								>{displayValue(selectedOutsideVisible)}</span
 							>
@@ -121,7 +118,7 @@
 								{/snippet}
 							</Popover.Trigger>
 							<Popover.Content align="start" class="w-56 p-0">
-								<Command.Root label={`Search ${label}`} loop>
+								<Command.Root label={`Search ${label}`} loop filter={substringFilter}>
 									<Command.Input
 										type="search"
 										placeholder={`Search ${label.toLocaleLowerCase()}…`}
