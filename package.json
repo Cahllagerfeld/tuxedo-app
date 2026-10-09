@@ -15,7 +15,7 @@
 		"test:unit": "vitest --run",
 		"test:unit:watch": "vitest",
 		"test": "pnpm test:unit && pnpm test:backend",
-		"check:electron": "tsc -p tsconfig.electron.json",
+		"check:electron": "tsc -p electron/tsconfig.json",
 		"test:backend": "vitest run --config vitest.backend.config.ts",
 		"check:boundaries": "node scripts/check-desktop-boundaries.mjs",
 		"test:electron": "pnpm build && node scripts/test-electron.mjs",

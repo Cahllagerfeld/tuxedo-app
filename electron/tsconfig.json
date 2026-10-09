@@ -1,12 +1,14 @@
 {
 	"compilerOptions": {
-		"target": "ES2022",
+		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"strict": true,
 		"noEmit": true,
 		"skipLibCheck": true,
+		"isolatedModules": true,
+		"forceConsistentCasingInFileNames": true,
 		"types": ["node"]
 	},
-	"include": ["electron/**/*.ts", "src/lib/shared/desktop/**/*.ts"]
+	"include": ["./**/*.ts", "../src/lib/shared/desktop/**/*.ts"]
 }
