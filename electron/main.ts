@@ -27,6 +27,12 @@ const trusted = (url: string) => {
 		return false;
 	}
 };
+let mainWindow: BrowserWindow | null = null;
+
+app.on("window-all-closed", () => {
+	if (process.platform !== "darwin") app.quit();
+});
+
 void app.whenReady().then(async () => {
 	const backend = createSessionBackend(join(app.getPath("userData"), "workspaces.json"));
 	protocol.handle("tuxedo", (request) => {
@@ -64,49 +70,60 @@ void app.whenReady().then(async () => {
 		const csp = `default-src 'self'; script-src 'self' ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'${devOrigin ? ` ${devOrigin.replace("http:", "ws:")}` : ""}; object-src 'none'; frame-src 'none'; base-uri 'none'`;
 		callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] } });
 	});
-	const window = new BrowserWindow({
-		width: 1200,
-		height: 850,
-		...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
-		webPreferences: {
-			preload: join(here, "preload.cjs"),
-			sandbox: true,
-			contextIsolation: true,
-			nodeIntegration: false,
-			webSecurity: true,
-		},
-	});
-	window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-	window.webContents.on("will-navigate", (event, url) => {
-		if (!trusted(url)) event.preventDefault();
-	});
-	window.webContents.on("will-redirect", (event, url) => {
-		if (!trusted(url)) event.preventDefault();
-	});
-	window.webContents.on("will-frame-navigate", (event) => {
-		if (!trusted(event.url)) event.preventDefault();
-	});
-	window.webContents.on("will-attach-webview", (event) => event.preventDefault());
-	registerDesktopOperation(ipcMain, window, trusted, "readSession", backend.readSession);
+	const createWindow = async () => {
+		const window = new BrowserWindow({
+			width: 1200,
+			height: 850,
+			...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
+			webPreferences: {
+				preload: join(here, "preload.cjs"),
+				sandbox: true,
+				contextIsolation: true,
+				nodeIntegration: false,
+				webSecurity: true,
+			},
+		});
+		mainWindow = window;
+		window.on("closed", () => {
+			if (mainWindow === window) mainWindow = null;
+		});
+		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+		window.webContents.on("will-navigate", (event, url) => {
+			if (!trusted(url)) event.preventDefault();
+		});
+		window.webContents.on("will-redirect", (event, url) => {
+			if (!trusted(url)) event.preventDefault();
+		});
+		window.webContents.on("will-frame-navigate", (event) => {
+			if (!trusted(event.url)) event.preventDefault();
+		});
+		window.webContents.on("will-attach-webview", (event) => event.preventDefault());
+		await window.loadURL(devOrigin ?? "tuxedo://app/");
+	};
+	const getWindow = () => mainWindow;
+	registerDesktopOperation(ipcMain, getWindow, trusted, "readSession", backend.readSession);
 	registerDesktopOperation(
 		ipcMain,
-		window,
+		getWindow,
 		trusted,
 		"setTodoCompletion",
 		backend.setTodoCompletion
 	);
-	registerDesktopOperation(ipcMain, window, trusted, "deleteTodo", backend.deleteTodo);
-	registerDesktopOperation(ipcMain, window, trusted, "switchWorkspace", backend.switchWorkspace);
-	registerDesktopOperation(ipcMain, window, trusted, "restoreSession", backend.restoreSession);
-	registerDesktopOperation(ipcMain, window, trusted, "createWorkspace", backend.createWorkspace);
-	registerDesktopOperation(ipcMain, window, trusted, "deleteWorkspace", backend.deleteWorkspace);
-	registerDesktopOperation(ipcMain, window, trusted, "selectTodoFile", async () => {
-		const result = await dialog.showOpenDialog(window, {
+	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteTodo", backend.deleteTodo);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "switchWorkspace", backend.switchWorkspace);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "restoreSession", backend.restoreSession);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "createWorkspace", backend.createWorkspace);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteWorkspace", backend.deleteWorkspace);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "selectTodoFile", async () => {
+		if (!mainWindow) throw Error("No application window");
+		const result = await dialog.showOpenDialog(mainWindow, {
 			title: "Choose Todo file",
 			properties: ["openFile"],
 		});
 		return result.canceled ? null : (result.filePaths[0] ?? null);
 	});
-	await window.loadURL(devOrigin ?? "tuxedo://app/");
-	app.on("window-all-closed", () => app.quit());
+	app.on("activate", () => {
+		if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+	});
+	await createWindow();
 });

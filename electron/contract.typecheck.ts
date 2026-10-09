@@ -11,10 +11,16 @@ api.readFile("/etc/passwd");
 // @ts-expect-error Read-session requests cannot carry arbitrary filesystem paths.
 api.readSession({ path: "/etc/passwd" });
 // @ts-expect-error Main cannot register an unknown operation/channel.
-registerDesktopOperation(ipc, window, () => true, "arbitraryChannel", api.readSession);
 registerDesktopOperation(
 	ipc,
-	window,
+	() => window,
+	() => true,
+	"arbitraryChannel",
+	api.readSession
+);
+registerDesktopOperation(
+	ipc,
+	() => window,
 	() => true,
 	"readSession",
 	// @ts-expect-error Main results must be serialized confirmed outcomes.
@@ -25,7 +31,7 @@ registerDesktopOperation(
 api.createWorkspace({ name: "Work", color: "purple" });
 registerDesktopOperation(
 	ipc,
-	window,
+	() => window,
 	() => true,
 	"createWorkspace",
 	// @ts-expect-error Creation must return a serialized domain outcome, not a session.

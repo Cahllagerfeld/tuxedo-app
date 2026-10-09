@@ -9,14 +9,16 @@ type Request<K extends DesktopOperation> = DesktopRequest<K>;
 type Response<K extends DesktopOperation> = z.infer<(typeof desktopContract)[K]["response"]>;
 export function registerDesktopOperation<K extends DesktopOperation>(
 	ipc: IpcMain,
-	window: BrowserWindow,
+	getWindow: () => BrowserWindow | null,
 	trusted: (url: string) => boolean,
 	operation: K,
 	handler: (request: Request<K>) => Promise<Response<K>>
 ): void {
 	const contract = desktopContract[operation];
 	ipc.handle(contract.channel, async (event, request: unknown) => {
+		const window = getWindow();
 		if (
+			!window ||
 			event.sender !== window.webContents ||
 			event.senderFrame !== window.webContents.mainFrame ||
 			!trusted(event.senderFrame.url)
