@@ -1,16 +1,17 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
-	import type { WorkspaceSessionState } from "$lib/modules/workspace/state/workspace-session-state.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
+	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import { toast } from "svelte-sonner";
+	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 
 	type Props = {
-		workspace: WorkspaceSessionState;
+		workspace: ElectronWorkspaceSessionState;
 		openWorkspaceCreationDialog: () => void;
 	};
 
@@ -60,53 +61,54 @@
 	}
 </script>
 
-{#if workspace.session.status === "loading"}
-	<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
-		<Empty.Media variant="icon"
-			><LoaderCircle class="animate-spin" aria-hidden="true" /></Empty.Media
-		>
-		<Empty.Header>
-			<Empty.Title>Loading workspaces…</Empty.Title>
-			<Empty.Description>Restoring your Workspace session.</Empty.Description>
-		</Empty.Header>
-	</Empty.Root>
-{:else if workspace.session.status === "unavailable"}
-	<Empty.Root aria-label="Workspace catalogue unavailable" class="min-h-full rounded-none border-0">
-		<Alert.Root variant="destructive">
-			<Alert.Title>Workspaces unavailable</Alert.Title>
-			<Alert.Description>{workspace.session.error}</Alert.Description>
-		</Alert.Root>
-	</Empty.Root>
-{:else}
-	{#if workspace.todoFile}
-		{#if workspace.pendingOperation === "set_todo_item_completion" || workspace.pendingOperation === "delete_todo_item"}
-			<p class="mb-2 flex items-center gap-2 text-sm text-muted-foreground" role="status">
-				<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-				Updating Todo file…
-			</p>
-		{/if}
-		<TodoList
-			todoFile={workspace.todoFile}
-			disabled={workspace.isOperating}
-			onToggleComplete={toggleTodoCompletion}
-			onDelete={deleteTodoItem}
-		/>
-	{:else}
-		<Empty.Root aria-label="No active workspace">
-			<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
-			<Empty.Header>
-				<Empty.Title>No workspace open</Empty.Title>
-				<Empty.Description
-					>Open or create a Workspace to start working with a Todo file.</Empty.Description
+<div class="min-h-0 flex-1 overflow-hidden">
+	<ScrollArea class="h-full w-full">
+		{#if workspace.session.status === "loading"}
+			<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
+				<Empty.Media variant="icon"
+					><LoaderCircle class="animate-spin" aria-hidden="true" /></Empty.Media
 				>
-			</Empty.Header>
-			<Button
-				disabled={workspace.isOperating || workspace.isLoading}
-				onclick={openWorkspaceCreationDialog}>New workspace</Button
+				<Empty.Header>
+					<Empty.Title>Loading workspaces…</Empty.Title>
+					<Empty.Description>Restoring your Workspace session.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
+		{:else if workspace.session.status === "unavailable"}
+			<Empty.Root
+				aria-label="Workspace catalogue unavailable"
+				class="min-h-full rounded-none border-0"
 			>
-			{#if workspace.warning}
-				<p role="status">{workspace.warning}</p>
+				<Alert.Root variant="destructive">
+					<Alert.Title>Workspaces unavailable</Alert.Title>
+					<Alert.Description>{workspace.session.error}</Alert.Description>
+				</Alert.Root>
+			</Empty.Root>
+		{:else}
+			{#if workspace.todoFile}
+				<TodoList
+					todoFile={workspace.todoFile}
+					disabled={workspace.isOperating}
+					onToggleComplete={toggleTodoCompletion}
+					onDelete={deleteTodoItem}
+				/>
+			{:else}
+				<Empty.Root aria-label="No active workspace">
+					<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
+					<Empty.Header>
+						<Empty.Title>No workspace open</Empty.Title>
+						<Empty.Description
+							>Open or create a Workspace to start working with a Todo file.</Empty.Description
+						>
+					</Empty.Header>
+					<Button
+						disabled={workspace.isOperating || workspace.isLoading}
+						onclick={openWorkspaceCreationDialog}>New workspace</Button
+					>
+					{#if workspace.warning}
+						<p role="status">{workspace.warning}</p>
+					{/if}
+				</Empty.Root>
 			{/if}
-		</Empty.Root>
-	{/if}
-{/if}
+		{/if}
+	</ScrollArea>
+</div>

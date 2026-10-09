@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 	import { z } from "zod";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
@@ -8,8 +7,8 @@
 	import * as Form from "$lib/shared/ui/form";
 	import { Input } from "$lib/shared/ui/input";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
-	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-state.svelte";
-	import { cn } from "@/shared/utils";
+	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-types";
+	import { cn } from "cn";
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {
@@ -95,12 +94,7 @@
 	);
 
 	async function selectTodoFile(): Promise<string | null> {
-		const selected = await openFileDialog({
-			multiple: false,
-			directory: false,
-			title: "Choose Todo file",
-		});
-		return typeof selected === "string" ? selected : null;
+		return window.desktop.selectTodoFile({});
 	}
 	function resetForm() {
 		$formData.name = "";
@@ -111,7 +105,8 @@
 	async function chooseFile() {
 		serverError = "";
 		try {
-			$formData.todoPath = (await selectFile()) ?? "";
+			const selected = await selectFile();
+			if (selected !== null) $formData.todoPath = selected;
 		} catch (error) {
 			serverError = error instanceof Error ? error.message : String(error);
 		}

@@ -3,15 +3,18 @@
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
-	} from "$lib/modules/workspace/state/workspace-session-state.svelte";
-	import { Separator } from "$lib/shared/ui/separator";
+	} from "$lib/modules/workspace/state/workspace-session-types";
+	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
+	import Folder from "@lucide/svelte/icons/folder";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
-	import { ScrollArea } from "$lib/shared/ui/scroll-area";
+
 	import PriorityFilter from "./PriorityFilter.svelte";
 
 	type Props = {
 		workspaces: readonly Workspace[];
+		todoSummary: TodoFileSummary;
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
@@ -22,6 +25,7 @@
 
 	let {
 		workspaces,
+		todoSummary,
 		activeWorkspaceId,
 		selectWorkspace,
 		deleteWorkspace,
@@ -31,8 +35,12 @@
 	}: Props = $props();
 </script>
 
-<aside class="flex h-full shrink-0 flex-col overflow-hidden bg-sidebar">
-	<div class="p-2">
+<Sidebar.Root
+	variant="inset"
+	collapsible="offcanvas"
+	class="top-(--window-toolbar-height) h-[calc(100svh-var(--window-toolbar-height))]"
+>
+	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
 			{workspaces}
 			{activeWorkspaceId}
@@ -42,12 +50,28 @@
 			{deleteWorkspace}
 			{openCreationDialog}
 		/>
-	</div>
-	<div class="px-2"><Separator /></div>
-	<ScrollArea class="min-h-0 flex-1">
-		<div class="flex flex-col gap-5 p-4">
-			<Overview />
-			<PriorityFilter />
-		</div>
-	</ScrollArea>
-</aside>
+	</Sidebar.Header>
+	<Sidebar.Content class="gap-2 px-2">
+		<Overview {todoSummary} />
+		{#if todoSummary.facets.projects.length > 0}
+			<Sidebar.Group>
+				<Sidebar.GroupLabel>Projects</Sidebar.GroupLabel>
+				<Sidebar.GroupContent>
+					<ul class="space-y-0.5">
+						{#each todoSummary.facets.projects as project (project)}
+							<li class="flex h-8 min-w-0 items-center gap-2 rounded-md px-2 text-sm">
+								<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+								<span class="truncate" title={project}>+{project}</span>
+							</li>
+						{/each}
+					</ul>
+				</Sidebar.GroupContent>
+			</Sidebar.Group>
+		{/if}
+		<PriorityFilter {todoSummary} />
+	</Sidebar.Content>
+	<Sidebar.Footer class="p-4 text-xs text-muted-foreground">
+		<span class="font-medium text-sidebar-foreground">Tuxedo</span>
+		<span>Your Todo files, in one place.</span>
+	</Sidebar.Footer>
+</Sidebar.Root>

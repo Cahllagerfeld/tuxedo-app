@@ -15,16 +15,13 @@
 
   languages.javascript = {
     enable = true;
+     package = pkgs.nodejs-slim_26;
     npm = {
       enable = true;
     };
     pnpm = {
       enable = true;
     };
-  };
-
-  languages.rust = {
-    enable = true;
   };
 
   languages.typescript = {

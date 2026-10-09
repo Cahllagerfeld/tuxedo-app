@@ -36,7 +36,7 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
-	it("renders parsed Todo items with useful scan details and completion controls", async () => {
+	it("renders compact Todo items with inline facets and completion controls", async () => {
 		render(TodoList, {
 			todoFile,
 			disabled: false,
@@ -51,8 +51,10 @@ describe("TodoList", () => {
 		await expect.element(page.getByText("(A)", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("due:2026-07-12", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("Completed 2026-07-11", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("due:2026-07-12", { exact: true })).not.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Completed 2026-07-11", { exact: true }))
+			.not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan complete" }))
 			.not.toBeChecked();

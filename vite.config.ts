@@ -4,12 +4,44 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vite";
+import electron from "vite-plugin-electron/simple";
+import type { ElectronOptions } from "vite-plugin-electron";
 
-const host = process.env.TAURI_DEV_HOST;
+let desktopStarted = false;
+const startDesktop: NonNullable<ElectronOptions["onstart"]> = async ({ startup }) => {
+	// The plugin's convenience environment flags must not weaken desktop isolation.
+	delete process.env.ELECTRON_DISABLE_WEB_SECURITY;
+	delete process.env.ELECTRON_IGNORE_CERTIFICATE_ERRORS;
+	desktopStarted = await startup(["."], {
+		env: { ...process.env, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1420" },
+	});
+};
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
 	plugins: [
+		...(mode === "electron" && !process.env.VITEST
+			? await electron({
+					main: {
+						entry: "electron/main.ts",
+						onstart: startDesktop,
+					},
+					preload: {
+						input: "electron/preload.ts",
+						onstart: async (context) => {
+							if (desktopStarted) context.reload();
+							else await startDesktop(context);
+						},
+						vite: {
+							build: {
+								rolldownOptions: {
+									output: { entryFileNames: "preload.cjs", codeSplitting: false },
+								},
+							},
+						},
+					},
+				})
+			: []),
 		tailwindcss(),
 		sveltekit({
 			compilerOptions: {
@@ -56,25 +88,11 @@ export default defineConfig(async () => ({
 		],
 	},
 
-	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-	//
-	// 1. prevent Vite from obscuring rust errors
 	clearScreen: false,
-	// 2. tauri expects a fixed port, fail if that port is not available
 	server: {
 		port: 1420,
 		strictPort: true,
-		host: host || false,
-		hmr: host
-			? {
-					protocol: "ws",
-					host,
-					port: 1421,
-				}
-			: undefined,
-		watch: {
-			// 3. tell Vite to ignore watching `src-tauri`
-			ignored: ["**/src-tauri/**", "**/examples/**"],
-		},
+		host: "127.0.0.1",
+		watch: { ignored: ["**/examples/**"] },
 	},
 }));

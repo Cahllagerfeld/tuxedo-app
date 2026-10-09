@@ -52,3 +52,19 @@ describe("WorkspaceCreationDialog", () => {
 		await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
 	});
 });
+it("cancelling native file selection keeps the previously selected file and form", async () => {
+	let selection: string | null = "/tmp/work.todo";
+	render(WorkspaceCreationDialog, {
+		open: true,
+		selectFile: async () => selection,
+		createWorkspace: async () => ({ status: "applied" }),
+	});
+	await page.getByLabelText("Workspace name").fill("Work");
+	await page.getByText("Choose Todo file", { exact: true }).click();
+	await expect.element(page.getByText("/tmp/work.todo", { exact: true })).toBeVisible();
+	selection = null;
+	await page.getByText("Choose Todo file", { exact: true }).click();
+	await expect.element(page.getByText("/tmp/work.todo", { exact: true })).toBeVisible();
+	await expect.element(page.getByLabelText("Workspace name")).toHaveValue("Work");
+	await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeEnabled();
+});

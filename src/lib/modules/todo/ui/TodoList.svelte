@@ -15,12 +15,10 @@
 </script>
 
 {#if todoFile.items.length > 0}
-	<ul aria-label="Todo items" class="-mx-4 w-full divide-y">
+	<ul aria-label="Todo items" class="w-full divide-y divide-border/50">
 		{#each todoFile.items as item (item.line_number)}
 			<li>
-				{#key item.raw}
-					<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
-				{/key}
+				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
 			</li>
 		{/each}
 	</ul>

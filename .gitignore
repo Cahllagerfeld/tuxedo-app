@@ -21,3 +21,6 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 reference
+/dist-electron
+
+/out
