@@ -86,7 +86,7 @@
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	<div class="min-h-0 min-w-0 flex-1">
-		<ScrollArea class="h-full w-full">
+		<ScrollArea class="h-full w-full" aria-label="Todo item results">
 			{#if workspace.session.status === "loading"}
 				<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
 					<Empty.Media variant="icon"

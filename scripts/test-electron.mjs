@@ -280,20 +280,23 @@ try {
 		).backgroundColor;
 		return background !== "rgba(0, 0, 0, 0)" && background !== sidebar;
 	});
-	await page.locator('[data-slot="scroll-area"]').hover();
-	const thumb = page.locator('[data-slot="scroll-area-thumb"]');
+	const reader = page.getByLabel("Todo item results", { exact: true });
+	await reader.hover();
+	const thumb = reader.locator('[data-slot="scroll-area-thumb"]');
 	await thumb.waitFor({ state: "visible" });
 	const thumbVisible = await thumb.isVisible();
 	assert.ok(
 		hoverContrast && thumbVisible,
 		`Workspace hover contrast: ${hoverContrast}; ScrollArea thumb visible: ${thumbVisible}`
 	);
-	const viewport = page.locator('[data-slot="scroll-area-viewport"]');
+	const viewport = reader.locator('[data-slot="scroll-area-viewport"]');
 	await viewport.evaluate((element) => {
 		element.scrollTop = element.scrollHeight;
 	});
 	await page.waitForFunction(
-		() => document.querySelector('[data-slot="scroll-area-viewport"]').scrollTop > 0
+		() =>
+			document.querySelector('[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]')
+				.scrollTop > 0
 	);
 	assert.ok(await page.getByText("Item 80", { exact: true }).isVisible());
 	console.log(
