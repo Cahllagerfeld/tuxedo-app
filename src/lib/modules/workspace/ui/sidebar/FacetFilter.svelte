@@ -50,7 +50,9 @@
 						onclick={() => onSelect(value)}
 					>
 						<span class="min-w-0 flex-1 truncate text-left">{prefix}{value}</span>
-						<span class="shrink-0 text-xs text-muted-foreground">{counts.get(value)}</span>
+						{#if selected !== value}<span class="shrink-0 text-xs text-muted-foreground"
+								>{counts.get(value)}</span
+							>{/if}
 						{#if selected === value}<Check class="size-4 shrink-0" aria-hidden="true" />{/if}
 					</Button>
 				</li>

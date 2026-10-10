@@ -575,7 +575,7 @@ test("scopes choices and counts to the tab, retaining only available selections"
 		.toHaveAttribute("aria-pressed", "true");
 	await expect
 		.element(page.getByRole("button", { name: "@Home", exact: true }))
-		.toHaveTextContent("@Home 1");
+		.toHaveTextContent("@Home");
 	await expect.element(page.getByRole("button", { name: "+Finished", exact: true })).toBeVisible();
 	await expect
 		.element(page.getByRole("button", { name: "+Personal", exact: true }))
