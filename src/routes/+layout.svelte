@@ -7,6 +7,7 @@
 	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
 	import * as Sidebar from "@/shared/ui/sidebar/index";
 	import { Toaster } from "@/shared/ui/sonner";
+	import { ModeWatcher } from "mode-watcher";
 	import { onMount } from "svelte";
 	import "./layout.css";
 	let { children } = $props();
@@ -19,6 +20,8 @@
 	});
 </script>
 
+<!-- The SPA initializes on mount; runtime inline scripts are blocked by Electron's CSP. -->
+<ModeWatcher defaultMode="system" disableHeadScriptInjection />
 <Toaster position="top-center" />
 <Sidebar.Provider
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-sidebar font-normal antialiased"

@@ -60,6 +60,55 @@ try {
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
 
+	// Use Chromium's native theme source without changing the host OS preference.
+	await page.emulateMedia({ colorScheme: null });
+	const originalThemeSource = await application.evaluate(
+		({ nativeTheme }) => nativeTheme.themeSource
+	);
+	const expectTheme = async (theme) => {
+		await page.waitForFunction((expected) => {
+			const root = document.documentElement;
+			return (
+				matchMedia("(prefers-color-scheme: dark)").matches === (expected === "dark") &&
+				root.classList.contains("dark") === (expected === "dark") &&
+				getComputedStyle(root).colorScheme === expected
+			);
+		}, theme);
+	};
+	try {
+		await application.evaluate(({ nativeTheme }) => {
+			nativeTheme.themeSource = "light";
+		});
+		await expectTheme("light");
+		const lightBackground = await page.evaluate(
+			() => getComputedStyle(document.body).backgroundColor
+		);
+		await application.evaluate(({ nativeTheme }) => {
+			nativeTheme.themeSource = "dark";
+		});
+		await expectTheme("dark");
+		assert.notEqual(
+			await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+			lightBackground
+		);
+		await page.reload();
+		await page.getByText("No workspace open", { exact: true }).waitFor();
+		await expectTheme("dark");
+		await application.evaluate(({ nativeTheme }) => {
+			nativeTheme.themeSource = "light";
+		});
+		await expectTheme("light");
+		assert.equal(
+			await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+			lightBackground
+		);
+		console.log("System theme: light → dark → reload → light passed.");
+	} finally {
+		await application.evaluate(({ nativeTheme }, source) => {
+			nativeTheme.themeSource = source;
+		}, originalThemeSource);
+	}
+
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
