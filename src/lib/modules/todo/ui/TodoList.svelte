@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { TodoFile } from "$lib/modules/todo/domain/todo";
 	import * as Empty from "$lib/shared/ui/empty";
-	import { dragHandle } from "svelte-dnd-action";
+	import { dragHandle, dragHandleZone } from "svelte-dnd-action";
 	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
@@ -46,18 +46,22 @@
 	});
 </script>
 
+<svelte:window onkeydowncapture={list.cancelOnEscape} />
+
 {#if items.length > 0}
 	<ul
 		aria-label="Todo items"
 		class="relative w-full"
-		use:list.dragZone
+		use:dragHandleZone={list.zoneOptions}
+		onconsider={list.consider}
+		onfinalize={list.finalize}
 		style:height={`${list.totalSize}px`}
 	>
 		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
-				class="group absolute top-0 left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
+				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
 				style:height={`${size}px`}
-				style:transform={`translateY(${start}px)`}
+				style:top={`${start}px`}
 				aria-posinset={index + 1}
 				aria-setsize={items.length}
 				onfocusin={() => list.focusItem(todo)}
@@ -68,7 +72,6 @@
 						role="button"
 						tabindex="0"
 						use:dragHandle
-						data-reorder-handle
 						aria-disabled={disabled || items.length < 2}
 						aria-label={`Reorder ${todo.description}`}
 						class="ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"

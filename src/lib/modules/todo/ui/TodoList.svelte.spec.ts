@@ -336,3 +336,36 @@ it.each(["items", "path", "disabled"] as const)(
 		await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
 	}
 );
+
+it("expands a drag started in the middle without losing unmounted Todo items", async () => {
+	const items = Array.from({ length: 100 }, (_, index) => ({
+		...todoFile.items[0],
+		line_number: index + 1,
+		description: `Item ${index + 1}`,
+	}));
+	const onReorder = vi.fn();
+	await render(TodoList, {
+		todoFile: { ...todoFile, items },
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+	viewport.scrollTop = 41 * 40;
+	const handle = page.getByRole("button", { name: "Reorder Item 45", exact: true });
+	await expect.element(handle).toBeVisible();
+	await expect.element(page.getByText("Item 1", { exact: true })).not.toBeInTheDocument();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	await userEvent.keyboard("{ArrowUp}".repeat(25));
+	await userEvent.keyboard("{Space}");
+	const expected = [...items];
+	expected.splice(44, 1);
+	expected.splice(19, 0, items[44]);
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder).toHaveBeenCalledWith(expected);
+	await expect
+		.poll(() => page.getByRole("list", { name: "Todo items" }).element().children.length)
+		.toBeLessThan(30);
+});

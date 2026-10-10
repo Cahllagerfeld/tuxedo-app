@@ -1,5 +1,4 @@
-import { flushSync } from "svelte";
-import { dragHandleZone, SOURCES, TRIGGERS, type DndEvent } from "svelte-dnd-action";
+import { SOURCES, TRIGGERS, type DndEvent } from "svelte-dnd-action";
 import type { TodoItem } from "../domain/todo";
 import {
 	createTodoListVirtualization,
@@ -22,7 +21,6 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 	let preview = $state.raw<DraggableTodo[] | null>(null);
 	let original: readonly TodoItem[] = [];
 	let originalPath = "";
-	let started = $state(false);
 	let cancelled = false;
 	const rows = $derived(
 		preview
@@ -51,66 +49,23 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 		dropAnimationDisabled: true,
 	});
 
-	// Expand before the library handles the initiating event. Its item array must
-	// match mounted rows, including offscreen destinations, throughout a drag.
-	function dragZone(node: HTMLElement) {
-		function prepare(event: Event) {
-			if (
-				preview ||
-				inputs.disabled ||
-				!inputs.onReorder ||
-				inputs.items.length < 2 ||
-				!(event.target instanceof Element) ||
-				!event.target.closest("[data-reorder-handle]")
-			)
-				return;
-			if (event instanceof KeyboardEvent && ![" ", "Enter"].includes(event.key)) return;
-			original = inputs.items;
-			originalPath = inputs.todoFilePath;
-			started = false;
-			cancelled = false;
-			flushSync(() => {
-				preview = inputs.items.map((todo) => ({ id: todo.line_number, todo }));
-			});
-		}
-		function cancelOnEscape(event: KeyboardEvent) {
-			if (started && event.key === "Escape") cancelled = true;
-		}
-		function release() {
-			if (!started) preview = null;
-		}
-		node.addEventListener("mousedown", prepare, true);
-		node.addEventListener("touchstart", prepare, true);
-		node.addEventListener("keydown", prepare, true);
-		window.addEventListener("keydown", cancelOnEscape, true);
-		window.addEventListener("mouseup", release);
-		window.addEventListener("touchend", release);
-		const zone = dragHandleZone(node, zoneOptions);
-		// The action owns synchronization with the external drag-and-drop library.
-		$effect(() => {
-			zone.update?.(zoneOptions);
-		});
-		function onConsider(event: Event) {
-			if (event instanceof CustomEvent) consider(event);
-		}
-		function onFinalize(event: Event) {
-			if (event instanceof CustomEvent) finalize(event);
-		}
-		node.addEventListener("consider", onConsider);
-		node.addEventListener("finalize", onFinalize);
-		return {
-			destroy() {
-				node.removeEventListener("mousedown", prepare, true);
-				node.removeEventListener("touchstart", prepare, true);
-				node.removeEventListener("keydown", prepare, true);
-				window.removeEventListener("keydown", cancelOnEscape, true);
-				window.removeEventListener("mouseup", release);
-				window.removeEventListener("touchend", release);
-				node.removeEventListener("consider", onConsider);
-				node.removeEventListener("finalize", onFinalize);
-				zone.destroy?.();
-			},
-		};
+	// The library reports Escape as a keyboard drop, without its initiating key.
+	// Capture it before the library's handler so Escape discards the preview,
+	// including when focus has moved outside the list.
+	function cancelOnEscape(event: KeyboardEvent) {
+		if (preview && event.key === "Escape") cancelled = true;
+	}
+
+	function start(next: DraggableTodo[]) {
+		original = inputs.items;
+		originalPath = inputs.todoFilePath;
+		cancelled = false;
+		// The first event contains only mounted rows. Expand to all items once
+		// dragging starts, retaining the library's pointer-drag placeholder.
+		const mounted = new Map(next.map((item) => [item.todo.line_number, item]));
+		preview = original.map(
+			(todo) => mounted.get(todo.line_number) ?? { id: todo.line_number, todo }
+		);
 	}
 	function finish(next: DraggableTodo[], id: string) {
 		const valid =
@@ -122,15 +77,15 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 		const focused = reordered.find((item) => String(item.line_number) === String(id));
 		if (focused) virtualization.focusItem(focused);
 		preview = null;
-		started = false;
 		if (valid && reordered.some((item, index) => item !== original[index]))
 			inputs.onReorder?.(reordered);
 	}
 	function consider(event: CustomEvent<DndEvent<DraggableTodo>>) {
-		if (event.detail.info.trigger === TRIGGERS.DRAG_STOPPED) {
+		if (event.detail.info.trigger === TRIGGERS.DRAG_STARTED) {
+			start(event.detail.items);
+		} else if (event.detail.info.trigger === TRIGGERS.DRAG_STOPPED) {
 			finish(event.detail.items, event.detail.info.id);
 		} else {
-			started = true;
 			preview = event.detail.items;
 		}
 	}
@@ -150,9 +105,14 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 			return preview ? preview.length * TODO_LIST_ROW_HEIGHT : virtualization.totalSize;
 		},
 		get dragging() {
-			return started;
+			return preview !== null;
 		},
-		dragZone,
+		get zoneOptions() {
+			return zoneOptions;
+		},
+		consider,
+		finalize,
+		cancelOnEscape,
 		focusItem: virtualization.focusItem,
 		onFocusOut: virtualization.onFocusOut,
 	};
