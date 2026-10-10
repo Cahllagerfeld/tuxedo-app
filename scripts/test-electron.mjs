@@ -21,6 +21,22 @@ const launchApplication = () =>
 		args: packagedExecutable ? [] : [resolve("dist-electron/main.js")],
 		env: environment,
 	});
+const assertMaximized = async () => {
+	// The first window can be observed before startup finishes.
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const state = await application.evaluate(({ BrowserWindow }) => {
+			const window = BrowserWindow.getAllWindows()[0];
+			return { maximized: window.isMaximized(), fullscreen: window.isFullScreen() };
+		});
+		assert.equal(state.fullscreen, false, "Application window must keep native fullscreen off");
+		if (state.maximized) {
+			console.log("Application window opens maximized with native fullscreen off.");
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	assert.fail("Application window must open maximized");
+};
 try {
 	if (development) {
 		vite = spawn(
@@ -41,6 +57,7 @@ try {
 	}
 	application = await launchApplication();
 	let page = await application.firstWindow();
+	await assertMaximized();
 	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(confirmed.session.status, "empty");
@@ -197,6 +214,7 @@ try {
 	await application.close();
 	application = await launchApplication();
 	page = await application.firstWindow();
+	await assertMaximized();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	const restored = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(
