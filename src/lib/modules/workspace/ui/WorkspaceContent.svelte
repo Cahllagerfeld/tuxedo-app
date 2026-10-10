@@ -5,12 +5,14 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
+	import { workspaceShortcuts } from "./workspace-shortcuts";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-	import { toast } from "svelte-sonner";
+	import { createWorkspaceTodoActions } from "./workspace-todo-actions.svelte";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
@@ -24,48 +26,11 @@
 	let { workspace, todoFilter, filteredTodoItems, openWorkspaceCreationDialog }: Props = $props();
 	let todoViewport = $state<HTMLElement | null>(null);
 
-	async function toggleTodoCompletion(todo: TodoItem) {
-		try {
-			const result = await workspace.setCompletion(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not update Todo item", { description: result.message });
-			}
-		} catch (error) {
-			toast.error("Could not update Todo item", {
-				description: errorMessage(error),
-			});
-		}
-	}
-
-	async function deleteTodoItem(todo: TodoItem) {
-		try {
-			const result = await workspace.deleteTodo(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not delete Todo item", { description: result.message });
-			}
-		} catch (error) {
-			toast.error("Could not delete Todo item", {
-				description: errorMessage(error),
-			});
-		}
-	}
-
-	function errorMessage(error: unknown) {
-		if (error instanceof Error) return error.message;
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"message" in error &&
-			typeof error.message === "string"
-		) {
-			return error.message;
-		}
-		return String(error);
-	}
+	const todoActions = createWorkspaceTodoActions({
+		get workspace() {
+			return workspace;
+		},
+	});
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -114,6 +79,18 @@
 				</Empty.Root>
 			{:else}
 				{#if workspace.todoFile}
+					{#key workspace.activeWorkspace?.id}
+						<TodoList
+							workspaceKey={workspace.activeWorkspace?.id}
+							scrollElement={todoViewport}
+							todoFile={workspace.todoFile}
+							items={filteredTodoItems}
+							showEmptyState={workspace.todoFile.items.length === 0}
+							disabled={workspace.isOperating}
+							onToggleComplete={todoActions.toggleCompletion}
+							onDelete={todoActions.deleteItem}
+						/>
+					{/key}
 					{#if filteredTodoItems.length === 0 && workspace.todoFile.items.length > 0}
 						<Empty.Root
 							aria-label="No matching Todo items"
@@ -138,15 +115,6 @@
 								>
 							{/if}
 						</Empty.Root>
-					{:else}
-						<TodoList
-							scrollElement={todoViewport}
-							todoFile={workspace.todoFile}
-							items={filteredTodoItems}
-							disabled={workspace.isOperating}
-							onToggleComplete={toggleTodoCompletion}
-							onDelete={deleteTodoItem}
-						/>
 					{/if}
 				{:else}
 					<Empty.Root aria-label="No active workspace">
@@ -158,8 +126,12 @@
 							>
 						</Empty.Header>
 						<Button
+							aria-label="New workspace"
 							disabled={workspace.isOperating || workspace.isLoading}
-							onclick={openWorkspaceCreationDialog}>New workspace</Button
+							onclick={openWorkspaceCreationDialog}
+							>New workspace <ShortcutHint
+								binding={workspaceShortcuts.workspaceCreation.binding}
+							/></Button
 						>
 						{#if workspace.warning}
 							<p role="status">{workspace.warning}</p>

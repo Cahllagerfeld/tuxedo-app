@@ -37,8 +37,99 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
+	it("a held Space activates a native checkbox once", async () => {
+		const onToggleComplete = vi.fn();
+		await render(TodoList, { todoFile, disabled: false, onToggleComplete, onDelete: vi.fn() });
+		const checkbox = page.getByRole("checkbox", { name: "Mark Plan complete" });
+		await expect.element(checkbox).toBeVisible();
+		(checkbox.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space>}");
+		expect(onToggleComplete).toHaveBeenCalledTimes(1);
+		checkbox.element().dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: " ",
+				code: "Space",
+				repeat: true,
+				bubbles: true,
+				cancelable: true,
+			})
+		);
+		await userEvent.keyboard("{/Space}");
+		expect(onToggleComplete).toHaveBeenCalledTimes(1);
+	});
+	it("navigates rows without wrapping and activates completion only in row context", async () => {
+		const onToggleComplete = vi.fn();
+		await render(TodoList, { todoFile, disabled: false, onToggleComplete, onDelete: vi.fn() });
+		const list = page.getByRole("list", { name: "Todo items" });
+		await expect.element(list).toBeVisible();
+		(list.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}");
+		await expect.element(page.getByRole("listitem").nth(0)).toHaveFocus();
+		await userEvent.keyboard("{ArrowUp}{Space}");
+		expect(onToggleComplete).toHaveBeenCalledExactlyOnceWith(todoFile.items[0]);
+		await userEvent.keyboard("{End}{ArrowDown}");
+		await expect.element(page.getByRole("listitem").nth(1)).toHaveFocus();
+		await userEvent.keyboard("{Home}{Tab}{Space}");
+		await expect.element(page.getByRole("checkbox", { name: "Mark Plan complete" })).toHaveFocus();
+		expect(onToggleComplete).toHaveBeenCalledTimes(2);
+	});
 	beforeEach(async () => {
 		await page.viewport(800, 600);
+	});
+	it("preserves row focus through confirmed completion and discards pending focus after a Workspace change", async () => {
+		let finish!: () => void;
+		const onToggleComplete = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve;
+				})
+		);
+		const props = { todoFile, disabled: false, onToggleComplete, onDelete: vi.fn() };
+		const view = await render(TodoList, props);
+		const list = page.getByRole("list", { name: "Todo items" });
+		await expect.element(list).toBeVisible();
+		(list.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}{Space}");
+		await view.rerender({
+			...props,
+			todoFile: {
+				...todoFile,
+				items: [{ ...todoFile.items[0], completed: true }, todoFile.items[1]],
+			},
+		});
+		finish();
+		await expect.element(page.getByRole("listitem").nth(0)).toHaveFocus();
+		await userEvent.keyboard("{Space}");
+		await view.rerender({
+			...props,
+			workspaceKey: "different-workspace",
+			todoFile: { ...todoFile, items: [] },
+		});
+		finish();
+		await expect.element(list).not.toHaveFocus();
+		expect(onToggleComplete).toHaveBeenCalledTimes(2);
+	});
+	it("Home and End focus offscreen rows and keep them visible", async () => {
+		const items = Array.from({ length: 1000 }, (_, index) => ({
+			...todoFile.items[0],
+			line_number: index + 1,
+			description: `Item ${index + 1}`,
+		}));
+		await render(TodoList, {
+			todoFile: { ...todoFile, items },
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		const list = page.getByRole("list", { name: "Todo items" });
+		await expect.element(list).toBeVisible();
+		(list.element() as HTMLElement).focus();
+		await userEvent.keyboard("{End}");
+		await expect.element(page.getByText("Item 1000", { exact: true })).toBeVisible();
+		expect(document.activeElement).toHaveAttribute("aria-posinset", "1000");
+		await userEvent.keyboard("{Home}");
+		await expect.element(page.getByText("Item 1", { exact: true })).toBeVisible();
+		expect(document.activeElement).toHaveAttribute("aria-posinset", "1");
 	});
 	it("does not reread the whole Todo file when keyboard focus moves", async () => {
 		const readLineNumber = vi.fn((index: number) => index + 1);

@@ -3,15 +3,17 @@
 	import * as Empty from "$lib/shared/ui/empty";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
-	import { createTodoListVirtualization } from "./todo-list-virtualization.svelte";
+	import { createTodoListInteraction, type TodoItemAction } from "./todo-list-interaction.svelte";
 
 	type TodoListProps = {
 		todoFile: TodoFile;
 		scrollElement: HTMLElement | null;
 		items?: readonly TodoFile["items"][number][];
 		disabled: boolean;
-		onToggleComplete: (todo: TodoFile["items"][number]) => void;
-		onDelete: (todo: TodoFile["items"][number]) => void;
+		workspaceKey?: string;
+		showEmptyState?: boolean;
+		onToggleComplete: TodoItemAction;
+		onDelete: TodoItemAction;
 	};
 
 	let {
@@ -21,9 +23,11 @@
 		disabled,
 		onToggleComplete,
 		onDelete,
+		workspaceKey = todoFile.path,
+		showEmptyState = true,
 	}: TodoListProps = $props();
-
-	const virtualization = createTodoListVirtualization({
+	let list = $state<HTMLUListElement | null>(null);
+	const interaction = createTodoListInteraction({
 		get items() {
 			return items;
 		},
@@ -33,30 +37,58 @@
 		get scrollElement() {
 			return scrollElement;
 		},
+		get list() {
+			return list;
+		},
+		get workspaceKey() {
+			return workspaceKey;
+		},
+		get disabled() {
+			return disabled;
+		},
+		get onToggleComplete() {
+			return onToggleComplete;
+		},
+		get onDelete() {
+			return onDelete;
+		},
 	});
 </script>
 
-{#if items.length > 0}
-	<ul
-		aria-label="Todo items"
-		class="relative w-full"
-		style:height={`${virtualization.totalSize}px`}
-	>
-		{#each virtualization.rows as { row, item } (row.key)}
-			<li
-				class="absolute top-0 left-0 w-full border-b border-border/50"
-				style:height={`${row.size}px`}
-				style:transform={`translateY(${row.start}px)`}
-				aria-posinset={row.index + 1}
-				aria-setsize={items.length}
-				onfocusin={() => virtualization.focusItem(item)}
-				onfocusout={virtualization.onFocusOut}
-			>
-				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
-			</li>
-		{/each}
-	</ul>
-{:else}
+<!-- The list is a Tab entry and the empty-list focus fallback; rows use focus-only navigation. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<ul
+	bind:this={list}
+	{@attach interaction.navigation}
+	tabindex="0"
+	aria-label="Todo items"
+	onkeydowncapture={interaction.preventRepeatedCheckboxActivation}
+	onfocusin={interaction.onListFocus}
+	class="relative w-full focus-visible:outline-2 focus-visible:outline-ring"
+	style:height={`${items.length ? interaction.totalSize : 41}px`}
+>
+	{#each interaction.rows as { row, item } (row.key)}
+		<li
+			tabindex="-1"
+			data-todo-line={item.line_number}
+			class="absolute top-0 left-0 w-full border-b border-border/50 focus-visible:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+			style:height={`${row.size}px`}
+			style:transform={`translateY(${row.start}px)`}
+			aria-posinset={row.index + 1}
+			aria-setsize={items.length}
+			onfocusin={() => interaction.onRowFocus(item)}
+			onfocusout={interaction.onRowFocusOut}
+		>
+			<TodoItem
+				todo={item}
+				{disabled}
+				onToggleComplete={interaction.toggleCompletion}
+				onDelete={interaction.deleteItem}
+			/>
+		</li>
+	{/each}
+</ul>
+{#if items.length === 0 && showEmptyState}
 	<Empty.Root aria-label="No valid Todo items" class="min-h-full rounded-none border-0">
 		<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
 		<Empty.Header>

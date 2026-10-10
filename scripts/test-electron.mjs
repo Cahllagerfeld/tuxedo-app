@@ -375,6 +375,38 @@ try {
 	await page.getByText("Item 1000", { exact: true }).waitFor();
 	assert.ok(await page.getByText("Item 1000", { exact: true }).isVisible());
 	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
+	// Verify the actual desktop key path, including packaged builds.
+	const modifier = process.platform === "darwin" ? "Meta" : "Control";
+	await page.keyboard.press(`${modifier}+/`);
+	await page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true }).waitFor();
+	await page.keyboard.press(`${modifier}+p`);
+	assert.equal(await page.getByRole("menu").count(), 0);
+	await page.keyboard.press("Escape");
+	await page.waitForFunction(() =>
+		document.activeElement.textContent.includes("Keyboard shortcuts")
+	);
+	await page.keyboard.press(`${modifier}+Shift+n`);
+	await page.getByRole("dialog", { name: "Create workspace", exact: true }).waitFor();
+	await page.keyboard.press("Escape");
+	await page
+		.getByRole("dialog", { name: "Create workspace", exact: true })
+		.waitFor({ state: "detached" });
+	await page.keyboard.press(`${modifier}+p`);
+	await page.getByRole("menu").waitFor();
+	await page.keyboard.press("Escape");
+	await page.getByRole("menu").waitFor({ state: "detached" });
+	await page.getByRole("list", { name: "Todo items", exact: true }).focus();
+	await page.keyboard.press("Home");
+	await page.waitForFunction(() => document.activeElement.getAttribute("aria-posinset") === "1");
+	await page.keyboard.press("End");
+	await page.waitForFunction(() => document.activeElement.getAttribute("aria-posinset") === "1000");
+	await page.keyboard.press("Space");
+	await page.getByText("Item 1000", { exact: true }).waitFor({ state: "detached" });
+	await page.waitForFunction(() => document.activeElement.getAttribute("aria-posinset") === "999");
+	assert.match(await readFile(deletionPath, "utf8"), /\nx \d{4}-\d{2}-\d{2} Item 1000$/);
+	console.log(
+		"Desktop shortcuts, dialog suppression, virtual row focus, and keyboard completion passed."
+	);
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

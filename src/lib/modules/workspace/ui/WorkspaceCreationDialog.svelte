@@ -16,6 +16,8 @@
 		selectFile?: () => Promise<string | null>;
 		createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceSessionActionResult>;
 		disabled?: boolean;
+		onCloseAutoFocus?: (event: Event) => void;
+		onOpenAutoFocus?: (event: Event) => void;
 	};
 
 	const schema = z.object({
@@ -84,6 +86,8 @@
 		selectFile = selectTodoFile,
 		createWorkspace,
 		disabled = false,
+		onCloseAutoFocus,
+		onOpenAutoFocus,
 	}: Props = $props();
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
 	const { form: formData } = form;
@@ -134,7 +138,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content showCloseButton={false}>
+	<Dialog.Content showCloseButton={false} {onCloseAutoFocus} {onOpenAutoFocus}>
 		<Dialog.Header
 			><Dialog.Title>Create workspace</Dialog.Title><Dialog.Description
 				>Create a saved Workspace for one Todo file.</Dialog.Description
