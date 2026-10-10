@@ -20,7 +20,12 @@
 </p>
 <p aria-label="Summary facets">{app.todos.facets.projects.join(",")}</p>
 <div class="flex h-96 flex-col">
-	<WorkspaceContent workspace={app.workspace} openWorkspaceCreationDialog={() => {}} />
+	<WorkspaceContent
+		workspace={app.workspace}
+		todoFilter={app.todoFilter}
+		filteredTodoItems={app.filteredTodoItems}
+		openWorkspaceCreationDialog={() => {}}
+	/>
 </div>
 <ReaderStatusBar
 	activeWorkspace={app.workspace.activeWorkspace}

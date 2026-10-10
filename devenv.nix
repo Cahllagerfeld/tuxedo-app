@@ -15,7 +15,7 @@
 
   languages.javascript = {
     enable = true;
-     package = pkgs.nodejs-slim_26;
+     package = pkgs.nodejs-slim_24;
     npm = {
       enable = true;
     };
