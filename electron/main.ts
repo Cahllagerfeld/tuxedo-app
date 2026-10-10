@@ -99,6 +99,7 @@ void app.whenReady().then(async () => {
 		});
 		window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 		await window.loadURL(devOrigin ?? "tuxedo://app/");
+		window.maximize();
 	};
 	const getWindow = () => mainWindow;
 	registerDesktopOperation(ipcMain, getWindow, trusted, "readSession", backend.readSession);
