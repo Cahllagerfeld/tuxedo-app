@@ -49,5 +49,12 @@
 				/></Button
 			>
 		{/each}
+		<Button
+			variant="ghost"
+			size="xs"
+			class="ml-auto shrink-0 text-muted-foreground"
+			{disabled}
+			onclick={todoFilter.clear}>Clear filters</Button
+		>
 	</div>
 {/if}

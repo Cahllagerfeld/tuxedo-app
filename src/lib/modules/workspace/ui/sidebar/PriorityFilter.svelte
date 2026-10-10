@@ -5,7 +5,6 @@
 
 	let {
 		values,
-		counts,
 		selected,
 		search,
 		disabled = false,
@@ -13,7 +12,6 @@
 		onSelect,
 	}: {
 		values: readonly string[];
-		counts: ReadonlyMap<string, number>;
 		selected: string | null;
 		search: string;
 		disabled?: boolean;
@@ -40,7 +38,6 @@
 						onclick={() => onSelect(priority)}
 					>
 						{priority}
-						<span class="text-xs opacity-70">{counts.get(priority)}</span>
 					</Button>
 				{/each}
 			</div>

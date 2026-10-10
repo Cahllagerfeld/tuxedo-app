@@ -219,7 +219,10 @@ test("defaults to Open and combines exact Project and Context filters", async ()
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
-	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	await page
+		.getByLabelText("Active filters")
+		.getByRole("button", { name: "Clear filters", exact: true })
+		.click();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");

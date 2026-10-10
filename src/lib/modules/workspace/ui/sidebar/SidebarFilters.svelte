@@ -58,7 +58,6 @@
 		/>
 		<PriorityFilter
 			values={todoFilter.availableFacets.priorities}
-			counts={todoFilter.availableFacets.counts.priorities}
 			selected={todoFilter.selectedPriority}
 			{search}
 			{disabled}

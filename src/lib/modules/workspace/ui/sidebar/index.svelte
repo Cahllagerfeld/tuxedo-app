@@ -5,7 +5,6 @@
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-types";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { Button } from "$lib/shared/ui/button";
 	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
@@ -65,15 +64,6 @@
 		{#key activeWorkspaceId}
 			<SidebarFilters {todoFilter} disabled={!todoFileLoaded || disabled} />
 		{/key}
-		{#if todoFileLoaded && todoFilter.hasFacetFilters}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="mx-2 mt-2 shrink-0 justify-start px-2 text-xs font-normal text-muted-foreground"
-				{disabled}
-				onclick={todoFilter.clear}>Clear filters</Button
-			>
-		{/if}
 	</Sidebar.Content>
 	<Sidebar.Footer class="p-4 text-xs text-muted-foreground">
 		<span class="font-medium text-sidebar-foreground">Tuxedo</span>
