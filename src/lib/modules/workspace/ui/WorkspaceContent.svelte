@@ -5,6 +5,7 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
@@ -32,10 +33,12 @@
 			} else if (result.status === "rejected") {
 				toast.error("Could not update Todo item", { description: result.message });
 			}
+			return result.status === "applied";
 		} catch (error) {
 			toast.error("Could not update Todo item", {
 				description: errorMessage(error),
 			});
+			return false;
 		}
 	}
 
@@ -47,10 +50,12 @@
 			} else if (result.status === "rejected") {
 				toast.error("Could not delete Todo item", { description: result.message });
 			}
+			return result.status === "applied";
 		} catch (error) {
 			toast.error("Could not delete Todo item", {
 				description: errorMessage(error),
 			});
+			return false;
 		}
 	}
 
@@ -114,6 +119,18 @@
 				</Empty.Root>
 			{:else}
 				{#if workspace.todoFile}
+					{#key workspace.activeWorkspace?.id}
+						<TodoList
+							workspaceKey={workspace.activeWorkspace?.id}
+							scrollElement={todoViewport}
+							todoFile={workspace.todoFile}
+							items={filteredTodoItems}
+							showEmptyState={workspace.todoFile.items.length === 0}
+							disabled={workspace.isOperating}
+							onToggleComplete={toggleTodoCompletion}
+							onDelete={deleteTodoItem}
+						/>
+					{/key}
 					{#if filteredTodoItems.length === 0 && workspace.todoFile.items.length > 0}
 						<Empty.Root
 							aria-label="No matching Todo items"
@@ -138,15 +155,6 @@
 								>
 							{/if}
 						</Empty.Root>
-					{:else}
-						<TodoList
-							scrollElement={todoViewport}
-							todoFile={workspace.todoFile}
-							items={filteredTodoItems}
-							disabled={workspace.isOperating}
-							onToggleComplete={toggleTodoCompletion}
-							onDelete={deleteTodoItem}
-						/>
 					{/if}
 				{:else}
 					<Empty.Root aria-label="No active workspace">
@@ -158,8 +166,10 @@
 							>
 						</Empty.Header>
 						<Button
+							aria-label="New workspace"
 							disabled={workspace.isOperating || workspace.isLoading}
-							onclick={openWorkspaceCreationDialog}>New workspace</Button
+							onclick={openWorkspaceCreationDialog}
+							>New workspace <ShortcutHint shortcut="workspaceCreation" /></Button
 						>
 						{#if workspace.warning}
 							<p role="status">{workspace.warning}</p>

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import type { Snippet } from "svelte";
+	let { children }: { children?: Snippet } = $props();
 </script>
 
 <header
@@ -7,4 +9,5 @@
 >
 	<Sidebar.Trigger class="[app-region:no-drag]" />
 	<span>Tuxedo</span>
+	<div class="ml-auto pr-3">{@render children?.()}</div>
 </header>

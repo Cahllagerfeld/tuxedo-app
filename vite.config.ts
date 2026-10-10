@@ -19,6 +19,7 @@ const startDesktop: NonNullable<ElectronOptions["onstart"]> = async ({ startup }
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
+	optimizeDeps: { include: ["@tanstack/svelte-hotkeys"] },
 	plugins: [
 		...(mode === "electron" && !process.env.VITEST
 			? await electron({

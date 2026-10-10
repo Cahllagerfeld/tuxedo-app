@@ -23,6 +23,7 @@
 		todoFilter: TodoFilterState;
 		todoFileLoaded?: boolean;
 		collapsible?: "offcanvas" | "icon" | "none";
+		switcherTrigger?: HTMLButtonElement | null;
 	};
 
 	let {
@@ -37,6 +38,7 @@
 		todoFilter,
 		todoFileLoaded = false,
 		collapsible = "offcanvas",
+		switcherTrigger = $bindable(null),
 	}: Props = $props();
 </script>
 
@@ -47,6 +49,7 @@
 >
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
+			bind:trigger={switcherTrigger}
 			{workspaces}
 			{activeWorkspaceId}
 			{disabled}
