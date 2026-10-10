@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createHotkey } from "@tanstack/svelte-hotkeys";
-	import { shortcuts, shortcutSurfaceOpen, shortcutPlatform } from "$lib/shared/shortcuts";
+	import { shortcutSurfaceOpen, shortcutPlatform } from "$lib/shared/keyboard";
+	import { shortcuts } from "./shortcuts";
 	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
@@ -53,7 +54,7 @@
 				size="sm"
 				class="[app-region:no-drag]"
 			>
-				Keyboard shortcuts <ShortcutHint shortcut="help" {platform} />
+				Keyboard shortcuts <ShortcutHint binding={shortcuts.help.binding} {platform} />
 			</Button>
 		{/snippet}
 	</Dialog.Trigger>
@@ -65,10 +66,10 @@
 			>
 		</Dialog.Header>
 		<dl class="grid gap-3">
-			{#each Object.entries(shortcuts) as [id, shortcut]}
+			{#each Object.entries(shortcuts) as [, shortcut]}
 				<div class="flex items-center justify-between gap-4">
 					<dt>{shortcut.label}</dt>
-					<dd><ShortcutHint shortcut={id as keyof typeof shortcuts} {platform} /></dd>
+					<dd><ShortcutHint binding={shortcut.binding} {platform} /></dd>
 				</div>
 			{/each}
 		</dl>

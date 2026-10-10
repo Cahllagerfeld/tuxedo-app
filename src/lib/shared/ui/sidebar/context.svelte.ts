@@ -1,7 +1,7 @@
 import { getContext, setContext } from "svelte";
 import { IsMobile } from "$lib/shared/hooks/is-mobile.svelte.js";
 import { SIDEBAR_KEYBOARD_SHORTCUT } from "./constants.js";
-import { shortcutSurfaceOpen } from "$lib/shared/shortcuts";
+import { shortcutSurfaceOpen } from "$lib/shared/keyboard";
 
 type Getter<T> = () => T;
 

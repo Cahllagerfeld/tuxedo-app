@@ -2,7 +2,7 @@ import { page, userEvent } from "vitest/browser";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
-import { shortcutPlatform } from "$lib/shared/shortcuts";
+import { shortcutPlatform } from "$lib/shared/keyboard";
 import Harness from "./KeyboardHarness.svelte";
 import AppShortcuts from "./AppShortcuts.svelte";
 import "../../routes/layout.css";
@@ -252,6 +252,30 @@ test("deleting the last visible item uses the focusable empty-list fallback", as
 	await page.getByRole("button", { name: "Delete Plan", exact: true }).click();
 	await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
 	await expect.element(page.getByLabelText("No valid Todo items")).toBeVisible();
+});
+
+test("pending completion does not reclaim focus after clicking a nonfocusable area", async () => {
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+	await render(Harness, {
+		desktop: desktop({
+			setTodoCompletion: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		}),
+	});
+	const list = page.getByRole("list", { name: "Todo items" });
+	await expect.element(list).toBeVisible();
+	(list.element() as HTMLElement).focus();
+	await userEvent.keyboard("{ArrowDown}{Space}");
+	await page.getByRole("banner").getByText("Tuxedo", { exact: true }).click();
+	expect(document.activeElement).toBe(document.body);
+	finish({
+		status: "applied",
+		confirmed: confirmed([{ ...items[0], completed: true }, ...items.slice(1)]),
+	});
+	await expect.element(page.getByText("Plan", { exact: true })).not.toBeInTheDocument();
+	expect(document.activeElement).toBe(document.body);
 });
 
 test("native delete activation focuses the previous row when deleting the last row", async () => {

@@ -6,7 +6,8 @@
 	import { createTodoListVirtualization } from "./todo-list-virtualization.svelte";
 	import { tick } from "svelte";
 	import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
-	import { shortcuts, shortcutSurfaceOpen } from "$lib/shared/shortcuts";
+	import { shortcutSurfaceOpen } from "$lib/shared/keyboard";
+	import { todoShortcuts } from "./todo-shortcuts";
 
 	type TodoListProps = {
 		todoFile: TodoFile;
@@ -103,7 +104,7 @@
 	}
 	const navigation = createHotkeysAttachment(
 		(["previous", "next", "first", "last", "completion"] as const).map((id) => ({
-			hotkey: shortcuts[id].binding,
+			hotkey: todoShortcuts[id].binding,
 			callback: (event) => handleKey(id, event),
 		})),
 		() => ({ enabled: !disabled, preventDefault: false, stopPropagation: false })
@@ -123,6 +124,9 @@
 </script>
 
 <svelte:document
+	onpointerdown={() => {
+		focusVersion++;
+	}}
 	onfocusin={() => {
 		focusVersion++;
 	}}
@@ -135,6 +139,18 @@
 	{@attach navigation}
 	tabindex="0"
 	aria-label="Todo items"
+	onkeydowncapture={(event) => {
+		// Bits UI activates checkboxes on keydown; a held Space must still mutate only once.
+		if (
+			event.repeat &&
+			event.key === " " &&
+			event.target instanceof HTMLElement &&
+			event.target.closest('[role="checkbox"]')
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+		}
+	}}
 	onfocusin={(event) => {
 		if (event.target === list) focusedRow = null;
 	}}

@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { formatForDisplay } from "@tanstack/svelte-hotkeys";
-	import { shortcutPlatform, shortcuts } from "$lib/shared/shortcuts";
+	import { formatForDisplay, type Hotkey } from "@tanstack/svelte-hotkeys";
+	import { shortcutPlatform } from "$lib/shared/keyboard";
 	import * as Kbd from "$lib/shared/ui/kbd";
 	let {
-		shortcut,
+		binding,
 		platform = shortcutPlatform,
-	}: { shortcut: keyof typeof shortcuts; platform?: typeof shortcutPlatform } = $props();
+	}: { binding: Hotkey; platform?: typeof shortcutPlatform } = $props();
 </script>
 
-<Kbd.Group aria-label={formatForDisplay(shortcuts[shortcut].binding, { platform })}>
-	{#each formatForDisplay(shortcuts[shortcut].binding, { platform, parts: true }) as key}
+<Kbd.Group aria-label={formatForDisplay(binding, { platform })}>
+	{#each formatForDisplay(binding, { platform, parts: true }) as key}
 		<Kbd.Root>{key}</Kbd.Root>
 	{/each}
 </Kbd.Group>

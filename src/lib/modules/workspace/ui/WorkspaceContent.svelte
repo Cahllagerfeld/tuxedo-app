@@ -6,6 +6,7 @@
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
+	import { workspaceShortcuts } from "./workspace-shortcuts";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
@@ -169,7 +170,9 @@
 							aria-label="New workspace"
 							disabled={workspace.isOperating || workspace.isLoading}
 							onclick={openWorkspaceCreationDialog}
-							>New workspace <ShortcutHint shortcut="workspaceCreation" /></Button
+							>New workspace <ShortcutHint
+								binding={workspaceShortcuts.workspaceCreation.binding}
+							/></Button
 						>
 						{#if workspace.warning}
 							<p role="status">{workspace.warning}</p>

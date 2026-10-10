@@ -13,6 +13,7 @@
 	} from "$lib/modules/workspace/state/workspace-session-types";
 	import { toast } from "svelte-sonner";
 	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
+	import { workspaceShortcuts } from "./workspace-shortcuts";
 
 	type Props = {
 		workspaces: readonly Workspace[];
@@ -110,7 +111,7 @@
 				<span class="sr-only"
 					>Select workspace: {activeWorkspace?.name ?? "No workspace selected"}</span
 				>
-				<ShortcutHint shortcut="workspaceSwitcher" />
+				<ShortcutHint binding={workspaceShortcuts.workspaceSwitcher.binding} />
 			</Button>{/snippet}</DropdownMenu.Trigger
 	>
 	<DropdownMenu.Content class="w-64 max-w-[calc(100vw-2rem)]">
@@ -157,7 +158,7 @@
 		<DropdownMenu.Item {disabled} aria-label="New workspace" onclick={openCreationDialog}>
 			<Plus aria-hidden="true" />
 			New workspace
-			<ShortcutHint shortcut="workspaceCreation" />
+			<ShortcutHint binding={workspaceShortcuts.workspaceCreation.binding} />
 		</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

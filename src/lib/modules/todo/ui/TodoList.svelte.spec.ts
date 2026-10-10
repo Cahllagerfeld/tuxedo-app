@@ -37,6 +37,26 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
+	it("a held Space activates a native checkbox once", async () => {
+		const onToggleComplete = vi.fn();
+		await render(TodoList, { todoFile, disabled: false, onToggleComplete, onDelete: vi.fn() });
+		const checkbox = page.getByRole("checkbox", { name: "Mark Plan complete" });
+		await expect.element(checkbox).toBeVisible();
+		(checkbox.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space>}");
+		expect(onToggleComplete).toHaveBeenCalledTimes(1);
+		checkbox.element().dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: " ",
+				code: "Space",
+				repeat: true,
+				bubbles: true,
+				cancelable: true,
+			})
+		);
+		await userEvent.keyboard("{/Space}");
+		expect(onToggleComplete).toHaveBeenCalledTimes(1);
+	});
 	it("navigates rows without wrapping and activates completion only in row context", async () => {
 		const onToggleComplete = vi.fn();
 		await render(TodoList, { todoFile, disabled: false, onToggleComplete, onDelete: vi.fn() });
