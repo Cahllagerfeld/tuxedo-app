@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { mkdtemp, rm, writeFile, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSessionBackend } from "./session";
@@ -98,6 +98,35 @@ test("atomic external replacement refreshes through restoration and later deleti
 		expect((await backend.restoreSession({})).session).toMatchObject({
 			status: "empty",
 			warning: expect.stringContaining(path),
+		});
+	} finally {
+		observation.stop();
+	}
+});
+
+test("renaming the containing directory refreshes the missing Active Todo-file path into Empty", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const containingDirectory = join(directory, "work");
+	await mkdir(containingDirectory);
+	const path = join(containingDirectory, "todo.txt");
+	await writeFile(path, "Original");
+	const observation = createTodoFileObservation();
+	let changes = 0;
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		observation,
+		() => changes++
+	);
+	try {
+		await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+		await rename(containingDirectory, join(directory, "moved"));
+		await expect.poll(() => changes, { timeout: 3000 }).toBe(1);
+		const refreshed = await backend.restoreSession({});
+		expect(refreshed.session).toMatchObject({
+			status: "empty",
+			warning: expect.stringContaining(path),
+			catalogue: { workspaces: [expect.objectContaining({ todo_path: path })] },
 		});
 	} finally {
 		observation.stop();

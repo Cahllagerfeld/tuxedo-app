@@ -41,7 +41,13 @@ export function createTodoFileObservation(): TodoFileObservationAdapter {
 			};
 			try {
 				const started = watch(dirname(path), (_event, filename) => {
-					if (filename === null || filename.toString() === basename(path)) signal();
+					// macOS reports the observed directory's own name when it moves.
+					if (
+						filename === null ||
+						filename.toString() === basename(path) ||
+						filename.toString() === basename(dirname(path))
+					)
+						signal();
 				});
 				watcher = started;
 				started.on("error", () => {
