@@ -327,6 +327,103 @@ try {
 		),
 		["Second"]
 	);
+	// Reorder through the real renderer/preload/backend, including a filtered-out item.
+	const reorderPath = join(directory, "reorder.todo");
+	await writeFile(reorderPath, "First\r\nx 2026-07-10 Hidden\r\nLast");
+	const reorderWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Reorder",
+		color: "blue",
+		todoPath: reorderPath,
+	});
+	assert.equal(reorderWorkspace.status, "applied");
+	await page.reload();
+	const firstHandle = page.getByRole("button", { name: "Reorder First", exact: true });
+	await firstHandle.waitFor();
+	await firstHandle.focus();
+	await page.keyboard.press("Space");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("Space");
+	await page.waitForFunction(
+		() => document.querySelector('ul[aria-label="Todo items"] li p')?.textContent === "Last"
+	);
+	assert.equal(await readFile(reorderPath, "utf8"), "Last\r\nx 2026-07-10 Hidden\r\nFirst");
+	await page.reload();
+	const lastHandle = page.getByRole("button", { name: "Reorder Last", exact: true });
+	await lastHandle.waitFor();
+	const from = await lastHandle.boundingBox();
+	const to = await page.getByRole("button", { name: "Reorder First", exact: true }).boundingBox();
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+	await page.mouse.up();
+
+	await page.waitForFunction(
+		() => document.querySelector('ul[aria-label="Todo items"] li p')?.textContent === "First"
+	);
+	assert.equal(await readFile(reorderPath, "utf8"), "First\r\nx 2026-07-10 Hidden\r\nLast");
+	const manyItems = Array.from({ length: 100 }, (_, index) => `Item ${index + 1}`);
+	await writeFile(reorderPath, manyItems.join("\n"));
+	await page.reload();
+	await page.getByRole("button", { name: "Reorder Item 1", exact: true }).waitFor();
+	await page.getByRole("list", { name: "Todo items" }).evaluate((list) => {
+		const viewport = list.closest('[data-slot="scroll-area-viewport"]');
+		viewport.scrollTop = 41 * 40;
+	});
+	const middleHandle = page.getByRole("button", { name: "Reorder Item 45", exact: true });
+	await middleHandle.waitFor({ state: "visible" });
+	const initialRenderedCount = await page
+		.getByRole("list", { name: "Todo items" })
+		.locator("li")
+		.count();
+	assert.equal(await page.getByRole("button", { name: "Reorder Item 1", exact: true }).count(), 0);
+	const middleFrom = await middleHandle.boundingBox();
+	const middleTo = await page
+		.getByRole("button", { name: "Reorder Item 47", exact: true })
+		.boundingBox();
+	await page.mouse.move(middleFrom.x + middleFrom.width / 2, middleFrom.y + middleFrom.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(middleTo.x + middleTo.width / 2, middleTo.y + middleTo.height / 2, {
+		steps: 12,
+	});
+	const expectedItems = [...manyItems];
+	expectedItems.splice(44, 1);
+	expectedItems.splice(46, 0, manyItems[44]);
+	await page.waitForFunction(
+		() => {
+			return (
+				document.querySelector('ul[aria-label="Todo items"] li[aria-posinset="47"] p')
+					?.textContent === "Item 45"
+			);
+		},
+		undefined,
+		{ timeout: 10000 }
+	);
+	await page.mouse.up();
+
+	await page.waitForFunction(
+		(limit) => document.querySelectorAll('ul[aria-label="Todo items"] li').length <= limit,
+		initialRenderedCount + 3,
+		{ timeout: 10000 }
+	);
+	await page.getByRole("list", { name: "Todo items" }).evaluate((list) => {
+		list.closest('[data-slot="scroll-area-viewport"]').scrollTop = 41 * 40;
+	});
+	await page.waitForFunction(
+		() =>
+			document.querySelector('ul[aria-label="Todo items"] li[aria-posinset="47"] p')
+				?.textContent === "Item 45",
+		undefined,
+		{ timeout: 10000 }
+	);
+	assert.equal(await readFile(reorderPath, "utf8"), expectedItems.join("\n"));
+	console.log("Pointer reorder from a virtualized middle row preserves all Todo items.");
+	await page.evaluate(
+		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
+		reorderWorkspace.confirmed.session.catalogue.active_workspace_id
+	);
+	console.log(
+		"Keyboard and pointer reorder persist across reload and preserve filtered-out Todo items."
+	);
 	const deletionPath = join(directory, "deletion.todo");
 	await writeFile(deletionPath, "First +Work\r\nx 2026-07-10 Finished +Home");
 	const deletionWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {

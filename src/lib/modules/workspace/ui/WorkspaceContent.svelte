@@ -54,6 +54,14 @@
 		}
 	}
 
+	async function reorderTodoItems(items: readonly TodoItem[]) {
+		const result = await workspace.reorderTodo(items);
+		if (result.status === "conflict")
+			toast.error("Todo file changed externally; reloaded latest version");
+		else if (result.status === "rejected")
+			toast.error("Could not reorder Todo items", { description: result.message });
+	}
+
 	function errorMessage(error: unknown) {
 		if (error instanceof Error) return error.message;
 		if (
@@ -146,6 +154,7 @@
 							disabled={workspace.isOperating}
 							onToggleComplete={toggleTodoCompletion}
 							onDelete={deleteTodoItem}
+							onReorder={reorderTodoItems}
 						/>
 					{/if}
 				{:else}
