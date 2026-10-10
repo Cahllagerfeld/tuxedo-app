@@ -271,8 +271,11 @@ try {
 	await page.reload();
 	await page.getByText("Item 80", { exact: true }).waitFor();
 	const switcher = page.getByRole("button", { name: "Select workspace: Deletion" });
+	// Check settled hover colors without a timed wait that can outlive native hover.
+	await switcher.evaluate((element) => {
+		element.style.transition = "none";
+	});
 	await switcher.hover();
-	await page.waitForTimeout(250); // Allow the button's color transition to settle.
 	const hoverContrast = await switcher.evaluate((element) => {
 		const background = getComputedStyle(element).backgroundColor;
 		const sidebar = getComputedStyle(
@@ -280,6 +283,7 @@ try {
 		).backgroundColor;
 		return background !== "rgba(0, 0, 0, 0)" && background !== sidebar;
 	});
+	await switcher.evaluate((element) => element.style.removeProperty("transition"));
 	const reader = page.getByLabel("Todo item results", { exact: true });
 	await reader.hover();
 	const thumb = reader.locator('[data-slot="scroll-area-thumb"]');
