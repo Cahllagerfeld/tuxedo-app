@@ -5,6 +5,8 @@ import {
 	type ConfirmedSession,
 	type DesktopAPI,
 	type DesktopRequest,
+	type TodoFileObservation,
+	todoFileChangeEvent,
 } from "$lib/shared/desktop/contract";
 import type {
 	WorkspaceSessionActionResult,
@@ -53,6 +55,44 @@ export class ElectronWorkspaceSessionState {
 	private initialization: Promise<WorkspaceSessionActionResult> | undefined;
 
 	constructor(private readonly desktop: DesktopAPI) {}
+
+	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
+		let listening = true;
+		const unsubscribe = observation.onTodoFileChanged((event) => {
+			const parsed = todoFileChangeEvent.payload.safeParse(event);
+			const previous = this.confirmed;
+			if (
+				!listening ||
+				!parsed.success ||
+				this.isOperating ||
+				!previous ||
+				previous.session.status !== "ready" ||
+				previous.scope !== parsed.data.scope ||
+				previous.revision !== parsed.data.revision ||
+				previous.session.catalogue.active_workspace_id !== parsed.data.workspaceId ||
+				previous.session.todo_file.path !== parsed.data.todoPath
+			)
+				return;
+			const before = JSON.stringify({
+				items: previous.session.todo_file.items,
+				skipped: previous.session.todo_file.skipped,
+			});
+			void this.restore().then((outcome) => {
+				const file = this.todoFile;
+				if (
+					listening &&
+					outcome.status === "applied" &&
+					file &&
+					before !== JSON.stringify({ items: file.items, skipped: file.skipped })
+				)
+					onSummaryChanged();
+			});
+		});
+		return () => {
+			listening = false;
+			unsubscribe();
+		};
+	};
 
 	initialize = () =>
 		(this.initialization ??= this.restore().then((outcome) => {

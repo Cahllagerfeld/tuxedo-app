@@ -180,6 +180,19 @@ export type DesktopAPI = {
 		request: DesktopRequest<K>
 	) => Promise<z.infer<(typeof desktopContract)[K]["response"]>>;
 };
+export const todoFileChangeEvent = {
+	channel: "tuxedo:todo-file-changed",
+	payload: z.strictObject({
+		scope: z.uuid(),
+		revision: z.number().int().nonnegative(),
+		workspaceId: z.uuid(),
+		todoPath: z.string().min(1),
+	}),
+} as const;
+export type TodoFileChange = z.infer<typeof todoFileChangeEvent.payload>;
+export type TodoFileObservation = {
+	onTodoFileChanged: (listener: (event: TodoFileChange) => void) => () => void;
+};
 export function createDesktopClient(
 	invoke: (channel: string, request: unknown) => Promise<unknown>
 ): DesktopAPI {
@@ -206,6 +219,6 @@ export function createDesktopClient(
 }
 declare global {
 	interface Window {
-		desktop: DesktopAPI;
+		desktop: DesktopAPI & TodoFileObservation;
 	}
 }

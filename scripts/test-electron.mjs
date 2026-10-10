@@ -274,6 +274,38 @@ try {
 		restored.session.catalogue.workspaces.map((workspace) => workspace.name),
 		["Personal", "Second"]
 	);
+	// Real observation signals cross preload/IPC and use the mounted controller.
+	await writeFile(
+		todoPath,
+		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n+OnlyTag\n"
+	);
+	await page.getByText("External insertion", { exact: true }).waitFor();
+	await page
+		.getByText("Todo file changed externally; reloaded latest version", { exact: true })
+		.waitFor();
+	assert.equal(await page.locator('[data-sonner-toast][data-type="info"]').count(), 1);
+	assert.equal(await page.locator('[data-sonner-toast][data-type="error"]').count(), 0);
+	assert.match(await page.getByLabel("Reader status").textContent(), /1 skipped line/);
+	const observed = await page.evaluate(() => window.desktop.readSession({}));
+	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
+	await writeFile(
+		todoPath,
+		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n+OnlyTag\n\n"
+	);
+	await page.waitForFunction(
+		async (revision) => (await window.desktop.readSession({})).revision > revision,
+		observed.revision
+	);
+	assert.equal(
+		await page.locator('[data-sonner-toast][data-type="info"]').count(),
+		1,
+		"Equivalent save must not add a notice"
+	);
+	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	console.log(
+		"Todo-file observation: external edit, summary, preload signal, and equivalent-save notice checks passed."
+	);
 	const deleted = await page.evaluate(
 		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
 		created.confirmed.session.catalogue.active_workspace_id
