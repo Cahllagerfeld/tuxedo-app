@@ -12,7 +12,7 @@
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-	import { toast } from "svelte-sonner";
+	import { createWorkspaceTodoActions } from "./workspace-todo-actions.svelte";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
@@ -26,52 +26,11 @@
 	let { workspace, todoFilter, filteredTodoItems, openWorkspaceCreationDialog }: Props = $props();
 	let todoViewport = $state<HTMLElement | null>(null);
 
-	async function toggleTodoCompletion(todo: TodoItem) {
-		try {
-			const result = await workspace.setCompletion(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not update Todo item", { description: result.message });
-			}
-			return result.status === "applied";
-		} catch (error) {
-			toast.error("Could not update Todo item", {
-				description: errorMessage(error),
-			});
-			return false;
-		}
-	}
-
-	async function deleteTodoItem(todo: TodoItem) {
-		try {
-			const result = await workspace.deleteTodo(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not delete Todo item", { description: result.message });
-			}
-			return result.status === "applied";
-		} catch (error) {
-			toast.error("Could not delete Todo item", {
-				description: errorMessage(error),
-			});
-			return false;
-		}
-	}
-
-	function errorMessage(error: unknown) {
-		if (error instanceof Error) return error.message;
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"message" in error &&
-			typeof error.message === "string"
-		) {
-			return error.message;
-		}
-		return String(error);
-	}
+	const todoActions = createWorkspaceTodoActions({
+		get workspace() {
+			return workspace;
+		},
+	});
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -128,8 +87,8 @@
 							items={filteredTodoItems}
 							showEmptyState={workspace.todoFile.items.length === 0}
 							disabled={workspace.isOperating}
-							onToggleComplete={toggleTodoCompletion}
-							onDelete={deleteTodoItem}
+							onToggleComplete={todoActions.toggleCompletion}
+							onDelete={todoActions.deleteItem}
 						/>
 					{/key}
 					{#if filteredTodoItems.length === 0 && workspace.todoFile.items.length > 0}

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { createHotkey } from "@tanstack/svelte-hotkeys";
-	import { shortcutSurfaceOpen, shortcutPlatform } from "$lib/shared/keyboard";
+	import { createAppShortcuts } from "./app-shortcuts.svelte";
+	import { shortcutPlatform } from "$lib/shared/keyboard";
 	import { shortcuts } from "./shortcuts";
 	import ShortcutHint from "$lib/shared/ui/ShortcutHint.svelte";
 	import { Button } from "$lib/shared/ui/button";
@@ -17,31 +17,23 @@
 		platform?: typeof shortcutPlatform;
 	} = $props();
 	let helpTrigger = $state<HTMLButtonElement | null>(null);
-	const actions = {
-		workspaceSwitcher: () => openSwitcher(),
-		workspaceCreation: () => openCreation(),
-		help: () => {
-			helpTrigger?.focus();
-			helpTrigger?.click();
+	createAppShortcuts({
+		get disabled() {
+			return disabled;
 		},
-	};
-	for (const id of ["workspaceSwitcher", "workspaceCreation", "help"] as const) {
-		createHotkey(
-			shortcuts[id].binding,
-			(event) => {
-				if (event.repeat || shortcutSurfaceOpen() || (id !== "help" && disabled)) return;
-				event.preventDefault();
-				actions[id]();
-			},
-			() => ({
-				enabled: id === "help" || !disabled,
-				platform,
-				ignoreInputs: false,
-				preventDefault: false,
-				stopPropagation: false,
-			})
-		);
-	}
+		get platform() {
+			return platform;
+		},
+		get helpTrigger() {
+			return helpTrigger;
+		},
+		get openSwitcher() {
+			return openSwitcher;
+		},
+		get openCreation() {
+			return openCreation;
+		},
+	});
 </script>
 
 <Dialog.Root>
