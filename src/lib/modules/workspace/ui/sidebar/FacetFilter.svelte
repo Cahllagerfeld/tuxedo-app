@@ -1,8 +1,6 @@
 <script lang="ts">
 	import Check from "@lucide/svelte/icons/check";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
-	import Folder from "@lucide/svelte/icons/folder";
-	import Tag from "@lucide/svelte/icons/tag";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Collapsible from "$lib/shared/ui/collapsible";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
@@ -51,10 +49,6 @@
 						{disabled}
 						onclick={() => onSelect(value)}
 					>
-						{#if label === "Projects"}<Folder
-								class="size-4 shrink-0 text-muted-foreground"
-								aria-hidden="true"
-							/>{:else}<Tag class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />{/if}
 						<span class="min-w-0 flex-1 truncate text-left">{prefix}{value}</span>
 						{#if selected === value}<Check class="size-4 shrink-0" aria-hidden="true" />{/if}
 					</Button>

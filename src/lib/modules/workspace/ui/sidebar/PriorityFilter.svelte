@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Check from "@lucide/svelte/icons/check";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 
@@ -38,10 +37,7 @@
 						disabled={disabled || completed}
 						onclick={() => onSelect(priority)}
 					>
-						{#if selected === priority && !completed}<Check
-								class="size-3"
-								aria-hidden="true"
-							/>{/if}{priority}
+						{priority}
 					</Button>
 				{/each}
 			</div>
