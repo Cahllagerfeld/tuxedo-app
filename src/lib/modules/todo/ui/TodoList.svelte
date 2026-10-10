@@ -169,7 +169,7 @@
 	>
 		{#each rows as { item, index, start, size, key } (key)}
 			<li
-				class="absolute top-0 left-0 flex w-full items-center border-b border-border/50"
+				class="group absolute top-0 left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
 				style:height={`${size}px`}
 				style:transform={`translateY(${start}px)`}
 				aria-posinset={index + 1}
