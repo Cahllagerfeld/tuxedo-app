@@ -177,9 +177,6 @@
 				onfocusin={() => virtualization.focusItem(item.todo)}
 				onfocusout={virtualization.onFocusOut}
 			>
-				<div class="min-w-0 flex-1">
-					<TodoItem todo={item.todo} disabled={disabled || started} {onToggleComplete} {onDelete} />
-				</div>
 				{#if onReorder}
 					<div
 						role="button"
@@ -188,11 +185,14 @@
 						data-reorder-handle
 						aria-disabled={disabled || items.length < 2}
 						aria-label={`Reorder ${item.todo.description}`}
-						class="mr-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
+						class="ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
 					>
 						<GripVertical class="size-4" aria-hidden="true" />
 					</div>
 				{/if}
+				<div class="min-w-0 flex-1">
+					<TodoItem todo={item.todo} disabled={disabled || started} {onToggleComplete} {onDelete} />
+				</div>
 			</li>
 		{/each}
 	</ul>
