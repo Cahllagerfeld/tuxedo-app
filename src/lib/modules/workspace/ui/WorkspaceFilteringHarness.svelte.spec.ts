@@ -305,6 +305,78 @@ test("expands inline choices, collapses Contexts, and removes individual active 
 	await expect.poll(rowCount).toBe(6);
 });
 
+test.each([
+	{
+		label: "Projects",
+		choice: "+Garden",
+		search: "+garden",
+		chip: "Clear Project Garden",
+		count: 1,
+	},
+	{ label: "Contexts", choice: "@Home", search: "@home", chip: "Clear Context Home", count: 2 },
+	{ label: "Priorities", choice: "Priority A", search: "A", chip: "Clear Priority A", count: 1 },
+])(
+	"collapses and reopens $label without clearing its selection",
+	async ({ label, choice, search, chip, count }) => {
+		render(Harness, { desktop: adapter() });
+		const header = page.getByRole("button", { name: label, exact: true });
+		const option = page.getByRole("button", { name: choice, exact: true });
+		await expect.element(header).toHaveAttribute("aria-expanded", "true");
+		await option.click();
+		await header.click();
+		await expect.element(header).toHaveAttribute("aria-expanded", "false");
+		await expect.element(option).not.toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: chip, exact: true })).toBeVisible();
+		await expect.poll(rowCount).toBe(count);
+		await page.getByRole("searchbox", { name: "Find a filter" }).fill(search);
+		await expect.element(header).toHaveAttribute("aria-expanded", "true");
+		await expect.element(option).toHaveAttribute("aria-pressed", "true");
+		await page.getByRole("button", { name: "Clear filter search" }).click();
+		await expect.element(header).toHaveAttribute("aria-expanded", "false");
+		await expect.element(option).not.toBeInTheDocument();
+		await header.click();
+		await expect.element(header).toHaveAttribute("aria-expanded", "true");
+		await expect.element(option).toHaveAttribute("aria-pressed", "true");
+	}
+);
+
+test.each([
+	{ label: "Projects", prefix: "+" },
+	{ label: "Contexts", prefix: "@" },
+])(
+	"shows more and fewer $label while keeping the selected choice visible",
+	async ({ label, prefix }) => {
+		const manyItems = Array.from({ length: 7 }, (_, index) => ({
+			...items[0],
+			line_number: index + 1,
+			projects: [`Value-${index}`],
+			contexts: [`Value-${index}`],
+		}));
+		render(Harness, {
+			desktop: adapter({
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...initialReadySession,
+						todo_file: { ...initialReadySession.todo_file, items: manyItems },
+					},
+				}),
+			}),
+		});
+		const last = page.getByRole("button", { name: `${prefix}Value-6`, exact: true });
+		await expect.element(last).not.toBeInTheDocument();
+		await page.getByRole("button", { name: `Show more ${label}` }).click();
+		await expect.element(last).toBeVisible();
+		await last.click();
+		await page.getByRole("button", { name: `Show fewer ${label}` }).click();
+		await expect.element(last).toHaveAttribute("aria-pressed", "true");
+		await expect
+			.element(page.getByRole("button", { name: `${prefix}Value-5`, exact: true }))
+			.not.toBeInTheDocument();
+		await expect.poll(rowCount).toBe(1);
+	}
+);
+
 test("resets filters after a successful Workspace switch", async () => {
 	render(Harness, {
 		desktop: adapter({

@@ -1,9 +1,8 @@
 <script lang="ts">
 	import Check from "@lucide/svelte/icons/check";
-	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import { Button } from "$lib/shared/ui/button";
-	import * as Collapsible from "$lib/shared/ui/collapsible";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import FilterSection from "./FilterSection.svelte";
 
 	let {
 		label,
@@ -22,7 +21,6 @@
 	} = $props();
 
 	let expanded = $state(false);
-	let contextsOpen = $state(true);
 	const prefix = $derived(label === "Projects" ? "+" : "@");
 	const matches = $derived(
 		values.filter((value) =>
@@ -74,27 +72,7 @@
 {/snippet}
 
 {#if values.length > 0}
-	<Sidebar.Group>
-		{#if label === "Contexts"}
-			<Collapsible.Root
-				open={contextsOpen || !!search}
-				onOpenChange={(value) => (contextsOpen = value)}
-			>
-				<Collapsible.Trigger>
-					{#snippet child({ props })}
-						<Button
-							{...props}
-							variant="ghost"
-							class="mb-1 h-7 w-full min-w-0 justify-between px-2 text-xs text-muted-foreground"
-							>Contexts<ChevronDown
-								class={`size-3.5 transition-transform ${!contextsOpen && !search ? "-rotate-90" : ""}`}
-								aria-hidden="true"
-							/></Button
-						>
-					{/snippet}
-				</Collapsible.Trigger>
-				<Collapsible.Content>{@render choices()}</Collapsible.Content>
-			</Collapsible.Root>
-		{:else}<Sidebar.GroupLabel>{label}</Sidebar.GroupLabel>{@render choices()}{/if}
-	</Sidebar.Group>
+	<FilterSection {label} {search}>
+		{@render choices()}
+	</FilterSection>
 {/if}

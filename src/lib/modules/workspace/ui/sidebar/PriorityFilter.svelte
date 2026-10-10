@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from "$lib/shared/ui/button";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import FilterSection from "./FilterSection.svelte";
 
 	let {
 		values,
@@ -23,8 +24,7 @@
 </script>
 
 {#if values.length}
-	<Sidebar.Group>
-		<Sidebar.GroupLabel>Priorities</Sidebar.GroupLabel>
+	<FilterSection label="Priorities" {search}>
 		<Sidebar.GroupContent>
 			<div class="flex min-w-0 flex-wrap gap-1.5 px-2">
 				{#each matches as priority (priority)}
@@ -48,5 +48,5 @@
 					Priorities apply to Open items.
 				</p>{/if}
 		</Sidebar.GroupContent>
-	</Sidebar.Group>
+	</FilterSection>
 {/if}
