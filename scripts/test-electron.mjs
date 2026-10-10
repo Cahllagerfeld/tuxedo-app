@@ -395,6 +395,8 @@ try {
 	assert.equal(await readFile(reorderPath, "utf8"), "First\r\nx 2026-07-10 Hidden\r\nLast");
 	const manyItems = Array.from({ length: 100 }, (_, index) => `Item ${index + 1}`);
 	await writeFile(reorderPath, manyItems.join("\n"));
+	// Wait for observation to accept the external edit before starting the drag.
+	await page.getByRole("button", { name: "Reorder Item 1", exact: true }).waitFor();
 	await page.reload();
 	await page.getByRole("button", { name: "Reorder Item 1", exact: true }).waitFor();
 	await page.getByRole("list", { name: "Todo items" }).evaluate((list) => {
