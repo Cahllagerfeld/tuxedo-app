@@ -63,7 +63,7 @@
 		</div>
 		<div class="mx-2 my-2 shrink-0 border-t"></div>
 		{#key activeWorkspaceId}
-			<SidebarFilters {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
+			<SidebarFilters {todoFilter} disabled={!todoFileLoaded || disabled} />
 		{/key}
 		{#if todoFileLoaded && todoFilter.hasFacetFilters}
 			<Button

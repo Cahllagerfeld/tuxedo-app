@@ -20,7 +20,7 @@ export class AppState {
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
 		$effect(() =>
-			this.todoFilter.sync(this.workspace.activeWorkspace?.id ?? null, this.todos.facets)
+			this.todoFilter.sync(this.workspace.activeWorkspace?.id ?? null, this.todos.items)
 		);
 	}
 

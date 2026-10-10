@@ -1,3 +1,4 @@
+import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 
 export type TodoFilterStatus = "open" | "completed";
@@ -10,7 +11,9 @@ export type TodoFilterFacets = Readonly<{
 
 export class TodoFilterState {
 	private workspaceKey: string | null | undefined;
+	private items = $state.raw<readonly TodoItem[]>([]);
 	status = $state<TodoFilterStatus>("open");
+	availableFacets = $derived(summarizeTodoFilterFacets(this.items, this.status === "completed"));
 	selectedProject = $state<string | null>(null);
 	selectedContext = $state<string | null>(null);
 	selectedPriority = $state<string | null>(null);
@@ -29,6 +32,7 @@ export class TodoFilterState {
 
 	setStatus = (status: TodoFilterStatus) => {
 		this.status = status;
+		this.reconcile(this.availableFacets);
 	};
 
 	toggleProject = (project: string) => {
@@ -64,12 +68,13 @@ export class TodoFilterState {
 		this.clear();
 	};
 
-	sync = (workspaceKey: string | null, facets: TodoFilterFacets) => {
+	sync = (workspaceKey: string | null, items: readonly TodoItem[]) => {
+		this.items = items;
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
-		this.reconcile(facets);
+		this.reconcile(this.availableFacets);
 	};
 
 	reconcile = (facets: TodoFilterFacets) => {

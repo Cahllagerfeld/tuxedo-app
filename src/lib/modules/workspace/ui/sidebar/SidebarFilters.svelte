@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Search from "@lucide/svelte/icons/search";
 	import X from "@lucide/svelte/icons/x";
-	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { Button } from "$lib/shared/ui/button";
 	import { Input } from "$lib/shared/ui/input";
@@ -9,11 +8,7 @@
 	import FacetFilter from "./FacetFilter.svelte";
 	import PriorityFilter from "./PriorityFilter.svelte";
 
-	let {
-		todoSummary,
-		todoFilter,
-		disabled,
-	}: { todoSummary: TodoFileSummary; todoFilter: TodoFilterState; disabled: boolean } = $props();
+	let { todoFilter, disabled }: { todoFilter: TodoFilterState; disabled: boolean } = $props();
 	let search = $state("");
 </script>
 
@@ -45,7 +40,8 @@
 	<div class="min-w-0 pb-3">
 		<FacetFilter
 			label="Projects"
-			values={todoSummary.facets.projects}
+			values={todoFilter.availableFacets.projects}
+			counts={todoFilter.availableFacets.counts.projects}
 			selected={todoFilter.selectedProject}
 			{search}
 			{disabled}
@@ -53,14 +49,16 @@
 		/>
 		<FacetFilter
 			label="Contexts"
-			values={todoSummary.facets.contexts}
+			values={todoFilter.availableFacets.contexts}
+			counts={todoFilter.availableFacets.counts.contexts}
 			selected={todoFilter.selectedContext}
 			{search}
 			{disabled}
 			onSelect={todoFilter.toggleContext}
 		/>
 		<PriorityFilter
-			values={todoSummary.facets.priorities}
+			values={todoFilter.availableFacets.priorities}
+			counts={todoFilter.availableFacets.counts.priorities}
 			selected={todoFilter.selectedPriority}
 			{search}
 			{disabled}

@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TodoItem } from "../domain/todo";
-import { TodoFilterState, type TodoFilterFacets } from "./todo-filter.svelte";
-
-const facets: TodoFilterFacets = {
-	projects: ["Work", "Personal"],
-	contexts: ["Home"],
-	priorities: ["A"],
-};
+import { TodoFilterState } from "./todo-filter.svelte";
 
 const open: TodoItem = {
 	line_number: 1,
@@ -35,15 +29,16 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
-	it("combines exact selections and ignores remembered Priority in Completed", () => {
+	it("combines exact selections and clears Priority in Completed", () => {
 		const filter = new TodoFilterState();
-		filter.sync("work", facets);
+		filter.sync("work", [open, completed]);
 		filter.toggleProject("Work");
 		filter.toggleContext("Home");
 		filter.togglePriority("A");
 
 		expect(filter.filterItems([open, completed])).toEqual([open]);
 		filter.setStatus("completed");
+		expect(filter.selectedPriority).toBeNull();
 		expect(filter.filterItems([open, completed])).toEqual([completed]);
 		filter.setStatus("open");
 		expect(filter.filterItems([open, completed])).toEqual([open]);
@@ -51,10 +46,10 @@ describe("TodoFilterState", () => {
 
 	it("resets status and selections for another Workspace and reconciles obsolete values", () => {
 		const filter = new TodoFilterState();
-		filter.sync("work", facets);
+		filter.sync("work", [open, completed]);
 		filter.setStatus("completed");
 		filter.toggleProject("Work");
-		filter.sync("personal", { projects: ["Personal"], contexts: [], priorities: [] });
+		filter.sync("personal", [{ ...open, projects: ["Personal"], contexts: [], priority: null }]);
 
 		expect(filter.status).toBe("open");
 		expect(filter.selectedProject).toBeNull();

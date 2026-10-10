@@ -225,7 +225,7 @@ test("defaults to Open and combines exact Project and Context filters", async ()
 		.toHaveTextContent("1 matching item");
 });
 
-test("searches bounded facet values and remembers a Priority across status changes", async () => {
+test("searches bounded facet values and clears a Priority across status changes", async () => {
 	render(Harness, { desktop: adapter() });
 	await expect.element(page.getByRole("button", { name: "Show more Projects" })).toBeVisible();
 	await page.getByRole("button", { name: "Show more Projects" }).click();
@@ -245,10 +245,10 @@ test("searches bounded facet values and remembers a Priority across status chang
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	await expect
 		.element(page.getByRole("button", { name: "Priority A", exact: true }))
-		.toBeDisabled();
+		.not.toBeInTheDocument();
 	await expect.poll(rowCount).toBe(1);
 	await page.getByRole("button", { name: /^Open/ }).click();
-	await expect.poll(rowCount).toBe(1);
+	await expect.poll(rowCount).toBe(6);
 });
 
 test("uses literal case-insensitive substring search and clears no-results state", async () => {
@@ -447,9 +447,17 @@ test("updates the filtered view only after accepted completion", async () => {
 				raw: "x 2026-10-09 Open work @Home",
 				completion_date: "2026-10-09",
 			},
+			...items.slice(1),
 		])
 	);
 	await expect.element(page.getByText("Open work", { exact: true })).not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "+Work", exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Project Work", exact: true }))
+		.not.toBeInTheDocument();
+	await expect.poll(rowCount).toBe(5);
 });
 
 test("preserves the filtered view after a rejected completion", async () => {
@@ -523,4 +531,56 @@ test("shows and clears the active Priority chip while preserving other filters",
 	await expect
 		.element(page.getByRole("button", { name: "Clear Context Home", exact: true }))
 		.toBeVisible();
+});
+
+test("scopes choices and counts to the tab, retaining only available selections", async () => {
+	const completedOnly = {
+		...items[6],
+		line_number: 8,
+		projects: ["Finished"],
+		contexts: ["Office"],
+	};
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: [...items, completedOnly] },
+				},
+			}),
+		}),
+	});
+	await expect
+		.element(page.getByRole("button", { name: "@Home", exact: true }))
+		.toHaveTextContent("@Home 2");
+	await expect
+		.element(page.getByRole("button", { name: "+Finished", exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "@Office", exact: true }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: "+Personal", exact: true }).click();
+	await page.getByRole("button", { name: "@Home", exact: true }).click();
+	await expect.element(page.getByRole("button", { name: "@Away", exact: true })).toBeVisible();
+	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Project Personal", exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "@Home", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect
+		.element(page.getByRole("button", { name: "@Home", exact: true }))
+		.toHaveTextContent("@Home 1");
+	await expect.element(page.getByRole("button", { name: "+Finished", exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "+Personal", exact: true }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: "@Office", exact: true }).click();
+	await page.getByRole("button", { name: /^Open/ }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Context Office", exact: true }))
+		.not.toBeInTheDocument();
+	await expect.poll(rowCount).toBe(6);
 });
