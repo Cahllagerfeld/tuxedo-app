@@ -27,7 +27,7 @@
 	async function toggleTodoCompletion(todo: TodoItem) {
 		const result = await workspace.setCompletion(todo);
 		if (result.status === "conflict") {
-			toast.error("Todo file changed externally; reloaded latest version");
+			toast.error("Todo file reloaded");
 		} else if (result.status === "rejected") {
 			toast.error("Could not update Todo item", { description: result.message });
 		}
@@ -36,7 +36,7 @@
 	async function deleteTodoItem(todo: TodoItem) {
 		const result = await workspace.deleteTodo(todo);
 		if (result.status === "conflict") {
-			toast.error("Todo file changed externally; reloaded latest version");
+			toast.error("Todo file reloaded");
 		} else if (result.status === "rejected") {
 			toast.error("Could not delete Todo item", { description: result.message });
 		}
@@ -44,8 +44,7 @@
 
 	async function reorderTodoItems(items: readonly TodoItem[]) {
 		const result = await workspace.reorderTodo(items);
-		if (result.status === "conflict")
-			toast.error("Todo file changed externally; reloaded latest version");
+		if (result.status === "conflict") toast.error("Todo file reloaded");
 		else if (result.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
 	}

@@ -151,9 +151,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => loads).toBe(2);
-	await expect
-		.element(page.getByText("Todo file changed externally; reloaded latest version"))
-		.toBeVisible();
+	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
 });
@@ -223,9 +221,7 @@ test("conflicts display current confirmed content and an external edit notice", 
 	});
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Plan release carefully")).toBeVisible();
-	await expect
-		.element(page.getByText("Todo file changed externally; reloaded latest version"))
-		.toBeVisible();
+	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
 });
 test("rejected deletion preserves confirmed content and reports its contextual error", async () => {
@@ -434,13 +430,7 @@ test.each(["conflict", "rejected"] as const)(
 		await expect.element(page.getByText("+Draft", { exact: true })).toBeVisible();
 		await expect
 			.element(
-				page
-					.getByText(
-						status === "conflict"
-							? "Todo file changed externally; reloaded latest version"
-							: "Permission denied"
-					)
-					.last()
+				page.getByText(status === "conflict" ? "Todo file reloaded" : "Permission denied").last()
 			)
 			.toBeVisible();
 		if (status === "conflict") {

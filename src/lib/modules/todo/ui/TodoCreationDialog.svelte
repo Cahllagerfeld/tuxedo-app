@@ -132,7 +132,7 @@
 				return;
 			}
 			if (outcome.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
+				toast.error("Todo file reloaded");
 			} else {
 				toast.error("Could not create Todo item", { description: outcome.message });
 			}

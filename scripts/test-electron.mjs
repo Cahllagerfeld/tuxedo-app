@@ -314,9 +314,7 @@ try {
 		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n+OnlyTag\n"
 	);
 	await page.getByText("External insertion", { exact: true }).waitFor();
-	await page
-		.getByText("Todo file changed externally; reloaded latest version", { exact: true })
-		.waitFor();
+	await page.getByText("Todo file reloaded", { exact: true }).waitFor();
 	assert.equal(await page.locator('[data-sonner-toast][data-type="info"]').count(), 1);
 	assert.equal(await page.locator('[data-sonner-toast][data-type="error"]').count(), 0);
 	assert.match(await page.getByLabel("Reader status").textContent(), /1 skipped line/);

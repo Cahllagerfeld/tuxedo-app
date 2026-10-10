@@ -13,10 +13,7 @@
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
 	onMount(() => {
 		const stop =
-			observation &&
-			app.workspace.observe(observation, () =>
-				toast.info("Todo file changed externally; reloaded latest version")
-			);
+			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
 		void app.workspace.initialize();
 		return stop;
 	});

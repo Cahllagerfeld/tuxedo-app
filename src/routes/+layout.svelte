@@ -17,9 +17,7 @@
 	setAppState(appState);
 
 	onMount(() => {
-		const stop = appState.workspace.observe(window.desktop, () =>
-			toast.info("Todo file changed externally; reloaded latest version")
-		);
+		const stop = appState.workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
 		void appState.workspace.initialize();
 		return stop;
 	});
