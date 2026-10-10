@@ -7,8 +7,6 @@ export type TagsInputPropsWithoutHTML = {
 	onValueChange?: (value: string[]) => void;
 	onInvalidChange?: (message: string | undefined) => void;
 	suggestions?: string[];
-	filterSuggestions?: (inputValue: string, suggestions: string[]) => string[];
-	restrictToSuggestions?: boolean;
 };
 
 export type TagsInputProps = TagsInputPropsWithoutHTML & Omit<HTMLInputAttributes, "value">;

@@ -9,6 +9,7 @@
 	import { Toaster } from "@/shared/ui/sonner";
 	import { ModeWatcher } from "mode-watcher";
 	import { onMount } from "svelte";
+	import { toast } from "svelte-sonner";
 	import "./layout.css";
 	let { children } = $props();
 
@@ -16,7 +17,9 @@
 	setAppState(appState);
 
 	onMount(() => {
+		const stop = appState.workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
 		void appState.workspace.initialize();
+		return stop;
 	});
 </script>
 

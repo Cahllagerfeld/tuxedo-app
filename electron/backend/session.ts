@@ -1,14 +1,10 @@
 import { readFile, realpath } from "node:fs/promises";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
-import {
-	appendTodoLine,
-	confirmedTodo,
-	createTodoLine,
-	type CreateTodoOperation,
-} from "./create-todo";
+import { appendTodoLine, confirmedTodo, createTodoLine } from "./create-todo";
 import { readTodoContents, parseTodoFile } from "./todo-file";
 import { randomUUID } from "node:crypto";
+import type { TodoFileObservationAdapter } from "./observation";
 import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
@@ -23,17 +19,45 @@ import {
 	type TodoFile,
 	type ConfirmedSession,
 	type DesktopAPI,
+	type TodoFileChange,
 } from "../../src/lib/shared/desktop/contract";
-type SessionBackend = Omit<DesktopAPI, "selectTodoFile"> & { createTodo: CreateTodoOperation };
+type SessionBackend = Omit<DesktopAPI, "selectTodoFile">;
 
-export function createSessionBackend(cataloguePath: string): SessionBackend {
+export function createSessionBackend(
+	cataloguePath: string,
+	observation?: TodoFileObservationAdapter,
+	onTodoFileChanged: (event: TodoFileChange) => void = () => {}
+): SessionBackend {
 	const scope = randomUUID();
 	let revision = 0;
 	let confirmed: ConfirmedSession | undefined;
 	let confirmedTodoContents: string | undefined;
 	let queue: Promise<unknown> = Promise.resolve();
+	let busy = false;
+	const syncObservation = () => {
+		const current = confirmed;
+		const ready = current?.session.status === "ready" ? current.session : null;
+		observation?.retarget(ready?.todo_file.path ?? null, () => {
+			if (busy || !current || !ready || current !== confirmed) return;
+			onTodoFileChanged({
+				scope: current.scope,
+				revision: current.revision,
+				workspaceId: ready.catalogue.active_workspace_id!,
+				todoPath: ready.todo_file.path,
+			});
+		});
+	};
 	const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
-		const next = queue.then(operation, operation);
+		const run = async () => {
+			busy = true;
+			try {
+				return await operation();
+			} finally {
+				busy = false;
+				syncObservation();
+			}
+		};
+		const next = queue.then(run, run);
 		queue = next.catch(() => undefined);
 		return next;
 	};

@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createSessionBackend } from "./backend/session";
 import { registerDesktopOperation } from "./ipc";
+import { createTodoFileObservation } from "./backend/observation";
+import { todoFileChangeEvent } from "../src/lib/shared/desktop/contract";
 const here = dirname(fileURLToPath(import.meta.url));
 app.setName("Tuxedo Electron");
 app.setPath(
@@ -34,7 +36,19 @@ app.on("window-all-closed", () => {
 });
 
 void app.whenReady().then(async () => {
-	const backend = createSessionBackend(join(app.getPath("userData"), "workspaces.json"));
+	const observation = createTodoFileObservation();
+	const backend = createSessionBackend(
+		join(app.getPath("userData"), "workspaces.json"),
+		observation,
+		(event) => {
+			if (mainWindow && !mainWindow.isDestroyed() && trusted(mainWindow.webContents.getURL()))
+				mainWindow.webContents.send(
+					todoFileChangeEvent.channel,
+					todoFileChangeEvent.payload.parse(event)
+				);
+		}
+	);
+	app.on("before-quit", observation.stop);
 	protocol.handle("tuxedo", (request) => {
 		const url = new URL(request.url);
 		if (url.host !== "app" || request.method !== "GET")
@@ -95,7 +109,10 @@ void app.whenReady().then(async () => {
 		});
 		window.on("closed", () => {
 			nativeTheme.removeListener("updated", updateBackground);
-			if (mainWindow === window) mainWindow = null;
+			if (mainWindow === window) {
+				mainWindow = null;
+				observation.stop();
+			}
 		});
 		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 		window.webContents.on("will-navigate", (event, url) => {
