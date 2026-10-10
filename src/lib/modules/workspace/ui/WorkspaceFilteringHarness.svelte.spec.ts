@@ -199,8 +199,8 @@ test("defaults to Open and combines exact Project and Context filters", async ()
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("6 matching items");
 
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await expect
 		.element(page.getByRole("button", { name: "+Work", exact: true }))
 		.toHaveAttribute("aria-pressed", "true");
@@ -227,24 +227,25 @@ test("defaults to Open and combines exact Project and Context filters", async ()
 
 test("searches bounded facet values and remembers a Priority across status changes", async () => {
 	render(Harness, { desktop: adapter() });
-	await expect
-		.element(page.getByRole("button", { name: "Show all Projects values" }))
-		.toBeVisible();
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	const search = page.getByPlaceholder("Search projects…");
+	await expect.element(page.getByRole("button", { name: "Show more Projects" })).toBeVisible();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	const search = page.getByRole("searchbox", { name: "Find a filter" });
 	await search.fill("read");
-	await expect.element(page.getByRole("option", { name: "+Reading", exact: true })).toBeVisible();
+	await expect.element(page.getByRole("button", { name: "+Reading", exact: true })).toBeVisible();
 	await expect
-		.element(page.getByRole("option", { name: "+Garden", exact: true }))
+		.element(page.getByRole("button", { name: "+Garden", exact: true }))
 		.not.toBeInTheDocument();
-	await page.getByRole("option", { name: "+Reading", exact: true }).click();
+	await page.getByRole("button", { name: "+Reading", exact: true }).click();
 	await expect.element(page.getByRole("button", { name: "+Reading", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "+Reading", exact: true }).click();
+	await page.getByRole("button", { name: "Clear filter search" }).click();
 
-	await page.getByRole("button", { name: "A", exact: true }).click();
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
 	await expect.poll(rowCount).toBe(1);
 	await page.getByRole("button", { name: /^Completed/ }).click();
-	await expect.element(page.getByRole("button", { name: "A", exact: true })).toBeDisabled();
+	await expect
+		.element(page.getByRole("button", { name: "Priority A", exact: true }))
+		.toBeDisabled();
 	await expect.poll(rowCount).toBe(1);
 	await page.getByRole("button", { name: /^Open/ }).click();
 	await expect.poll(rowCount).toBe(1);
@@ -252,16 +253,17 @@ test("searches bounded facet values and remembers a Priority across status chang
 
 test("uses literal case-insensitive substring search and clears no-results state", async () => {
 	render(Harness, { desktop: adapter() });
-	const picker = page.getByRole("button", { name: "Show all Projects values" });
+	const picker = page.getByRole("button", { name: "Show more Projects" });
 	await picker.click();
-	const search = page.getByPlaceholder("Search projects…");
+	const search = page.getByRole("searchbox", { name: "Find a filter" });
 	await search.fill("grd");
 	await expect
-		.element(page.getByRole("option", { name: "+Garden", exact: true }))
+		.element(page.getByRole("button", { name: "+Garden", exact: true }))
 		.not.toBeInTheDocument();
 	await expect.element(page.getByText("No projects found.", { exact: true })).toBeVisible();
 	await search.fill("read");
-	await page.getByRole("option", { name: "+Reading", exact: true }).click();
+	await page.getByRole("button", { name: "+Reading", exact: true }).click();
+	await page.getByRole("button", { name: "Clear filter search" }).click();
 	await page.getByRole("button", { name: "@Home", exact: true }).click();
 	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
 	await page
@@ -271,29 +273,36 @@ test("uses literal case-insensitive substring search and clears no-results state
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
 });
 
-test("supports keyboard selection, Escape dismissal, and focus return", async () => {
+test("expands inline choices, collapses Contexts, and removes individual active filters", async () => {
 	render(Harness, { desktop: adapter() });
-	const picker = page.getByRole("button", { name: "Show all Projects values" });
-	await picker.click();
-	const search = page.getByPlaceholder("Search projects…");
-	await expect.element(search).toHaveFocus();
-	const input = search.element() as HTMLInputElement;
-	input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+	const more = page.getByRole("button", { name: "Show more Projects" });
 	await expect
-		.poll(() => document.querySelectorAll('button[aria-pressed="true"][aria-label^="+"]').length)
-		.toBe(1);
-	await expect.element(picker).toHaveFocus();
-
-	await picker.click();
-	const reopenedSearch = page.getByPlaceholder("Search projects…");
-	await expect.element(reopenedSearch).toHaveFocus();
-	(reopenedSearch.element() as HTMLInputElement).dispatchEvent(
-		new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
-	);
-	await expect.element(reopenedSearch).not.toBeInTheDocument();
-	await expect.element(picker).toHaveFocus();
+		.element(page.getByRole("button", { name: "+Work", exact: true }))
+		.not.toBeInTheDocument();
+	await more.click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show fewer Projects" }).click();
+	await expect
+		.element(page.getByRole("button", { name: "+Work", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Contexts", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "@Home", exact: true }))
+		.not.toBeInTheDocument();
+	const search = page.getByRole("searchbox", { name: "Find a filter" });
+	await search.fill("@home");
+	await page.getByRole("button", { name: "@Home", exact: true }).click();
+	await page.getByRole("button", { name: "Clear filter search" }).click();
+	await expect
+		.element(page.getByRole("button", { name: "@Home", exact: true }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Clear Project Work", exact: true }).click();
+	await expect.poll(rowCount).toBe(2);
+	await expect
+		.element(page.getByRole("button", { name: "Clear Context Home", exact: true }))
+		.toBeVisible();
+	await page.getByRole("button", { name: "Clear Context Home", exact: true }).click();
+	await expect.poll(rowCount).toBe(6);
 });
 
 test("resets filters after a successful Workspace switch", async () => {
@@ -302,8 +311,8 @@ test("resets filters after a successful Workspace switch", async () => {
 			switchWorkspace: async () => ({ status: "applied", confirmed: secondWorkspaceSession }),
 		}),
 	});
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
@@ -336,8 +345,8 @@ test("preserves filters after a rejected Workspace switch", async () => {
 			switchWorkspace: async () => ({ status: "rejected", message: "Cannot open workspace" }),
 		}),
 	});
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
 	await expect
@@ -353,8 +362,8 @@ test("updates the filtered view only after accepted completion", async () => {
 			setTodoCompletion: () => new Promise((resolve) => (finish = resolve)),
 		}),
 	});
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	const checkbox = page.getByRole("checkbox", { name: "Mark Open work complete" });
 	await checkbox.click();
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
@@ -377,8 +386,69 @@ test("preserves the filtered view after a rejected completion", async () => {
 			setTodoCompletion: async () => ({ status: "rejected", message: "Cannot complete" }),
 		}),
 	});
-	await page.getByRole("button", { name: "Show all Projects values" }).click();
-	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Mark Open work complete" }).click();
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
+});
+
+test("keeps long filter input and facet labels inside a narrow independently scrolling sidebar", async () => {
+	const longItems = Array.from({ length: 40 }, (_, index) => ({
+		...items[0],
+		line_number: index + 1,
+		projects: [`Project-${String(index).padStart(2, "0")}-${"long-name-".repeat(20)}`],
+	}));
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: longItems },
+				},
+			}),
+		}),
+	});
+	const search = page.getByRole("searchbox", { name: "Find a filter" });
+	await expect.element(search).toBeVisible();
+	const input = search.element();
+	input
+		.closest<HTMLElement>('[data-slot="sidebar-wrapper"]')!
+		.style.setProperty("--sidebar-width", "10rem");
+	await search.fill("x".repeat(300));
+	const inputBounds = input.getBoundingClientRect();
+	const parentBounds = input.parentElement!.getBoundingClientRect();
+	expect(inputBounds.left).toBeGreaterThanOrEqual(parentBounds.left);
+	expect(inputBounds.right).toBeLessThanOrEqual(parentBounds.right);
+	await page.getByRole("button", { name: "Clear filter search" }).click();
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	const viewport = page
+		.getByLabelText("Sidebar filters")
+		.element()
+		.querySelector<HTMLElement>("[data-scroll-area-viewport]")!;
+	await expect.poll(() => viewport.scrollHeight > viewport.clientHeight).toBe(true);
+	expect(viewport.scrollWidth).toBe(viewport.clientWidth);
+	const searchTop = input.getBoundingClientRect().top;
+	viewport.scrollTop = viewport.scrollHeight;
+	await expect.poll(() => viewport.scrollTop > 0).toBe(true);
+	expect(input.getBoundingClientRect().top).toBe(searchTop);
+	await expect.element(page.getByRole("button", { name: /^Open/ })).toBeVisible();
+});
+
+test("shows and clears the active Priority chip while preserving other filters", async () => {
+	render(Harness, { desktop: adapter() });
+	await page.getByRole("button", { name: "@Home", exact: true }).click();
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Priority A", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect.poll(rowCount).toBe(1);
+	await page.getByRole("button", { name: "Clear Priority A", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Priority A", exact: true }))
+		.toHaveAttribute("aria-pressed", "false");
+	await expect.poll(rowCount).toBe(2);
+	await expect
+		.element(page.getByRole("button", { name: "Clear Context Home", exact: true }))
+		.toBeVisible();
 });

@@ -5,10 +5,11 @@
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-types";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import { Button } from "$lib/shared/ui/button";
 	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
-	import FacetFilter from "./FacetFilter.svelte";
+	import SidebarFilters from "./SidebarFilters.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 	type Props = {
@@ -56,37 +57,21 @@
 			{openCreationDialog}
 		/>
 	</Sidebar.Header>
-	<Sidebar.Content class="gap-2 px-2">
-		<Overview {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
-		<FacetFilter
-			label="Projects"
-			values={todoSummary.facets.projects}
-			selected={todoFilter.selectedProject}
-			prefix="+"
-			disabled={!todoFileLoaded || disabled}
-			onSelect={todoFilter.toggleProject}
-		/>
-		<FacetFilter
-			label="Contexts"
-			values={todoSummary.facets.contexts}
-			selected={todoFilter.selectedContext}
-			prefix="@"
-			disabled={!todoFileLoaded || disabled}
-			onSelect={todoFilter.toggleContext}
-		/>
-		<FacetFilter
-			label="Priorities"
-			values={todoSummary.facets.priorities}
-			selected={todoFilter.selectedPriority}
-			disabled={!todoFileLoaded || disabled || todoFilter.status === "completed"}
-			onSelect={todoFilter.togglePriority}
-		/>
+	<Sidebar.Content class="min-w-0 gap-0 overflow-hidden px-2">
+		<div class="shrink-0">
+			<Overview {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
+		</div>
+		<div class="mx-2 my-2 shrink-0 border-t"></div>
+		{#key activeWorkspaceId}
+			<SidebarFilters {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
+		{/key}
 		{#if todoFileLoaded && todoFilter.hasFacetFilters}
-			<button
-				type="button"
-				class="mx-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground underline-offset-4 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:underline"
+			<Button
+				variant="ghost"
+				size="sm"
+				class="mx-2 mt-2 shrink-0 justify-start px-2 text-xs font-normal text-muted-foreground"
 				{disabled}
-				onclick={todoFilter.clear}>Clear filters</button
+				onclick={todoFilter.clear}>Clear filters</Button
 			>
 		{/if}
 	</Sidebar.Content>

@@ -2,6 +2,7 @@
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoCreationDialog from "$lib/modules/todo/ui/TodoCreationDialog.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
+	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -82,8 +83,9 @@
 				disabled={workspace.isOperating}
 			/>
 		</div>
+		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
-	<div class="min-h-0 flex-1">
+	<div class="min-h-0 min-w-0 flex-1">
 		<ScrollArea class="h-full w-full">
 			{#if workspace.session.status === "loading"}
 				<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
