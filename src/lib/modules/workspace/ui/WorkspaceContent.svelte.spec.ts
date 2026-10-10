@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type {
@@ -54,6 +54,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
+		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	};
@@ -458,3 +459,48 @@ test.each(["conflict", "rejected"] as const)(
 		await expect.element(page.getByText("+Draft", { exact: true })).not.toBeInTheDocument();
 	}
 );
+
+test("a keyboard drop uses the confirmed session and keeps confirmed order while saving", async () => {
+	const second = { ...todo, line_number: 3, raw: "Ship", description: "Ship" };
+	const hidden = {
+		...todo,
+		line_number: 2,
+		raw: "x 2026-10-10 Hidden",
+		description: "Hidden",
+		completed: true,
+	};
+	if (initial.session.status !== "ready") throw Error("Expected Ready session");
+	const snapshot: ConfirmedSession = {
+		...initial,
+		session: {
+			...initial.session,
+			todo_file: { ...initial.session.todo_file, items: [todo, hidden, second] },
+		},
+	};
+	let input: Parameters<DesktopAPI["reorderTodo"]>[0] | undefined;
+	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["reorderTodo"]>>) => void;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => snapshot,
+			reorderTodo: (request) => {
+				input = request;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			},
+		}),
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan release", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}{Space}");
+	await expect.poll(() => input).toEqual({ scope, revision: 1, workspaceId, lineNumbers: [3, 1] });
+	await expect.element(handle).toBeDisabled();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
+	finish({
+		status: "applied",
+		confirmed: confirmedTodo([{ ...second, line_number: 1 }, hidden, { ...todo, line_number: 3 }]),
+	});
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Ship");
+	await expect.element(handle).not.toBeDisabled();
+});

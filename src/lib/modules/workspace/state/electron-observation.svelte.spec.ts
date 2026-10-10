@@ -48,6 +48,7 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
+		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 	};
 }
 const signal: TodoFileChange = { scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" };
@@ -121,6 +122,7 @@ test.each([
 	"completion",
 	"deletion",
 	"creation",
+	"reordering",
 	"switch",
 	"workspace creation",
 	"workspace deletion",
@@ -133,14 +135,34 @@ test.each([
 			new Promise<{ status: "rejected"; message: string }>((resolve) => {
 				finish = () => resolve({ status: "rejected", message: "Expected rejection" });
 			});
+		const item = {
+			line_number: 1,
+			raw: "Item",
+			description: "Item",
+			completed: false,
+			priority: null,
+			creation_date: null,
+			completion_date: null,
+			projects: [],
+			contexts: [],
+			metadata: {},
+		};
 		const session = new ElectronWorkspaceSessionState({
 			...adapter(async () => {
 				loads++;
-				return initial;
+				if (initial.session.status !== "ready") throw Error("Expected Ready fixture");
+				return {
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { ...initial.session.todo_file, items: [item] },
+					},
+				};
 			}),
 			setTodoCompletion: pending,
 			deleteTodo: pending,
 			createTodo: pending,
+			reorderTodo: pending,
 			switchWorkspace: pending,
 			createWorkspace: pending,
 			deleteWorkspace: pending,
@@ -156,18 +178,6 @@ test.each([
 			},
 			() => {}
 		);
-		const item = {
-			line_number: 1,
-			raw: "Item",
-			description: "Item",
-			completed: false,
-			priority: null,
-			creation_date: null,
-			completion_date: null,
-			projects: [],
-			contexts: [],
-			metadata: {},
-		};
 		const action =
 			operation === "completion"
 				? session.setCompletion(item)
@@ -175,11 +185,13 @@ test.each([
 					? session.deleteTodo(item)
 					: operation === "creation"
 						? session.createTodo({ description: "Item", projects: [], contexts: [] })
-						: operation === "switch"
-							? session.open(workspaceId)
-							: operation === "workspace creation"
-								? session.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" })
-								: session.deleteWorkspace(workspaceId);
+						: operation === "reordering"
+							? session.reorderTodo([item])
+							: operation === "switch"
+								? session.open(workspaceId)
+								: operation === "workspace creation"
+									? session.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" })
+									: session.deleteWorkspace(workspaceId);
 		notify(signal);
 		expect(loads).toBe(1);
 		expect(session.isOperating).toBe(true);

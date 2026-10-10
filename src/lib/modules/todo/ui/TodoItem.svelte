@@ -29,10 +29,7 @@
 </script>
 
 <div
-	class={cn(
-		"group flex h-10 min-w-0 items-center gap-3 px-4 transition-colors hover:bg-muted/50",
-		todo.completed && "text-muted-foreground"
-	)}
+	class={cn("flex h-10 min-w-0 items-center gap-3 px-4", todo.completed && "text-muted-foreground")}
 >
 	<Checkbox
 		bind:checked={confirmedChecked}

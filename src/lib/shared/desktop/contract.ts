@@ -122,7 +122,24 @@ export const createTodoRequestSchema = z.strictObject({
 	projects: todoTagListSchema,
 	contexts: todoTagListSchema,
 });
+export const reorderTodoRequestSchema = z.strictObject({
+	scope: z.uuid(),
+	revision: z.number().int().nonnegative(),
+	workspaceId: z.uuid(),
+	lineNumbers: z
+		.array(z.number().int().positive())
+		.min(2)
+		.refine(
+			(values) => new Set(values).size === values.length,
+			"Todo item positions must be unique"
+		),
+});
 export const desktopContract = {
+	reorderTodo: {
+		channel: "tuxedo:reorder-todo",
+		request: reorderTodoRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	deleteWorkspace: {
 		channel: "tuxedo:delete-workspace",
 		request: deleteWorkspaceRequestSchema,
@@ -206,6 +223,7 @@ export function createDesktopClient(
 		) as z.infer<(typeof desktopContract)[K]["response"]>;
 	};
 	return {
+		reorderTodo: (request) => call("reorderTodo", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		deleteTodo: (request) => call("deleteTodo", request),

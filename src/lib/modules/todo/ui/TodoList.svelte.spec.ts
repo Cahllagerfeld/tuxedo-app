@@ -215,3 +215,157 @@ describe("TodoList", () => {
 			.toBeVisible();
 	});
 });
+
+it("reorders Todo items with the keyboard and submits only on drop", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}");
+	expect(onReorder).not.toHaveBeenCalled();
+	await userEvent.keyboard("{Space}");
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder).toHaveBeenCalledWith([todoFile.items[1], todoFile.items[0]]);
+});
+
+it("keyboard reordering reaches offscreen items and returns to bounded rendering after drop", async () => {
+	const items = Array.from({ length: 100 }, (_, index) => ({
+		...todoFile.items[0],
+		line_number: index + 1,
+		description: `Item ${index + 1}`,
+	}));
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile: { ...todoFile, items },
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Item 1", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	await userEvent.keyboard("{ArrowDown}".repeat(25));
+	await userEvent.keyboard("{Space}");
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder.mock.calls[0][0][25]).toEqual(items[0]);
+	await expect
+		.poll(() => page.getByRole("list", { name: "Todo items" }).element().children.length)
+		.toBeLessThan(30);
+});
+it("Escape cancels a keyboard reorder without saving", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}{Escape}");
+	expect(onReorder).not.toHaveBeenCalled();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+});
+
+it("Escape cancels a keyboard reorder after focus leaves the list", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}");
+	const outside = document.createElement("button");
+	outside.textContent = "Outside the Todo list";
+	document.body.append(outside);
+	try {
+		outside.focus();
+		await userEvent.keyboard("{Escape}");
+		expect(onReorder).not.toHaveBeenCalled();
+		await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+	} finally {
+		outside.remove();
+	}
+});
+
+it.each(["items", "path", "disabled"] as const)(
+	"does not submit a reorder when %s changes during the drag",
+	async (change) => {
+		const onReorder = vi.fn();
+		const props = {
+			todoFile,
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+			onReorder,
+		};
+		const view = await render(TodoList, props);
+		const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+		await expect.element(handle).toBeVisible();
+		(handle.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{ArrowDown}");
+		await view.rerender({
+			...props,
+			todoFile: {
+				...todoFile,
+				items: change === "items" ? [...todoFile.items] : todoFile.items,
+				path: change === "path" ? "/tmp/other.todo" : todoFile.path,
+			},
+			disabled: change === "disabled",
+		});
+		await userEvent.keyboard("{Space}");
+		expect(onReorder).not.toHaveBeenCalled();
+		// A disabled drag handle cannot receive a drop command; Escape still cancels globally.
+		if (change === "disabled") await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+	}
+);
+
+it("expands a drag started in the middle without losing unmounted Todo items", async () => {
+	const items = Array.from({ length: 100 }, (_, index) => ({
+		...todoFile.items[0],
+		line_number: index + 1,
+		description: `Item ${index + 1}`,
+	}));
+	const onReorder = vi.fn();
+	await render(TodoList, {
+		todoFile: { ...todoFile, items },
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+	viewport.scrollTop = 41 * 40;
+	const handle = page.getByRole("button", { name: "Reorder Item 45", exact: true });
+	await expect.element(handle).toBeVisible();
+	await expect.element(page.getByText("Item 1", { exact: true })).not.toBeInTheDocument();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	await userEvent.keyboard("{ArrowUp}".repeat(25));
+	await userEvent.keyboard("{Space}");
+	const expected = [...items];
+	expected.splice(44, 1);
+	expected.splice(19, 0, items[44]);
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder).toHaveBeenCalledWith(expected);
+	await expect
+		.poll(() => page.getByRole("list", { name: "Todo items" }).element().children.length)
+		.toBeLessThan(30);
+});

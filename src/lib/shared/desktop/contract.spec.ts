@@ -117,3 +117,18 @@ test("desktop transport rejects malformed create Todo responses", async () => {
 	}));
 	await expect(desktop.createTodo(createTodoRequest)).rejects.toThrow();
 });
+
+test("desktop transport validates a reorder and rejects duplicate positions before IPC", async () => {
+	let invoked: { channel: string; request: unknown } | undefined;
+	const response = { status: "applied" as const, confirmed: confirmedTodo };
+	const desktop = createDesktopClient(async (channel, request) => {
+		invoked = { channel, request };
+		return response;
+	});
+	const request = { scope, revision: 1, workspaceId, lineNumbers: [3, 1] };
+	expect(await desktop.reorderTodo(request)).toEqual(response);
+	expect(invoked).toEqual({ channel: "tuxedo:reorder-todo", request });
+	invoked = undefined;
+	await expect(desktop.reorderTodo({ ...request, lineNumbers: [1, 1] })).rejects.toThrow("unique");
+	expect(invoked).toBeUndefined();
+});

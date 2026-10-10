@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { TodoFile } from "$lib/modules/todo/domain/todo";
 	import * as Empty from "$lib/shared/ui/empty";
+	import { dragHandle, dragHandleZone } from "svelte-dnd-action";
+	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
-	import { createTodoListVirtualization } from "./todo-list-virtualization.svelte";
+	import { createTodoListView } from "./todo-list-view.svelte";
 
 	type TodoListProps = {
 		todoFile: TodoFile;
@@ -12,6 +14,7 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoFile["items"][number]) => void;
 		onDelete: (todo: TodoFile["items"][number]) => void;
+		onReorder?: (items: readonly TodoFile["items"][number][]) => void;
 	};
 
 	let {
@@ -21,9 +24,10 @@
 		disabled,
 		onToggleComplete,
 		onDelete,
+		onReorder,
 	}: TodoListProps = $props();
 
-	const virtualization = createTodoListVirtualization({
+	const list = createTodoListView({
 		get items() {
 			return items;
 		},
@@ -33,26 +37,51 @@
 		get scrollElement() {
 			return scrollElement;
 		},
+		get disabled() {
+			return disabled;
+		},
+		get onReorder() {
+			return onReorder;
+		},
 	});
 </script>
+
+<svelte:window onkeydowncapture={list.cancelOnEscape} />
 
 {#if items.length > 0}
 	<ul
 		aria-label="Todo items"
 		class="relative w-full"
-		style:height={`${virtualization.totalSize}px`}
+		use:dragHandleZone={list.zoneOptions}
+		onconsider={list.consider}
+		onfinalize={list.finalize}
+		style:height={`${list.totalSize}px`}
 	>
-		{#each virtualization.rows as { row, item } (row.key)}
+		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
-				class="absolute top-0 left-0 w-full border-b border-border/50"
-				style:height={`${row.size}px`}
-				style:transform={`translateY(${row.start}px)`}
-				aria-posinset={row.index + 1}
+				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
+				style:height={`${size}px`}
+				style:top={`${start}px`}
+				aria-posinset={index + 1}
 				aria-setsize={items.length}
-				onfocusin={() => virtualization.focusItem(item)}
-				onfocusout={virtualization.onFocusOut}
+				onfocusin={() => list.focusItem(todo)}
+				onfocusout={list.onFocusOut}
 			>
-				<TodoItem todo={item} {disabled} {onToggleComplete} {onDelete} />
+				{#if onReorder}
+					<div
+						role="button"
+						tabindex="0"
+						use:dragHandle
+						aria-disabled={disabled || items.length < 2}
+						aria-label={`Reorder ${todo.description}`}
+						class="ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
+					>
+						<GripVertical class="size-4" aria-hidden="true" />
+					</div>
+				{/if}
+				<div class="min-w-0 flex-1">
+					<TodoItem {todo} disabled={disabled || list.dragging} {onToggleComplete} {onDelete} />
+				</div>
 			</li>
 		{/each}
 	</ul>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, session } from "electron";
 import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -85,7 +85,10 @@ void app.whenReady().then(async () => {
 		callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] } });
 	});
 	const createWindow = async () => {
+		const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? "#333333" : "#fafafa");
 		const window = new BrowserWindow({
+			show: false,
+			backgroundColor: backgroundColor(),
 			width: 1200,
 			height: 850,
 			...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
@@ -98,7 +101,14 @@ void app.whenReady().then(async () => {
 			},
 		});
 		mainWindow = window;
+		const updateBackground = () => window.setBackgroundColor(backgroundColor());
+		nativeTheme.on("updated", updateBackground);
+		window.once("ready-to-show", () => {
+			window.maximize();
+			window.show();
+		});
 		window.on("closed", () => {
+			nativeTheme.removeListener("updated", updateBackground);
 			if (mainWindow === window) {
 				mainWindow = null;
 				observation.stop();
@@ -116,7 +126,6 @@ void app.whenReady().then(async () => {
 		});
 		window.webContents.on("will-attach-webview", (event) => event.preventDefault());
 		await window.loadURL(devOrigin ?? "tuxedo://app/");
-		window.maximize();
 	};
 	const getWindow = () => mainWindow;
 	registerDesktopOperation(ipcMain, getWindow, trusted, "readSession", backend.readSession);
@@ -128,6 +137,7 @@ void app.whenReady().then(async () => {
 		backend.setTodoCompletion
 	);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteTodo", backend.deleteTodo);
+	registerDesktopOperation(ipcMain, getWindow, trusted, "reorderTodo", backend.reorderTodo);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "createTodo", backend.createTodo);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "switchWorkspace", backend.switchWorkspace);
 	registerDesktopOperation(ipcMain, getWindow, trusted, "restoreSession", backend.restoreSession);
