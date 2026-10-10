@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createDesktopClient } from "./contract";
+import { createDesktopClient, todoFileChangeEvent } from "./contract";
 test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.readSession({})).rejects.toThrow();
@@ -15,6 +15,21 @@ test("desktop transport rejects unsupported request fields before invoking IPC",
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
+const changeSignal = { scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" };
+test("Todo-file observation contract accepts a scoped Active Todo-file signal", () => {
+	expect(todoFileChangeEvent.payload.parse(changeSignal)).toEqual(changeSignal);
+});
+test.each([
+	{ ...changeSignal, scope: "unscoped" },
+	{ ...changeSignal, workspaceId: "unknown" },
+	{ ...changeSignal, revision: -1 },
+	{ ...changeSignal, revision: 1.5 },
+	{ ...changeSignal, todoPath: "" },
+	{ ...changeSignal, cataloguePath: "/tmp/workspaces.json" },
+	{ scope, revision: 1, workspaceId },
+])("Todo-file observation contract rejects malformed or expanded signals %#", (payload) => {
+	expect(() => todoFileChangeEvent.payload.parse(payload)).toThrow();
+});
 const catalogue = {
 	version: 1,
 	active_workspace_id: workspaceId,
