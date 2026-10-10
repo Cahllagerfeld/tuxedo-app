@@ -2,6 +2,8 @@
 	import { onMount } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
+	import { ScrollArea } from "$lib/shared/ui/scroll-area";
+	import "../../../../routes/layout.css";
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
@@ -12,6 +14,7 @@
 		void session.initialize();
 	});
 	let result = $state("");
+	let viewport = $state<HTMLElement | null>(null);
 	const summary = $derived(summarizeTodoFile(session.todoFile));
 	async function remove(todo: TodoItem) {
 		const outcome = await session.deleteTodo(todo);
@@ -24,12 +27,15 @@
 </script>
 
 {#if session.todoFile}
-	<TodoList
-		todoFile={session.todoFile}
-		disabled={session.isOperating}
-		onDelete={remove}
-		onToggleComplete={toggleComplete}
-	/>
+	<ScrollArea bind:viewportRef={viewport} class="h-96">
+		<TodoList
+			scrollElement={viewport}
+			todoFile={session.todoFile}
+			disabled={session.isOperating}
+			onDelete={remove}
+			onToggleComplete={toggleComplete}
+		/>
+	</ScrollArea>
 {/if}
 <button disabled={session.isOperating} onclick={() => session.restore()}>Restore</button>
 <button

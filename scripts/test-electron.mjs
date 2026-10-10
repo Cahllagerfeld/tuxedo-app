@@ -266,10 +266,13 @@ try {
 	// Exercise appearance with enough real Todo items to overflow the reader.
 	await writeFile(
 		deletionPath,
-		Array.from({ length: 80 }, (_, index) => `Item ${index + 1}`).join("\n")
+		Array.from({ length: 1000 }, (_, index) => `Item ${index + 1}`).join("\n")
 	);
 	await page.reload();
-	await page.getByText("Item 80", { exact: true }).waitFor();
+	await page.getByText("Item 1", { exact: true }).waitFor();
+	const renderedItems = page.getByRole("list", { name: "Todo items" }).getByRole("listitem");
+	assert.ok((await renderedItems.count()) < 60, "Todo-item rendering must stay bounded");
+	assert.equal(await page.getByText("Item 1000", { exact: true }).count(), 0);
 	const switcher = page.getByRole("button", { name: "Select workspace: Deletion" });
 	// Check settled hover colors without a timed wait that can outlive native hover.
 	await switcher.evaluate((element) => {
@@ -302,7 +305,9 @@ try {
 			document.querySelector('[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]')
 				.scrollTop > 0
 	);
-	assert.ok(await page.getByText("Item 80", { exact: true }).isVisible());
+	await page.getByText("Item 1000", { exact: true }).waitFor();
+	assert.ok(await page.getByText("Item 1000", { exact: true }).isVisible());
+	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

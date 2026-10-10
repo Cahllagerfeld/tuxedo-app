@@ -295,10 +295,10 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	});
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("41/0/2");
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("work,Work");
-	expect(document.querySelector('ul[aria-label="Todo items"]')?.textContent).toContain(
-		"Ship the release"
-	);
 	expect(viewport.scrollTop).toBe(200);
+	// The appended item becomes available when scrolled into the virtual viewport.
+	viewport.scrollTop = viewport.scrollHeight;
+	await expect.element(page.getByText("Ship the release", { exact: true })).toBeVisible();
 	expect(document.querySelector('[data-sonner-toast][data-type="success"]')).toBeNull();
 	await trigger.click();
 	await expect.element(description).toHaveFocus();

@@ -22,6 +22,7 @@
 	};
 
 	let { workspace, todoFilter, filteredTodoItems, openWorkspaceCreationDialog }: Props = $props();
+	let todoViewport = $state<HTMLElement | null>(null);
 
 	async function toggleTodoCompletion(todo: TodoItem) {
 		try {
@@ -86,7 +87,11 @@
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	<div class="min-h-0 min-w-0 flex-1">
-		<ScrollArea class="h-full w-full" aria-label="Todo item results">
+		<ScrollArea
+			bind:viewportRef={todoViewport}
+			class="h-full w-full"
+			aria-label="Todo item results"
+		>
 			{#if workspace.session.status === "loading"}
 				<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
 					<Empty.Media variant="icon"
@@ -135,6 +140,7 @@
 						</Empty.Root>
 					{:else}
 						<TodoList
+							scrollElement={todoViewport}
 							todoFile={workspace.todoFile}
 							items={filteredTodoItems}
 							disabled={workspace.isOperating}
