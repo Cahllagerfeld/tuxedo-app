@@ -26,6 +26,12 @@
 
 	let focusedLine = $state<number | null>(null);
 	const todoPath = $derived(todoFile.path);
+	// Focus changes must not invalidate TanStack's full-list measurement cache.
+	const getItemKey = $derived.by(() => {
+		const currentItems = items;
+		const path = todoPath;
+		return (index: number) => `${path}:${currentItems[index].line_number}`;
+	});
 	const virtualizer = createVirtualizer<HTMLElement, HTMLLIElement>({
 		count: 0,
 		getScrollElement: () => null,
@@ -51,13 +57,12 @@
 	$effect(() => {
 		const currentItems = items;
 		const viewport = scrollElement;
-		const path = todoFile.path;
 		const focusedIndex = currentItems.findIndex((item) => item.line_number === focusedLine);
 		const instance = get(virtualizer);
 		instance.setOptions({
 			count: currentItems.length,
 			getScrollElement: () => viewport,
-			getItemKey: (index) => `${path}:${currentItems[index].line_number}`,
+			getItemKey,
 			rangeExtractor: (range) => {
 				const indexes = new Set(defaultRangeExtractor(range));
 				// Keep focus mounted, including adjacent rows for Tab/Shift+Tab navigation.

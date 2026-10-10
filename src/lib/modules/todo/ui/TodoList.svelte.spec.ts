@@ -40,6 +40,31 @@ describe("TodoList", () => {
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});
+	it("does not reread the whole Todo file when keyboard focus moves", async () => {
+		const readLineNumber = vi.fn((index: number) => index + 1);
+		const items = Array.from({ length: 1000 }, (_, index) => ({
+			...todoFile.items[0],
+			get line_number() {
+				return readLineNumber(index);
+			},
+			description: `Todo item ${index + 1}`,
+		}));
+		await render(TodoList, {
+			todoFile: { ...todoFile, items },
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		const first = page.getByRole("checkbox", { name: "Mark Todo item 1 complete", exact: true });
+		await expect.element(first).toBeVisible();
+		readLineNumber.mockClear();
+		(first.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Tab}{Tab}");
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Todo item 2 complete", exact: true }))
+			.toHaveFocus();
+		expect(readLineNumber.mock.calls.length).toBeLessThan(100);
+	});
 	it("bounds rendered Todo items and reaches offscreen completion and deletion controls", async () => {
 		const items = Array.from({ length: 1000 }, (_, index) => ({
 			...todoFile.items[0],
