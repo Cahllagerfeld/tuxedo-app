@@ -2,6 +2,9 @@ import { createVirtualizer, defaultRangeExtractor } from "@tanstack/svelte-virtu
 import { fromStore, get } from "svelte/store";
 import type { TodoItem } from "../domain/todo";
 
+// TodoItem is h-10 (40px), plus the row's 1px separator.
+export const TODO_LIST_ROW_HEIGHT = 41;
+
 type TodoListVirtualizationInputs = Readonly<{
 	items: readonly TodoItem[];
 	todoFilePath: string;
@@ -21,8 +24,7 @@ export function createTodoListVirtualization(inputs: TodoListVirtualizationInput
 	const virtualizer = createVirtualizer<HTMLElement, HTMLLIElement>({
 		count: 0,
 		getScrollElement: () => null,
-		// TodoItem is h-10 (40px), plus the row's 1px separator.
-		estimateSize: () => 41,
+		estimateSize: () => TODO_LIST_ROW_HEIGHT,
 		overscan: 5,
 	});
 	const instance = fromStore(virtualizer);

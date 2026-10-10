@@ -1,21 +1,11 @@
 <script lang="ts">
 	import type { TodoFile } from "$lib/modules/todo/domain/todo";
 	import * as Empty from "$lib/shared/ui/empty";
-	import { flushSync } from "svelte";
-	import type { ActionReturn } from "svelte/action";
-	import {
-		dragHandleZone,
-		dragHandle,
-		SOURCES,
-		TRIGGERS,
-		type DndEvent,
-		type Options,
-		type DndZoneAttributes,
-	} from "svelte-dnd-action";
+	import { dragHandle } from "svelte-dnd-action";
 	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
-	import { createTodoListVirtualization } from "./todo-list-virtualization.svelte";
+	import { createTodoListView } from "./todo-list-view.svelte";
 
 	type TodoListProps = {
 		todoFile: TodoFile;
@@ -37,7 +27,7 @@
 		onReorder,
 	}: TodoListProps = $props();
 
-	const virtualization = createTodoListVirtualization({
+	const list = createTodoListView({
 		get items() {
 			return items;
 		},
@@ -47,135 +37,31 @@
 		get scrollElement() {
 			return scrollElement;
 		},
+		get disabled() {
+			return disabled;
+		},
+		get onReorder() {
+			return onReorder;
+		},
 	});
-	type DraggableTodo = { id: number | string; todo: TodoFile["items"][number] };
-	let preview = $state.raw<DraggableTodo[] | null>(null);
-	let original: readonly TodoFile["items"][number][] = [];
-	let originalPath = "";
-	let started = $state(false);
-	let cancelled = false;
-	const rows = $derived(
-		preview
-			? preview.map((item, index) => ({
-					item,
-					index,
-					start: index * 41,
-					size: 41,
-					key: `${todoFile.path}:${item.id}`,
-				}))
-			: virtualization.rows.map(({ row, item }) => ({
-					item: { id: item.line_number, todo: item },
-					index: row.index,
-					start: row.start,
-					size: row.size,
-					key: row.key,
-				}))
-	);
-	const zoneOptions = $derived({
-		items: rows.map((row) => row.item),
-		dragDisabled: disabled || !onReorder || items.length < 2,
-		dropFromOthersDisabled: true,
-		type: "todo-items",
-		zoneTabIndex: -1,
-		dropTargetStyle: {},
-		dropAnimationDisabled: true,
-	});
-
-	// Expand before the library handles the initiating event. Its item array must
-	// match mounted rows, including offscreen destinations, throughout a drag.
-	function virtualDragZone(
-		node: HTMLElement,
-		options: Options<DraggableTodo>
-	): ActionReturn<Options<DraggableTodo>, DndZoneAttributes<DraggableTodo>> {
-		function prepare(event: Event) {
-			if (
-				preview ||
-				disabled ||
-				!onReorder ||
-				items.length < 2 ||
-				!(event.target instanceof Element) ||
-				!event.target.closest("[data-reorder-handle]")
-			)
-				return;
-			if (event instanceof KeyboardEvent && ![" ", "Enter"].includes(event.key)) return;
-			original = items;
-			originalPath = todoFile.path;
-			started = false;
-			cancelled = false;
-			flushSync(() => {
-				preview = items.map((todo) => ({ id: todo.line_number, todo }));
-			});
-		}
-		function cancelOnEscape(event: KeyboardEvent) {
-			if (started && event.key === "Escape") cancelled = true;
-		}
-		function release() {
-			if (!started) preview = null;
-		}
-		node.addEventListener("mousedown", prepare, true);
-		node.addEventListener("touchstart", prepare, true);
-		node.addEventListener("keydown", prepare, true);
-		window.addEventListener("keydown", cancelOnEscape, true);
-		window.addEventListener("mouseup", release);
-		window.addEventListener("touchend", release);
-		const zone = dragHandleZone(node, options);
-		return {
-			update: zone.update,
-			destroy() {
-				node.removeEventListener("mousedown", prepare, true);
-				node.removeEventListener("touchstart", prepare, true);
-				node.removeEventListener("keydown", prepare, true);
-				window.removeEventListener("keydown", cancelOnEscape, true);
-				window.removeEventListener("mouseup", release);
-				window.removeEventListener("touchend", release);
-				zone.destroy?.();
-			},
-		};
-	}
-	function finish(next: DraggableTodo[], id: string) {
-		const valid = !cancelled && !disabled && items === original && todoFile.path === originalPath;
-		const reordered = next.map((item) => item.todo);
-		const focused = reordered.find((item) => String(item.line_number) === String(id));
-		if (focused) virtualization.focusItem(focused);
-		preview = null;
-		started = false;
-		if (valid && reordered.some((item, index) => item !== original[index])) onReorder?.(reordered);
-	}
-	function consider(event: CustomEvent<DndEvent<DraggableTodo>>) {
-		if (event.detail.info.trigger === TRIGGERS.DRAG_STOPPED) {
-			finish(event.detail.items, event.detail.info.id);
-		} else {
-			started = true;
-			preview = event.detail.items;
-		}
-	}
-	function finalize(event: CustomEvent<DndEvent<DraggableTodo>>) {
-		if (event.detail.info.source === SOURCES.KEYBOARD) preview = event.detail.items;
-		else {
-			if (event.detail.info.trigger === TRIGGERS.DROPPED_OUTSIDE_OF_ANY) cancelled = true;
-			finish(event.detail.items, event.detail.info.id);
-		}
-	}
 </script>
 
 {#if items.length > 0}
 	<ul
 		aria-label="Todo items"
 		class="relative w-full"
-		use:virtualDragZone={zoneOptions}
-		onconsider={consider}
-		onfinalize={finalize}
-		style:height={`${preview ? preview.length * 41 : virtualization.totalSize}px`}
+		use:list.dragZone
+		style:height={`${list.totalSize}px`}
 	>
-		{#each rows as { item, index, start, size, key } (key)}
+		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
 				class="group absolute top-0 left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
 				style:height={`${size}px`}
 				style:transform={`translateY(${start}px)`}
 				aria-posinset={index + 1}
 				aria-setsize={items.length}
-				onfocusin={() => virtualization.focusItem(item.todo)}
-				onfocusout={virtualization.onFocusOut}
+				onfocusin={() => list.focusItem(todo)}
+				onfocusout={list.onFocusOut}
 			>
 				{#if onReorder}
 					<div
@@ -184,14 +70,14 @@
 						use:dragHandle
 						data-reorder-handle
 						aria-disabled={disabled || items.length < 2}
-						aria-label={`Reorder ${item.todo.description}`}
+						aria-label={`Reorder ${todo.description}`}
 						class="ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
 					>
 						<GripVertical class="size-4" aria-hidden="true" />
 					</div>
 				{/if}
 				<div class="min-w-0 flex-1">
-					<TodoItem todo={item.todo} disabled={disabled || started} {onToggleComplete} {onDelete} />
+					<TodoItem {todo} disabled={disabled || list.dragging} {onToggleComplete} {onDelete} />
 				</div>
 			</li>
 		{/each}

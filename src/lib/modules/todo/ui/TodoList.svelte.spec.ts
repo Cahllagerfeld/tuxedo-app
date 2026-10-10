@@ -303,3 +303,36 @@ it("Escape cancels a keyboard reorder after focus leaves the list", async () => 
 		outside.remove();
 	}
 });
+
+it.each(["items", "path", "disabled"] as const)(
+	"does not submit a reorder when %s changes during the drag",
+	async (change) => {
+		const onReorder = vi.fn();
+		const props = {
+			todoFile,
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+			onReorder,
+		};
+		const view = await render(TodoList, props);
+		const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+		await expect.element(handle).toBeVisible();
+		(handle.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{ArrowDown}");
+		await view.rerender({
+			...props,
+			todoFile: {
+				...todoFile,
+				items: change === "items" ? [...todoFile.items] : todoFile.items,
+				path: change === "path" ? "/tmp/other.todo" : todoFile.path,
+			},
+			disabled: change === "disabled",
+		});
+		await userEvent.keyboard("{Space}");
+		expect(onReorder).not.toHaveBeenCalled();
+		// A disabled drag handle cannot receive a drop command; Escape still cancels globally.
+		if (change === "disabled") await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+	}
+);
