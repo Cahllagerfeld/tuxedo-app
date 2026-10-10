@@ -51,3 +51,7 @@ registerDesktopOperation(
 	// @ts-expect-error Creation must return a serialized Todo mutation outcome.
 	api.readSession
 );
+
+registerDesktopOperation(ipc, getWindow, () => true, "reorderTodo", api.reorderTodo);
+// @ts-expect-error Reordering requires a scoped session and a list of positions.
+api.reorderTodo({ lineNumbers: [2, 1] });

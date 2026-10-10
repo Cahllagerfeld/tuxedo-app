@@ -293,6 +293,46 @@ try {
 		),
 		["Second"]
 	);
+	// Reorder through the real renderer/preload/backend, including a filtered-out item.
+	const reorderPath = join(directory, "reorder.todo");
+	await writeFile(reorderPath, "First\r\nx 2026-07-10 Hidden\r\nLast");
+	const reorderWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Reorder",
+		color: "blue",
+		todoPath: reorderPath,
+	});
+	assert.equal(reorderWorkspace.status, "applied");
+	await page.reload();
+	const firstHandle = page.getByRole("button", { name: "Reorder First", exact: true });
+	await firstHandle.waitFor();
+	await firstHandle.focus();
+	await page.keyboard.press("Space");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("Space");
+	await page.waitForFunction(
+		() => document.querySelector('ul[aria-label="Todo items"] li p')?.textContent === "Last"
+	);
+	assert.equal(await readFile(reorderPath, "utf8"), "Last\r\nx 2026-07-10 Hidden\r\nFirst");
+	await page.reload();
+	const lastHandle = page.getByRole("button", { name: "Reorder Last", exact: true });
+	await lastHandle.waitFor();
+	const from = await lastHandle.boundingBox();
+	const to = await page.getByRole("button", { name: "Reorder First", exact: true }).boundingBox();
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+	await page.mouse.up();
+	await page.waitForFunction(
+		() => document.querySelector('ul[aria-label="Todo items"] li p')?.textContent === "First"
+	);
+	assert.equal(await readFile(reorderPath, "utf8"), "First\r\nx 2026-07-10 Hidden\r\nLast");
+	await page.evaluate(
+		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
+		reorderWorkspace.confirmed.session.catalogue.active_workspace_id
+	);
+	console.log(
+		"Keyboard and pointer reorder persist across reload and preserve filtered-out Todo items."
+	);
 	const deletionPath = join(directory, "deletion.todo");
 	await writeFile(deletionPath, "First +Work\r\nx 2026-07-10 Finished +Home");
 	const deletionWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {

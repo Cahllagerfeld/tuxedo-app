@@ -5,7 +5,8 @@ export type WorkspaceSessionOperation =
 	| "delete_workspace"
 	| "set_todo_item_completion"
 	| "delete_todo_item"
-	| "create_todo_item";
+	| "create_todo_item"
+	| "reorder_todo_items";
 
 export type WorkspaceSessionActionResult =
 	| { status: "applied" }

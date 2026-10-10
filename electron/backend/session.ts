@@ -15,6 +15,7 @@ import {
 	switchWorkspaceRequestSchema,
 	deleteWorkspaceRequestSchema,
 	createTodoRequestSchema,
+	reorderTodoRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	type Catalogue,
@@ -158,36 +159,74 @@ export function createSessionBackend(cataloguePath: string): SessionBackend {
 		}
 	};
 
+	const mutateTodoFile = async (
+		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
+		transform: (contents: string, todoFile: TodoFile) => string
+	): Promise<Awaited<ReturnType<DesktopAPI["reorderTodo"]>>> => {
+		const { previous, workspace } = await todoMutationContext(input);
+		const contents = await readTodoContents(workspace.todo_path);
+		const current = parseTodoFile(workspace.todo_path, contents);
+		if (contents !== confirmedTodoContents) {
+			const next = {
+				scope,
+				revision: revision++,
+				session: { ...previous.session, todo_file: current },
+			};
+			accept(next, contents);
+			return {
+				status: "conflict",
+				message: "The Todo file changed on disk. Review its current contents.",
+				confirmed: confirmedTodo(scope, next.revision, input.workspaceId, current),
+			};
+		}
+		const rewritten = transform(contents, current);
+		if (rewritten === contents)
+			return {
+				status: "applied",
+				confirmed: confirmedTodo(scope, previous.revision, input.workspaceId, current),
+			};
+		const todo_file = parseTodoFile(workspace.todo_path, rewritten);
+		await atomicWrite(workspace.todo_path, rewritten);
+		const next = { scope, revision: revision++, session: { ...previous.session, todo_file } };
+		accept(next, rewritten);
+		return {
+			status: "applied",
+			confirmed: confirmedTodo(scope, next.revision, input.workspaceId, todo_file),
+		};
+	};
+
 	return {
+		reorderTodo: (request) =>
+			serialize(async () => {
+				try {
+					const input = reorderTodoRequestSchema.parse(request);
+					return await mutateTodoFile(input, (contents, todoFile) => {
+						const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
+						if (input.lineNumbers.some((line) => !byLine.has(line)))
+							throw Error("Invalid Todo item position.");
+						const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+						const positions = [...input.lineNumbers].sort((a, b) => a - b);
+						positions.forEach((position, index) => {
+							const line = lines[position - 1];
+							const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
+							lines[position - 1] = byLine.get(input.lineNumbers[index])! + ending;
+						});
+						return lines.join("");
+					});
+				} catch (error) {
+					return {
+						status: "rejected" as const,
+						message: `Cannot reorder Todo items: ${error instanceof Error ? error.message : String(error)}`,
+					};
+				}
+			}),
 		createTodo: (request) =>
 			serialize(async () => {
 				try {
 					const input = createTodoRequestSchema.parse(request);
-					const { previous, workspace } = await todoMutationContext(input);
-					const contents = await readTodoContents(workspace.todo_path);
-					if (contents !== confirmedTodoContents) {
-						const todo_file = parseTodoFile(workspace.todo_path, contents);
-						const next = {
-							scope,
-							revision: revision++,
-							session: { ...previous.session, todo_file },
-						};
-						accept(next, contents);
-						return {
-							status: "conflict" as const,
-							message: "The Todo file changed on disk. Review its current contents.",
-							confirmed: confirmedTodo(scope, next.revision, input.workspaceId, todo_file),
-						};
-					}
-					const rewritten = appendTodoLine(contents, createTodoLine(input));
-					const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-					await atomicWrite(workspace.todo_path, rewritten);
-					const next = { scope, revision: revision++, session: { ...previous.session, todo_file } };
-					accept(next, rewritten);
-					return {
-						status: "applied" as const,
-						confirmed: confirmedTodo(scope, next.revision, input.workspaceId, todo_file),
-					};
+					return await mutateTodoFile(input, (contents) =>
+						appendTodoLine(contents, createTodoLine(input))
+					);
 				} catch (error) {
 					return {
 						status: "rejected" as const,

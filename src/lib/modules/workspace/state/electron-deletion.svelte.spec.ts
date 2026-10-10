@@ -57,6 +57,7 @@ function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo,
+		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 	};
 }

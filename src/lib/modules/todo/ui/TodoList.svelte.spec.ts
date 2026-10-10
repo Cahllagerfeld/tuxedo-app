@@ -215,3 +215,65 @@ describe("TodoList", () => {
 			.toBeVisible();
 	});
 });
+
+it("reorders Todo items with the keyboard and submits only on drop", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}");
+	expect(onReorder).not.toHaveBeenCalled();
+	await userEvent.keyboard("{Space}");
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder).toHaveBeenCalledWith([todoFile.items[1], todoFile.items[0]]);
+});
+
+it("keyboard reordering reaches offscreen items and returns to bounded rendering after drop", async () => {
+	const items = Array.from({ length: 100 }, (_, index) => ({
+		...todoFile.items[0],
+		line_number: index + 1,
+		description: `Item ${index + 1}`,
+	}));
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile: { ...todoFile, items },
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Item 1", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	await userEvent.keyboard("{ArrowDown}".repeat(25));
+	await userEvent.keyboard("{Space}");
+	await expect.poll(() => onReorder.mock.calls.length).toBe(1);
+	expect(onReorder.mock.calls[0][0][25]).toEqual(items[0]);
+	await expect
+		.poll(() => page.getByRole("list", { name: "Todo items" }).element().children.length)
+		.toBeLessThan(30);
+});
+it("Escape cancels a keyboard reorder without saving", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}{Escape}");
+	expect(onReorder).not.toHaveBeenCalled();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+});

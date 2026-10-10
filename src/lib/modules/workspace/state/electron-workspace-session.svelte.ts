@@ -223,6 +223,28 @@ export class ElectronWorkspaceSessionState {
 			},
 			this.todoOperationTarget(todo)
 		);
+	reorderTodo = (items: readonly TodoItem[]) =>
+		this.runAction(
+			"reorder_todo_items",
+			async () => {
+				const target = this.todoCreationTarget();
+				if (!target)
+					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+				if (items.some((item) => current.get(item.line_number) !== item.raw))
+					return {
+						status: "rejected",
+						message: "The Todo file changed. Try again with its current Todo items.",
+					};
+				return this.applyTodoOutcome(
+					await this.desktop.reorderTodo({
+						...target,
+						lineNumbers: items.map((item) => item.line_number),
+					})
+				);
+			},
+			this.todoOperationTargetForActiveWorkspace()
+		);
 	createTodo = (draft: CreateTodoDraft) =>
 		this.runAction(
 			"create_todo_item",
