@@ -88,7 +88,6 @@
 		options: Options<DraggableTodo>
 	): ActionReturn<Options<DraggableTodo>, DndZoneAttributes<DraggableTodo>> {
 		function prepare(event: Event) {
-			if (event instanceof KeyboardEvent && event.key === "Escape") cancelled = true;
 			if (
 				preview ||
 				disabled ||
@@ -107,12 +106,16 @@
 				preview = items.map((todo) => ({ id: todo.line_number, todo }));
 			});
 		}
+		function cancelOnEscape(event: KeyboardEvent) {
+			if (started && event.key === "Escape") cancelled = true;
+		}
 		function release() {
 			if (!started) preview = null;
 		}
 		node.addEventListener("mousedown", prepare, true);
 		node.addEventListener("touchstart", prepare, true);
 		node.addEventListener("keydown", prepare, true);
+		window.addEventListener("keydown", cancelOnEscape, true);
 		window.addEventListener("mouseup", release);
 		window.addEventListener("touchend", release);
 		const zone = dragHandleZone(node, options);
@@ -122,6 +125,7 @@
 				node.removeEventListener("mousedown", prepare, true);
 				node.removeEventListener("touchstart", prepare, true);
 				node.removeEventListener("keydown", prepare, true);
+				window.removeEventListener("keydown", cancelOnEscape, true);
 				window.removeEventListener("mouseup", release);
 				window.removeEventListener("touchend", release);
 				zone.destroy?.();

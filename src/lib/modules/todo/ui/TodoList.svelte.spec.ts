@@ -277,3 +277,29 @@ it("Escape cancels a keyboard reorder without saving", async () => {
 	expect(onReorder).not.toHaveBeenCalled();
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
 });
+
+it("Escape cancels a keyboard reorder after focus leaves the list", async () => {
+	const onReorder = vi.fn();
+	render(TodoList, {
+		todoFile,
+		disabled: false,
+		onToggleComplete: vi.fn(),
+		onDelete: vi.fn(),
+		onReorder,
+	});
+	const handle = page.getByRole("button", { name: "Reorder Plan", exact: true });
+	await expect.element(handle).toBeVisible();
+	(handle.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}");
+	const outside = document.createElement("button");
+	outside.textContent = "Outside the Todo list";
+	document.body.append(outside);
+	try {
+		outside.focus();
+		await userEvent.keyboard("{Escape}");
+		expect(onReorder).not.toHaveBeenCalled();
+		await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan");
+	} finally {
+		outside.remove();
+	}
+});
