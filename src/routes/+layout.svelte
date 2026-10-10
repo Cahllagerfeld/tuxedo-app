@@ -20,7 +20,7 @@
 	});
 </script>
 
-<!-- The SPA initializes on mount; runtime inline scripts are blocked by Electron's CSP. -->
+<!-- app.html sets the initial theme; ModeWatcher follows system changes after mount. -->
 <ModeWatcher defaultMode="system" disableHeadScriptInjection />
 <Toaster position="top-center" />
 <Sidebar.Provider

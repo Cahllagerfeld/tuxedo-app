@@ -82,6 +82,37 @@ try {
 	const originalThemeSource = await application.evaluate(
 		({ nativeTheme }) => nativeTheme.themeSource
 	);
+	const expectStartupTheme = async (theme) => {
+		await application.evaluate(({ nativeTheme }, source) => {
+			nativeTheme.themeSource = source;
+		}, theme);
+		// Stop the SPA and its styles from loading to inspect the initial HTML canvas.
+		const cdp = await page.context().newCDPSession(page);
+		await cdp.send("Network.enable");
+		await cdp.send("Network.setBlockedURLs", { urls: ["*.js", "*.css"] });
+		try {
+			await page.reload({ waitUntil: "domcontentloaded" });
+			const initial = await page.evaluate(() => ({
+				dark: document.documentElement.classList.contains("dark"),
+				scheme: getComputedStyle(document.documentElement).colorScheme,
+				background: getComputedStyle(document.documentElement).backgroundColor,
+				mounted: document.querySelector("main") !== null,
+			}));
+			assert.equal(initial.mounted, false, "Startup check must run before the SPA mounts");
+			assert.equal(initial.dark, theme === "dark");
+			assert.equal(initial.scheme, theme);
+			assert.equal(initial.background, theme === "dark" ? "rgb(51, 51, 51)" : "rgb(250, 250, 250)");
+			const nativeBackground = await application.evaluate(({ BrowserWindow }) =>
+				BrowserWindow.getAllWindows()[0].getBackgroundColor()
+			);
+			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#333333" : "#fafafa");
+		} finally {
+			await cdp.send("Network.setBlockedURLs", { urls: [] });
+			await cdp.detach();
+		}
+		await page.reload();
+		await page.getByText("No workspace open", { exact: true }).waitFor();
+	};
 	const expectTheme = async (theme) => {
 		await page.waitForFunction((expected) => {
 			const root = document.documentElement;
@@ -93,6 +124,9 @@ try {
 		}, theme);
 	};
 	try {
+		await expectStartupTheme("dark");
+		await expectStartupTheme("light");
+		console.log("Dark and light startup backgrounds match before SPA assets load.");
 		await application.evaluate(({ nativeTheme }) => {
 			nativeTheme.themeSource = "light";
 		});
