@@ -1,12 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
-import {
-	appendTodoLine,
-	confirmedTodo,
-	createTodoLine,
-	type CreateTodoOperation,
-} from "./create-todo";
+import { appendTodoLine, confirmedTodo, createTodoLine } from "./create-todo";
 import { readTodoContents, parseTodoFile } from "./todo-file";
 import { randomUUID } from "node:crypto";
 import type { TodoFileObservationAdapter } from "./observation";
@@ -26,7 +21,7 @@ import {
 	type DesktopAPI,
 	type TodoFileChange,
 } from "../../src/lib/shared/desktop/contract";
-type SessionBackend = Omit<DesktopAPI, "selectTodoFile"> & { createTodo: CreateTodoOperation };
+type SessionBackend = Omit<DesktopAPI, "selectTodoFile">;
 
 export function createSessionBackend(
 	cataloguePath: string,

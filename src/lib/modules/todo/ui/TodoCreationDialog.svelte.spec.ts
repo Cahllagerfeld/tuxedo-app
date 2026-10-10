@@ -141,32 +141,40 @@ test("keeps the bottom tag suggestion hit-testable inside the modal", async () =
 	await expect.element(page.getByText("@Context9", { exact: true })).toBeVisible();
 });
 
-test("rejects todo tokens in Description and exact duplicate tags", async () => {
-	const calls: CreateTodoItemInput[] = [];
-	const createTodoItem = async (input: CreateTodoItemInput) => {
-		calls.push(input);
-		return { status: "applied" as const };
-	};
-	renderDialog(createTodoItem);
-	await openDialog();
+test.each(["Do this +Work key:value", "Call\u0085+Work"])(
+	"rejects Todo tokens in Description (%s) and invalid tags",
+	async (description) => {
+		const calls: CreateTodoItemInput[] = [];
+		const createTodoItem = async (input: CreateTodoItemInput) => {
+			calls.push(input);
+			return { status: "applied" as const };
+		};
+		renderDialog(createTodoItem);
+		await openDialog();
 
-	await page.getByPlaceholder("What needs doing?").fill("Do this +Work key:value");
-	await submitDialog();
-	await expect
-		.element(
-			page.getByText("Use the Project and Context inputs for tags. Metadata is not supported here.")
-		)
-		.toBeVisible();
-	await expect.poll(() => calls.length).toBe(0);
+		await page.getByPlaceholder("What needs doing?").fill(description);
+		await submitDialog();
+		await expect
+			.element(
+				page.getByText(
+					"Use the Project and Context inputs for tags. Metadata is not supported here."
+				)
+			)
+			.toBeVisible();
+		await expect.poll(() => calls.length).toBe(0);
 
-	const projectInput = page.getByPlaceholder("Choose or create a Project");
-	await projectInput.fill("Work");
-	await pressEnter(projectInput);
-	await expect.element(page.getByText("+Work", { exact: true })).toBeVisible();
-	await projectInput.fill("Work");
-	await pressEnter(projectInput);
-	await expect.element(page.getByText("That tag is already selected.")).toBeVisible();
-});
+		const projectInput = page.getByPlaceholder("Choose or create a Project");
+		await projectInput.fill("Work");
+		await pressEnter(projectInput);
+		await expect.element(page.getByText("+Work", { exact: true })).toBeVisible();
+		await projectInput.fill("Work");
+		await pressEnter(projectInput);
+		await expect.element(page.getByText("That tag is already selected.")).toBeVisible();
+		await projectInput.fill("at\u0085home");
+		await pressEnter(projectInput);
+		await expect.element(page.getByText("Use a tag name without spaces.")).toBeVisible();
+	}
+);
 
 test("retains the draft on conflicts and resets it on cancel", async () => {
 	const createTodoItem = async () => ({

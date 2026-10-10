@@ -25,32 +25,20 @@
 	let todoViewport = $state<HTMLElement | null>(null);
 
 	async function toggleTodoCompletion(todo: TodoItem) {
-		try {
-			const result = await workspace.setCompletion(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not update Todo item", { description: result.message });
-			}
-		} catch (error) {
-			toast.error("Could not update Todo item", {
-				description: errorMessage(error),
-			});
+		const result = await workspace.setCompletion(todo);
+		if (result.status === "conflict") {
+			toast.error("Todo file changed externally; reloaded latest version");
+		} else if (result.status === "rejected") {
+			toast.error("Could not update Todo item", { description: result.message });
 		}
 	}
 
 	async function deleteTodoItem(todo: TodoItem) {
-		try {
-			const result = await workspace.deleteTodo(todo);
-			if (result.status === "conflict") {
-				toast.error("Todo file changed externally; reloaded latest version");
-			} else if (result.status === "rejected") {
-				toast.error("Could not delete Todo item", { description: result.message });
-			}
-		} catch (error) {
-			toast.error("Could not delete Todo item", {
-				description: errorMessage(error),
-			});
+		const result = await workspace.deleteTodo(todo);
+		if (result.status === "conflict") {
+			toast.error("Todo file changed externally; reloaded latest version");
+		} else if (result.status === "rejected") {
+			toast.error("Could not delete Todo item", { description: result.message });
 		}
 	}
 
@@ -60,19 +48,6 @@
 			toast.error("Todo file changed externally; reloaded latest version");
 		else if (result.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
-	}
-
-	function errorMessage(error: unknown) {
-		if (error instanceof Error) return error.message;
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"message" in error &&
-			typeof error.message === "string"
-		) {
-			return error.message;
-		}
-		return String(error);
 	}
 </script>
 

@@ -103,6 +103,9 @@ test.each([
 	{ ...createTodoRequest, contexts: ["errands", "errands"] },
 	{ ...createTodoRequest, projects: ["+Home"] },
 	{ ...createTodoRequest, contexts: ["phone home"] },
+	{ ...createTodoRequest, contexts: ["phone\u0085home"] },
+	{ ...createTodoRequest, description: "Call\u0085+Work" },
+	{ ...createTodoRequest, description: "\u0085" },
 	{ ...createTodoRequest, description: "   " },
 ])("desktop transport rejects malformed create Todo requests %#", async (request) => {
 	const desktop = createDesktopClient(async () => {

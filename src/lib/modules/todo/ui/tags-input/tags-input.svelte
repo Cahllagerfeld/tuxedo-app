@@ -11,10 +11,7 @@
 		return transformed;
 	};
 
-	const defaultFilter: NonNullable<TagsInputProps["filterSuggestions"]> = (
-		inputValue,
-		suggestions
-	) => {
+	const filterSuggestions = (inputValue: string, suggestions: string[]) => {
 		const lower = inputValue.toLowerCase();
 		return suggestions.filter((suggestion) => suggestion.toLowerCase().includes(lower));
 	};
@@ -29,8 +26,6 @@
 		onValueChange,
 		onInvalidChange,
 		suggestions,
-		filterSuggestions = defaultFilter,
-		restrictToSuggestions = false,
 		...rest
 	}: TagsInputProps = $props();
 
@@ -75,17 +70,6 @@
 		if (isComposing) return;
 		if (showSuggestions && suggestionIndex !== undefined) {
 			selectSuggestion(filteredSuggestions[suggestionIndex]);
-			return;
-		}
-		if (restrictToSuggestions && suggestions) {
-			const match = suggestions.find(
-				(suggestion) => suggestion.toLowerCase() === inputValue.trim().toLowerCase()
-			);
-			if (!match) {
-				invalid = true;
-				return;
-			}
-			selectSuggestion(match);
 			return;
 		}
 		const validated = validate(inputValue, value);

@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { z } from "zod";
+	import {
+		createTodoRequestSchema,
+		normalizeTodoDescription,
+		todoDescriptionSchema,
+		todoTagSchema,
+	} from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
 	import type { TodoFile } from "$lib/modules/todo/domain/todo";
@@ -22,15 +28,9 @@
 	let { todoFile, createTodoItem, workspaceName = "", disabled = false }: Props = $props();
 
 	const schema = z.object({
-		description: z
-			.string()
-			.refine((value) => value.trim().length > 0, "Enter a Description.")
-			.refine(
-				(value) => !containsTodoToken(value),
-				"Use the Project and Context inputs for tags. Metadata is not supported here."
-			),
-		projects: z.array(z.string()).default([]),
-		contexts: z.array(z.string()).default([]),
+		description: todoDescriptionSchema,
+		projects: createTodoRequestSchema.shape.projects.default([]),
+		contexts: createTodoRequestSchema.shape.contexts.default([]),
 	});
 
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
@@ -40,7 +40,6 @@
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let triggerButton = $state<HTMLButtonElement | null>(null);
-	let descriptionError = $state("");
 	let tagErrors = $state({ projects: "", contexts: "" });
 
 	const projectSuggestions = $derived(
@@ -57,19 +56,6 @@
 		return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 	}
 
-	function containsTodoToken(value: string) {
-		return value
-			.split(/\s+/)
-			.some(
-				(token) =>
-					/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token)
-			);
-	}
-
-	function normalizedDescription(value: string) {
-		return value.trim().replace(/\s+/g, " ");
-	}
-
 	function setTagError(field: "projects" | "contexts", message: string | undefined) {
 		tagErrors[field] = message ?? "";
 	}
@@ -82,7 +68,7 @@
 	) {
 		const trimmed = value.trim();
 		const clean = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
-		if (!clean || /\s/.test(clean) || /^[+@]/.test(clean)) {
+		if (!todoTagSchema.safeParse(clean).success) {
 			setTagError(field, "Use a tag name without spaces.");
 			return undefined;
 		}
@@ -96,7 +82,6 @@
 
 	function resetForm() {
 		form.reset();
-		descriptionError = "";
 		tagErrors.projects = "";
 		tagErrors.contexts = "";
 	}
@@ -129,16 +114,12 @@
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (controlsDisabled) return;
-		descriptionError = containsTodoToken($formData.description)
-			? "Use the Project and Context inputs for tags. Metadata is not supported here."
-			: "";
-		if (descriptionError) return;
 		isCreating = true;
 		try {
 			const result = await form.validateForm({ update: true });
 			if (!result.valid) return;
 			const outcome = await createTodoItem({
-				description: normalizedDescription(result.data.description),
+				description: normalizeTodoDescription(result.data.description),
 				projects: [...result.data.projects],
 				contexts: [...result.data.contexts],
 			});
@@ -203,13 +184,9 @@
 							placeholder="What needs doing?"
 							autocomplete="off"
 							disabled={controlsDisabled}
-							oninput={() => (descriptionError = "")}
 						/>
 					{/snippet}
 				</Form.Control>
-				{#if descriptionError}<p role="alert" class="text-sm font-medium text-destructive">
-						{descriptionError}
-					</p>{/if}
 				<Form.FieldErrors />
 			</Form.Field>
 
