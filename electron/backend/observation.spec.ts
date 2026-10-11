@@ -90,6 +90,7 @@ test("atomic external replacement refreshes through restoration and later deleti
 		expect(refreshed.session.todo_file.skipped).toHaveLength(1);
 		// A brief missing entry during save should still reload as Ready.
 		await rename(path, join(directory, "backup.todo"));
+		await writeFile(join(directory, "backup.todo"), "Saved after a brief missing entry\n");
 		await rename(join(directory, "backup.todo"), path);
 		await expect.poll(() => changes.length, { timeout: 5000 }).toBe(2);
 		expect((await backend.restoreSession({})).session.status).toBe("ready");
@@ -131,4 +132,41 @@ test("renaming the containing directory refreshes the missing Active Todo-file p
 	} finally {
 		observation.stop();
 	}
+});
+
+test("observation ignores delayed signals for confirmed contents after own writes", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	let signal!: () => void;
+	const changes: TodoFileChange[] = [];
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		{
+			retarget: (_path, changed) => {
+				signal = changed;
+			},
+			stop() {},
+		},
+		(event) => changes.push(event)
+	);
+	const path = join(directory, "active.todo");
+	await writeFile(path, "First\nLast");
+	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("Expected Ready");
+	const reordered = await backend.reorderTodo({
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+		lineNumbers: [2, 1],
+	});
+	expect(reordered.status).toBe("applied");
+	signal();
+	await backend.readSession({});
+	expect(changes).toEqual([]);
+	// A real external edit still signals, including a save with the same parsed summary.
+	await writeFile(path, "Last\nFirst\n");
+	signal();
+	await backend.readSession({});
+	expect(changes).toHaveLength(1);
 });

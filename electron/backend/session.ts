@@ -39,11 +39,20 @@ export function createSessionBackend(
 		const ready = current?.session.status === "ready" ? current.session : null;
 		observation?.retarget(ready?.todo_file.path ?? null, () => {
 			if (busy || !current || !ready || current !== confirmed) return;
-			onTodoFileChanged({
-				scope: current.scope,
-				revision: current.revision,
-				workspaceId: ready.catalogue.active_workspace_id!,
-				todoPath: ready.todo_file.path,
+			void serialize(async () => {
+				if (current !== confirmed) return;
+				try {
+					// Delayed watch events from own writes must not interrupt a renderer drag.
+					if ((await readTodoContents(ready.todo_file.path)) === confirmedTodoContents) return;
+				} catch {
+					// An unreadable file still needs restoration into Empty.
+				}
+				onTodoFileChanged({
+					scope: current.scope,
+					revision: current.revision,
+					workspaceId: ready.catalogue.active_workspace_id!,
+					todoPath: ready.todo_file.path,
+				});
 			});
 		});
 	};
