@@ -46,7 +46,7 @@ test("completion writes adjacent dates and preserves priority as metadata for re
 	const now = new Date();
 	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	expect(await readFile(path, "utf8")).toBe(
-		`  x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
+		`x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
 	);
 	expect(applied.confirmed.todo_file.items[0]).toMatchObject({
 		completed: true,
@@ -62,7 +62,7 @@ test("completion writes adjacent dates and preserves priority as metadata for re
 		completed: false,
 	});
 	expect(uncompleted.status).toBe("applied");
-	expect(await readFile(path, "utf8")).toBe(initial);
+	expect(await readFile(path, "utf8")).toBe(initial.trimStart());
 });
 
 test.each(["+GarageSale", "@phone", "due:2026-10-12", "(A) +GarageSale @phone"])(

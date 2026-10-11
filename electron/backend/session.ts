@@ -337,7 +337,7 @@ export function createSessionBackend(
 								rest = `${rest.slice(0, rest.length - trailing.length)} pri:${item.priority}${trailing}`;
 							}
 						}
-						raw = `${leading}x ${today} ${rest}`;
+						raw = `x ${today} ${rest}`;
 					} else {
 						const marker = /^(\p{White_Space}*)x /u.exec(item.raw)!;
 						let rest = item.raw.slice(marker[0].length);
