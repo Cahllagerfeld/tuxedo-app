@@ -26,7 +26,9 @@ export function createTodoLine(request: CreateTodoRequest, date = new Date()): s
 	]
 		.filter((value) => value !== null && value !== undefined && value !== "")
 		.join(" ");
-	return /^\([A-Z]\)$/u.test(line) ? `${line} ` : line;
+	return request.priority && !request.completed && line === `(${request.priority})`
+		? `${line} `
+		: line;
 }
 
 function newlineFor(contents: string): string {

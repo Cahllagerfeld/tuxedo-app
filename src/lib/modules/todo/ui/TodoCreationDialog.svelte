@@ -203,195 +203,195 @@
 		onclick={() => (open = true)}>+ Add Todo item</Button
 	>
 	<Dialog.Content
-		class="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
+		class="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
 		closeButtonDisabled={controlsDisabled}
 	>
-		<Dialog.Header>
+		<Dialog.Header class="shrink-0">
 			<Dialog.Title>New Todo item</Dialog.Title>
 			<Dialog.Description>{targetLabel}</Dialog.Description>
 		</Dialog.Header>
-		<form class="grid gap-5" onsubmit={submit}>
-			<Form.Field {form} name="description">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label
-							>Description <span class="font-normal text-muted-foreground">(optional)</span
-							></Form.Label
-						>
-						<Input
-							{...props}
-							bind:ref={descriptionInput}
-							bind:value={$formData.description}
-							placeholder="What needs doing?"
-							autocomplete="off"
-							disabled={controlsDisabled}
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
-
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Form.Field {form} name="priority">
-					<Form.Control
-						>{#snippet children({ props })}
-							<Form.Label>Priority (optional)</Form.Label>
-							<Select.Root
-								type="single"
-								bind:value={$formData.priority}
-								disabled={controlsDisabled}
+		<form class="flex min-h-0 flex-col gap-4" onsubmit={submit}>
+			<div class="grid gap-4 overflow-y-auto pr-1">
+				<Form.Field {form} name="description">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label
+								>Description <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
 							>
-								<Select.Trigger {...props} class="w-full"
-									>{$formData.priority === "none"
-										? "None"
-										: `(${$formData.priority})`}</Select.Trigger
-								>
-								<Select.Content
-									><Select.Item value="none" label="None">None</Select.Item>
-									{#each priorities as priority}<Select.Item value={priority} label={priority}
-											>({priority})</Select.Item
-										>{/each}
-								</Select.Content></Select.Root
-							>
-						{/snippet}</Form.Control
-					><Form.FieldErrors />
-				</Form.Field>
-				<Form.Field {form} name="creationDate">
-					<Form.Control
-						>{#snippet children({ props })}
-							<Form.Label>Creation date (optional)</Form.Label>
 							<Input
 								{...props}
-								type="date"
-								bind:value={$formData.creationDate}
+								bind:ref={descriptionInput}
+								bind:value={$formData.description}
+								placeholder="What needs doing?"
+								autocomplete="off"
+								disabled={controlsDisabled}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.FieldErrors />
+				</Form.Field>
+
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Form.Field {form} name="priority">
+						<Form.Control
+							>{#snippet children({ props })}
+								<Form.Label>Priority (optional)</Form.Label>
+								<Select.Root
+									type="single"
+									bind:value={$formData.priority}
+									disabled={controlsDisabled}
+								>
+									<Select.Trigger {...props} class="w-full"
+										>{$formData.priority === "none"
+											? "None"
+											: `(${$formData.priority})`}</Select.Trigger
+									>
+									<Select.Content
+										><Select.Item value="none" label="None">None</Select.Item>
+										{#each priorities as priority}<Select.Item value={priority} label={priority}
+												>({priority})</Select.Item
+											>{/each}
+									</Select.Content></Select.Root
+								>
+							{/snippet}</Form.Control
+						><Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="creationDate">
+						<Form.Control
+							>{#snippet children({ props })}
+								<Form.Label>Creation date (optional)</Form.Label>
+								<Input
+									{...props}
+									type="date"
+									bind:value={$formData.creationDate}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}</Form.Control
+						><Form.Description>Clear to omit the Creation date.</Form.Description><Form.FieldErrors
+						/>
+					</Form.Field>
+				</div>
+				<Form.Field {form} name="completed">
+					<Form.Control
+						>{#snippet children({ props })}
+							<div class="flex items-center gap-2">
+								<Checkbox
+									{...props}
+									bind:checked={$formData.completed}
+									disabled={controlsDisabled}
+								/><Form.Label>Completed</Form.Label>
+							</div>
+						{/snippet}</Form.Control
+					>
+				</Form.Field>
+				{#if $formData.completed}
+					<Form.Field {form} name="completionDate">
+						<Form.Control
+							>{#snippet children({ props })}
+								<Form.Label>Completion date</Form.Label>
+								<Input
+									{...props}
+									type="date"
+									bind:value={$formData.completionDate}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}</Form.Control
+						><Form.Description>Priority is preserved as pri Metadata.</Form.Description
+						><Form.FieldErrors />
+					</Form.Field>
+				{/if}
+
+				<Form.Field {form} name="projects">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label
+								>+Projects <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
+							<TagsInput
+								{...props}
+								bind:value={$formData.projects}
+								prefix="+"
+								suggestions={projectSuggestions}
+								placeholder="Choose or create a Project"
+								validate={(value, tags, source) =>
+									validateTag(value, tags, "+", "projects", source)}
+								onValueChange={() => setTagError("projects", undefined)}
+								onInvalidChange={(message) => setTagError("projects", message)}
+								disabled={controlsDisabled}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.Description>Type a name and press Enter.</Form.Description>
+					{#if tagErrors.projects}<p role="alert" class="text-sm font-medium text-destructive">
+							{tagErrors.projects}
+						</p>{/if}
+					<Form.FieldErrors />
+				</Form.Field>
+
+				<Form.Field {form} name="contexts">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label
+								>@Contexts <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
+							<TagsInput
+								{...props}
+								bind:value={$formData.contexts}
+								prefix="@"
+								suggestions={contextSuggestions}
+								placeholder="Choose or create a Context"
+								validate={(value, tags, source) =>
+									validateTag(value, tags, "@", "contexts", source)}
+								onValueChange={() => setTagError("contexts", undefined)}
+								onInvalidChange={(message) => setTagError("contexts", message)}
+								disabled={controlsDisabled}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.Description>Reuse a suggestion or create a new name.</Form.Description>
+					{#if tagErrors.contexts}<p role="alert" class="text-sm font-medium text-destructive">
+							{tagErrors.contexts}
+						</p>{/if}
+					<Form.FieldErrors />
+				</Form.Field>
+
+				<Form.Field {form} name="metadata">
+					<Form.Control
+						>{#snippet children({ props })}
+							<Form.Label>Metadata (optional)</Form.Label>
+							<TagsInput
+								{...props}
+								bind:value={$formData.metadata}
+								placeholder="Add key:value"
+								validate={(value) => {
+									const clean = value.trim();
+									const result = todoMetadataSchema.safeParse(clean);
+									if (!result.success) {
+										setTagError("metadata", result.error.issues[0].message);
+										return undefined;
+									}
+									setTagError("metadata", undefined);
+									return clean;
+								}}
+								onValueChange={() => setTagError("metadata", undefined)}
+								onInvalidChange={(message) => setTagError("metadata", message)}
 								disabled={controlsDisabled}
 							/>
 						{/snippet}</Form.Control
-					><Form.Description>Clear to omit the Creation date.</Form.Description><Form.FieldErrors />
+					>
+					<Form.Description
+						>For example, due:2026-10-12. Press Enter to add. Repeated keys keep the last value.</Form.Description
+					>
+					{#if tagErrors.metadata}<p role="alert" class="text-sm font-medium text-destructive">
+							{tagErrors.metadata}
+						</p>{/if}
+					<Form.FieldErrors />
 				</Form.Field>
 			</div>
-			<Form.Field {form} name="completed">
-				<Form.Control
-					>{#snippet children({ props })}
-						<div class="flex items-center gap-2">
-							<Checkbox
-								{...props}
-								bind:checked={$formData.completed}
-								disabled={controlsDisabled}
-							/><Form.Label>Completed</Form.Label>
-						</div>
-					{/snippet}</Form.Control
-				>
-			</Form.Field>
-			{#if $formData.completed}
-				<Form.Field {form} name="completionDate">
-					<Form.Control
-						>{#snippet children({ props })}
-							<Form.Label>Completion date</Form.Label>
-							<Input
-								{...props}
-								type="date"
-								bind:value={$formData.completionDate}
-								disabled={controlsDisabled}
-							/>
-						{/snippet}</Form.Control
-					><Form.Description>Priority is preserved as pri Metadata.</Form.Description
-					><Form.FieldErrors />
-				</Form.Field>
-			{/if}
-
-			<Form.Field {form} name="projects">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label
-							>+Projects <span class="font-normal text-muted-foreground">(optional)</span
-							></Form.Label
-						>
-						<TagsInput
-							{...props}
-							bind:value={$formData.projects}
-							prefix="+"
-							suggestions={projectSuggestions}
-							placeholder="Choose or create a Project"
-							validate={(value, tags, source) => validateTag(value, tags, "+", "projects", source)}
-							onValueChange={() => setTagError("projects", undefined)}
-							onInvalidChange={(message) => setTagError("projects", message)}
-							disabled={controlsDisabled}
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.Description>Type a name and press Enter.</Form.Description>
-				{#if tagErrors.projects}<p role="alert" class="text-sm font-medium text-destructive">
-						{tagErrors.projects}
-					</p>{/if}
-				<Form.FieldErrors />
-			</Form.Field>
-
-			<Form.Field {form} name="contexts">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label
-							>@Contexts <span class="font-normal text-muted-foreground">(optional)</span
-							></Form.Label
-						>
-						<TagsInput
-							{...props}
-							bind:value={$formData.contexts}
-							prefix="@"
-							suggestions={contextSuggestions}
-							placeholder="Choose or create a Context"
-							validate={(value, tags, source) => validateTag(value, tags, "@", "contexts", source)}
-							onValueChange={() => setTagError("contexts", undefined)}
-							onInvalidChange={(message) => setTagError("contexts", message)}
-							disabled={controlsDisabled}
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.Description>Reuse a suggestion or create a new name.</Form.Description>
-				{#if tagErrors.contexts}<p role="alert" class="text-sm font-medium text-destructive">
-						{tagErrors.contexts}
-					</p>{/if}
-				<Form.FieldErrors />
-			</Form.Field>
-
-			<Form.Field {form} name="metadata">
-				<Form.Control
-					>{#snippet children({ props })}
-						<Form.Label>Metadata (optional)</Form.Label>
-						<TagsInput
-							{...props}
-							bind:value={$formData.metadata}
-							placeholder="Add key:value"
-							validate={(value, tags) => {
-								const clean = value.trim();
-								const result = todoMetadataSchema.safeParse(clean);
-								if (!result.success) {
-									setTagError("metadata", result.error.issues[0].message);
-									return undefined;
-								}
-								if (tags.some((tag) => tag.split(":")[0] === clean.split(":")[0])) {
-									setTagError("metadata", "That Metadata key is already selected.");
-									return undefined;
-								}
-								setTagError("metadata", undefined);
-								return clean;
-							}}
-							onValueChange={() => setTagError("metadata", undefined)}
-							onInvalidChange={(message) => setTagError("metadata", message)}
-							disabled={controlsDisabled}
-						/>
-					{/snippet}</Form.Control
-				>
-				<Form.Description
-					>For example, due:2026-10-12 or custom:value. Press Enter to add.</Form.Description
-				>
-				{#if tagErrors.metadata}<p role="alert" class="text-sm font-medium text-destructive">
-						{tagErrors.metadata}
-					</p>{/if}
-				<Form.FieldErrors />
-			</Form.Field>
-
-			<Dialog.Footer class="border-t pt-4">
+			<Dialog.Footer class="shrink-0 border-t pt-4">
 				<Button type="button" variant="ghost" disabled={controlsDisabled} onclick={cancel}
 					>Cancel</Button
 				>

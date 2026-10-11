@@ -156,13 +156,7 @@ const todoCreationFields = {
 	creationDate: todoDateSchema.nullable().optional(),
 	completed: z.boolean().optional(),
 	completionDate: todoDateSchema.nullable().optional(),
-	metadata: z
-		.array(todoMetadataSchema)
-		.refine(
-			(values) => new Set(values.map((value) => value.split(":")[0])).size === values.length,
-			"Metadata keys must be unique."
-		)
-		.optional(),
+	metadata: z.array(todoMetadataSchema).optional(),
 };
 export const todoCreationSchema = z
 	.strictObject(todoCreationFields)
@@ -187,6 +181,13 @@ export function validateTodoCreation(
 			"Remove pri Metadata or clear Priority; Priority is saved as pri Metadata on completion."
 		);
 	const description = normalizeTodoDescription(input.description);
+	const followedByTokens = !!(
+		input.projects.length ||
+		input.contexts.length ||
+		input.metadata?.length ||
+		(input.completed && input.priority)
+	);
+	const leadingText = description + (followedByTokens ? " " : "");
 	if (
 		!description &&
 		!input.projects.length &&
@@ -201,8 +202,8 @@ export function validateTodoCreation(
 	if (
 		input.creationDate === null &&
 		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
-			(!input.priority && /^\([A-Z]\) /u.test(description)) ||
-			(!input.completed && !input.priority && /^x /u.test(description)))
+			((!input.priority || input.completed) && /^\([A-Z]\) /u.test(leadingText)) ||
+			(!input.completed && !input.priority && /^x /u.test(leadingText)))
 	)
 		issue(
 			"description",

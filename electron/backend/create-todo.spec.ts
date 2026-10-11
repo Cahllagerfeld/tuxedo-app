@@ -272,12 +272,20 @@ test.each([
 	{ creationDate: "2026-02-29" },
 	{ completed: true, completionDate: null },
 	{ completionDate: "2026-10-09" },
-	{ metadata: ["due:tomorrow", "due:today"] },
 	{ metadata: ["bad:has space"] },
 	{ metadata: ["+key:value"] },
 	{ metadata: ["key:too:many"] },
 	{ completed: true, completionDate: "2026-10-09", priority: "A", metadata: ["pri:B"] },
 	{ creationDate: null, description: "x Completed" },
+	{ creationDate: null, description: "x", projects: ["Work"] },
+	{ creationDate: null, description: "(A)", contexts: ["Home"] },
+	{
+		creationDate: null,
+		completed: true,
+		completionDate: "2026-10-09",
+		priority: "A",
+		description: "(B) hello",
+	},
 	{ creationDate: null, description: "(A) Priority" },
 	{ creationDate: null, description: "2026-10-09 Date" },
 ])("rejects ambiguous or invalid structured fields without writes %#", async (values) => {
@@ -286,4 +294,17 @@ test.each([
 	expect(outcome.status).toBe("rejected");
 	expect(await readFile(todoPath, "utf8")).toBe("Keep");
 	expect(await backend.readSession({})).toEqual(confirmed);
+});
+
+test("preserves repeated Metadata in the Todo file and confirms its last value", async () => {
+	const { backend, todoPath, confirmed, workspaceId } = await setup("");
+	const outcome = await backend.createTodo({
+		...request(confirmed, workspaceId),
+		creationDate: null,
+		metadata: ["custom:first", "custom:last"],
+	});
+	expect(outcome.status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toBe("Plan the release custom:first custom:last");
+	if (outcome.status !== "applied") throw Error(outcome.message);
+	expect(outcome.confirmed.todo_file.items[0].metadata).toEqual({ custom: "last" });
 });

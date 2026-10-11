@@ -109,13 +109,36 @@ test.each([
 	{ ...createTodoRequest, contexts: ["phone home"] },
 	{ ...createTodoRequest, contexts: ["phone\u0085home"] },
 	{ ...createTodoRequest, description: "Call\u0085+Work" },
-	{ ...createTodoRequest, description: "\u0085", creationDate: null },
-	{ ...createTodoRequest, description: "   ", creationDate: null },
+	{
+		...createTodoRequest,
+		description: "\u0085",
+		creationDate: null,
+		completed: false,
+		completionDate: null,
+		priority: null,
+		metadata: [],
+		projects: [],
+		contexts: [],
+	},
+	{
+		...createTodoRequest,
+		description: "   ",
+		creationDate: null,
+		completed: false,
+		completionDate: null,
+		priority: null,
+		metadata: [],
+		projects: [],
+		contexts: [],
+	},
 ])("desktop transport rejects malformed create Todo requests %#", async (request) => {
+	let invocations = 0;
 	const desktop = createDesktopClient(async () => {
-		throw Error("should not invoke");
+		invocations++;
+		return { status: "applied", confirmed: confirmedTodo };
 	});
 	await expect(desktop.createTodo(request)).rejects.toThrow();
+	expect(invocations).toBe(0);
 });
 test("desktop transport rejects malformed create Todo responses", async () => {
 	const desktop = createDesktopClient(async () => ({

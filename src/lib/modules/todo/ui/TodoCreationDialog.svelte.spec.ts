@@ -295,7 +295,7 @@ test("validates Metadata and Completion date inline and retains structured draft
 	await pressEnter(metadata);
 	await metadata.fill("custom:another");
 	await pressEnter(metadata);
-	await expect.element(page.getByText("That Metadata key is already selected.")).toBeVisible();
+	await expect.element(page.getByText("custom:another", { exact: true })).toBeVisible();
 	await metadata.fill("");
 	await completion.fill("2026-10-09");
 	await submitDialog();
