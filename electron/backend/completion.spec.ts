@@ -38,7 +38,7 @@ async function setup(contents: string) {
 	};
 }
 test("completion writes adjacent dates and preserves priority as metadata for restoration", async () => {
-	const initial = "  (A) 2026-05-24 Call Mom +Family @phone  \r\n\nOther\nFinal";
+	const initial = "(A) 2026-05-24 Call Mom +Family @phone  \r\n\nOther\nFinal";
 	const { backend, path, target } = await setup(initial);
 	const applied = await backend.setTodoCompletion({ ...target, completed: true });
 	expect(applied.status).toBe("applied");
@@ -46,7 +46,7 @@ test("completion writes adjacent dates and preserves priority as metadata for re
 	const now = new Date();
 	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	expect(await readFile(path, "utf8")).toBe(
-		`  x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
+		`x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
 	);
 	expect(applied.confirmed.todo_file.items[0]).toMatchObject({
 		completed: true,
@@ -93,15 +93,41 @@ test.each(["+GarageSale", "@phone", "due:2026-10-12", "(A) +GarageSale @phone"])
 	}
 );
 
-test.each(["x Buy milk", "  x 2026-01-01 (B) 2025-12-31 Buy  milk  "])(
+test.each(["x Buy milk", "x 2026-01-01 (B) 2025-12-31 Buy  milk  "])(
 	"uncompletion removes only marker and completion date (%s)",
 	async (raw) => {
 		const { backend, path, target } = await setup(raw);
 		const result = await backend.setTodoCompletion({ ...target, completed: false });
 		expect(result.status).toBe("applied");
 		expect(await readFile(path, "utf8")).toBe(
-			raw === "x Buy milk" ? "Buy milk" : "  (B) 2025-12-31 Buy  milk  "
+			raw === "x Buy milk" ? "Buy milk" : "(B) 2025-12-31 Buy  milk  "
 		);
+	}
+);
+
+test.each(["  (A) Call Mom", "\tBuy milk", "  x 2026-01-01 Buy milk"])(
+	"completion prepends its marker before indented content (%s)",
+	async (initial) => {
+		const { backend, path, target } = await setup(`${initial}\r\nOther`);
+		const result = await backend.setTodoCompletion({ ...target, completed: true });
+		expect(result.status).toBe("applied");
+		if (result.status !== "applied") throw Error("completion failed");
+		expect(result.confirmed.todo_file.items[0]).toMatchObject({
+			completed: true,
+			priority: null,
+		});
+		const raw = result.confirmed.todo_file.items[0].raw;
+		expect(raw).toMatch(/^x \d{4}-\d{2}-\d{2} /);
+		expect(raw.slice(13)).toBe(initial);
+		expect(await readFile(path, "utf8")).toBe(`${raw}\r\nOther`);
+		const uncompleted = await backend.setTodoCompletion({
+			...target,
+			revision: result.confirmed.revision,
+			expectedRaw: raw,
+			completed: false,
+		});
+		expect(uncompleted.status).toBe("applied");
+		expect(await readFile(path, "utf8")).toBe(`${initial}\r\nOther`);
 	}
 );
 

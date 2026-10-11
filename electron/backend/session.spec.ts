@@ -135,9 +135,9 @@ test("creation reads and parses the Todo file before atomically saving an active
 				{
 					raw: "  (A) 2026-05-24 Call Mom +Family @phone due:tomorrow  ",
 					line_number: 1,
-					priority: "A",
-					creation_date: "2026-05-24",
-					description: "Call Mom",
+					priority: null,
+					creation_date: null,
+					description: "(A) 2026-05-24 Call Mom",
 					projects: ["Family"],
 					contexts: ["phone"],
 					metadata: { due: "tomorrow" },
@@ -272,7 +272,8 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 	expect(file.items[0]).toMatchObject({
 		line_number: 2,
 		raw: "  (C) Call   Mom +Work +work +Work @Phone @phone key:first key:last key:value:extra + @  ",
-		description: "Call Mom key:value:extra + @",
+		priority: null,
+		description: "(C) Call Mom key:value:extra + @",
 		projects: ["Work", "work", "Work"],
 		contexts: ["Phone", "phone"],
 		metadata: { key: "last" },

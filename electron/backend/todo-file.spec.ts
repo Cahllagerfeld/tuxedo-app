@@ -3,6 +3,20 @@ import { parseTodoFile } from "./todo-file";
 
 describe("todo.txt parser", () => {
 	it.each([
+		["  (A) Call Mom", false, null, null],
+		["\t(A) Call Mom", false, null, null],
+		["  x 2011-03-03 Call Mom", false, null, null],
+		["\tx 2011-03-03 Call Mom", false, null, null],
+		["  2011-03-02 Call Mom", false, null, null],
+		["x ", true, null, null],
+		["(A) ", false, "A", null],
+		["(A) 2011-03-02 Call Mom", false, "A", "2011-03-02"],
+	])("reads prefixes at their source positions (%s)", (raw, completed, priority, creation_date) => {
+		const file = parseTodoFile("/tmp/todo.txt", raw);
+		expect(file.skipped).toEqual([]);
+		expect(file.items).toMatchObject([{ raw, completed, priority, creation_date }]);
+	});
+	it.each([
 		["+GarageSale", "+GarageSale"],
 		["@phone", "@phone"],
 		["due:2026-10-12", "due:2026-10-12"],

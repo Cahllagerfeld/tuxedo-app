@@ -324,8 +324,7 @@ export function createSessionBackend(
 					if (completed) {
 						const date = new Date();
 						const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-						const leading = /^\p{White_Space}*/u.exec(item.raw)![0];
-						let rest = item.raw.slice(leading.length);
+						let rest = item.raw;
 						if (item.priority) {
 							if (priorities.some((priority) => priority !== item.priority))
 								throw Error(
@@ -337,10 +336,9 @@ export function createSessionBackend(
 								rest = `${rest.slice(0, rest.length - trailing.length)} pri:${item.priority}${trailing}`;
 							}
 						}
-						raw = `${leading}x ${today} ${rest}`;
+						raw = `x ${today} ${rest}`;
 					} else {
-						const marker = /^(\p{White_Space}*)x /u.exec(item.raw)!;
-						let rest = item.raw.slice(marker[0].length);
+						let rest = item.raw.slice(2);
 						if (item.completion_date) rest = rest.slice(11);
 						if (!item.priority && /^[A-Z]$/.test(item.metadata.pri ?? "")) {
 							if (priorities.some((priority) => priority !== item.metadata.pri))
@@ -350,7 +348,7 @@ export function createSessionBackend(
 							rest = rest.replace(/(^|\p{White_Space})pri:[A-Z](?=\p{White_Space}|$)/gu, "");
 							rest = `(${item.metadata.pri}) ${rest.replace(/^\p{White_Space}+/u, "")}`;
 						}
-						raw = marker[1] + rest;
+						raw = rest;
 					}
 					lines[item.line_number - 1] = raw + ending;
 					return lines.join("");
