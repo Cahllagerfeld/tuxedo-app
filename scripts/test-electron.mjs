@@ -7,12 +7,17 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 const development = process.argv.includes("--dev");
+const visible = process.argv.includes("--visible");
 const packagedExecutable = process.env.TUXEDO_PACKAGED_EXECUTABLE;
 if (development && packagedExecutable) throw Error("Development tests require unpackaged Electron");
 const directory = await mkdtemp(join(tmpdir(), "tuxedo-electron-"));
 let application;
 let vite;
-const environment = { ...process.env, TUXEDO_USER_DATA: directory };
+const environment = {
+	...process.env,
+	TUXEDO_USER_DATA: directory,
+	TUXEDO_TEST_HIDDEN: visible ? "0" : "1",
+};
 if (!packagedExecutable) delete environment.TUXEDO_RENDERER_ORIGIN;
 const launchApplication = () =>
 	electron.launch({
@@ -21,15 +26,30 @@ const launchApplication = () =>
 		args: packagedExecutable ? [] : [resolve("dist-electron/main.js")],
 		env: environment,
 	});
-const assertMaximized = async () => {
+const assertWindowState = async (page) => {
+	if (!visible) {
+		await page.waitForLoadState("load");
+		assert.equal(
+			await application.evaluate(({ BrowserWindow }) =>
+				BrowserWindow.getAllWindows()[0].isVisible()
+			),
+			false,
+			"Application window must stay hidden"
+		);
+		return;
+	}
 	// The first window can be observed before startup finishes.
 	for (let attempt = 0; attempt < 100; attempt++) {
 		const state = await application.evaluate(({ BrowserWindow }) => {
 			const window = BrowserWindow.getAllWindows()[0];
-			return { maximized: window.isMaximized(), fullscreen: window.isFullScreen() };
+			return {
+				maximized: window.isMaximized(),
+				fullscreen: window.isFullScreen(),
+				visible: window.isVisible(),
+			};
 		});
 		assert.equal(state.fullscreen, false, "Application window must keep native fullscreen off");
-		if (state.maximized) {
+		if (state.maximized && state.visible) {
 			console.log("Application window opens maximized with native fullscreen off.");
 			return;
 		}
@@ -57,7 +77,7 @@ try {
 	}
 	application = await launchApplication();
 	let page = await application.firstWindow();
-	await assertMaximized();
+	await assertWindowState(page);
 	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(confirmed.session.status, "empty");
@@ -270,7 +290,10 @@ try {
 	);
 	assert.equal(completed.status, "applied");
 	assert.equal(completed.confirmed.todo_file.items[0].completed, true);
-	assert.match(await readFile(todoPath, "utf8"), /^x \d{4}-\d{2}-\d{2} \(A\) Call Mom/);
+	assert.match(
+		await readFile(todoPath, "utf8"),
+		/^x \d{4}-\d{2}-\d{2} Call Mom \+Family @phone pri:A\n/
+	);
 	const uncompleted = await page.evaluate((input) => window.desktop.setTodoCompletion(input), {
 		...completionTarget,
 		revision: completed.confirmed.revision,
@@ -297,7 +320,7 @@ try {
 	await application.close();
 	application = await launchApplication();
 	page = await application.firstWindow();
-	await assertMaximized();
+	await assertWindowState(page);
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	const restored = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(

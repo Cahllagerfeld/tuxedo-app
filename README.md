@@ -16,6 +16,8 @@ Run these commands through `devenv shell --`: `pnpm check`, `pnpm test:unit`, `p
 
 `pnpm build` produces the static SPA in `build` and desktop bundles in `dist-electron`. `pnpm test:electron` builds and launches real Electron to exercise production protocol loading, trusted preload/IPC, runtime input validation, Workspace lifecycle, completion, conflicts, and deletion with temporary data. `pnpm test:electron:dev` runs the same workflow suite against the development renderer using its `--dev` option. macOS CI runs types, formatting, browser/backend tests, production build, and real Electron integration. `pnpm test:package` builds an unsigned Forge macOS app and launches its actual executable to repeat the same workflow suite, verify bundled assets, route fallback/reload, and reject protocol traversal. Development renderer origin configuration is ignored in packaged apps. Signed distribution, automatic updates, and Windows/Linux verification are deferred.
 
+Electron integration and package tests keep windows hidden by default. Run `devenv shell -- pnpm test:electron:visible` to show the app and check that it opens maximized with native fullscreen off. Development and package tests also accept `--visible`: `devenv shell -- pnpm test:electron:dev --visible` or `devenv shell -- pnpm test:package --visible`. Hidden tests still use real Electron and exercise the renderer and preload/IPC; only visible mode checks maximization. Normal app launches are unchanged.
+
 Application icons retained from the previous runtime live in `assets` for packaging.
 
 ## Local macOS application

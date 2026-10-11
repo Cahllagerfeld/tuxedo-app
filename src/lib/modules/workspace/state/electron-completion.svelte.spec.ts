@@ -68,7 +68,9 @@ function updated(): ConfirmedTodo {
 				{
 					...item,
 					completed: true,
-					raw: "x 2026-07-11 (A) Call Mom +Family",
+					raw: "x 2026-07-11 Call Mom +Family pri:A",
+					priority: null,
+					metadata: { pri: "A" },
 					completion_date: "2026-07-11",
 				},
 			],
