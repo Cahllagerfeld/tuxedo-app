@@ -81,6 +81,7 @@
 	);
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
+	let metadataInput = $state<ReturnType<typeof TagsInput>>();
 	let triggerButton = $state<HTMLButtonElement | null>(null);
 	let tagErrors = $state({ projects: "", contexts: "", metadata: "" });
 
@@ -159,6 +160,7 @@
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (controlsDisabled) return;
+		if (!metadataInput?.commit()) return;
 		isCreating = true;
 		try {
 			const result = await form.validateForm({ update: true });
@@ -369,6 +371,7 @@
 							<Form.Label>Metadata (optional)</Form.Label>
 							<TagsInput
 								{...props}
+								bind:this={metadataInput}
 								bind:value={$formData.metadata}
 								placeholder="Add key:value"
 								validate={(value) => {
@@ -388,7 +391,8 @@
 						{/snippet}</Form.Control
 					>
 					<Form.Description
-						>For example, due:2026-10-12. Press Enter to add. Repeated keys keep the last value.</Form.Description
+						>For example, due:2026-10-12. Press Enter to add more pairs. Repeated keys keep the last
+						value.</Form.Description
 					>
 					{#if tagErrors.metadata}<p role="alert" class="text-sm font-medium text-destructive">
 							{tagErrors.metadata}

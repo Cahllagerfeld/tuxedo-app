@@ -581,6 +581,30 @@ try {
 	await page.getByText("Item 1000", { exact: true }).waitFor();
 	assert.ok(await page.getByText("Item 1000", { exact: true }).isVisible());
 	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
+
+	const addTodo = page.getByRole("button", { name: "Add Todo item", exact: true });
+	await addTodo.click();
+	const creationDialog = page.getByRole("dialog");
+	await creationDialog.getByPlaceholder("What needs doing?").fill("Metadata check");
+	await creationDialog.getByRole("button", { name: "Clear Creation date" }).click();
+	const metadataInput = creationDialog.getByPlaceholder("Add key:value");
+	await metadataInput.fill("custom:first");
+	await metadataInput.press("Enter");
+	await metadataInput.fill("due:2026-10-12");
+	await creationDialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
+	await creationDialog.waitFor({ state: "detached" });
+	assert.ok(
+		(await readFile(deletionPath, "utf8")).endsWith("\nMetadata check custom:first due:2026-10-12")
+	);
+	await page.reload();
+	await addTodo.waitFor();
+	const metadataSession = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(metadataSession.session.status, "ready");
+	assert.deepEqual(metadataSession.session.todo_file.items.at(-1).metadata, {
+		custom: "first",
+		due: "2026-10-12",
+	});
+	console.log("Metadata entered through the form persists in the Todo file and after reload.");
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

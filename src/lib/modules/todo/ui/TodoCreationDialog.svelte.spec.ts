@@ -351,3 +351,59 @@ test("allows identical Metadata tokens and removes the selected occurrence", asy
 	await submitDialog();
 	await expect.poll(() => calls[0]?.metadata).toEqual(["custom:first", "custom:middle"]);
 });
+
+test("includes typed Metadata when submitting without pressing Enter", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByPlaceholder("What needs doing?").fill("Plan release");
+	await page.getByPlaceholder("Add key:value").fill("due:2026-10-12");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["due:2026-10-12"]);
+});
+
+test("rejects invalid typed Metadata on submit and keeps it for correction", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("bad:too:many");
+	await submitDialog();
+	await expect
+		.element(page.getByText("Use key:value without spaces or extra colons."))
+		.toBeVisible();
+	expect(calls).toHaveLength(0);
+	await expect.element(metadata).toHaveValue("bad:too:many");
+	await metadata.fill("custom:value");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["custom:value"]);
+});
+
+test("retains committed and pending Metadata after a failed save without duplicating it", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "rejected", message: "Cannot write" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("custom:first");
+	await pressEnter(metadata);
+	await metadata.fill("custom:last");
+	await submitDialog();
+	await expect.poll(() => calls.length).toBe(1);
+	await expect.element(page.getByText("custom:last", { exact: true })).toBeVisible();
+	await expect.element(metadata).toHaveValue("");
+	await submitDialog();
+	await expect.poll(() => calls.length).toBe(2);
+	expect(calls.map((input) => input.metadata)).toEqual([
+		["custom:first", "custom:last"],
+		["custom:first", "custom:last"],
+	]);
+});

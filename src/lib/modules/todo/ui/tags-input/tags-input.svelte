@@ -72,15 +72,22 @@
 			selectSuggestion(filteredSuggestions[suggestionIndex]);
 			return;
 		}
+		commit();
+	}
+
+	export function commit() {
+		if (isComposing) return false;
+		if (!inputValue.trim()) return true;
 		const validated = validate(inputValue, value);
 		if (!validated) {
 			invalid = true;
-			return;
+			return false;
 		}
 		value = [...value, validated];
 		onValueChange?.(value);
 		onInvalidChange?.(undefined);
 		inputValue = "";
+		return true;
 	}
 
 	function deleteIndex(index: number) {
