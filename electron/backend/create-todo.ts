@@ -1,8 +1,6 @@
 import {
 	normalizeTodoDescription,
-	type ConfirmedTodo,
 	type DesktopRequest,
-	type TodoFile,
 } from "../../src/lib/shared/desktop/contract";
 
 export type CreateTodoRequest = DesktopRequest<"createTodo">;
@@ -40,13 +38,4 @@ export function appendTodoLine(contents: string, line: string): string {
 	if (!contents) return line;
 	const newline = newlineFor(contents);
 	return contents.endsWith("\n") ? `${contents}${line}${newline}` : `${contents}${newline}${line}`;
-}
-
-export function confirmedTodo(
-	scope: string,
-	revision: number,
-	workspaceId: string,
-	todo_file: TodoFile
-): ConfirmedTodo {
-	return { scope, revision, workspaceId, todo_file };
 }
