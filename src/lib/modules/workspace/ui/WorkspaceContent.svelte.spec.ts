@@ -346,6 +346,8 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		raw: "2026-10-09 Ship the release +work @Desk",
 		description: "Ship the release",
 		creation_date: "2026-10-09",
+		priority: "Z",
+		metadata: { custom: "value" },
 		projects: ["work"],
 		contexts: ["Desk"],
 	};
@@ -369,11 +371,31 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	await expect.element(description).toHaveFocus();
 	await expect.element(page.getByText("Work · work.todo", { exact: true })).toBeVisible();
 	const submit = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1);
+	await page.getByRole("button", { name: "Clear Creation date" }).click();
 	await description.fill("   ");
 	await submit.click();
-	await expect.element(page.getByText("Enter a Description.")).toBeVisible();
+	await expect
+		.element(page.getByText("Enter a Description or another Todo-item value."))
+		.toBeVisible();
 	await expect.element(submit).toBeEnabled();
 	await description.fill("  Ship   the release  ");
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
+	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
+		await page
+			.getByRole("button", { name: monthsFromOctober > 0 ? "Previous" : "Next", exact: true })
+			.click();
+	}
+	await expect
+		.element(page.getByRole("combobox", { name: "Select a month" }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: /Friday, October 9, 2026/ }).click();
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("custom:value");
+	metadata.element().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 	const projects = page.getByPlaceholder("Choose or create a Project");
 	await projects.fill("+work");
 	await expect.element(page.getByRole("option", { name: "Work", exact: true })).toBeVisible();
@@ -391,6 +413,11 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		description: "Ship the release",
 		projects: ["work"],
 		contexts: ["Desk"],
+		priority: "Z",
+		creationDate: "2026-10-09",
+		completed: false,
+		completionDate: null,
+		metadata: ["custom:value"],
 	});
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("41/0/2");
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("work,Work");

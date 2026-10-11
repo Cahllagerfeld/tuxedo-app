@@ -12,12 +12,23 @@ function localDate(date: Date): string {
 }
 
 export function createTodoLine(request: CreateTodoRequest, date = new Date()): string {
-	return [
-		localDate(date),
+	const metadata = [...(request.metadata ?? [])];
+	if (request.completed && request.priority) metadata.push(`pri:${request.priority}`);
+	const line = [
+		request.completed ? "x" : "",
+		request.completed ? request.completionDate : "",
+		!request.completed && request.priority ? `(${request.priority})` : "",
+		request.creationDate === undefined ? localDate(date) : request.creationDate,
 		normalizeTodoDescription(request.description),
 		...request.projects.map((tag) => `+${tag}`),
 		...request.contexts.map((tag) => `@${tag}`),
-	].join(" ");
+		...metadata,
+	]
+		.filter((value) => value !== null && value !== undefined && value !== "")
+		.join(" ");
+	return request.priority && !request.completed && line === `(${request.priority})`
+		? `${line} `
+		: line;
 }
 
 function newlineFor(contents: string): string {

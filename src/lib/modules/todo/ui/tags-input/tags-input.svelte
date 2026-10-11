@@ -57,7 +57,7 @@
 	);
 
 	function selectSuggestion(suggestion: string) {
-		const validated = validate(suggestion, value);
+		const validated = validate(suggestion, value, "suggestion");
 		if (!validated) return;
 		value = [...value, validated];
 		onValueChange?.(value);
@@ -72,26 +72,28 @@
 			selectSuggestion(filteredSuggestions[suggestionIndex]);
 			return;
 		}
+		commit();
+	}
+
+	export function commit() {
+		if (isComposing) return false;
+		if (!inputValue.trim()) return true;
 		const validated = validate(inputValue, value);
 		if (!validated) {
 			invalid = true;
-			return;
+			return false;
 		}
 		value = [...value, validated];
 		onValueChange?.(value);
 		onInvalidChange?.(undefined);
 		inputValue = "";
+		return true;
 	}
 
 	function deleteIndex(index: number) {
 		value = [...value.slice(0, index), ...value.slice(index + 1)];
 		suggestionIndex = undefined;
 		onValueChange?.(value);
-	}
-
-	function deleteValue(tag: string) {
-		const index = value.findIndex((candidate) => candidate === tag);
-		if (index !== -1) deleteIndex(index);
 	}
 
 	function keydown(event: KeyboardEvent) {
@@ -178,13 +180,13 @@
 	)}
 	aria-disabled={disabled}
 >
-	{#each value as tag, index (tag)}
+	{#each value as tag, index (index)}
 		<TagsInputTag
 			value={tag}
 			{prefix}
 			{disabled}
 			active={index === tagIndex}
-			onDelete={deleteValue}
+			onDelete={() => deleteIndex(index)}
 		/>
 	{/each}
 	<input

@@ -75,6 +75,11 @@ const createTodoRequest = {
 	revision: 1,
 	workspaceId,
 	description: "Buy milk",
+	priority: "Z",
+	creationDate: null,
+	completed: true,
+	completionDate: "2026-10-09",
+	metadata: ["custom:value"],
 	projects: ["Home"],
 	contexts: ["errands"],
 };
@@ -101,17 +106,39 @@ test("desktop transport validates and forwards a create Todo mutation", async ()
 test.each([
 	{ ...createTodoRequest, projects: ["Home", "Home"] },
 	{ ...createTodoRequest, contexts: ["errands", "errands"] },
-	{ ...createTodoRequest, projects: ["+Home"] },
 	{ ...createTodoRequest, contexts: ["phone home"] },
 	{ ...createTodoRequest, contexts: ["phone\u0085home"] },
 	{ ...createTodoRequest, description: "Call\u0085+Work" },
-	{ ...createTodoRequest, description: "\u0085" },
-	{ ...createTodoRequest, description: "   " },
+	{
+		...createTodoRequest,
+		description: "\u0085",
+		creationDate: null,
+		completed: false,
+		completionDate: null,
+		priority: null,
+		metadata: [],
+		projects: [],
+		contexts: [],
+	},
+	{
+		...createTodoRequest,
+		description: "   ",
+		creationDate: null,
+		completed: false,
+		completionDate: null,
+		priority: null,
+		metadata: [],
+		projects: [],
+		contexts: [],
+	},
 ])("desktop transport rejects malformed create Todo requests %#", async (request) => {
+	let invocations = 0;
 	const desktop = createDesktopClient(async () => {
-		throw Error("should not invoke");
+		invocations++;
+		return { status: "applied", confirmed: confirmedTodo };
 	});
 	await expect(desktop.createTodo(request)).rejects.toThrow();
+	expect(invocations).toBe(0);
 });
 test("desktop transport rejects malformed create Todo responses", async () => {
 	const desktop = createDesktopClient(async () => ({

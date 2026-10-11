@@ -87,6 +87,12 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 
 	await expect.element(page.getByRole("dialog")).toBeVisible();
 	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveFocus();
+	const description = page.getByPlaceholder("What needs doing?").element();
+	const viewport = description.closest(".overflow-y-auto")!;
+	const inputBounds = description.getBoundingClientRect();
+	const viewportBounds = viewport.getBoundingClientRect();
+	expect(inputBounds.left - viewportBounds.left).toBeGreaterThanOrEqual(3);
+	expect(viewportBounds.right - inputBounds.right).toBeGreaterThanOrEqual(3);
 
 	const projectInput = page.getByPlaceholder("Choose or create a Project");
 	await projectInput.click();
@@ -106,6 +112,11 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 			description: "Ship the release",
 			projects: ["typedProject"],
 			contexts: [],
+			priority: null,
+			creationDate: expect.any(String),
+			completed: false,
+			completionDate: null,
+			metadata: [],
 		});
 });
 
@@ -155,11 +166,7 @@ test.each(["Do this +Work key:value", "Call\u0085+Work"])(
 		await page.getByPlaceholder("What needs doing?").fill(description);
 		await submitDialog();
 		await expect
-			.element(
-				page.getByText(
-					"Use the Project and Context inputs for tags. Metadata is not supported here."
-				)
-			)
+			.element(page.getByText("Use the Project, Context, and Metadata inputs for these tokens."))
 			.toBeVisible();
 		await expect.poll(() => calls.length).toBe(0);
 
@@ -212,5 +219,248 @@ test("retains spaces while editing Description and normalizes them only on submi
 	await submitDialog();
 	await expect
 		.poll(() => calls)
-		.toEqual([{ description: "Buy groceries", projects: [], contexts: [] }]);
+		.toEqual([
+			{
+				description: "Buy groceries",
+				projects: [],
+				contexts: [],
+				priority: null,
+				creationDate: expect.any(String),
+				completed: false,
+				completionDate: null,
+				metadata: [],
+			},
+		]);
+});
+
+test("submits optional Priority, Creation date, and custom Metadata for an open Todo item", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
+	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
+		await page
+			.getByRole("button", { name: monthsFromOctober > 0 ? "Previous" : "Next", exact: true })
+			.click();
+	}
+	await expect
+		.element(page.getByRole("combobox", { name: "Select a month" }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: /Thursday, October 1, 2026/ }).click();
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("due:2026-10-10");
+	await pressEnter(metadata);
+	await metadata.fill("custom:value");
+	await pressEnter(metadata);
+	await submitDialog();
+	await expect
+		.poll(() => calls)
+		.toEqual([
+			{
+				description: "",
+				projects: [],
+				contexts: [],
+				priority: "Z",
+				creationDate: "2026-10-01",
+				completed: false,
+				completionDate: null,
+				metadata: ["due:2026-10-10", "custom:value"],
+			},
+		]);
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await openDialog();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Completed", exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "None", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByText("custom:value", { exact: true })).not.toBeInTheDocument();
+});
+
+test("validates Metadata inline and retains structured drafts on failure", async () => {
+	let calls = 0;
+	renderDialog(async () => {
+		calls++;
+		return { status: "rejected", message: "Cannot write" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("key:too:many");
+	await pressEnter(metadata);
+	await expect
+		.element(page.getByText("Use key:value without spaces or extra colons."))
+		.toBeVisible();
+	await metadata.fill("custom:value");
+	await pressEnter(metadata);
+	await metadata.fill("custom:another");
+	await pressEnter(metadata);
+	await expect.element(page.getByText("custom:another", { exact: true })).toBeVisible();
+	await metadata.fill("");
+	await submitDialog();
+	await expect.poll(() => calls).toBe(1);
+	await expect.element(page.getByRole("dialog")).toBeVisible();
+	await expect.element(page.getByText("custom:value", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	await openDialog();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Completed", exact: true }))
+		.not.toBeInTheDocument();
+	await expect.element(page.getByText("custom:value", { exact: true })).not.toBeInTheDocument();
+});
+
+test("preserves leading prefix characters in existing Project suggestions", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(
+		async (input) => {
+			calls.push(input);
+			return { status: "applied" };
+		},
+		{ ...todoFile, items: [{ ...todoFile.items[0], projects: ["+Work"] }] }
+	);
+	await openDialog();
+	await page.getByPlaceholder("Choose or create a Project").click();
+	await page.getByRole("option", { name: "+Work", exact: true }).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.projects).toEqual(["+Work"]);
+});
+
+test("allows identical Metadata tokens and removes the selected occurrence", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	for (const value of ["custom:first", "custom:middle", "custom:first"]) {
+		await metadata.fill(value);
+		await pressEnter(metadata);
+	}
+	await expect
+		.element(page.getByRole("button", { name: "Remove custom:first", exact: true }).nth(1))
+		.toBeVisible();
+	await page.getByRole("button", { name: "Remove custom:first", exact: true }).nth(1).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["custom:first", "custom:middle"]);
+});
+
+test("includes typed Metadata when submitting without pressing Enter", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByPlaceholder("What needs doing?").fill("Plan release");
+	await page.getByPlaceholder("Add key:value").fill("due:2026-10-12");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["due:2026-10-12"]);
+});
+
+test("rejects invalid typed Metadata on submit and keeps it for correction", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("bad:too:many");
+	await submitDialog();
+	await expect
+		.element(page.getByText("Use key:value without spaces or extra colons."))
+		.toBeVisible();
+	expect(calls).toHaveLength(0);
+	await expect.element(metadata).toHaveValue("bad:too:many");
+	await metadata.fill("custom:value");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["custom:value"]);
+});
+
+test("retains committed and pending Metadata after a failed save without duplicating it", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "rejected", message: "Cannot write" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("custom:first");
+	await pressEnter(metadata);
+	await metadata.fill("custom:last");
+	await submitDialog();
+	await expect.poll(() => calls.length).toBe(1);
+	await expect.element(page.getByText("custom:last", { exact: true })).toBeVisible();
+	await expect.element(metadata).toHaveValue("");
+	await submitDialog();
+	await expect.poll(() => calls.length).toBe(2);
+	expect(calls.map((input) => input.metadata)).toEqual([
+		["custom:first", "custom:last"],
+		["custom:first", "custom:last"],
+	]);
+});
+
+test.each(["None", "A", "B", "C"])(
+	"creates a Todo item with the %s priority button",
+	async (priority) => {
+		const calls: CreateTodoItemInput[] = [];
+		renderDialog(async (input) => {
+			calls.push(input);
+			return { status: "applied" };
+		});
+		await openDialog();
+		const button = page.getByRole("button", { name: priority, exact: true });
+		await button.click();
+		await expect.element(button).toHaveAttribute("aria-pressed", "true");
+		await expect
+			.element(page.getByRole("textbox", { name: "Other priority" }))
+			.not.toBeInTheDocument();
+		await submitDialog();
+		await expect.poll(() => calls[0]?.priority).toBe(priority === "None" ? null : priority);
+	}
+);
+
+test("validates Other priorities and resets its input when choosing a common priority", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	const input = page.getByRole("textbox", { name: "Other priority" });
+	await expect.element(input).toHaveFocus();
+	await submitDialog();
+	await expect
+		.element(page.getByText("Choose None, A, B, C, or enter one letter from D to Z."))
+		.toBeVisible();
+	expect(calls).toHaveLength(0);
+	await input.fill("9");
+	await submitDialog();
+	expect(calls).toHaveLength(0);
+	await input.fill("A");
+	await submitDialog();
+	expect(calls).toHaveLength(0);
+	await input.fill("d");
+	await expect.element(input).toHaveValue("D");
+	await page.getByRole("button", { name: "B", exact: true }).click();
+	await expect.element(input).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await expect.element(input).toHaveValue("");
+	await page.getByRole("button", { name: "None", exact: true }).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.priority).toBe(null);
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "None", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect.element(input).not.toBeInTheDocument();
 });

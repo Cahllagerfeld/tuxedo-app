@@ -232,6 +232,11 @@ try {
 		description: "Plan sprint",
 		projects: ["Planning"],
 		contexts: ["desk"],
+		priority: "Z",
+		creationDate: "2026-10-01",
+		completed: true,
+		completionDate: "2026-10-09",
+		metadata: ["due:2026-10-10", "custom:value"],
 	});
 	assert.equal(createdTodo.status, "applied");
 	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).description, "Plan sprint");
@@ -239,8 +244,17 @@ try {
 	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).contexts, ["desk"]);
 	assert.match(
 		await readFile(todoPath, "utf8"),
-		/\n\d{4}-\d{2}-\d{2} Plan sprint \+Planning @desk\n$/
+		/\nx 2026-10-09 2026-10-01 Plan sprint \+Planning @desk due:2026-10-10 custom:value pri:Z\n$/
 	);
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).completed, true);
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).creation_date, "2026-10-01");
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).completion_date, "2026-10-09");
+	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).metadata, {
+		due: "2026-10-10",
+		custom: "value",
+		pri: "Z",
+	});
+
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",
@@ -567,6 +581,35 @@ try {
 	await page.getByText("Item 1000", { exact: true }).waitFor();
 	assert.ok(await page.getByText("Item 1000", { exact: true }).isVisible());
 	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
+
+	const addTodo = page.getByRole("button", { name: "Add Todo item", exact: true });
+	await addTodo.click();
+	const creationDialog = page.getByRole("dialog");
+	await creationDialog.getByPlaceholder("What needs doing?").fill("Metadata check");
+	await creationDialog.getByRole("button", { name: "Other", exact: true }).click();
+	await creationDialog.getByRole("textbox", { name: "Other priority" }).fill("z");
+	await creationDialog.getByRole("button", { name: "Clear Creation date" }).click();
+	const metadataInput = creationDialog.getByPlaceholder("Add key:value");
+	await metadataInput.fill("custom:first");
+	await metadataInput.press("Enter");
+	await metadataInput.fill("due:2026-10-12");
+	await creationDialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
+	await creationDialog.waitFor({ state: "detached" });
+	assert.ok(
+		(await readFile(deletionPath, "utf8")).endsWith(
+			"\n(Z) Metadata check custom:first due:2026-10-12"
+		)
+	);
+	await page.reload();
+	await addTodo.waitFor();
+	const metadataSession = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(metadataSession.session.status, "ready");
+	assert.equal(metadataSession.session.todo_file.items.at(-1).priority, "Z");
+	assert.deepEqual(metadataSession.session.todo_file.items.at(-1).metadata, {
+		custom: "first",
+		due: "2026-10-12",
+	});
+	console.log("Metadata entered through the form persists in the Todo file and after reload.");
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

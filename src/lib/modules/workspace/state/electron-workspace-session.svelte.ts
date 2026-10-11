@@ -17,7 +17,7 @@ import type {
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 
 type CreateTodoRequest = DesktopRequest<"createTodo">;
-export type CreateTodoDraft = Pick<CreateTodoRequest, "description" | "projects" | "contexts">;
+export type CreateTodoDraft = Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">;
 
 export function reconcileConfirmedSession(
 	previous: ConfirmedSession | undefined,
