@@ -164,6 +164,21 @@ test.each([
 	}
 );
 
+test.each(["x ", "x \t\u0085\u00a0", "x 2026-01-01", "x 2026-01-01   "])(
+	"uncompletion rejects a blank result without changing the Todo file (%s)",
+	async (raw) => {
+		const initial = `${raw}\r\nOther\n`;
+		const { backend, path, target, session } = await setup(initial);
+		const result = await backend.setTodoCompletion({ ...target, completed: false });
+		expect(result).toEqual({
+			status: "rejected",
+			message: "Cannot uncomplete a Todo item without remaining content. Edit the Todo file first.",
+		});
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(session);
+	}
+);
+
 test("completion reuses matching priority metadata instead of duplicating it", async () => {
 	const { backend, path, target } = await setup("(A) Buy milk pri:A");
 	const result = await backend.setTodoCompletion({ ...target, completed: true });
