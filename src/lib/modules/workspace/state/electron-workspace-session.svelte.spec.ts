@@ -44,6 +44,52 @@ test("initialization restores the session explicitly with one backend request", 
 	expect(requests).toEqual(["restore", "restore"]);
 	expect(session.warning).toBe("Refreshed");
 });
+test("Todo operations without a loaded file reject before IPC and release admission", async () => {
+	const unexpected = async () => {
+		throw Error("Unexpected desktop operation");
+	};
+	const session = new ElectronWorkspaceSessionState({
+		readSession: unexpected,
+		restoreSession: async () => confirmed(1, null),
+		setTodoCompletion: unexpected,
+		editTodo: unexpected,
+		deleteTodo: unexpected,
+		reorderTodo: unexpected,
+		createTodo: unexpected,
+		switchWorkspace: unexpected,
+		selectTodoFile: unexpected,
+		deleteWorkspace: unexpected,
+		createWorkspace: unexpected,
+	});
+	await session.initialize();
+	const todo = {
+		line_number: 1,
+		raw: "Existing",
+		description: "Existing",
+		edit: { description: "Existing", metadata: [] },
+		completed: false,
+		priority: null,
+		creation_date: null,
+		completion_date: null,
+		projects: [],
+		contexts: [],
+		metadata: {},
+	};
+	for (const action of [
+		() => session.setCompletion(todo),
+		() => session.editTodo(todo, { description: "Edited", projects: [], contexts: [] }),
+		() => session.deleteTodo(todo),
+		() => session.reorderTodo([todo]),
+		() => session.createTodo({ description: "New", projects: [], contexts: [] }),
+	]) {
+		expect(await action()).toEqual({
+			status: "rejected",
+			message: "No Active workspace Todo file is loaded.",
+		});
+		expect(session.pendingOperation).toBeNull();
+		expect(session.pendingTarget).toBeNull();
+	}
+});
 test.each(["success", "transport failure"])(
 	"initialization blocks overlapping operations and releases admission after %s",
 	async (result) => {

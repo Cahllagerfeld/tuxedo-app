@@ -4,13 +4,6 @@
 	import TagsInputSuggestion from "./tags-input-suggestion.svelte";
 	import TagsInputTag from "./tags-input-tag.svelte";
 
-	const defaultValidate: TagsInputProps["validate"] = (value, tags) => {
-		const transformed = value.trim();
-		if (transformed.length === 0) return undefined;
-		if (tags.includes(transformed)) return undefined;
-		return transformed;
-	};
-
 	const filterSuggestions = (inputValue: string, suggestions: string[]) => {
 		const lower = inputValue.toLowerCase();
 		return suggestions.filter((suggestion) => suggestion.toLowerCase().includes(lower));
@@ -22,8 +15,7 @@
 		placeholder,
 		class: className,
 		disabled = false,
-		validate = defaultValidate,
-		onValueChange,
+		validate,
 		onInvalidChange,
 		suggestions,
 		...rest
@@ -60,7 +52,6 @@
 		const validated = validate(suggestion, value, "suggestion");
 		if (!validated) return;
 		value = [...value, validated];
-		onValueChange?.(value);
 		onInvalidChange?.(undefined);
 		inputValue = "";
 		suggestionIndex = undefined;
@@ -84,7 +75,6 @@
 			return false;
 		}
 		value = [...value, validated];
-		onValueChange?.(value);
 		onInvalidChange?.(undefined);
 		inputValue = "";
 		return true;
@@ -93,7 +83,7 @@
 	function deleteIndex(index: number) {
 		value = [...value.slice(0, index), ...value.slice(index + 1)];
 		suggestionIndex = undefined;
-		onValueChange?.(value);
+		onInvalidChange?.(undefined);
 	}
 
 	function keydown(event: KeyboardEvent) {

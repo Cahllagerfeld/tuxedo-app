@@ -1,31 +1,9 @@
 import { readFile } from "node:fs/promises";
-import type { TodoFile } from "../../src/lib/shared/desktop/contract";
+import { todoDateSchema, type TodoFile } from "../../src/lib/shared/desktop/contract";
 // Rust's char::is_whitespace uses Unicode White_Space; a BOM is source content.
 const trimStart = (value: string) => value.replace(/^\p{White_Space}+/u, "");
 const trim = (value: string) => trimStart(value).replace(/\p{White_Space}+$/u, "");
 const dateTokenPattern = /^\d{4}-\d{2}-\d{2}$/;
-
-function validateDateToken(token: string): void {
-	const year = Number(token.slice(0, 4));
-	const month = Number(token.slice(5, 7));
-	const day = Number(token.slice(8));
-	const daysInMonth = [
-		31,
-		year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
-		31,
-		30,
-		31,
-		30,
-		31,
-		31,
-		30,
-		31,
-		30,
-		31,
-	][month - 1];
-	if (month < 1 || month > 12 || day < 1 || day > daysInMonth)
-		throw Error("date must use YYYY-MM-DD format");
-}
 
 function parseLine(line_number: number, raw: string): TodoFile["items"][number] {
 	let rest = raw;
@@ -34,7 +12,7 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 	const consumeDate = (): string | null => {
 		const token = rest.split(/\p{White_Space}/u, 1)[0];
 		if (!dateTokenPattern.test(token)) return null;
-		validateDateToken(token);
+		if (!todoDateSchema.safeParse(token).success) throw Error("date must use YYYY-MM-DD format");
 		rest = rest.slice(token.length).replace(/^\p{White_Space}/u, "");
 		return token;
 	};

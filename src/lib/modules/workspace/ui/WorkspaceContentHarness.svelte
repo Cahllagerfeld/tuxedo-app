@@ -22,9 +22,9 @@
 <!-- Keep notices available for assertions even when CI browser actions are slow. -->
 <Toaster duration={Infinity} />
 <p aria-label="Summary counts">
-	{app.todos.counts.open}/{app.todos.counts.completed}/{app.todos.counts.projects}
+	{app.todos.counts.open}/{app.todos.counts.completed}
 </p>
-<p aria-label="Summary facets">{app.todos.facets.projects.join(",")}</p>
+<p aria-label="Filter projects">{app.todoFilter.availableFacets.projects.join(",")}</p>
 <div class="flex h-96 flex-col">
 	<WorkspaceContent
 		workspace={app.workspace}

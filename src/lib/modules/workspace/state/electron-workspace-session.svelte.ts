@@ -116,17 +116,14 @@ export class ElectronWorkspaceSessionState {
 		return outcome;
 	}
 
-	private todoCreationTarget(): Pick<
-		CreateTodoRequest,
-		"scope" | "revision" | "workspaceId"
-	> | null {
+	private todoTarget(): Pick<CreateTodoRequest, "scope" | "revision" | "workspaceId"> {
 		const confirmed = this.confirmed;
 		if (
 			!confirmed ||
 			confirmed.session.status !== "ready" ||
 			!confirmed.session.catalogue.active_workspace_id
 		)
-			return null;
+			throw Error("No Active workspace Todo file is loaded.");
 		return {
 			scope: confirmed.scope,
 			revision: confirmed.revision,
@@ -224,41 +221,24 @@ export class ElectronWorkspaceSessionState {
 			"set_todo_item_completion",
 			async () => {
 				const input = this.todoMutationTarget(todo);
-				if (!input)
-					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
 				return this.applyTodoOutcome(
 					await this.desktop.setTodoCompletion({ ...input, completed: !todo.completed })
 				);
 			},
 			this.todoOperationTarget(todo)
 		);
-	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> | null {
-		const confirmed = this.confirmed;
-		if (
-			!confirmed ||
-			confirmed.session.status !== "ready" ||
-			!confirmed.session.catalogue.active_workspace_id
-		)
-			return null;
-		return {
-			scope: confirmed.scope,
-			revision: confirmed.revision,
-			workspaceId: confirmed.session.catalogue.active_workspace_id,
-			lineNumber: todo.line_number,
-			expectedRaw: todo.raw,
-		};
+	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
+		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
 	}
-	private todoOperationTarget(todo: TodoItem): WorkspaceSessionOperationTarget | null {
+	private todoOperationTarget(todo?: TodoItem): WorkspaceSessionOperationTarget | null {
 		const workspaceId = this.catalogue?.active_workspace_id;
-		return workspaceId ? { workspaceId, lineNumber: todo.line_number } : null;
+		return workspaceId ? { workspaceId, ...(todo ? { lineNumber: todo.line_number } : {}) } : null;
 	}
 	editTodo = (todo: TodoItem, draft: CreateTodoDraft) =>
 		this.runAction(
 			"edit_todo_item",
 			async () => {
 				const target = this.todoMutationTarget(todo);
-				if (!target)
-					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
 				return this.applyTodoOutcome(
 					await this.desktop.editTodo({
 						...draft,
@@ -275,8 +255,6 @@ export class ElectronWorkspaceSessionState {
 			"delete_todo_item",
 			async () => {
 				const input = this.todoMutationTarget(todo);
-				if (!input)
-					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
 				return this.applyTodoOutcome(await this.desktop.deleteTodo(input));
 			},
 			this.todoOperationTarget(todo)
@@ -285,9 +263,7 @@ export class ElectronWorkspaceSessionState {
 		this.runAction(
 			"reorder_todo_items",
 			async () => {
-				const target = this.todoCreationTarget();
-				if (!target)
-					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				const target = this.todoTarget();
 				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
 				if (items.some((item) => current.get(item.line_number) !== item.raw))
 					return {
@@ -301,21 +277,15 @@ export class ElectronWorkspaceSessionState {
 					})
 				);
 			},
-			this.todoOperationTargetForActiveWorkspace()
+			this.todoOperationTarget()
 		);
 	createTodo = (draft: CreateTodoDraft) =>
 		this.runAction(
 			"create_todo_item",
 			async () => {
-				const target = this.todoCreationTarget();
-				if (!target)
-					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				const target = this.todoTarget();
 				return this.applyTodoOutcome(await this.desktop.createTodo({ ...target, ...draft }));
 			},
-			this.todoOperationTargetForActiveWorkspace()
+			this.todoOperationTarget()
 		);
-	private todoOperationTargetForActiveWorkspace(): WorkspaceSessionOperationTarget | null {
-		const workspaceId = this.catalogue?.active_workspace_id;
-		return workspaceId ? { workspaceId } : null;
-	}
 }

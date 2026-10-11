@@ -35,7 +35,7 @@ The local calendar date on which an open Todo item became completed.
 The optional calendar date recorded for a Todo item's creation.
 
 **Todo-file summary**:
-A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
+A read-only projection of one parsed Todo file: its items and skipped lines, counts of total, open, and completed Todo items, and a Skipped-line count. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
 **Todo-file observation**:
 Observation of the Active workspace's loaded Todo file for external disk changes. While the Workspace session is idle, a debounced change signal restores confirmed data through the existing session reload path. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning. Own writes and mutation conflicts continue to return confirmed results directly.
@@ -53,7 +53,7 @@ An exact `@`-prefixed token parsed from a Todo item. Contexts with different spe
 A non-empty Todo-file line that could not be parsed as a Todo item. It is reported separately from parsed Todo-item counts.
 
 **Priority**:
-An uppercase priority parsed from an incomplete Todo item. A Todo-file summary counts items with a parsed Priority and exposes their distinct values as a sorted facet.
+An uppercase priority parsed from an incomplete Todo item. Priority facets expose distinct values and their Todo-item counts in the selected completion view.
 
 **Active workspace**:
 The most recently successfully selected Workspace and the one the app attempts to open on startup. A failed switch does not change it.

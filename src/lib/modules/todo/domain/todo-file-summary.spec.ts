@@ -44,7 +44,7 @@ const mixedTodoFile: TodoFile = {
 		item({
 			line_number: 14,
 			completed: false,
-			priority: "a",
+			priority: null,
 			projects: [],
 			contexts: [],
 		}),
@@ -64,15 +64,12 @@ describe("summarizeTodoFile", () => {
 				total: 0,
 				open: 0,
 				completed: 0,
-				priority: 0,
-				projects: 0,
 				skipped: 0,
 			},
-			facets: { projects: [], contexts: [], priorities: [] },
 		});
 	});
 
-	it("preserves parser order and derives counts and exact-spelling sorted facets", () => {
+	it("preserves parser order and derives completion and skipped-line counts", () => {
 		expect(summarizeTodoFile(mixedTodoFile)).toEqual({
 			items: mixedTodoFile.items,
 			skipped: mixedTodoFile.skipped,
@@ -80,14 +77,7 @@ describe("summarizeTodoFile", () => {
 				total: 4,
 				open: 3,
 				completed: 1,
-				priority: 2,
-				projects: 3,
 				skipped: 2,
-			},
-			facets: {
-				projects: ["house", "House", "Tuxedo"],
-				contexts: ["computer", "home", "Home"],
-				priorities: ["A", "B"],
 			},
 		});
 	});
