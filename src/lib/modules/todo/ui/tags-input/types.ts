@@ -3,8 +3,7 @@ import type { HTMLInputAttributes } from "svelte/elements";
 export type TagsInputPropsWithoutHTML = {
 	prefix?: string;
 	value?: string[];
-	validate?: (value: string, tags: string[], source?: "suggestion") => string | undefined;
-	onValueChange?: (value: string[]) => void;
+	validate: (value: string, tags: string[], source?: "suggestion") => string | undefined;
 	onInvalidChange?: (message: string | undefined) => void;
 	suggestions?: string[];
 };
