@@ -16,14 +16,12 @@
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
-	import { Calendar } from "$lib/shared/ui/calendar";
-	import * as Popover from "$lib/shared/ui/popover";
-	import { DateFormatter, getLocalTimeZone, parseDate } from "@internationalized/date";
-	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { CreateTodoItem } from "./todo-creation-types";
 	import TagsInput from "./tags-input/tags-input.svelte";
+	import PriorityPicker from "./PriorityPicker.svelte";
+	import DatePicker from "./DatePicker.svelte";
 
 	type Props = {
 		todoFile: TodoFile;
@@ -34,26 +32,6 @@
 
 	let { todoFile, createTodoItem, workspaceName = "", disabled = false }: Props = $props();
 
-	let otherPriority = $state(false);
-	let otherPriorityInput = $state<HTMLInputElement | null>(null);
-	const priorities = [
-		{ value: "none", label: "None", color: "" },
-		{
-			value: "A",
-			label: "A",
-			color: "text-[var(--priority-a)] aria-pressed:bg-[var(--priority-a-muted)]",
-		},
-		{
-			value: "B",
-			label: "B",
-			color: "text-[var(--priority-b)] aria-pressed:bg-[var(--priority-b-muted)]",
-		},
-		{
-			value: "C",
-			label: "C",
-			color: "text-[var(--priority-c)] aria-pressed:bg-[var(--priority-c-muted)]",
-		},
-	];
 	const dateField = z.union([z.literal(""), todoDateSchema]);
 	function today() {
 		const date = new Date();
@@ -66,11 +44,7 @@
 			contexts: createTodoRequestSchema.shape.contexts.default([]),
 			priority: z
 				.string()
-				.refine(
-					(value) =>
-						otherPriority ? /^[D-Z]$/u.test(value) : ["none", "A", "B", "C"].includes(value),
-					"Choose None, A, B, C, or enter one letter from D to Z."
-				)
+				.regex(/^(none|[A-Z])$/u, "Choose None, A, B, C, or enter one letter from D to Z.")
 				.default("none"),
 			creationDate: dateField.default(today()),
 			metadata: z.array(todoMetadataSchema).default([]),
@@ -100,10 +74,6 @@
 	const { form: formData } = form;
 
 	let open = $state(false);
-	const dateFormatter = new DateFormatter("en-US", { dateStyle: "long" });
-	const creationDate = $derived(
-		$formData.creationDate ? parseDate($formData.creationDate) : undefined
-	);
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let metadataInput = $state<ReturnType<typeof TagsInput>>();
@@ -150,7 +120,6 @@
 	}
 
 	function resetForm() {
-		otherPriority = false;
 		form.reset();
 		$formData.creationDate = today();
 		tagErrors.metadata = "";
@@ -268,54 +237,12 @@
 						<Form.Control
 							>{#snippet children({ props })}
 								<Form.Label id={`${props.id}-label`}>Priority (optional)</Form.Label>
-								<div role="group" aria-labelledby={`${props.id}-label`} class="flex gap-1">
-									{#each priorities as priority (priority.value)}
-										<Button
-											type="button"
-											size="sm"
-											variant={!otherPriority && $formData.priority === priority.value
-												? "secondary"
-												: "outline"}
-											id={!otherPriority && priority.value === "none" ? props.id : undefined}
-											aria-label={priority.label}
-											aria-pressed={!otherPriority && $formData.priority === priority.value}
-											class={`flex-1 ${priority.color}`}
-											disabled={controlsDisabled}
-											onclick={() => {
-												otherPriority = false;
-												$formData.priority = priority.value;
-											}}
-										>
-											{priority.label}
-										</Button>
-									{/each}
-									<Button
-										type="button"
-										size="sm"
-										variant={otherPriority ? "secondary" : "outline"}
-										aria-pressed={otherPriority}
-										disabled={controlsDisabled}
-										onclick={() => {
-											if (!otherPriority) $formData.priority = "";
-											otherPriority = true;
-											void tick().then(() => otherPriorityInput?.focus());
-										}}>Other</Button
-									>
-								</div>
-								{#if otherPriority}
-									<Input
-										{...props}
-										bind:ref={otherPriorityInput}
-										bind:value={$formData.priority}
-										aria-label="Other priority"
-										placeholder="D–Z"
-										maxlength={1}
-										autocomplete="off"
-										disabled={controlsDisabled}
-										oninput={(event) =>
-											($formData.priority = event.currentTarget.value.toUpperCase())}
-									/>
-								{/if}
+								<PriorityPicker
+									{...props}
+									aria-labelledby={`${props.id}-label`}
+									bind:value={$formData.priority}
+									disabled={controlsDisabled}
+								/>
 							{/snippet}</Form.Control
 						><Form.FieldErrors />
 					</Form.Field>
@@ -323,46 +250,13 @@
 						<Form.Control
 							>{#snippet children({ props })}
 								<Form.Label>Creation date (optional)</Form.Label>
-								<Popover.Root>
-									<Popover.Trigger disabled={controlsDisabled}>
-										{#snippet child({ props: triggerProps })}
-											<Button
-												{...triggerProps}
-												{...props}
-												type="button"
-												variant="outline"
-												data-empty={!creationDate}
-												class="w-full justify-between text-start font-normal data-[empty=true]:text-muted-foreground"
-												disabled={controlsDisabled}
-											>
-												{creationDate
-													? dateFormatter.format(creationDate.toDate(getLocalTimeZone()))
-													: "Pick a date"}
-												<ChevronDownIcon data-icon="inline-end" />
-											</Button>
-										{/snippet}
-									</Popover.Trigger>
-									<Popover.Content class="w-auto p-0" align="start">
-										<Calendar
-											type="single"
-											bind:value={
-												() => creationDate,
-												(value) => ($formData.creationDate = value?.toString() ?? "")
-											}
-											disabled={controlsDisabled}
-										/>
-									</Popover.Content>
-								</Popover.Root>
+								<DatePicker
+									{...props}
+									bind:value={$formData.creationDate}
+									disabled={controlsDisabled}
+								/>
 							{/snippet}</Form.Control
-						><Form.Description>
-							<Button
-								type="button"
-								variant="link"
-								class="h-auto p-0 font-normal text-muted-foreground"
-								disabled={controlsDisabled}
-								onclick={() => ($formData.creationDate = "")}>Clear Creation date</Button
-							> to omit it.
-						</Form.Description><Form.FieldErrors />
+						><Form.FieldErrors />
 					</Form.Field>
 				</div>
 
