@@ -28,18 +28,17 @@ function validateDateToken(token: string): void {
 }
 
 function parseLine(line_number: number, raw: string): TodoFile["items"][number] {
-	let rest = trim(raw);
+	let rest = raw;
 	const completed = rest.startsWith("x ");
 	if (completed) rest = rest.slice(2);
 	const consumeDate = (): string | null => {
-		const token = trimStart(rest).split(/\p{White_Space}/u, 1)[0];
+		const token = rest.split(/\p{White_Space}/u, 1)[0];
 		if (!dateTokenPattern.test(token)) return null;
 		validateDateToken(token);
-		rest = trimStart(rest).slice(token.length);
+		rest = rest.slice(token.length).replace(/^\p{White_Space}/u, "");
 		return token;
 	};
 	const completion_date = completed ? consumeDate() : null;
-	rest = trimStart(rest);
 	const match = /^\(([A-Z])\) /.exec(rest);
 	const priority = match?.[1] ?? null;
 	if (match) rest = rest.slice(4);
