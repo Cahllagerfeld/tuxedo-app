@@ -63,7 +63,6 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 			else if (token) description.push(token);
 		}
 	}
-	if (!description.length) throw Error("task description is empty");
 	return {
 		line_number,
 		raw,
@@ -71,7 +70,7 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 		priority,
 		creation_date,
 		completion_date,
-		description: description.join(" "),
+		description: description.join(" ") || trim(rest) || trim(raw),
 		projects,
 		contexts,
 		metadata,

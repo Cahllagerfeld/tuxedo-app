@@ -334,7 +334,7 @@ try {
 	// Real observation signals cross preload/IPC and use the mounted controller.
 	await writeFile(
 		todoPath,
-		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n+OnlyTag\n"
+		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n"
 	);
 	await page.getByText("External insertion", { exact: true }).waitFor();
 	await page.getByText("Todo file reloaded", { exact: true }).waitFor();
@@ -345,7 +345,7 @@ try {
 	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
 	await writeFile(
 		todoPath,
-		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n+OnlyTag\n\n"
+		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n\n"
 	);
 	await page.waitForFunction(
 		async (revision) => (await window.desktop.readSession({})).revision > revision,

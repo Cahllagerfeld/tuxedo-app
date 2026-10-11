@@ -67,7 +67,10 @@ test.each(["x 2026-07-10 Finished", "x 2026-07-10 Finished\n", "x 2026-07-10 Fin
 );
 test("deletion rereads disk and preserves unrelated edits, skipped and blank lines, mixed endings and an unterminated final line", async () => {
 	const { todoPath, backend, confirmed } = await setup("First\r\nDelete me\r\nLast");
-	await writeFile(todoPath, "  (A) Edited +Work  \r\nDelete me\r\n\n+Skipped\r\nx 2026-07-10 Last");
+	await writeFile(
+		todoPath,
+		"  (A) Edited +Work  \r\nDelete me\r\n\n2026-13-01 Invalid\r\nx 2026-07-10 Last"
+	);
 	const result = await backend.deleteTodo({
 		scope: confirmed.scope,
 		revision: confirmed.revision,
@@ -78,14 +81,14 @@ test("deletion rereads disk and preserves unrelated edits, skipped and blank lin
 	expect(result.status).toBe("applied");
 	if (result.status === "rejected") throw Error(result.message);
 	expect(await readFile(todoPath, "utf8")).toBe(
-		"  (A) Edited +Work  \r\n\n+Skipped\r\nx 2026-07-10 Last"
+		"  (A) Edited +Work  \r\n\n2026-13-01 Invalid\r\nx 2026-07-10 Last"
 	);
 	expect(result.confirmed.todo_file).toMatchObject({
 		items: [
 			{ line_number: 1, raw: "  (A) Edited +Work  " },
 			{ line_number: 4, raw: "x 2026-07-10 Last" },
 		],
-		skipped: [{ line_number: 3, raw: "+Skipped" }],
+		skipped: [{ line_number: 3, raw: "2026-13-01 Invalid" }],
 	});
 });
 test.each(["Changed target\nOther", "Other"])(
@@ -147,7 +150,7 @@ test.each(["scope", "revision", "workspace", "invalid-target"])(
 		if (failure === "scope") request.scope = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		if (failure === "revision") request.revision += 1;
 		if (failure === "workspace") request.workspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		if (failure === "invalid-target") request.expectedRaw = "+Only";
+		if (failure === "invalid-target") request.expectedRaw = "2026-13-01 Invalid";
 		expect((await backend.deleteTodo(request)).status).toBe("rejected");
 		expect(await readFile(todoPath, "utf8")).toBe("Delete me\nKeep");
 		expect(await backend.readSession({})).toEqual(confirmed);

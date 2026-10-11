@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { parseTodoFile } from "./todo-file";
 
 describe("todo.txt parser", () => {
+	it.each([
+		["+GarageSale", "+GarageSale"],
+		["@phone", "@phone"],
+		["due:2026-10-12", "due:2026-10-12"],
+		["(A) +GarageSale @phone", "+GarageSale @phone"],
+		["x 2026-10-11 +GarageSale", "+GarageSale"],
+		["2026-10-11", "2026-10-11"],
+	])("parses an item without separate description text (%s)", (raw, description) => {
+		const file = parseTodoFile("/tmp/todo.txt", raw);
+		expect(file.skipped).toEqual([]);
+		expect(file.items).toHaveLength(1);
+		expect(file.items[0]).toMatchObject({ raw, description });
+	});
 	it("parses the canonical todo.txt examples", () => {
 		const file = parseTodoFile(
 			"/tmp/todo.txt",
