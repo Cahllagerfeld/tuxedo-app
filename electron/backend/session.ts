@@ -348,6 +348,10 @@ export function createSessionBackend(
 							rest = rest.replace(/(^|\p{White_Space})pri:[A-Z](?=\p{White_Space}|$)/gu, "");
 							rest = `(${item.metadata.pri}) ${rest.replace(/^\p{White_Space}+/u, "")}`;
 						}
+						if (/^\p{White_Space}*$/u.test(rest))
+							throw Error(
+								"Cannot uncomplete a Todo item without remaining content. Edit the Todo file first."
+							);
 						raw = rest;
 					}
 					lines[item.line_number - 1] = raw + ending;
