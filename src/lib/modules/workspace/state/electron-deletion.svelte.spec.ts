@@ -76,7 +76,8 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 		}),
 	});
 	await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
-	await page.getByRole("button", { name: "Delete Delete", exact: true }).click();
+	await page.getByRole("button", { name: "Actions for Delete", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 	expect(request).toMatchObject({
 		scope,
 		revision: 5,
@@ -107,7 +108,7 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 	await expect.element(page.getByLabelText("Projects")).toHaveTextContent("Home");
 	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 	await expect
-		.element(page.getByRole("button", { name: "Delete Delete", exact: true }))
+		.element(page.getByRole("button", { name: "Actions for Delete", exact: true }))
 		.not.toBeInTheDocument();
 });
 
@@ -125,12 +126,13 @@ test("a completed row deletion conflict replaces list and summary with current d
 			},
 		})),
 	});
-	await page.getByRole("button", { name: "Delete Finished", exact: true }).click();
+	await page.getByRole("button", { name: "Actions for Finished", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 	await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Changed on disk");
 	await expect.element(page.getByLabelText("Total items")).toHaveTextContent("1");
 	await expect.element(page.getByLabelText("Projects")).toHaveTextContent("Fresh");
 	await expect
-		.element(page.getByRole("button", { name: "Delete Changed", exact: true }))
+		.element(page.getByRole("button", { name: "Actions for Changed", exact: true }))
 		.toBeInTheDocument();
 });
 test.each(["rejected", "transport"])(
@@ -144,13 +146,14 @@ test.each(["rejected", "transport"])(
 				return { status: "rejected", message: "Cannot write file" };
 			}),
 		});
-		await page.getByRole("button", { name: "Delete Delete", exact: true }).click();
+		await page.getByRole("button", { name: "Actions for Delete", exact: true }).click();
+		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 		await expect
 			.element(page.getByLabelText("Action result"))
 			.toHaveTextContent("Cannot write file");
 		await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
 		await expect
-			.element(page.getByRole("button", { name: "Delete Delete", exact: true }))
+			.element(page.getByRole("button", { name: "Actions for Delete", exact: true }))
 			.toBeEnabled();
 		expect(attempts).toBe(1);
 	}
@@ -173,11 +176,12 @@ test.each(["older", "scope", "workspace", "path"])(
 				},
 			})),
 		});
-		await page.getByRole("button", { name: "Delete Delete", exact: true }).click();
+		await page.getByRole("button", { name: "Actions for Delete", exact: true }).click();
+		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 		await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Applied");
 		await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
 		await expect
-			.element(page.getByRole("button", { name: "Delete Delete", exact: true }))
+			.element(page.getByRole("button", { name: "Actions for Delete", exact: true }))
 			.toBeEnabled();
 	}
 );

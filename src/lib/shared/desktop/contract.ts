@@ -168,11 +168,16 @@ export function validateTodoCreation(
 ) {
 	const issue = (path: string, message: string) =>
 		ctx.addIssue({ code: "custom", path: [path], message });
-	if (input.completed && !input.completionDate && (!editing || input.creationDate))
+	if (
+		input.completed &&
+		!input.completionDate &&
+		(!editing || (input.creationDate && !input.priority))
+	)
 		issue("completionDate", "Choose a Completion date for a completed Todo item.");
 	if (!input.completed && input.completionDate)
 		issue("completionDate", "Only completed Todo items have a Completion date.");
 	if (
+		!editing &&
 		input.completed &&
 		input.priority &&
 		input.metadata?.some((value) => value.startsWith("pri:"))
@@ -203,7 +208,7 @@ export function validateTodoCreation(
 	if (
 		input.creationDate === null &&
 		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
-			((!input.priority || input.completed) && /^\([A-Z]\) /u.test(leadingText)) ||
+			((!input.priority || (input.completed && !editing)) && /^\([A-Z]\) /u.test(leadingText)) ||
 			(!input.completed && !input.priority && /^x /u.test(leadingText)))
 	)
 		issue(

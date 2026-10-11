@@ -311,7 +311,16 @@ export function createSessionBackend(
 				const outcome = await mutateTodo(
 					{ scope: targetScope, revision: targetRevision, workspaceId, lineNumber, expectedRaw },
 					(contents, item) => {
-						const raw = createTodoLine(input);
+						const raw =
+							input.completed && input.priority
+								? [
+										"x",
+										input.completionDate,
+										createTodoLine({ ...input, completed: false, completionDate: null }),
+									]
+										.filter(Boolean)
+										.join(" ")
+								: createTodoLine(input);
 						const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 						const line = lines[item.line_number - 1];
 						const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";

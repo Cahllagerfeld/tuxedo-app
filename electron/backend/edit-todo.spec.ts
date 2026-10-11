@@ -105,3 +105,45 @@ test("editing legacy completed items keeps their completion state without invent
 	expect(await readFile(todoPath, "utf8")).toBe("x ");
 	expect(outcome.confirmed.todo_file.items[0].completed).toBe(true);
 });
+
+test.each([
+	["x (A) 2026-10-01 Old", "x (A) 2026-10-01 Updated", null, "2026-10-01", [], "Updated"],
+	[
+		"x 2026-10-09 (A) Old pri:B",
+		"x 2026-10-09 (A) Updated pri:B",
+		"2026-10-09",
+		null,
+		["pri:B"],
+		"Updated",
+	],
+	[
+		"x 2026-10-09 (A) (B) Old",
+		"x 2026-10-09 (A) (B) Updated",
+		"2026-10-09",
+		null,
+		[],
+		"(B) Updated",
+	],
+] as const)(
+	"editing retains legacy completed Priority and dates (%s)",
+	async (raw, expected, completionDate, creationDate, metadata, description) => {
+		const { backend, todoPath, request } = await setup();
+		await writeFile(todoPath, raw);
+		const restored = await backend.restoreSession({});
+		const outcome = await backend.editTodo({
+			...request,
+			revision: restored.revision,
+			lineNumber: 1,
+			expectedRaw: raw,
+			description,
+			priority: "A",
+			completionDate,
+			creationDate,
+			projects: [],
+			contexts: [],
+			metadata: [...metadata],
+		});
+		expect(outcome.status).toBe("applied");
+		expect(await readFile(todoPath, "utf8")).toBe(expected);
+	}
+);
