@@ -17,7 +17,10 @@
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
 	import * as Select from "$lib/shared/ui/select";
-	import { Checkbox } from "$lib/shared/ui/checkbox";
+	import { Calendar } from "$lib/shared/ui/calendar";
+	import * as Popover from "$lib/shared/ui/popover";
+	import { parseDate } from "@internationalized/date";
+	import CalendarIcon from "@lucide/svelte/icons/calendar";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { CreateTodoItem } from "./todo-creation-types";
@@ -45,8 +48,6 @@
 			contexts: createTodoRequestSchema.shape.contexts.default([]),
 			priority: z.string().default("none"),
 			creationDate: dateField.default(today()),
-			completed: z.boolean().default(false),
-			completionDate: dateField.default(today()),
 			metadata: z.array(todoMetadataSchema).default([]),
 		})
 		.superRefine((data, ctx) => {
@@ -58,8 +59,6 @@
 		contexts: string[];
 		priority: string;
 		creationDate: string;
-		completed: boolean;
-		completionDate: string;
 		metadata: string[];
 	}) {
 		return {
@@ -67,7 +66,8 @@
 			description: normalizeTodoDescription(data.description),
 			priority: data.priority === "none" ? null : data.priority,
 			creationDate: data.creationDate || null,
-			completionDate: data.completed ? data.completionDate || null : null,
+			completed: false,
+			completionDate: null,
 		};
 	}
 
@@ -75,6 +75,10 @@
 	const { form: formData } = form;
 
 	let open = $state(false);
+	let datePickerOpen = $state(false);
+	const creationDate = $derived(
+		$formData.creationDate ? parseDate($formData.creationDate) : undefined
+	);
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let triggerButton = $state<HTMLButtonElement | null>(null);
@@ -120,9 +124,9 @@
 	}
 
 	function resetForm() {
+		datePickerOpen = false;
 		form.reset();
 		$formData.creationDate = today();
-		$formData.completionDate = today();
 		tagErrors.metadata = "";
 		tagErrors.projects = "";
 		tagErrors.contexts = "";
@@ -261,46 +265,49 @@
 						<Form.Control
 							>{#snippet children({ props })}
 								<Form.Label>Creation date (optional)</Form.Label>
-								<Input
-									{...props}
-									type="date"
-									bind:value={$formData.creationDate}
-									disabled={controlsDisabled}
-								/>
+								<Popover.Root bind:open={datePickerOpen}>
+									<Popover.Trigger disabled={controlsDisabled}>
+										{#snippet child({ props: triggerProps })}
+											<Button
+												{...triggerProps}
+												{...props}
+												type="button"
+												variant="outline"
+												class="w-full justify-between font-normal"
+												disabled={controlsDisabled}
+											>
+												{$formData.creationDate || "Select date"}<CalendarIcon class="size-4" />
+											</Button>
+										{/snippet}
+									</Popover.Trigger>
+									<Popover.Content class="w-auto p-0" align="start">
+										<Calendar
+											type="single"
+											value={creationDate}
+											captionLayout="dropdown"
+											disabled={controlsDisabled}
+											onValueChange={(value) => {
+												$formData.creationDate = value?.toString() ?? "";
+												datePickerOpen = false;
+											}}
+										/>
+										<Button
+											type="button"
+											variant="ghost"
+											class="w-full"
+											disabled={controlsDisabled}
+											onclick={() => {
+												$formData.creationDate = "";
+												datePickerOpen = false;
+											}}>Clear Creation date</Button
+										>
+									</Popover.Content>
+								</Popover.Root>
 							{/snippet}</Form.Control
 						><Form.Description>Clear to omit the Creation date.</Form.Description><Form.FieldErrors
 						/>
 					</Form.Field>
 				</div>
-				<Form.Field {form} name="completed">
-					<Form.Control
-						>{#snippet children({ props })}
-							<div class="flex items-center gap-2">
-								<Checkbox
-									{...props}
-									bind:checked={$formData.completed}
-									disabled={controlsDisabled}
-								/><Form.Label>Completed</Form.Label>
-							</div>
-						{/snippet}</Form.Control
-					>
-				</Form.Field>
-				{#if $formData.completed}
-					<Form.Field {form} name="completionDate">
-						<Form.Control
-							>{#snippet children({ props })}
-								<Form.Label>Completion date</Form.Label>
-								<Input
-									{...props}
-									type="date"
-									bind:value={$formData.completionDate}
-									disabled={controlsDisabled}
-								/>
-							{/snippet}</Form.Control
-						><Form.Description>Priority is preserved as pri Metadata.</Form.Description
-						><Form.FieldErrors />
-					</Form.Field>
-				{/if}
 
 				<Form.Field {form} name="projects">
 					<Form.Control>

@@ -227,7 +227,7 @@ test("retains spaces while editing Description and normalizes them only on submi
 		]);
 });
 
-test("submits optional Priority, dates, completed status, and custom Metadata", async () => {
+test("submits optional Priority, Creation date, and custom Metadata for an open Todo item", async () => {
 	const calls: CreateTodoItemInput[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
@@ -236,9 +236,10 @@ test("submits optional Priority, dates, completed status, and custom Metadata", 
 	await openDialog();
 	await page.getByRole("button", { name: "Priority (optional)" }).click();
 	await page.getByRole("option", { name: "(Z)", exact: true }).click();
-	await page.getByLabelText("Creation date (optional)").fill("2026-10-01");
-	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
-	await page.getByLabelText("Completion date", { exact: true }).fill("2026-10-09");
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("combobox", { name: "Select a year" }).selectOptions("2026");
+	await page.getByRole("combobox", { name: "Select a month" }).selectOptions("10");
+	await page.getByRole("button", { name: /Thursday, October 1, 2026/ }).click();
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("due:2026-10-10");
 	await pressEnter(metadata);
@@ -254,8 +255,8 @@ test("submits optional Priority, dates, completed status, and custom Metadata", 
 				contexts: [],
 				priority: "Z",
 				creationDate: "2026-10-01",
-				completed: true,
-				completionDate: "2026-10-09",
+				completed: false,
+				completionDate: null,
 				metadata: ["due:2026-10-10", "custom:value"],
 			},
 		]);
@@ -263,28 +264,20 @@ test("submits optional Priority, dates, completed status, and custom Metadata", 
 	await openDialog();
 	await expect
 		.element(page.getByRole("checkbox", { name: "Completed", exact: true }))
-		.not.toBeChecked();
+		.not.toBeInTheDocument();
 	await expect
 		.element(page.getByRole("button", { name: "Priority (optional)" }))
 		.toHaveTextContent("None");
 	await expect.element(page.getByText("custom:value", { exact: true })).not.toBeInTheDocument();
 });
 
-test("validates Metadata and Completion date inline and retains structured drafts on failure", async () => {
+test("validates Metadata inline and retains structured drafts on failure", async () => {
 	let calls = 0;
 	renderDialog(async () => {
 		calls++;
 		return { status: "rejected", message: "Cannot write" };
 	});
 	await openDialog();
-	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
-	const completion = page.getByLabelText("Completion date", { exact: true });
-	await completion.fill("");
-	await submitDialog();
-	await expect
-		.element(page.getByText("Choose a Completion date for a completed Todo item."))
-		.toBeVisible();
-	expect(calls).toBe(0);
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("key:too:many");
 	await pressEnter(metadata);
@@ -297,17 +290,15 @@ test("validates Metadata and Completion date inline and retains structured draft
 	await pressEnter(metadata);
 	await expect.element(page.getByText("custom:another", { exact: true })).toBeVisible();
 	await metadata.fill("");
-	await completion.fill("2026-10-09");
 	await submitDialog();
 	await expect.poll(() => calls).toBe(1);
 	await expect.element(page.getByRole("dialog")).toBeVisible();
-	await expect.element(completion).toHaveValue("2026-10-09");
 	await expect.element(page.getByText("custom:value", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 	await openDialog();
 	await expect
 		.element(page.getByRole("checkbox", { name: "Completed", exact: true }))
-		.not.toBeChecked();
+		.not.toBeInTheDocument();
 	await expect.element(page.getByText("custom:value", { exact: true })).not.toBeInTheDocument();
 });
 

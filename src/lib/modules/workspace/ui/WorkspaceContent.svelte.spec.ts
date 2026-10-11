@@ -371,7 +371,8 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	await expect.element(description).toHaveFocus();
 	await expect.element(page.getByText("Work · work.todo", { exact: true })).toBeVisible();
 	const submit = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1);
-	await page.getByLabelText("Creation date (optional)").fill("");
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Clear Creation date" }).click();
 	await description.fill("   ");
 	await submit.click();
 	await expect
@@ -379,7 +380,10 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		.toBeVisible();
 	await expect.element(submit).toBeEnabled();
 	await description.fill("  Ship   the release  ");
-	await page.getByLabelText("Creation date (optional)").fill("2026-10-09");
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("combobox", { name: "Select a year" }).selectOptions("2026");
+	await page.getByRole("combobox", { name: "Select a month" }).selectOptions("10");
+	await page.getByRole("button", { name: /Friday, October 9, 2026/ }).click();
 	await page.getByRole("button", { name: "Priority (optional)" }).click();
 	await page.getByRole("option", { name: "(Z)", exact: true }).click();
 	const metadata = page.getByPlaceholder("Add key:value");
