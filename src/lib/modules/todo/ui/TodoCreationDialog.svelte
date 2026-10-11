@@ -236,7 +236,10 @@
 					<Form.Field {form} name="priority">
 						<Form.Control
 							>{#snippet children({ props })}
-								<Form.Label id={`${props.id}-label`}>Priority (optional)</Form.Label>
+								<Form.Label id={`${props.id}-label`}
+									>Priority <span class="font-normal text-muted-foreground">(optional)</span
+									></Form.Label
+								>
 								<PriorityPicker
 									{...props}
 									aria-labelledby={`${props.id}-label`}
@@ -249,7 +252,10 @@
 					<Form.Field {form} name="creationDate">
 						<Form.Control
 							>{#snippet children({ props })}
-								<Form.Label>Creation date (optional)</Form.Label>
+								<Form.Label
+									>Creation date <span class="font-normal text-muted-foreground">(optional)</span
+									></Form.Label
+								>
 								<DatePicker
 									{...props}
 									bind:value={$formData.creationDate}
@@ -319,7 +325,10 @@
 				<Form.Field {form} name="metadata">
 					<Form.Control
 						>{#snippet children({ props })}
-							<Form.Label>Metadata (optional)</Form.Label>
+							<Form.Label
+								>Metadata <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
 							<TagsInput
 								{...props}
 								bind:this={metadataInput}
@@ -352,7 +361,7 @@
 				</Form.Field>
 			</div>
 			<Dialog.Footer class="shrink-0 border-t pt-4">
-				<Button type="button" variant="ghost" disabled={controlsDisabled} onclick={cancel}
+				<Button type="button" variant="secondary" disabled={controlsDisabled} onclick={cancel}
 					>Cancel</Button
 				>
 				<Form.Button disabled={controlsDisabled}
