@@ -19,8 +19,8 @@
 	import * as Select from "$lib/shared/ui/select";
 	import { Calendar } from "$lib/shared/ui/calendar";
 	import * as Popover from "$lib/shared/ui/popover";
-	import { parseDate } from "@internationalized/date";
-	import CalendarIcon from "@lucide/svelte/icons/calendar";
+	import { DateFormatter, getLocalTimeZone, parseDate } from "@internationalized/date";
+	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { CreateTodoItem } from "./todo-creation-types";
@@ -75,7 +75,7 @@
 	const { form: formData } = form;
 
 	let open = $state(false);
-	let datePickerOpen = $state(false);
+	const dateFormatter = new DateFormatter("en-US", { dateStyle: "long" });
 	const creationDate = $derived(
 		$formData.creationDate ? parseDate($formData.creationDate) : undefined
 	);
@@ -124,7 +124,6 @@
 	}
 
 	function resetForm() {
-		datePickerOpen = false;
 		form.reset();
 		$formData.creationDate = today();
 		tagErrors.metadata = "";
@@ -215,7 +214,7 @@
 			<Dialog.Description>{targetLabel}</Dialog.Description>
 		</Dialog.Header>
 		<form class="flex min-h-0 flex-col gap-4" onsubmit={submit}>
-			<div class="grid gap-4 overflow-y-auto pr-1">
+			<div class="-m-1 grid gap-4 overflow-y-auto p-1">
 				<Form.Field {form} name="description">
 					<Form.Control>
 						{#snippet children({ props })}
@@ -265,7 +264,7 @@
 						<Form.Control
 							>{#snippet children({ props })}
 								<Form.Label>Creation date (optional)</Form.Label>
-								<Popover.Root bind:open={datePickerOpen}>
+								<Popover.Root>
 									<Popover.Trigger disabled={controlsDisabled}>
 										{#snippet child({ props: triggerProps })}
 											<Button
@@ -273,39 +272,38 @@
 												{...props}
 												type="button"
 												variant="outline"
-												class="w-full justify-between font-normal"
+												data-empty={!creationDate}
+												class="w-full justify-between text-start font-normal data-[empty=true]:text-muted-foreground"
 												disabled={controlsDisabled}
 											>
-												{$formData.creationDate || "Select date"}<CalendarIcon class="size-4" />
+												{creationDate
+													? dateFormatter.format(creationDate.toDate(getLocalTimeZone()))
+													: "Pick a date"}
+												<ChevronDownIcon data-icon="inline-end" />
 											</Button>
 										{/snippet}
 									</Popover.Trigger>
 									<Popover.Content class="w-auto p-0" align="start">
 										<Calendar
 											type="single"
-											value={creationDate}
-											captionLayout="dropdown"
+											bind:value={
+												() => creationDate,
+												(value) => ($formData.creationDate = value?.toString() ?? "")
+											}
 											disabled={controlsDisabled}
-											onValueChange={(value) => {
-												$formData.creationDate = value?.toString() ?? "";
-												datePickerOpen = false;
-											}}
 										/>
-										<Button
-											type="button"
-											variant="ghost"
-											class="w-full"
-											disabled={controlsDisabled}
-											onclick={() => {
-												$formData.creationDate = "";
-												datePickerOpen = false;
-											}}>Clear Creation date</Button
-										>
 									</Popover.Content>
 								</Popover.Root>
 							{/snippet}</Form.Control
-						><Form.Description>Clear to omit the Creation date.</Form.Description><Form.FieldErrors
-						/>
+						><Form.Description>
+							<Button
+								type="button"
+								variant="link"
+								class="h-auto p-0 font-normal text-muted-foreground"
+								disabled={controlsDisabled}
+								onclick={() => ($formData.creationDate = "")}>Clear Creation date</Button
+							> to omit it.
+						</Form.Description><Form.FieldErrors />
 					</Form.Field>
 				</div>
 

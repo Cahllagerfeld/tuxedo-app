@@ -87,6 +87,12 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 
 	await expect.element(page.getByRole("dialog")).toBeVisible();
 	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveFocus();
+	const description = page.getByPlaceholder("What needs doing?").element();
+	const viewport = description.closest(".overflow-y-auto")!;
+	const inputBounds = description.getBoundingClientRect();
+	const viewportBounds = viewport.getBoundingClientRect();
+	expect(inputBounds.left - viewportBounds.left).toBeGreaterThanOrEqual(3);
+	expect(viewportBounds.right - inputBounds.right).toBeGreaterThanOrEqual(3);
 
 	const projectInput = page.getByPlaceholder("Choose or create a Project");
 	await projectInput.click();
@@ -237,9 +243,17 @@ test("submits optional Priority, Creation date, and custom Metadata for an open 
 	await page.getByRole("button", { name: "Priority (optional)" }).click();
 	await page.getByRole("option", { name: "(Z)", exact: true }).click();
 	await page.getByRole("button", { name: "Creation date (optional)" }).click();
-	await page.getByRole("combobox", { name: "Select a year" }).selectOptions("2026");
-	await page.getByRole("combobox", { name: "Select a month" }).selectOptions("10");
+	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
+	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
+		await page
+			.getByRole("button", { name: monthsFromOctober > 0 ? "Previous" : "Next", exact: true })
+			.click();
+	}
+	await expect
+		.element(page.getByRole("combobox", { name: "Select a month" }))
+		.not.toBeInTheDocument();
 	await page.getByRole("button", { name: /Thursday, October 1, 2026/ }).click();
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("due:2026-10-10");
 	await pressEnter(metadata);

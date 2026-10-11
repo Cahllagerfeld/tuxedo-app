@@ -371,7 +371,6 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	await expect.element(description).toHaveFocus();
 	await expect.element(page.getByText("Work · work.todo", { exact: true })).toBeVisible();
 	const submit = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1);
-	await page.getByRole("button", { name: "Creation date (optional)" }).click();
 	await page.getByRole("button", { name: "Clear Creation date" }).click();
 	await description.fill("   ");
 	await submit.click();
@@ -381,9 +380,17 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	await expect.element(submit).toBeEnabled();
 	await description.fill("  Ship   the release  ");
 	await page.getByRole("button", { name: "Creation date (optional)" }).click();
-	await page.getByRole("combobox", { name: "Select a year" }).selectOptions("2026");
-	await page.getByRole("combobox", { name: "Select a month" }).selectOptions("10");
+	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
+	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
+		await page
+			.getByRole("button", { name: monthsFromOctober > 0 ? "Previous" : "Next", exact: true })
+			.click();
+	}
+	await expect
+		.element(page.getByRole("combobox", { name: "Select a month" }))
+		.not.toBeInTheDocument();
 	await page.getByRole("button", { name: /Friday, October 9, 2026/ }).click();
+	await page.getByRole("button", { name: "Creation date (optional)" }).click();
 	await page.getByRole("button", { name: "Priority (optional)" }).click();
 	await page.getByRole("option", { name: "(Z)", exact: true }).click();
 	const metadata = page.getByPlaceholder("Add key:value");
