@@ -104,7 +104,9 @@
 							<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
 							<Empty.Header>
 								<Empty.Title>
-									No {todoFilter.status} items{todoFilter.hasFacetFilters
+									No {todoFilter.status === "all"
+										? ""
+										: `${todoFilter.status} `}items{todoFilter.hasFacetFilters
 										? " match these filters"
 										: ""}.
 								</Empty.Title>

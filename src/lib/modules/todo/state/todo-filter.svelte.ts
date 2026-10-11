@@ -1,7 +1,7 @@
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 
-export type TodoFilterStatus = "open" | "completed";
+export type TodoFilterStatus = "all" | "open" | "completed";
 
 export type TodoFilterFacets = Readonly<{
 	projects: readonly string[];
@@ -12,8 +12,13 @@ export type TodoFilterFacets = Readonly<{
 export class TodoFilterState {
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
-	status = $state<TodoFilterStatus>("open");
-	availableFacets = $derived(summarizeTodoFilterFacets(this.items, this.status === "completed"));
+	status = $state<TodoFilterStatus>("all");
+	availableFacets = $derived(
+		summarizeTodoFilterFacets(
+			this.items,
+			this.status === "all" ? null : this.status === "completed"
+		)
+	);
 	selectedProject = $state<string | null>(null);
 	selectedContext = $state<string | null>(null);
 	selectedPriority = $state<string | null>(null);
@@ -27,7 +32,7 @@ export class TodoFilterState {
 	}
 
 	get activePriority() {
-		return this.status === "open" ? this.selectedPriority : null;
+		return this.status !== "completed" ? this.selectedPriority : null;
 	}
 
 	setStatus = (status: TodoFilterStatus) => {
@@ -64,7 +69,7 @@ export class TodoFilterState {
 	};
 
 	reset = () => {
-		this.status = "open";
+		this.status = "all";
 		this.clear();
 	};
 
@@ -91,7 +96,7 @@ export class TodoFilterState {
 
 	filterItems = (items: readonly TodoItem[]) =>
 		items.filter((item) => {
-			if ((this.status === "completed") !== item.completed) return false;
+			if (this.status !== "all" && (this.status === "completed") !== item.completed) return false;
 			if (this.selectedProject !== null && !item.projects.includes(this.selectedProject))
 				return false;
 			if (this.selectedContext !== null && !item.contexts.includes(this.selectedContext))

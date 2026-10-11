@@ -29,6 +29,29 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
+	it("defaults to All and filters both completion states and their combined facets", () => {
+		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
+		const items = [open, completedOnly];
+		const filter = new TodoFilterState();
+		expect(filter.status).toBe("all");
+		filter.sync("work", items);
+		expect(filter.status).toBe("all");
+
+		expect(filter.filterItems(items)).toEqual(items);
+		expect(filter.availableFacets.projects).toEqual(["Personal", "Work"]);
+		expect(filter.availableFacets.contexts).toEqual(["Away", "Home"]);
+		expect(filter.availableFacets.counts.projects.get("Personal")).toBe(1);
+		filter.toggleProject("Personal");
+		filter.toggleContext("Away");
+		expect(filter.filterItems(items)).toEqual([completedOnly]);
+		filter.clear();
+		filter.togglePriority("A");
+		expect(filter.filterItems(items)).toEqual([open]);
+		filter.setStatus("completed");
+		expect(filter.selectedPriority).toBeNull();
+		expect(filter.filterItems(items)).toEqual([completedOnly]);
+	});
+
 	it("combines exact selections and clears Priority in Completed", () => {
 		const filter = new TodoFilterState();
 		filter.sync("work", [open, completed]);
@@ -51,7 +74,7 @@ describe("TodoFilterState", () => {
 		filter.toggleProject("Work");
 		filter.sync("personal", [{ ...open, projects: ["Personal"], contexts: [], priority: null }]);
 
-		expect(filter.status).toBe("open");
+		expect(filter.status).toBe("all");
 		expect(filter.selectedProject).toBeNull();
 		expect(filter.selectedContext).toBeNull();
 		expect(filter.selectedPriority).toBeNull();

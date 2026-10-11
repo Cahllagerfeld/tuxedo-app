@@ -390,6 +390,11 @@ try {
 	});
 	assert.equal(reorderWorkspace.status, "applied");
 	await page.reload();
+	assert.equal(
+		await page.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed"),
+		"true"
+	);
+	await page.getByRole("button", { name: /^Open/ }).click();
 	const firstHandle = page.getByRole("button", { name: "Reorder First", exact: true });
 	await firstHandle.waitFor();
 	await firstHandle.focus();
@@ -401,6 +406,7 @@ try {
 	);
 	assert.equal(await readFile(reorderPath, "utf8"), "Last\r\nx 2026-07-10 Hidden\r\nFirst");
 	await page.reload();
+	await page.getByRole("button", { name: /^Open/ }).click();
 	const lastHandle = page.getByRole("button", { name: "Reorder Last", exact: true });
 	await lastHandle.waitFor();
 	const from = await lastHandle.boundingBox();

@@ -167,7 +167,7 @@ test("loading is a non-actionable Workspace session", async () => {
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
-test("accepted completion removes the item from the default Open view", async () => {
+test("accepted completion keeps the item checked in the default All view", async () => {
 	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
 	render(Harness, {
 		desktop: adapter({
@@ -201,13 +201,13 @@ test("accepted completion removes the item from the default Open view", async ()
 	});
 	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
-		.not.toBeInTheDocument();
+		.toBeChecked();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/1/1");
 	expect({
 		pendingShift: pendingTop - initialTop,
 		confirmedShift: 0,
 		sameCheckbox: document.querySelector('[role="checkbox"]') === originalCheckbox,
-	}).toEqual({ pendingShift: 0, confirmedShift: 0, sameCheckbox: false });
+	}).toEqual({ pendingShift: 0, confirmedShift: 0, sameCheckbox: true });
 });
 test("conflicts display current confirmed content and an external edit notice", async () => {
 	render(Harness, {
@@ -491,13 +491,15 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 	await expect.element(handle).toBeVisible();
 	(handle.element() as HTMLElement).focus();
 	await userEvent.keyboard("{Space}{ArrowDown}{Space}");
-	await expect.poll(() => input).toEqual({ scope, revision: 1, workspaceId, lineNumbers: [3, 1] });
+	await expect
+		.poll(() => input)
+		.toEqual({ scope, revision: 1, workspaceId, lineNumbers: [2, 1, 3] });
 	await expect.element(handle).toBeDisabled();
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
 	finish({
 		status: "applied",
-		confirmed: confirmedTodo([{ ...second, line_number: 1 }, hidden, { ...todo, line_number: 3 }]),
+		confirmed: confirmedTodo([{ ...hidden, line_number: 1 }, { ...todo, line_number: 2 }, second]),
 	});
-	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Ship");
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Hidden");
 	await expect.element(handle).not.toBeDisabled();
 });

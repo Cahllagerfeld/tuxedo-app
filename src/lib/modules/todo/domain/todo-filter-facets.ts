@@ -1,15 +1,15 @@
 import type { TodoItem } from "./todo";
 
 /** Counts each exact facet once per item in the selected completion view. */
-export function summarizeTodoFilterFacets(items: readonly TodoItem[], completed: boolean) {
+export function summarizeTodoFilterFacets(items: readonly TodoItem[], completed: boolean | null) {
 	const projects = new Map<string, number>();
 	const contexts = new Map<string, number>();
 	const priorities = new Map<string, number>();
 	for (const item of items) {
-		if (item.completed !== completed) continue;
+		if (completed !== null && item.completed !== completed) continue;
 		for (const value of new Set(item.projects)) increment(projects, value);
 		for (const value of new Set(item.contexts)) increment(contexts, value);
-		if (!completed && item.priority !== null) increment(priorities, item.priority);
+		if (!item.completed && item.priority !== null) increment(priorities, item.priority);
 	}
 	return {
 		projects: sorted(projects),
