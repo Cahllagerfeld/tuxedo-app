@@ -19,6 +19,7 @@
 		"test:backend": "vitest run --config vitest.backend.config.ts",
 		"check:boundaries": "node scripts/check-desktop-boundaries.mjs",
 		"test:electron": "pnpm build && node scripts/test-electron.mjs",
+		"test:electron:visible": "pnpm build && node scripts/test-electron.mjs --visible",
 		"test:electron:dev": "pnpm build && node scripts/test-electron.mjs --dev",
 		"package:macos": "pnpm build && node scripts/package-macos.mjs",
 		"test:package": "pnpm package:macos && node scripts/test-package.mjs"

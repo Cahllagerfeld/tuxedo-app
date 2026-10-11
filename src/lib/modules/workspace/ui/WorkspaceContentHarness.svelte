@@ -19,7 +19,8 @@
 	});
 </script>
 
-<Toaster />
+<!-- Keep notices available for assertions even when CI browser actions are slow. -->
+<Toaster duration={Infinity} />
 <p aria-label="Summary counts">
 	{app.todos.counts.open}/{app.todos.counts.completed}/{app.todos.counts.projects}
 </p>
