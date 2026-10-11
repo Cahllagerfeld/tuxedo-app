@@ -37,6 +37,9 @@ The optional calendar date recorded for a Todo item's creation.
 **Todo-file summary**:
 A read-only projection of one parsed Todo file: its items and skipped lines, summary counts, and sorted project, context, and priority facets. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
+**Todo-file observation**:
+Observation of the Active workspace's loaded Todo file for external disk changes. While the Workspace session is idle, a debounced change signal restores confirmed data through the existing session reload path. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning. Own writes and mutation conflicts continue to return confirmed results directly.
+
 **Facet**:
 A distinct, locale-sorted collection of exact parsed values for one Todo-item attribute, such as Projects, Contexts, or Priorities. Facets preserve source spelling and do not merge values that differ only by case.
 

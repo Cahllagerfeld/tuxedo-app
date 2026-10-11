@@ -1,7 +1,12 @@
 import { page, userEvent } from "vitest/browser";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
-import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
+import type {
+	ConfirmedSession,
+	DesktopAPI,
+	TodoFile,
+	TodoFileChange,
+} from "$lib/shared/desktop/contract";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -62,6 +67,94 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+test("idle observation updates the list, counts, facets, and skipped lines with one info notice", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const refreshed: ConfirmedSession = {
+		...initial,
+		revision: 2,
+		session: {
+			...initial.session,
+			todo_file: {
+				path: "/tmp/work.todo",
+				items: [
+					{
+						...todo,
+						raw: "(B) New item +Home @desk",
+						description: "New item",
+						priority: "B",
+						projects: ["Home"],
+						contexts: ["desk"],
+					},
+					{
+						...todo,
+						line_number: 2,
+						raw: "x Finished",
+						description: "Finished",
+						completed: true,
+						projects: [],
+					},
+				],
+				skipped: [{ line_number: 3, raw: "x", reason: "Missing description" }],
+			},
+		},
+	};
+	let loads = 0;
+	let notify!: (event: TodoFileChange) => void;
+	render(Harness, {
+		desktop: adapter({ restoreSession: async () => (loads++ ? refreshed : initial) }),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("New item", { exact: true })).toBeVisible();
+	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/1/1");
+	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("Home");
+	await expect.element(page.getByLabelText("Reader status")).toMatchTextContent("1 skipped line");
+	await expect
+		.poll(() => document.querySelectorAll('[data-sonner-toast][data-type="info"]').length)
+		.toBe(1);
+	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(0);
+});
+
+test("conflict recovery and delayed observation never stack error and info notices", async () => {
+	let notify!: (event: TodoFileChange) => void;
+	const latest = confirmedTodo([{ ...todo, raw: "Edited", description: "Edited" }]);
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const refreshed: ConfirmedSession = {
+		...initial,
+		revision: 3,
+		session: { ...initial.session, todo_file: latest.todo_file },
+	};
+	let loads = 0;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => (loads++ ? refreshed : initial),
+			setTodoCompletion: async () => {
+				notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+				return { status: "conflict", message: "changed", confirmed: latest };
+			},
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
+	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => loads).toBe(2);
+	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
+	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
+	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
+});
 test("loading is a non-actionable Workspace session", async () => {
 	render(Harness, { desktop: adapter({ restoreSession: () => new Promise(() => {}) }) });
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
@@ -128,9 +221,7 @@ test("conflicts display current confirmed content and an external edit notice", 
 	});
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Plan release carefully")).toBeVisible();
-	await expect
-		.element(page.getByText("Todo file changed externally; reloaded latest version"))
-		.toBeVisible();
+	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
 });
 test("rejected deletion preserves confirmed content and reports its contextual error", async () => {
@@ -339,13 +430,7 @@ test.each(["conflict", "rejected"] as const)(
 		await expect.element(page.getByText("+Draft", { exact: true })).toBeVisible();
 		await expect
 			.element(
-				page
-					.getByText(
-						status === "conflict"
-							? "Todo file changed externally; reloaded latest version"
-							: "Permission denied"
-					)
-					.last()
+				page.getByText(status === "conflict" ? "Todo file reloaded" : "Permission denied").last()
 			)
 			.toBeVisible();
 		if (status === "conflict") {

@@ -105,20 +105,43 @@ export const todoOutcomeSchema = z.discriminatedUnion("status", [
 export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
 	completed: z.boolean(),
 });
-const todoTagSchema = z
+export function normalizeTodoDescription(value: string): string {
+	return value
+		.trim()
+		.replace(/\p{White_Space}+/gu, " ")
+		.trim();
+}
+
+function containsTodoToken(value: string): boolean {
+	return normalizeTodoDescription(value)
+		.split(" ")
+		.some(
+			(token) =>
+				/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token)
+		);
+}
+
+export const todoTagSchema = z
 	.string()
 	.min(1)
 	.refine((value) => value === value.trim(), "Todo tags must be trimmed")
-	.refine((value) => !/\s/u.test(value), "Todo tags must not contain whitespace")
+	.refine((value) => !/[\s\p{White_Space}]/u.test(value), "Todo tags must not contain whitespace")
 	.refine((value) => !/^[+@]/u.test(value), "Todo tags must not include their prefix");
 const todoTagListSchema = z
 	.array(todoTagSchema)
 	.refine((values) => new Set(values).size === values.length, "Todo tags must be unique");
+export const todoDescriptionSchema = z
+	.string()
+	.refine((value) => normalizeTodoDescription(value).length > 0, "Enter a Description.")
+	.refine(
+		(value) => !containsTodoToken(value),
+		"Use the Project and Context inputs for tags. Metadata is not supported here."
+	);
 export const createTodoRequestSchema = z.strictObject({
 	scope: z.uuid(),
 	revision: z.number().int().nonnegative(),
 	workspaceId: z.uuid(),
-	description: z.string().trim().min(1),
+	description: todoDescriptionSchema.trim(),
 	projects: todoTagListSchema,
 	contexts: todoTagListSchema,
 });
@@ -197,6 +220,19 @@ export type DesktopAPI = {
 		request: DesktopRequest<K>
 	) => Promise<z.infer<(typeof desktopContract)[K]["response"]>>;
 };
+export const todoFileChangeEvent = {
+	channel: "tuxedo:todo-file-changed",
+	payload: z.strictObject({
+		scope: z.uuid(),
+		revision: z.number().int().nonnegative(),
+		workspaceId: z.uuid(),
+		todoPath: z.string().min(1),
+	}),
+} as const;
+export type TodoFileChange = z.infer<typeof todoFileChangeEvent.payload>;
+export type TodoFileObservation = {
+	onTodoFileChanged: (listener: (event: TodoFileChange) => void) => () => void;
+};
 export function createDesktopClient(
 	invoke: (channel: string, request: unknown) => Promise<unknown>
 ): DesktopAPI {
@@ -224,6 +260,6 @@ export function createDesktopClient(
 }
 declare global {
 	interface Window {
-		desktop: DesktopAPI;
+		desktop: DesktopAPI & TodoFileObservation;
 	}
 }

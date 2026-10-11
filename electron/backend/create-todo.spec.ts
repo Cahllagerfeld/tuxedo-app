@@ -121,6 +121,9 @@ test.each([
 	["metadata token in description", { description: "Plan due:tomorrow" }],
 	["duplicate projects", { projects: ["Work", "+Work"] }],
 	["whitespace in context", { contexts: ["at home"] }],
+	["Unicode whitespace in context", { contexts: ["at\u0085home"] }],
+	["Unicode-separated project token", { description: "Call\u0085+Work" }],
+	["Unicode blank description", { description: "\u0085" }],
 ] as const)("rejects %s without changing file bytes or confirmed data", async (_name, values) => {
 	const initial = "Keep\r\n";
 	const { backend, todoPath, confirmed, workspaceId } = await setup(initial);

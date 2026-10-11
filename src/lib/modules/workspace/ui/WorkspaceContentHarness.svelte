@@ -1,16 +1,21 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import type { DesktopAPI } from "$lib/shared/desktop/contract";
+	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
+	import { toast } from "svelte-sonner";
 	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import { Toaster } from "$lib/shared/ui/sonner";
-	let { desktop }: { desktop: DesktopAPI } = $props();
+	let { desktop, observation }: { desktop: DesktopAPI; observation?: TodoFileObservation } =
+		$props();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
 	onMount(() => {
+		const stop =
+			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
 		void app.workspace.initialize();
+		return stop;
 	});
 </script>
 
