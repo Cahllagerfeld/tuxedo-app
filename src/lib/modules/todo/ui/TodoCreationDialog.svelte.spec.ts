@@ -180,6 +180,8 @@ test.each(["Do this +Work key:value", "Call\u0085+Work"])(
 		await projectInput.fill("at\u0085home");
 		await pressEnter(projectInput);
 		await expect.element(page.getByText("Use a tag name without spaces.")).toBeVisible();
+		await page.getByRole("button", { name: "Remove +Work", exact: true }).click();
+		await expect.element(page.getByText("Use a tag name without spaces.")).not.toBeInTheDocument();
 	}
 );
 

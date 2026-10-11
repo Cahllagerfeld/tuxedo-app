@@ -1,7 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
-import { appendTodoLine, confirmedTodo, createTodoLine } from "./create-todo";
+import { appendTodoLine, createTodoLine } from "./create-todo";
 import { readTodoContents, parseTodoFile } from "./todo-file";
 import { randomUUID } from "node:crypto";
 import type { TodoFileObservationAdapter } from "./observation";
@@ -123,6 +123,47 @@ export function createSessionBackend(
 		confirmedTodoContents = todoContents;
 		return next;
 	};
+	const confirmTodo = (
+		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
+		workspaceId: string,
+		todo_file: TodoFile,
+		contents: string
+	) => {
+		const next = accept(
+			{ scope, revision: revision++, session: { ...previous, todo_file } },
+			contents
+		);
+		return { scope, revision: next.revision, workspaceId, todo_file };
+	};
+	const commitCatalogue = async (
+		catalogue: Catalogue,
+		todo?: { todo_file: TodoFile; todoContents: string }
+	) => {
+		await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
+		const projected = todo
+			? {
+					session: { status: "ready" as const, catalogue, todo_file: todo.todo_file },
+					todoContents: todo.todoContents,
+				}
+			: await projectCatalogue(catalogue);
+		return {
+			status: "applied" as const,
+			confirmed: accept(
+				{ scope, revision: revision++, session: projected.session },
+				projected.todoContents
+			),
+		};
+	};
+	const rejected = async <T>(prefix: string, operation: () => Promise<T>) => {
+		try {
+			return await operation();
+		} catch (error) {
+			return {
+				status: "rejected" as const,
+				message: prefix + (error instanceof Error ? error.message : String(error)),
+			};
+		}
+	};
 	const todoMutationContext = async (
 		target: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
 	) => {
@@ -163,26 +204,18 @@ export function createSessionBackend(
 			const current = parseTodoFile(workspace.todo_path, contents);
 			const item = current.items.find((item) => item.line_number === input.lineNumber);
 			if (!item || item.raw !== input.expectedRaw) {
-				const next = {
-					scope,
-					revision: revision++,
-					session: { ...previous.session, todo_file: current },
-				};
-				accept(next, contents);
 				return {
 					status: "conflict",
 					message: "The Todo item changed on disk. Review its current contents.",
-					confirmed: confirmedTodo(scope, next.revision, input.workspaceId, current),
+					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
 			}
 			const rewritten = transform(contents, item);
 			const todo_file = parseTodoFile(workspace.todo_path, rewritten);
 			await atomicWrite(workspace.todo_path, rewritten);
-			const next = { scope, revision: revision++, session: { ...previous.session, todo_file } };
-			accept(next, rewritten);
 			return {
 				status: "applied",
-				confirmed: confirmedTodo(scope, next.revision, input.workspaceId, todo_file),
+				confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
 			};
 		} catch (error) {
 			return {
@@ -200,38 +233,35 @@ export function createSessionBackend(
 		const contents = await readTodoContents(workspace.todo_path);
 		const current = parseTodoFile(workspace.todo_path, contents);
 		if (contents !== confirmedTodoContents) {
-			const next = {
-				scope,
-				revision: revision++,
-				session: { ...previous.session, todo_file: current },
-			};
-			accept(next, contents);
 			return {
 				status: "conflict",
 				message: "The Todo file changed on disk. Review its current contents.",
-				confirmed: confirmedTodo(scope, next.revision, input.workspaceId, current),
+				confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 			};
 		}
 		const rewritten = transform(contents, current);
 		if (rewritten === contents)
 			return {
 				status: "applied",
-				confirmed: confirmedTodo(scope, previous.revision, input.workspaceId, current),
+				confirmed: {
+					scope,
+					revision: previous.revision,
+					workspaceId: input.workspaceId,
+					todo_file: current,
+				},
 			};
 		const todo_file = parseTodoFile(workspace.todo_path, rewritten);
 		await atomicWrite(workspace.todo_path, rewritten);
-		const next = { scope, revision: revision++, session: { ...previous.session, todo_file } };
-		accept(next, rewritten);
 		return {
 			status: "applied",
-			confirmed: confirmedTodo(scope, next.revision, input.workspaceId, todo_file),
+			confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
 		};
 	};
 
 	return {
 		reorderTodo: (request) =>
-			serialize(async () => {
-				try {
+			serialize(() =>
+				rejected("Cannot reorder Todo items: ", async () => {
 					const input = reorderTodoRequestSchema.parse(request);
 					return await mutateTodoFile(input, (contents, todoFile) => {
 						const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
@@ -246,30 +276,20 @@ export function createSessionBackend(
 						});
 						return lines.join("");
 					});
-				} catch (error) {
-					return {
-						status: "rejected" as const,
-						message: `Cannot reorder Todo items: ${error instanceof Error ? error.message : String(error)}`,
-					};
-				}
-			}),
+				})
+			),
 		createTodo: (request) =>
-			serialize(async () => {
-				try {
+			serialize(() =>
+				rejected("Cannot create Todo item: ", async () => {
 					const input = createTodoRequestSchema.parse(request);
 					return await mutateTodoFile(input, (contents) =>
 						appendTodoLine(contents, createTodoLine(input))
 					);
-				} catch (error) {
-					return {
-						status: "rejected" as const,
-						message: `Cannot create Todo item: ${error instanceof Error ? error.message : String(error)}`,
-					};
-				}
-			}),
+				})
+			),
 		deleteWorkspace: (request) =>
-			serialize(async () => {
-				try {
+			serialize(() =>
+				rejected("Cannot delete Workspace: ", async () => {
 					const { workspaceId } = deleteWorkspaceRequestSchema.parse(request);
 					const existing = (await load()).confirmed;
 					if (existing.session.status === "unavailable") throw Error(existing.session.error);
@@ -282,18 +302,9 @@ export function createSessionBackend(
 						active_workspace_id:
 							previous.active_workspace_id === workspaceId ? null : previous.active_workspace_id,
 					});
-					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
-					const projected = await projectCatalogue(catalogue);
-					const next = { scope, revision: revision++, session: projected.session };
-					accept(next, projected.todoContents);
-					return { status: "applied" as const, confirmed: next };
-				} catch (error) {
-					return {
-						status: "rejected" as const,
-						message: `Cannot delete Workspace: ${error instanceof Error ? error.message : String(error)}`,
-					};
-				}
-			}),
+					return await commitCatalogue(catalogue);
+				})
+			),
 		deleteTodo: (request) =>
 			serialize(async () => {
 				const outcome = await mutateTodo(request, (contents) =>
@@ -359,8 +370,8 @@ export function createSessionBackend(
 				});
 			}),
 		switchWorkspace: (request) =>
-			serialize(async () => {
-				try {
+			serialize(() =>
+				rejected("Cannot open Workspace: ", async () => {
 					const { workspaceId } = switchWorkspaceRequestSchema.parse(request);
 					const existing = (await load()).confirmed;
 					if (existing.session.status === "unavailable") throw Error(existing.session.error);
@@ -369,24 +380,12 @@ export function createSessionBackend(
 					const todoContents = await readTodoContents(workspace.todo_path);
 					const todo_file = parseTodoFile(workspace.todo_path, todoContents);
 					const catalogue = { ...existing.session.catalogue, active_workspace_id: workspaceId };
-					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
-					const next: ConfirmedSession = {
-						scope,
-						revision: revision++,
-						session: { status: "ready", catalogue, todo_file },
-					};
-					accept(next, todoContents);
-					return { status: "applied" as const, confirmed: next };
-				} catch (error) {
-					return {
-						status: "rejected" as const,
-						message: `Cannot open Workspace: ${error instanceof Error ? error.message : String(error)}`,
-					};
-				}
-			}),
+					return await commitCatalogue(catalogue, { todo_file, todoContents });
+				})
+			),
 		createWorkspace: (request) =>
-			serialize(async () => {
-				try {
+			serialize(() =>
+				rejected("Cannot create Workspace: ", async () => {
 					const input = createWorkspaceRequestSchema.parse(request);
 					const todoPath = await realpath(input.todoPath);
 					const todoContents = await readTodoContents(todoPath);
@@ -407,21 +406,9 @@ export function createSessionBackend(
 						active_workspace_id: workspace.id,
 						workspaces: [...existing.session.catalogue.workspaces, workspace],
 					});
-					await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
-					const next: ConfirmedSession = {
-						scope,
-						revision: revision++,
-						session: { status: "ready", catalogue, todo_file },
-					};
-					accept(next, todoContents);
-					return { status: "applied" as const, confirmed: next };
-				} catch (error) {
-					return {
-						status: "rejected" as const,
-						message: `Cannot create Workspace: ${error instanceof Error ? error.message : String(error)}`,
-					};
-				}
-			}),
+					return await commitCatalogue(catalogue, { todo_file, todoContents });
+				})
+			),
 		readSession: () =>
 			serialize(async () => {
 				if (!confirmed) {

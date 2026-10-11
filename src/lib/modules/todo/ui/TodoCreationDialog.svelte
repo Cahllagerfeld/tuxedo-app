@@ -281,7 +281,6 @@
 								placeholder="Choose or create a Project"
 								validate={(value, tags, source) =>
 									validateTag(value, tags, "+", "projects", source)}
-								onValueChange={() => setTagError("projects", undefined)}
 								onInvalidChange={(message) => setTagError("projects", message)}
 								disabled={controlsDisabled}
 							/>
@@ -309,7 +308,6 @@
 								placeholder="Choose or create a Context"
 								validate={(value, tags, source) =>
 									validateTag(value, tags, "@", "contexts", source)}
-								onValueChange={() => setTagError("contexts", undefined)}
 								onInvalidChange={(message) => setTagError("contexts", message)}
 								disabled={controlsDisabled}
 							/>
@@ -344,7 +342,6 @@
 									setTagError("metadata", undefined);
 									return clean;
 								}}
-								onValueChange={() => setTagError("metadata", undefined)}
 								onInvalidChange={(message) => setTagError("metadata", message)}
 								disabled={controlsDisabled}
 							/>

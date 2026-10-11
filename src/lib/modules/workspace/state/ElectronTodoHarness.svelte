@@ -5,6 +5,7 @@
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import "../../../../routes/layout.css";
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
+	import { summarizeTodoFilterFacets } from "$lib/modules/todo/domain/todo-filter-facets";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
@@ -46,7 +47,7 @@
 <p aria-label="Open count">{summary.counts.open}</p>
 <p aria-label="Open items">{summary.counts.open}</p>
 <p aria-label="Completed items">{summary.counts.completed}</p>
-<p aria-label="Projects">{summary.facets.projects.join(",")}</p>
+<p aria-label="Projects">{summarizeTodoFilterFacets(summary.items, null).projects.join(",")}</p>
 <p aria-label="Action result">{result}</p>
 <p aria-label="Pending operation">{session.pendingOperation ?? "none"}</p>
 <p aria-label="Pending target">

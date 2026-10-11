@@ -119,8 +119,8 @@ test("idle observation updates the list, counts, facets, and skipped lines with 
 	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("New item", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/1/1");
-	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("Home");
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/1");
+	await expect.element(page.getByLabelText("Filter projects")).toHaveTextContent("Home");
 	await expect.element(page.getByLabelText("Reader status")).toMatchTextContent("1 skipped line");
 	await expect
 		.poll(() => document.querySelectorAll('[data-sonner-toast][data-type="info"]').length)
@@ -187,7 +187,7 @@ test("accepted completion keeps the item checked in the default All view", async
 	await expect.element(checkbox).not.toBeChecked();
 	await expect.element(page.getByText("Updating Todo file…")).toBeVisible();
 	const pendingTop = list.getBoundingClientRect().top;
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/0/1");
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/0");
 	finish({
 		status: "applied",
 		confirmed: confirmedTodo([
@@ -202,7 +202,7 @@ test("accepted completion keeps the item checked in the default All view", async
 	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Plan release incomplete" }))
 		.toBeChecked();
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/1/1");
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/1");
 	expect({
 		pendingShift: pendingTop - initialTop,
 		confirmedShift: 0,
@@ -229,7 +229,7 @@ test("conflicts display current confirmed content and an external edit notice", 
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Plan release carefully")).toBeVisible();
 	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
-	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
+	await expect.element(page.getByLabelText("Filter projects")).toHaveTextContent("");
 });
 test("rejected deletion preserves confirmed content and reports its contextual error", async () => {
 	render(Harness, {
@@ -278,8 +278,8 @@ test("confirmed final deletion clears all App summary facts", async () => {
 	});
 	await page.getByRole("button", { name: "Delete Plan release" }).click();
 	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0/0");
-	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0");
+	await expect.element(page.getByLabelText("Filter projects")).toHaveTextContent("");
 });
 
 test("duplicate creation submissions keep dismissal blocked until the admitted save settles", async () => {
@@ -419,8 +419,8 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		completionDate: null,
 		metadata: ["custom:value"],
 	});
-	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("41/0/2");
-	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("work,Work");
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("41/0");
+	await expect.element(page.getByLabelText("Filter projects")).toHaveTextContent("work,Work");
 	expect(viewport.scrollTop).toBe(200);
 	// The appended item becomes available when scrolled into the virtual viewport.
 	viewport.scrollTop = viewport.scrollHeight;
