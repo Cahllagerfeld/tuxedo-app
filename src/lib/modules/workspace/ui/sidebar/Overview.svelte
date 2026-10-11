@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import { Button } from "$lib/shared/ui/button";
 	import Circle from "@lucide/svelte/icons/circle";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import List from "@lucide/svelte/icons/list";
@@ -24,9 +25,10 @@
 		<ul class="space-y-0.5">
 			{#each views as view (view.status)}
 				<li>
-					<Sidebar.MenuButton
-						class="data-active:font-normal"
-						isActive={todoFilter.status === view.status}
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-8 w-full justify-start gap-2 px-2 text-left font-normal hover:bg-sidebar-accent aria-pressed:bg-sidebar-accent"
 						aria-pressed={todoFilter.status === view.status}
 						{disabled}
 						onclick={() => todoFilter.setStatus(view.status)}
@@ -36,7 +38,7 @@
 							class="ml-auto text-xs text-muted-foreground tabular-nums"
 							>{todoSummary.counts[view.count]}</span
 						>
-					</Sidebar.MenuButton>
+					</Button>
 				</li>
 			{/each}
 		</ul>
