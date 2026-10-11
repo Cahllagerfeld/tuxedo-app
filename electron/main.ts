@@ -104,6 +104,7 @@ void app.whenReady().then(async () => {
 		const updateBackground = () => window.setBackgroundColor(backgroundColor());
 		nativeTheme.on("updated", updateBackground);
 		window.once("ready-to-show", () => {
+			if (process.env.TUXEDO_TEST_HIDDEN === "1") return;
 			window.maximize();
 			window.show();
 		});

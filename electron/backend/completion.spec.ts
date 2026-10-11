@@ -37,7 +37,7 @@ async function setup(contents: string) {
 		},
 	};
 }
-test("completion roundtrip retains exact raw priority, creation, spacing and mixed newlines", async () => {
+test("completion writes adjacent dates and preserves priority as metadata for restoration", async () => {
 	const initial = "  (A) 2026-05-24 Call Mom +Family @phone  \r\n\nOther\nFinal";
 	const { backend, path, target } = await setup(initial);
 	const applied = await backend.setTodoCompletion({ ...target, completed: true });
@@ -45,10 +45,13 @@ test("completion roundtrip retains exact raw priority, creation, spacing and mix
 	if (applied.status !== "applied") throw Error("completion failed");
 	const now = new Date();
 	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-	expect(await readFile(path, "utf8")).toBe(`x ${today} ${initial}`);
+	expect(await readFile(path, "utf8")).toBe(
+		`  x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
+	);
 	expect(applied.confirmed.todo_file.items[0]).toMatchObject({
 		completed: true,
-		priority: "A",
+		priority: null,
+		metadata: { pri: "A" },
 		creation_date: "2026-05-24",
 		completion_date: today,
 	});
@@ -73,6 +76,46 @@ test.each(["x Buy milk", "  x 2026-01-01 (B) 2025-12-31 Buy  milk  "])(
 		);
 	}
 );
+
+test.each([
+	["x 2026-01-01 2025-12-31 Buy milk pri:B", "(B) 2025-12-31 Buy milk"],
+	["x 2026-01-01 pri:Z Buy milk", "(Z) Buy milk"],
+	["x Buy milk pri:A due:tomorrow", "(A) Buy milk due:tomorrow"],
+	["x 2026-01-01 Buy milk pri:urgent", "Buy milk pri:urgent"],
+	["x 2026-01-01 Buy milk +pri:A @pri:B", "Buy milk +pri:A @pri:B"],
+	["x 2026-01-01 Buy milk pri:A pri:A", "(A) Buy milk"],
+])("uncompletion restores only valid priority metadata (%s)", async (initial, expected) => {
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: false });
+	expect(result.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(expected);
+});
+
+test.each([
+	["(A) Buy milk pri:B", true],
+	["(A) Buy milk pri:urgent", true],
+	["(A) Buy milk pri:B pri:A", true],
+	["x 2026-01-01 Buy milk pri:B pri:A", false],
+])(
+	"conflicting priority metadata rejects the mutation without writing (%s)",
+	async (initial, completed) => {
+		const { backend, path, target, session } = await setup(initial);
+		const result = await backend.setTodoCompletion({ ...target, completed });
+		expect(result).toMatchObject({
+			status: "rejected",
+			message: expect.stringContaining("priority"),
+		});
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(session);
+	}
+);
+
+test("completion reuses matching priority metadata instead of duplicating it", async () => {
+	const { backend, path, target } = await setup("(A) Buy milk pri:A");
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toMatch(/^x \d{4}-\d{2}-\d{2} Buy milk pri:A$/);
+});
 test("completion rereads disk preserving unrelated edits, blank and skipped lines", async () => {
 	const { backend, path, target } = await setup("Buy milk\nSecond\n");
 	await writeFile(path, "Buy milk\r\n\n+Only\nSecond changed");

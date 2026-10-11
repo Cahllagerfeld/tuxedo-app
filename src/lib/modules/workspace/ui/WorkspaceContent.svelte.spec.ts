@@ -1,6 +1,7 @@
 import { page, userEvent } from "vitest/browser";
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { toast } from "svelte-sonner";
 import type {
 	ConfirmedSession,
 	DesktopAPI,
@@ -9,6 +10,11 @@ import type {
 } from "$lib/shared/desktop/contract";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
+afterEach(async () => {
+	// Sonner's shared state survives component cleanup between tests.
+	toast.dismiss();
+	await expect.poll(() => document.querySelectorAll("[data-sonner-toast]").length).toBe(0);
+});
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 const todo: TodoFile["items"][number] = {
@@ -147,6 +153,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 			},
 		},
 	});
+	expect(toast.getActiveToasts()).toHaveLength(0);
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });

@@ -315,15 +315,41 @@ export function createSessionBackend(
 					const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 					const line = lines[item.line_number - 1];
 					const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
+					const priorities = [
+						...item.raw.matchAll(
+							/(?:^|\p{White_Space})pri:([^:\p{White_Space}]+)(?=\p{White_Space}|$)/gu
+						),
+					].map((match) => match[1]);
 					let raw: string;
 					if (completed) {
 						const date = new Date();
 						const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-						raw = `x ${today} ${item.raw}`;
+						const leading = /^\p{White_Space}*/u.exec(item.raw)![0];
+						let rest = item.raw.slice(leading.length);
+						if (item.priority) {
+							if (priorities.some((priority) => priority !== item.priority))
+								throw Error(
+									"Conflicting priority metadata; edit the Todo file before completing this item."
+								);
+							rest = rest.slice(4);
+							if (!priorities.length) {
+								const trailing = /\p{White_Space}*$/u.exec(rest)![0];
+								rest = `${rest.slice(0, rest.length - trailing.length)} pri:${item.priority}${trailing}`;
+							}
+						}
+						raw = `${leading}x ${today} ${rest}`;
 					} else {
 						const marker = /^(\p{White_Space}*)x /u.exec(item.raw)!;
 						let rest = item.raw.slice(marker[0].length);
 						if (item.completion_date) rest = rest.slice(11);
+						if (!item.priority && /^[A-Z]$/.test(item.metadata.pri ?? "")) {
+							if (priorities.some((priority) => priority !== item.metadata.pri))
+								throw Error(
+									"Conflicting priority metadata; edit the Todo file before uncompleting this item."
+								);
+							rest = rest.replace(/(^|\p{White_Space})pri:[A-Z](?=\p{White_Space}|$)/gu, "");
+							rest = `(${item.metadata.pri}) ${rest.replace(/^\p{White_Space}+/u, "")}`;
+						}
 						raw = marker[1] + rest;
 					}
 					lines[item.line_number - 1] = raw + ending;
