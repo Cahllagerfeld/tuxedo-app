@@ -240,8 +240,8 @@ test("submits optional Priority, Creation date, and custom Metadata for an open 
 		return { status: "applied" };
 	});
 	await openDialog();
-	await page.getByRole("button", { name: "Priority (optional)" }).click();
-	await page.getByRole("option", { name: "(Z)", exact: true }).click();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
 	await page.getByRole("button", { name: "Creation date (optional)" }).click();
 	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
 	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
@@ -280,8 +280,8 @@ test("submits optional Priority, Creation date, and custom Metadata for an open 
 		.element(page.getByRole("checkbox", { name: "Completed", exact: true }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(page.getByRole("button", { name: "Priority (optional)" }))
-		.toHaveTextContent("None");
+		.element(page.getByRole("button", { name: "None", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
 	await expect.element(page.getByText("custom:value", { exact: true })).not.toBeInTheDocument();
 });
 
@@ -406,4 +406,61 @@ test("retains committed and pending Metadata after a failed save without duplica
 		["custom:first", "custom:last"],
 		["custom:first", "custom:last"],
 	]);
+});
+
+test.each(["None", "A", "B", "C"])(
+	"creates a Todo item with the %s priority button",
+	async (priority) => {
+		const calls: CreateTodoItemInput[] = [];
+		renderDialog(async (input) => {
+			calls.push(input);
+			return { status: "applied" };
+		});
+		await openDialog();
+		const button = page.getByRole("button", { name: priority, exact: true });
+		await button.click();
+		await expect.element(button).toHaveAttribute("aria-pressed", "true");
+		await expect
+			.element(page.getByRole("textbox", { name: "Other priority" }))
+			.not.toBeInTheDocument();
+		await submitDialog();
+		await expect.poll(() => calls[0]?.priority).toBe(priority === "None" ? null : priority);
+	}
+);
+
+test("validates Other priorities and resets its input when choosing a common priority", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	const input = page.getByRole("textbox", { name: "Other priority" });
+	await expect.element(input).toHaveFocus();
+	await submitDialog();
+	await expect
+		.element(page.getByText("Choose None, A, B, C, or enter one letter from D to Z."))
+		.toBeVisible();
+	expect(calls).toHaveLength(0);
+	await input.fill("9");
+	await submitDialog();
+	expect(calls).toHaveLength(0);
+	await input.fill("A");
+	await submitDialog();
+	expect(calls).toHaveLength(0);
+	await input.fill("d");
+	await expect.element(input).toHaveValue("D");
+	await page.getByRole("button", { name: "B", exact: true }).click();
+	await expect.element(input).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await expect.element(input).toHaveValue("");
+	await page.getByRole("button", { name: "None", exact: true }).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.priority).toBe(null);
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "None", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect.element(input).not.toBeInTheDocument();
 });

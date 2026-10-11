@@ -391,8 +391,8 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		.not.toBeInTheDocument();
 	await page.getByRole("button", { name: /Friday, October 9, 2026/ }).click();
 	await page.getByRole("button", { name: "Creation date (optional)" }).click();
-	await page.getByRole("button", { name: "Priority (optional)" }).click();
-	await page.getByRole("option", { name: "(Z)", exact: true }).click();
+	await page.getByRole("button", { name: "Other", exact: true }).click();
+	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("custom:value");
 	metadata.element().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

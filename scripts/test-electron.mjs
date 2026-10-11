@@ -586,6 +586,8 @@ try {
 	await addTodo.click();
 	const creationDialog = page.getByRole("dialog");
 	await creationDialog.getByPlaceholder("What needs doing?").fill("Metadata check");
+	await creationDialog.getByRole("button", { name: "Other", exact: true }).click();
+	await creationDialog.getByRole("textbox", { name: "Other priority" }).fill("z");
 	await creationDialog.getByRole("button", { name: "Clear Creation date" }).click();
 	const metadataInput = creationDialog.getByPlaceholder("Add key:value");
 	await metadataInput.fill("custom:first");
@@ -594,12 +596,15 @@ try {
 	await creationDialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
 	await creationDialog.waitFor({ state: "detached" });
 	assert.ok(
-		(await readFile(deletionPath, "utf8")).endsWith("\nMetadata check custom:first due:2026-10-12")
+		(await readFile(deletionPath, "utf8")).endsWith(
+			"\n(Z) Metadata check custom:first due:2026-10-12"
+		)
 	);
 	await page.reload();
 	await addTodo.waitFor();
 	const metadataSession = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(metadataSession.session.status, "ready");
+	assert.equal(metadataSession.session.todo_file.items.at(-1).priority, "Z");
 	assert.deepEqual(metadataSession.session.todo_file.items.at(-1).metadata, {
 		custom: "first",
 		due: "2026-10-12",
