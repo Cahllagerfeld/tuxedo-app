@@ -634,6 +634,12 @@ test("editing a completed token-only item prefills empty Description and retains
 		.click();
 	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
 	await expect.element(page.getByRole("textbox", { name: /Description/ })).toHaveValue("");
+	await expect
+		.element(page.getByRole("button", { name: "Clear Creation date", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Completion date", exact: true }))
+		.toBeVisible();
 	await page.getByRole("textbox", { name: /Description/ }).fill("Updated");
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect.element(page.getByText("Read only", { exact: true })).toBeVisible();

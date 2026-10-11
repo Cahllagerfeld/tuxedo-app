@@ -318,6 +318,7 @@
 								<DatePicker
 									{...props}
 									bind:value={$formData.completionDate}
+									label="Completion date"
 									disabled={controlsDisabled}
 								/>
 							{/snippet}
