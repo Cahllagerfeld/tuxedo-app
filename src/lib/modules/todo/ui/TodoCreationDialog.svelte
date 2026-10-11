@@ -12,7 +12,7 @@
 	} from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
-	import type { TodoFile } from "$lib/modules/todo/domain/todo";
+	import type { TodoFile, TodoItem } from "$lib/modules/todo/domain/todo";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
@@ -28,9 +28,18 @@
 		createTodoItem: CreateTodoItem;
 		workspaceName?: string;
 		disabled?: boolean;
+		todoToEdit?: TodoItem;
+		onClose?: () => void;
 	};
 
-	let { todoFile, createTodoItem, workspaceName = "", disabled = false }: Props = $props();
+	let {
+		todoFile,
+		createTodoItem,
+		workspaceName = "",
+		disabled = false,
+		todoToEdit,
+		onClose,
+	}: Props = $props();
 
 	const dateField = z.union([z.literal(""), todoDateSchema]);
 	function today() {
@@ -47,10 +56,11 @@
 				.regex(/^(none|[A-Z])$/u, "Choose None, A, B, C, or enter one letter from D to Z.")
 				.default("none"),
 			creationDate: dateField.default(today()),
+			completionDate: dateField.default(""),
 			metadata: z.array(todoMetadataSchema).default([]),
 		})
 		.superRefine((data, ctx) => {
-			validateTodoCreation(draft(data), ctx);
+			validateTodoCreation(draft(data), ctx, !!todoToEdit);
 		});
 	function draft(data: {
 		description: string;
@@ -58,6 +68,7 @@
 		contexts: string[];
 		priority: string;
 		creationDate: string;
+		completionDate: string;
 		metadata: string[];
 	}) {
 		return {
@@ -65,15 +76,20 @@
 			description: normalizeTodoDescription(data.description),
 			priority: data.priority === "none" ? null : data.priority,
 			creationDate: data.creationDate || null,
-			completed: false,
-			completionDate: null,
+			completed: todoToEdit?.completed ?? false,
+			completionDate: data.completionDate || null,
 		};
 	}
 
-	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
+	const form = superForm(defaults(initialValues(), zod4(schema)), {
+		validators: zod4Client(schema),
+		SPA: true,
+	});
 	const { form: formData } = form;
 
-	let open = $state(false);
+	// The edit dialog is mounted for one selected Todo item.
+	// svelte-ignore state_referenced_locally
+	let open = $state(!!todoToEdit);
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let metadataInput = $state<ReturnType<typeof TagsInput>>();
@@ -119,9 +135,21 @@
 		return clean;
 	}
 
+	function initialValues() {
+		if (!todoToEdit) return { creationDate: today() };
+		return {
+			description: todoToEdit.edit.description,
+			projects: [...new Set(todoToEdit.projects)],
+			contexts: [...new Set(todoToEdit.contexts)],
+			priority: todoToEdit.priority ?? "none",
+			creationDate: todoToEdit.creation_date ?? "",
+			completionDate: todoToEdit.completion_date ?? "",
+			metadata: [...todoToEdit.edit.metadata],
+		};
+	}
+
 	function resetForm() {
-		form.reset();
-		$formData.creationDate = today();
+		form.reset({ data: initialValues() });
 		tagErrors.metadata = "";
 		tagErrors.projects = "";
 		tagErrors.contexts = "";
@@ -142,6 +170,7 @@
 			focusDescription();
 		} else {
 			resetForm();
+			onClose?.();
 			void tick().then(() => triggerButton?.focus());
 		}
 	}
@@ -150,6 +179,7 @@
 		if (controlsDisabled) return;
 		resetForm();
 		open = false;
+		onClose?.();
 	}
 
 	async function submit(event: SubmitEvent) {
@@ -167,15 +197,24 @@
 				resetForm();
 				await tick();
 				triggerButton?.focus();
+				onClose?.();
 				return;
 			}
 			if (outcome.status === "conflict") {
-				toast.error("Todo file reloaded");
+				toast.error("Todo file reloaded", { description: outcome.message });
+				if (todoToEdit) {
+					open = false;
+					onClose?.();
+				}
 			} else {
-				toast.error("Could not create Todo item", { description: outcome.message });
+				toast.error(todoToEdit ? "Could not edit Todo item" : "Could not create Todo item", {
+					description: outcome.message,
+				});
 			}
 		} catch (error) {
-			toast.error("Could not create Todo item", { description: errorMessage(error) });
+			toast.error(todoToEdit ? "Could not edit Todo item" : "Could not create Todo item", {
+				description: errorMessage(error),
+			});
 		} finally {
 			isCreating = false;
 		}
@@ -195,19 +234,21 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={handleOpenChange}>
-	<Button
-		bind:ref={triggerButton}
-		variant="outline"
-		{disabled}
-		aria-label="Add Todo item"
-		onclick={() => (open = true)}>+ Add Todo item</Button
-	>
+	{#if !todoToEdit}
+		<Button
+			bind:ref={triggerButton}
+			variant="outline"
+			{disabled}
+			aria-label="Add Todo item"
+			onclick={() => (open = true)}>+ Add Todo item</Button
+		>
+	{/if}
 	<Dialog.Content
 		class="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
 		closeButtonDisabled={controlsDisabled}
 	>
 		<Dialog.Header class="shrink-0">
-			<Dialog.Title>New Todo item</Dialog.Title>
+			<Dialog.Title>{todoToEdit ? "Edit Todo item" : "New Todo item"}</Dialog.Title>
 			<Dialog.Description>{targetLabel}</Dialog.Description>
 		</Dialog.Header>
 		<form class="flex min-h-0 flex-col gap-4" onsubmit={submit}>
@@ -266,6 +307,25 @@
 					</Form.Field>
 				</div>
 
+				{#if todoToEdit?.completed}
+					<Form.Field {form} name="completionDate">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label
+									>Completion date <span class="font-normal text-muted-foreground">(optional)</span
+									></Form.Label
+								>
+								<DatePicker
+									{...props}
+									bind:value={$formData.completionDate}
+									label="Completion date"
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				{/if}
 				<Form.Field {form} name="projects">
 					<Form.Control>
 						{#snippet children({ props })}
@@ -362,7 +422,13 @@
 					>Cancel</Button
 				>
 				<Form.Button disabled={controlsDisabled}
-					>{isCreating ? "Adding…" : "Add Todo item"}</Form.Button
+					>{isCreating
+						? todoToEdit
+							? "Saving…"
+							: "Adding…"
+						: todoToEdit
+							? "Save changes"
+							: "Add Todo item"}</Form.Button
 				>
 			</Dialog.Footer>
 		</form>

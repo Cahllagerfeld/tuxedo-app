@@ -13,6 +13,8 @@ const open: TodoItem = {
 	projects: ["Work"],
 	contexts: ["Home"],
 	metadata: {},
+
+	edit: { description: "Open", metadata: [] },
 };
 
 const completed: TodoItem = {
@@ -26,6 +28,8 @@ const completed: TodoItem = {
 	projects: ["Work"],
 	contexts: ["Home"],
 	metadata: {},
+
+	edit: { description: "Completed", metadata: [] },
 };
 
 describe("TodoFilterState", () => {

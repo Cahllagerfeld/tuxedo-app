@@ -609,6 +609,33 @@ try {
 		custom: "first",
 		due: "2026-10-12",
 	});
+	await viewport.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+	});
+	const editMenu = page.getByRole("button", { name: "Actions for Metadata check", exact: true });
+	await editMenu.click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	const editDialog = page.getByRole("dialog");
+	assert.equal(
+		await editDialog.getByPlaceholder("What needs doing?").inputValue(),
+		"Metadata check"
+	);
+	await editDialog.getByPlaceholder("What needs doing?").fill("Edited metadata check");
+	await editDialog.getByRole("button", { name: "Save changes", exact: true }).click();
+	await editDialog.waitFor({ state: "detached" });
+	assert.ok(
+		(await readFile(deletionPath, "utf8")).endsWith(
+			"\n(Z) Edited metadata check custom:first due:2026-10-12"
+		)
+	);
+	await page.reload();
+	await viewport.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+	});
+	await page.getByText("Edited metadata check", { exact: true }).waitFor();
+	console.log(
+		"Todo-item editing through the row menu, form, preload and backend persists across reload."
+	);
 	console.log("Metadata entered through the form persists in the Todo file and after reload.");
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."

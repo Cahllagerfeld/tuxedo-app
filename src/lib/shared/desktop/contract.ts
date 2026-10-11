@@ -163,15 +163,21 @@ export const todoCreationSchema = z
 	.superRefine(validateTodoCreation);
 export function validateTodoCreation(
 	input: z.infer<typeof todoCreationSchema>,
-	ctx: z.RefinementCtx
+	ctx: z.RefinementCtx,
+	editing = false
 ) {
 	const issue = (path: string, message: string) =>
 		ctx.addIssue({ code: "custom", path: [path], message });
-	if (input.completed && !input.completionDate)
+	if (
+		input.completed &&
+		!input.completionDate &&
+		(!editing || (input.creationDate && !input.priority))
+	)
 		issue("completionDate", "Choose a Completion date for a completed Todo item.");
 	if (!input.completed && input.completionDate)
 		issue("completionDate", "Only completed Todo items have a Completion date.");
 	if (
+		!editing &&
 		input.completed &&
 		input.priority &&
 		input.metadata?.some((value) => value.startsWith("pri:"))
@@ -202,7 +208,7 @@ export function validateTodoCreation(
 	if (
 		input.creationDate === null &&
 		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
-			((!input.priority || input.completed) && /^\([A-Z]\) /u.test(leadingText)) ||
+			((!input.priority || (input.completed && !editing)) && /^\([A-Z]\) /u.test(leadingText)) ||
 			(!input.completed && !input.priority && /^x /u.test(leadingText)))
 	)
 		issue(
@@ -215,6 +221,16 @@ export const createTodoRequestSchema = todoCreationSchema.safeExtend({
 	revision: z.number().int().nonnegative(),
 	workspaceId: z.uuid(),
 });
+export const editTodoRequestSchema = z
+	.strictObject({
+		...todoCreationFields,
+		...todoMutationRequestSchema.shape,
+		creationDate: todoDateSchema.nullable(),
+		completed: z.boolean(),
+	})
+	.superRefine((input, ctx) => {
+		validateTodoCreation(input, ctx, true);
+	});
 export const reorderTodoRequestSchema = z.strictObject({
 	scope: z.uuid(),
 	revision: z.number().int().nonnegative(),
@@ -228,6 +244,11 @@ export const reorderTodoRequestSchema = z.strictObject({
 		),
 });
 export const desktopContract = {
+	editTodo: {
+		channel: "tuxedo:edit-todo",
+		request: editTodoRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	reorderTodo: {
 		channel: "tuxedo:reorder-todo",
 		request: reorderTodoRequestSchema,
@@ -316,6 +337,7 @@ export function createDesktopClient(
 		) as z.infer<(typeof desktopContract)[K]["response"]>;
 	};
 	return {
+		editTodo: (request) => call("editTodo", request),
 		reorderTodo: (request) => call("reorderTodo", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),

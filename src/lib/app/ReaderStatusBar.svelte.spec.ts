@@ -27,6 +27,8 @@ const todoFile = {
 			projects: [],
 			contexts: [],
 			metadata: {},
+
+			edit: { description: "Plan release", metadata: [] },
 		},
 		{
 			line_number: 3,
@@ -39,6 +41,8 @@ const todoFile = {
 			projects: [],
 			contexts: [],
 			metadata: {},
+
+			edit: { description: "Ship release", metadata: [] },
 		},
 	],
 };

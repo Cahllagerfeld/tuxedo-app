@@ -10,6 +10,7 @@ export const todoItemSchema = z.strictObject({
 	creation_date: z.string().nullable(),
 	completion_date: z.string().nullable(),
 	description: z.string().min(1),
+	edit: z.strictObject({ description: z.string(), metadata: z.array(z.string()) }),
 	projects: z.array(z.string()),
 	contexts: z.array(z.string()),
 	metadata: z.record(z.string(), z.string()),

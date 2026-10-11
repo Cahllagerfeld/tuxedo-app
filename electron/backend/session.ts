@@ -11,6 +11,7 @@ import {
 	switchWorkspaceRequestSchema,
 	deleteWorkspaceRequestSchema,
 	createTodoRequestSchema,
+	editTodoRequestSchema,
 	reorderTodoRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
@@ -305,6 +306,43 @@ export function createSessionBackend(
 					return await commitCatalogue(catalogue);
 				})
 			),
+		editTodo: (request) =>
+			serialize(async () => {
+				const parsed = editTodoRequestSchema.safeParse(request);
+				if (!parsed.success)
+					return { status: "rejected" as const, message: "Invalid Todo-item edit." };
+				const input = parsed.data;
+				const {
+					scope: targetScope,
+					revision: targetRevision,
+					workspaceId,
+					lineNumber,
+					expectedRaw,
+				} = input;
+				const outcome = await mutateTodo(
+					{ scope: targetScope, revision: targetRevision, workspaceId, lineNumber, expectedRaw },
+					(contents, item) => {
+						const raw =
+							input.completed && input.priority
+								? [
+										"x",
+										input.completionDate,
+										createTodoLine({ ...input, completed: false, completionDate: null }),
+									]
+										.filter(Boolean)
+										.join(" ")
+								: createTodoLine(input);
+						const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+						const line = lines[item.line_number - 1];
+						const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
+						lines[item.line_number - 1] = raw + ending;
+						return lines.join("");
+					}
+				);
+				return outcome.status === "rejected"
+					? { ...outcome, message: `Cannot edit Todo item: ${outcome.message}` }
+					: outcome;
+			}),
 		deleteTodo: (request) =>
 			serialize(async () => {
 				const outcome = await mutateTodo(request, (contents) =>

@@ -21,6 +21,8 @@ const item = {
 	projects: ["Family"],
 	contexts: [],
 	metadata: {},
+
+	edit: { description: "Call Mom", metadata: [] },
 };
 const initial: ConfirmedSession = {
 	scope,
@@ -51,6 +53,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),

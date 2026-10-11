@@ -14,6 +14,7 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoFile["items"][number]) => void;
 		onDelete: (todo: TodoFile["items"][number]) => void;
+		onEdit?: (todo: TodoFile["items"][number], trigger: HTMLButtonElement | null) => void;
 		onReorder?: (items: readonly TodoFile["items"][number][]) => void;
 	};
 
@@ -24,6 +25,7 @@
 		disabled,
 		onToggleComplete,
 		onDelete,
+		onEdit,
 		onReorder,
 	}: TodoListProps = $props();
 
@@ -80,7 +82,13 @@
 					</div>
 				{/if}
 				<div class="min-w-0 flex-1">
-					<TodoItem {todo} disabled={disabled || list.dragging} {onToggleComplete} {onDelete} />
+					<TodoItem
+						{todo}
+						disabled={disabled || list.dragging}
+						{onToggleComplete}
+						{onDelete}
+						{onEdit}
+					/>
 				</div>
 			</li>
 		{/each}

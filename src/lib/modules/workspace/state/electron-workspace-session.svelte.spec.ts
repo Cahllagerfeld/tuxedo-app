@@ -26,6 +26,7 @@ test("initialization restores the session explicitly with one backend request", 
 			return requests.length === 1 ? confirmed(1, "Initial") : confirmed(2, "Refreshed");
 		},
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -51,6 +52,7 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 		readSession: unexpected,
 		restoreSession: async () => confirmed(1, null),
 		setTodoCompletion: unexpected,
+		editTodo: unexpected,
 		deleteTodo: unexpected,
 		reorderTodo: unexpected,
 		createTodo: unexpected,
@@ -64,6 +66,7 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 		line_number: 1,
 		raw: "Existing",
 		description: "Existing",
+		edit: { description: "Existing", metadata: [] },
 		completed: false,
 		priority: null,
 		creation_date: null,
@@ -74,6 +77,7 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 	};
 	for (const action of [
 		() => session.setCompletion(todo),
+		() => session.editTodo(todo, { description: "Edited", projects: [], contexts: [] }),
 		() => session.deleteTodo(todo),
 		() => session.reorderTodo([todo]),
 		() => session.createTodo({ description: "New", projects: [], contexts: [] }),
@@ -103,6 +107,7 @@ test.each(["success", "transport failure"])(
 				});
 			},
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -137,6 +142,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -175,6 +181,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -217,6 +224,8 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 							projects: ["Family"],
 							contexts: [],
 							metadata: {},
+
+							edit: { description: "Call Mom", metadata: [] },
 						},
 					],
 					skipped: [],
@@ -253,6 +262,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -282,6 +292,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -320,6 +331,7 @@ test("a confirmed switch opens its intended Workspace with coherent session data
 	render(ElectronSessionHarness, {
 		desktop: {
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -387,6 +399,7 @@ test.each([
 				return { status: "rejected", message: "Unexpected switch" };
 			},
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),

@@ -10,10 +10,12 @@
 	let {
 		value = $bindable(""),
 		disabled = false,
+		label = "Creation date",
 		...restProps
 	}: Pick<HTMLButtonAttributes, "id" | "name" | "aria-describedby" | "aria-invalid"> & {
 		value?: string;
 		disabled?: boolean;
+		label?: string;
 	} = $props();
 
 	const dateFormatter = new DateFormatter("en-US", { dateStyle: "long" });
@@ -53,6 +55,6 @@
 		variant="link"
 		class="h-auto p-0 font-normal text-muted-foreground"
 		{disabled}
-		onclick={() => (value = "")}>Clear Creation date</Button
+		onclick={() => (value = "")}>Clear {label}</Button
 	> to omit it.
 </Form.Description>
