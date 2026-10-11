@@ -3,6 +3,9 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "cn";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import Ellipsis from "@lucide/svelte/icons/ellipsis";
+	import Pencil from "@lucide/svelte/icons/pencil";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 
 	type TodoItemProps = {
@@ -10,9 +13,11 @@
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem) => void;
+		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	};
 
-	let { todo, disabled, onToggleComplete, onDelete }: TodoItemProps = $props();
+	let { todo, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	let menuTrigger = $state<HTMLButtonElement | null>(null);
 	let confirmedChecked = $derived(todo.completed);
 	const projects = $derived([...new Set(todo.projects)]);
 	const contexts = $derived([...new Set(todo.contexts)]);
@@ -59,13 +64,30 @@
 			>{/each}
 		{#each contexts as context (context)}<span class="truncate">@{context}</span>{/each}
 	</div>
-	<Button
-		type="button"
-		variant="ghost"
-		size="icon-xs"
-		{disabled}
-		aria-label={`Delete ${todo.description}`}
-		class="shrink-0 opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0 group-hover:disabled:opacity-100 focus-visible:disabled:opacity-100"
-		onclick={() => onDelete(todo)}><Trash2 aria-hidden="true" /></Button
-	>
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger>
+			{#snippet child({ props })}
+				<Button
+					{...props}
+					bind:ref={menuTrigger}
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					{disabled}
+					aria-label={`Actions for ${todo.description}`}
+					class="shrink-0 opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+					><Ellipsis aria-hidden="true" /></Button
+				>
+			{/snippet}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Content align="end">
+			<DropdownMenu.Item disabled={disabled || !onEdit} onSelect={() => onEdit?.(todo, menuTrigger)}
+				><Pencil aria-hidden="true" />Edit</DropdownMenu.Item
+			>
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item {disabled} variant="destructive" onSelect={() => onDelete(todo)}
+				><Trash2 aria-hidden="true" />Delete</DropdownMenu.Item
+			>
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
 </div>

@@ -162,3 +162,27 @@ test("desktop transport validates a reorder and rejects duplicate positions befo
 	await expect(desktop.reorderTodo({ ...request, lineNumbers: [1, 1] })).rejects.toThrow("unique");
 	expect(invoked).toBeUndefined();
 });
+
+test("desktop transport validates and forwards an edit with its original line target", async () => {
+	const input = { ...createTodoRequest, lineNumber: 2, expectedRaw: "Old +Home" };
+	let invoked: { channel: string; request: unknown } | undefined;
+	const response = { status: "applied", confirmed: confirmedTodo };
+	const client = createDesktopClient(async (channel, request) => {
+		invoked = { channel, request };
+		return response;
+	});
+	expect(await client.editTodo(input)).toEqual(response);
+	expect(invoked).toEqual({ channel: "tuxedo:edit-todo", request: input });
+});
+test("edits must explicitly preserve or clear Creation date", async () => {
+	let invoked = false;
+	const client = createDesktopClient(async () => {
+		invoked = true;
+		throw Error("unexpected");
+	});
+	const { creationDate, ...input } = createTodoRequest;
+	await expect(
+		client.editTodo({ ...input, lineNumber: 1, expectedRaw: "Old" } as never)
+	).rejects.toThrow();
+	expect(invoked).toBe(false);
+});

@@ -20,6 +20,8 @@ const todoFile: TodoFile = {
 			projects: ["Tuxedo"],
 			contexts: ["desk"],
 			metadata: { due: "2026-07-12" },
+
+			edit: { description: "Plan", metadata: ["due:2026-07-12"] },
 		},
 		{
 			line_number: 2,
@@ -32,6 +34,8 @@ const todoFile: TodoFile = {
 			projects: [],
 			contexts: [],
 			metadata: {},
+
+			edit: { description: "Ship release", metadata: [] },
 		},
 	],
 };
@@ -113,7 +117,8 @@ describe("TodoList", () => {
 		expect(list.children.length).toBeLessThan(30);
 		await page.getByRole("checkbox", { name: "Mark Todo item 1000 complete", exact: true }).click();
 		expect(onToggleComplete).toHaveBeenCalledWith(items[999]);
-		await page.getByRole("button", { name: "Delete Todo item 1000", exact: true }).click();
+		await page.getByRole("button", { name: "Actions for Todo item 1000", exact: true }).click();
+		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 		expect(onDelete).toHaveBeenCalledWith(items[999]);
 		viewport.scrollTop = 0;
 		await expect.element(page.getByText("Todo item 1", { exact: true })).toBeVisible();
@@ -215,9 +220,11 @@ describe("TodoList", () => {
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Ship release incomplete" }))
 			.toBeChecked();
-		await expect.element(page.getByRole("button", { name: "Delete Plan" })).toBeInTheDocument();
 		await expect
-			.element(page.getByRole("button", { name: "Delete Ship release" }))
+			.element(page.getByRole("button", { name: "Actions for Plan" }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Actions for Ship release" }))
 			.toBeInTheDocument();
 	});
 

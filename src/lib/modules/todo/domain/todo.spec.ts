@@ -15,6 +15,8 @@ const validTodoFileResponse: TodoFile = {
 			projects: ["TuxedoApp"],
 			contexts: ["computer"],
 			metadata: { due: "2026-05-25" },
+
+			edit: { description: "Review parser", metadata: ["due:2026-05-25"] },
 		},
 		{
 			line_number: 2,
@@ -27,6 +29,8 @@ const validTodoFileResponse: TodoFile = {
 			projects: ["Inbox"],
 			contexts: ["home"],
 			metadata: {},
+
+			edit: { description: "Completed task without date", metadata: [] },
 		},
 	],
 	skipped: [

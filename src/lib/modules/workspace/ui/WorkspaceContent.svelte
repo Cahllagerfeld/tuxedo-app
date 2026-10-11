@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoCreationDialog from "$lib/modules/todo/ui/TodoCreationDialog.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
@@ -22,6 +23,19 @@
 	};
 
 	let { workspace, todoFilter, filteredTodoItems, openWorkspaceCreationDialog }: Props = $props();
+	let editingTodo = $state<TodoItem | null>(null);
+	let editTrigger: HTMLElement | null = null;
+	let editingWorkspaceId = $state<string>();
+	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
+		editTrigger = trigger;
+		editingWorkspaceId = workspace.activeWorkspace?.id;
+		editingTodo = todo;
+	}
+	function closeEdit() {
+		editingTodo = null;
+		void tick().then(() => editTrigger?.focus());
+	}
+
 	let todoViewport = $state<HTMLElement | null>(null);
 
 	async function toggleTodoCompletion(todo: TodoItem) {
@@ -66,6 +80,18 @@
 				disabled={workspace.isOperating}
 			/>
 		</div>
+		{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
+			{#if editingTodo && editingWorkspaceId === workspace.activeWorkspace?.id}
+				<TodoCreationDialog
+					todoFile={workspace.todoFile}
+					todoToEdit={editingTodo}
+					createTodoItem={(draft) => workspace.editTodo(editingTodo!, draft)}
+					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					disabled={workspace.isOperating}
+					onClose={closeEdit}
+				/>
+			{/if}
+		{/key}
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	<div class="min-h-0 min-w-0 flex-1">
@@ -130,6 +156,7 @@
 							disabled={workspace.isOperating}
 							onToggleComplete={toggleTodoCompletion}
 							onDelete={deleteTodoItem}
+							onEdit={startEdit}
 							onReorder={reorderTodoItems}
 						/>
 					{/if}

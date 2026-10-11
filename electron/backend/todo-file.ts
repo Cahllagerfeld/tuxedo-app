@@ -47,19 +47,21 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 	const contexts: string[] = [];
 	const metadata: Record<string, string> = {};
 	const description: string[] = [];
+	const metadataTokens: string[] = [];
 	for (const token of trim(rest).split(/\p{White_Space}+/u)) {
 		if (token.startsWith("+") && token.length > 1) projects.push(token.slice(1));
 		else if (token.startsWith("@") && token.length > 1) contexts.push(token.slice(1));
 		else {
 			const match = /^([^:\p{White_Space}]+):([^:\p{White_Space}]+)$/u.exec(token);
-			if (match)
+			if (match) {
+				metadataTokens.push(token);
 				Object.defineProperty(metadata, match[1], {
 					value: match[2],
 					enumerable: true,
 					configurable: true,
 					writable: true,
 				});
-			else if (token) description.push(token);
+			} else if (token) description.push(token);
 		}
 	}
 	return {
@@ -70,6 +72,7 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 		creation_date,
 		completion_date,
 		description: description.join(" ") || trim(rest) || trim(raw),
+		edit: { description: description.join(" "), metadata: metadataTokens },
 		projects,
 		contexts,
 		metadata,

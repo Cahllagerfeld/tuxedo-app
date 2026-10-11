@@ -252,6 +252,24 @@ export class ElectronWorkspaceSessionState {
 		const workspaceId = this.catalogue?.active_workspace_id;
 		return workspaceId ? { workspaceId, lineNumber: todo.line_number } : null;
 	}
+	editTodo = (todo: TodoItem, draft: CreateTodoDraft) =>
+		this.runAction(
+			"edit_todo_item",
+			async () => {
+				const target = this.todoMutationTarget(todo);
+				if (!target)
+					return { status: "rejected", message: "No Active workspace Todo file is loaded." };
+				return this.applyTodoOutcome(
+					await this.desktop.editTodo({
+						...draft,
+						...target,
+						creationDate: draft.creationDate ?? null,
+						completed: todo.completed,
+					})
+				);
+			},
+			this.todoOperationTarget(todo)
+		);
 	deleteTodo = (todo: TodoItem) =>
 		this.runAction(
 			"delete_todo_item",

@@ -20,6 +20,8 @@ const todoFile: TodoFile = {
 			projects: ["Work"],
 			contexts: ["Office"],
 			metadata: {},
+
+			edit: { description: "Plan release", metadata: [] },
 		},
 		{
 			line_number: 2,
@@ -32,6 +34,8 @@ const todoFile: TodoFile = {
 			projects: ["Archive"],
 			contexts: ["Office"],
 			metadata: {},
+
+			edit: { description: "Review", metadata: [] },
 		},
 	],
 	skipped: [],
@@ -52,6 +56,8 @@ const crowdedTodoFile: TodoFile = {
 			projects: [],
 			contexts: [`Context${index}`],
 			metadata: {},
+
+			edit: { description: `Item ${index}`, metadata: [] },
 		})),
 	],
 };

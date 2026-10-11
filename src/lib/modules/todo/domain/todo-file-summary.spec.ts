@@ -12,6 +12,8 @@ function item(
 		description: "A todo item",
 		metadata: {},
 		...overrides,
+
+		edit: { description: "A todo item", metadata: [] },
 	};
 }
 

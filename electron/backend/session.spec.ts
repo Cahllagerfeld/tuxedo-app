@@ -141,6 +141,8 @@ test("creation reads and parses the Todo file before atomically saving an active
 					projects: ["Family"],
 					contexts: ["phone"],
 					metadata: { due: "tomorrow" },
+
+					edit: { description: "(A) 2026-05-24 Call Mom", metadata: ["due:tomorrow"] },
 				},
 				{ completed: true, completion_date: "2026-05-25", priority: "B" },
 			],
@@ -277,6 +279,8 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 		projects: ["Work", "work", "Work"],
 		contexts: ["Phone", "phone"],
 		metadata: { key: "last" },
+
+		edit: { description: "(C) Call Mom key:value:extra + @", metadata: ["key:first", "key:last"] },
 	});
 	expect(file.items.slice(1, 7).map((item) => [item.completed, item.priority])).toEqual([
 		[false, null],

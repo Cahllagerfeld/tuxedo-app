@@ -17,6 +17,8 @@ const item = {
 	projects: ["Home"],
 	contexts: ["Desk"],
 	metadata: {},
+
+	edit: { description: "Existing", metadata: [] },
 };
 const initial: ConfirmedSession = {
 	scope,
@@ -49,6 +51,7 @@ function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo,

@@ -28,6 +28,8 @@ const todo: TodoFile["items"][number] = {
 	projects: ["Work"],
 	contexts: [],
 	metadata: {},
+
+	edit: { description: "Plan release", metadata: [] },
 };
 const initial: ConfirmedSession = {
 	scope,
@@ -59,6 +61,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -237,7 +240,8 @@ test("rejected deletion preserves confirmed content and reports its contextual e
 			deleteTodo: async () => ({ status: "rejected", message: "permission denied" }),
 		}),
 	});
-	await page.getByRole("button", { name: "Delete Plan release" }).click();
+	await page.getByRole("button", { name: "Actions for Plan release" }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Could not delete Todo item")).toBeVisible();
 	await expect.element(page.getByText("permission denied")).toBeVisible();
@@ -276,7 +280,8 @@ test("confirmed final deletion clears all App summary facts", async () => {
 			deleteTodo: async () => ({ status: "applied", confirmed: confirmedTodo([]) }),
 		}),
 	});
-	await page.getByRole("button", { name: "Delete Plan release" }).click();
+	await page.getByRole("button", { name: "Actions for Plan release" }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("0/0/0");
 	await expect.element(page.getByLabelText("Summary facets")).toHaveTextContent("");
@@ -312,7 +317,8 @@ test("duplicate creation submissions keep dismissal blocked until the admitted s
 	await expect.element(page.getByPlaceholder("Choose or create a Context")).toBeDisabled();
 	await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
 	expect(
-		document.querySelector<HTMLButtonElement>('button[aria-label="Delete Plan release"]')?.disabled
+		document.querySelector<HTMLButtonElement>('button[aria-label="Actions for Plan release"]')
+			?.disabled
 	).toBe(true);
 	(close.element() as HTMLButtonElement).click();
 	description
@@ -350,6 +356,8 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		metadata: { custom: "value" },
 		projects: ["work"],
 		contexts: ["Desk"],
+
+		edit: { description: "Ship the release", metadata: ["custom:value"] },
 	};
 	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
 	render(Harness, {
@@ -529,4 +537,113 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 	});
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Hidden");
 	await expect.element(handle).not.toBeDisabled();
+});
+
+test("row menu opens a prefilled edit form and saves through the scoped session controller", async () => {
+	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
+	let finish!: (value: Awaited<ReturnType<DesktopAPI["editTodo"]>>) => void;
+	render(Harness, {
+		desktop: adapter({
+			editTodo: async (input) => {
+				request = input;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			},
+		}),
+	});
+	await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	const dialog = page.getByRole("dialog");
+	await expect
+		.element(dialog.getByRole("textbox", { name: /Description/ }))
+		.toHaveValue("Plan release");
+	await dialog.getByRole("textbox", { name: /Description/ }).fill("Ship release");
+	await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+	expect(request).toMatchObject({
+		scope,
+		revision: 1,
+		workspaceId,
+		lineNumber: 1,
+		expectedRaw: todo.raw,
+		description: "Ship release",
+		projects: ["Work"],
+		contexts: [],
+		creationDate: null,
+		completed: false,
+		completionDate: null,
+	});
+	await expect.element(dialog.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeInTheDocument();
+	finish({
+		status: "applied",
+		confirmed: confirmedTodo([{ ...todo, raw: "Ship release +Work", description: "Ship release" }]),
+	});
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect.element(page.getByText("Ship release", { exact: true })).toBeInTheDocument();
+});
+
+test("canceling an edit restores row focus and does not save", async () => {
+	let saves = 0;
+	render(Harness, {
+		desktop: adapter({
+			editTodo: async () => {
+				saves++;
+				return { status: "rejected", message: "unused" };
+			},
+		}),
+	});
+	const trigger = page.getByRole("button", { name: "Actions for Plan release", exact: true });
+	await trigger.click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	await page.getByRole("textbox", { name: /Description/ }).fill("Discarded");
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect.element(trigger).toHaveFocus();
+	expect(saves).toBe(0);
+});
+test("editing a completed token-only item prefills empty Description and retains repeated metadata", async () => {
+	if (initial.session.status !== "ready") throw Error("setup");
+	const completed = {
+		...todo,
+		raw: "x +Work custom:first custom:last pri:Z",
+		edit: { description: "", metadata: ["custom:first", "custom:last", "pri:Z"] },
+		description: "+Work custom:first custom:last pri:Z",
+		completed: true,
+		metadata: { custom: "last", pri: "Z" },
+	};
+	const snapshot = {
+		...initial,
+		session: {
+			...initial.session,
+			todo_file: { ...initial.session.todo_file, items: [completed] },
+		},
+	};
+	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => snapshot,
+			editTodo: async (input) => {
+				request = input;
+				return { status: "rejected", message: "Read only" };
+			},
+		}),
+	});
+	await page
+		.getByRole("button", { name: `Actions for ${completed.description}`, exact: true })
+		.click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	await expect.element(page.getByRole("textbox", { name: /Description/ })).toHaveValue("");
+	await page.getByRole("textbox", { name: /Description/ }).fill("Updated");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.element(page.getByText("Read only", { exact: true })).toBeVisible();
+	expect(request).toMatchObject({
+		description: "Updated",
+		completed: true,
+		completionDate: null,
+		creationDate: null,
+		metadata: ["custom:first", "custom:last", "pri:Z"],
+	});
+	await expect.element(page.getByRole("textbox", { name: /Description/ })).toHaveValue("Updated");
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 });

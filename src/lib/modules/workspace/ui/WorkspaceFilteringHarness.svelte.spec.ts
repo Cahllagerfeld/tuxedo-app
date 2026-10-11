@@ -20,6 +20,8 @@ const items: TodoFile["items"] = [
 		projects: ["Work"],
 		contexts: ["Home"],
 		metadata: {},
+
+		edit: { description: "Open work", metadata: [] },
 	},
 	{
 		line_number: 2,
@@ -32,6 +34,8 @@ const items: TodoFile["items"] = [
 		projects: ["Personal"],
 		contexts: ["Home"],
 		metadata: {},
+
+		edit: { description: "Open personal", metadata: [] },
 	},
 	{
 		line_number: 3,
@@ -44,6 +48,8 @@ const items: TodoFile["items"] = [
 		projects: ["Travel"],
 		contexts: ["Away"],
 		metadata: {},
+
+		edit: { description: "Open travel", metadata: [] },
 	},
 	{
 		line_number: 4,
@@ -56,6 +62,8 @@ const items: TodoFile["items"] = [
 		projects: ["Errands"],
 		contexts: ["Away"],
 		metadata: {},
+
+		edit: { description: "Open errands", metadata: [] },
 	},
 	{
 		line_number: 5,
@@ -68,6 +76,8 @@ const items: TodoFile["items"] = [
 		projects: ["Reading"],
 		contexts: ["Away"],
 		metadata: {},
+
+		edit: { description: "Open reading", metadata: [] },
 	},
 	{
 		line_number: 6,
@@ -80,6 +90,8 @@ const items: TodoFile["items"] = [
 		projects: ["Garden"],
 		contexts: ["Away"],
 		metadata: {},
+
+		edit: { description: "Open garden", metadata: [] },
 	},
 	{
 		line_number: 7,
@@ -92,6 +104,8 @@ const items: TodoFile["items"] = [
 		projects: ["Work"],
 		contexts: ["Home"],
 		metadata: {},
+
+		edit: { description: "Completed work", metadata: [] },
 	},
 ];
 
@@ -169,6 +183,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
