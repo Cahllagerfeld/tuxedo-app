@@ -125,25 +125,94 @@ export const todoTagSchema = z
 	.string()
 	.min(1)
 	.refine((value) => value === value.trim(), "Todo tags must be trimmed")
-	.refine((value) => !/[\s\p{White_Space}]/u.test(value), "Todo tags must not contain whitespace")
-	.refine((value) => !/^[+@]/u.test(value), "Todo tags must not include their prefix");
+	.refine((value) => !/[\s\p{White_Space}]/u.test(value), "Todo tags must not contain whitespace");
 const todoTagListSchema = z
 	.array(todoTagSchema)
 	.refine((values) => new Set(values).size === values.length, "Todo tags must be unique");
 export const todoDescriptionSchema = z
 	.string()
-	.refine((value) => normalizeTodoDescription(value).length > 0, "Enter a Description.")
+
 	.refine(
 		(value) => !containsTodoToken(value),
-		"Use the Project and Context inputs for tags. Metadata is not supported here."
+		"Use the Project, Context, and Metadata inputs for these tokens."
 	);
-export const createTodoRequestSchema = z.strictObject({
+export const todoDateSchema = z.iso.date("Use a valid date in YYYY-MM-DD format.");
+export const todoMetadataSchema = z
+	.string()
+	.regex(
+		/^[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+$/u,
+		"Use key:value without spaces or extra colons."
+	)
+	.refine((value) => !/^[+@]/u.test(value), "Metadata keys must not start with + or @.");
+const todoCreationFields = {
+	description: todoDescriptionSchema,
+	projects: todoTagListSchema,
+	contexts: todoTagListSchema,
+	priority: z
+		.string()
+		.regex(/^[A-Z]$/u)
+		.nullable()
+		.optional(),
+	creationDate: todoDateSchema.nullable().optional(),
+	completed: z.boolean().optional(),
+	completionDate: todoDateSchema.nullable().optional(),
+	metadata: z
+		.array(todoMetadataSchema)
+		.refine(
+			(values) => new Set(values.map((value) => value.split(":")[0])).size === values.length,
+			"Metadata keys must be unique."
+		)
+		.optional(),
+};
+export const todoCreationSchema = z
+	.strictObject(todoCreationFields)
+	.superRefine(validateTodoCreation);
+export function validateTodoCreation(
+	input: z.infer<typeof todoCreationSchema>,
+	ctx: z.RefinementCtx
+) {
+	const issue = (path: string, message: string) =>
+		ctx.addIssue({ code: "custom", path: [path], message });
+	if (input.completed && !input.completionDate)
+		issue("completionDate", "Choose a Completion date for a completed Todo item.");
+	if (!input.completed && input.completionDate)
+		issue("completionDate", "Only completed Todo items have a Completion date.");
+	if (
+		input.completed &&
+		input.priority &&
+		input.metadata?.some((value) => value.startsWith("pri:"))
+	)
+		issue(
+			"metadata",
+			"Remove pri Metadata or clear Priority; Priority is saved as pri Metadata on completion."
+		);
+	const description = normalizeTodoDescription(input.description);
+	if (
+		!description &&
+		!input.projects.length &&
+		!input.contexts.length &&
+		!input.metadata?.length &&
+		!input.priority &&
+		input.creationDate === null &&
+		!input.completed
+	)
+		issue("description", "Enter a Description or another Todo-item value.");
+	// Prefix-looking text would be parsed as structured fields when dates are omitted.
+	if (
+		input.creationDate === null &&
+		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
+			(!input.priority && /^\([A-Z]\) /u.test(description)) ||
+			(!input.completed && !input.priority && /^x /u.test(description)))
+	)
+		issue(
+			"description",
+			"Use the Priority, date, and Completed controls for leading Todo markers."
+		);
+}
+export const createTodoRequestSchema = todoCreationSchema.safeExtend({
 	scope: z.uuid(),
 	revision: z.number().int().nonnegative(),
 	workspaceId: z.uuid(),
-	description: todoDescriptionSchema.trim(),
-	projects: todoTagListSchema,
-	contexts: todoTagListSchema,
 });
 export const reorderTodoRequestSchema = z.strictObject({
 	scope: z.uuid(),

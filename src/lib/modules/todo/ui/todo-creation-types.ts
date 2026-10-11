@@ -1,8 +1,9 @@
-export type CreateTodoItemInput = {
-	description: string;
-	projects: string[];
-	contexts: string[];
-};
+import type { DesktopRequest } from "$lib/shared/desktop/contract";
+
+export type CreateTodoItemInput = Omit<
+	DesktopRequest<"createTodo">,
+	"scope" | "revision" | "workspaceId"
+>;
 
 export type CreateTodoItemResult =
 	| { status: "applied" }

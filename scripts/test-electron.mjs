@@ -232,6 +232,11 @@ try {
 		description: "Plan sprint",
 		projects: ["Planning"],
 		contexts: ["desk"],
+		priority: "Z",
+		creationDate: "2026-10-01",
+		completed: true,
+		completionDate: "2026-10-09",
+		metadata: ["due:2026-10-10", "custom:value"],
 	});
 	assert.equal(createdTodo.status, "applied");
 	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).description, "Plan sprint");
@@ -239,8 +244,17 @@ try {
 	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).contexts, ["desk"]);
 	assert.match(
 		await readFile(todoPath, "utf8"),
-		/\n\d{4}-\d{2}-\d{2} Plan sprint \+Planning @desk\n$/
+		/\nx 2026-10-09 2026-10-01 Plan sprint \+Planning @desk due:2026-10-10 custom:value pri:Z\n$/
 	);
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).completed, true);
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).creation_date, "2026-10-01");
+	assert.equal(createdTodo.confirmed.todo_file.items.at(-1).completion_date, "2026-10-09");
+	assert.deepEqual(createdTodo.confirmed.todo_file.items.at(-1).metadata, {
+		due: "2026-10-10",
+		custom: "value",
+		pri: "Z",
+	});
+
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",

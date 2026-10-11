@@ -6,6 +6,9 @@
 		normalizeTodoDescription,
 		todoDescriptionSchema,
 		todoTagSchema,
+		todoDateSchema,
+		todoMetadataSchema,
+		validateTodoCreation,
 	} from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
@@ -13,6 +16,8 @@
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
+	import * as Select from "$lib/shared/ui/select";
+	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { CreateTodoItem } from "./todo-creation-types";
@@ -27,11 +32,44 @@
 
 	let { todoFile, createTodoItem, workspaceName = "", disabled = false }: Props = $props();
 
-	const schema = z.object({
-		description: todoDescriptionSchema,
-		projects: createTodoRequestSchema.shape.projects.default([]),
-		contexts: createTodoRequestSchema.shape.contexts.default([]),
-	});
+	const priorities = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
+	const dateField = z.union([z.literal(""), todoDateSchema]);
+	function today() {
+		const date = new Date();
+		return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+	}
+	const schema = z
+		.object({
+			description: todoDescriptionSchema.default(""),
+			projects: createTodoRequestSchema.shape.projects.default([]),
+			contexts: createTodoRequestSchema.shape.contexts.default([]),
+			priority: z.string().default("none"),
+			creationDate: dateField.default(today()),
+			completed: z.boolean().default(false),
+			completionDate: dateField.default(today()),
+			metadata: z.array(todoMetadataSchema).default([]),
+		})
+		.superRefine((data, ctx) => {
+			validateTodoCreation(draft(data), ctx);
+		});
+	function draft(data: {
+		description: string;
+		projects: string[];
+		contexts: string[];
+		priority: string;
+		creationDate: string;
+		completed: boolean;
+		completionDate: string;
+		metadata: string[];
+	}) {
+		return {
+			...data,
+			description: normalizeTodoDescription(data.description),
+			priority: data.priority === "none" ? null : data.priority,
+			creationDate: data.creationDate || null,
+			completionDate: data.completed ? data.completionDate || null : null,
+		};
+	}
 
 	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
 	const { form: formData } = form;
@@ -40,7 +78,7 @@
 	let isCreating = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let triggerButton = $state<HTMLButtonElement | null>(null);
-	let tagErrors = $state({ projects: "", contexts: "" });
+	let tagErrors = $state({ projects: "", contexts: "", metadata: "" });
 
 	const projectSuggestions = $derived(
 		uniqueSuggestions(todoFile.items.flatMap((item) => item.projects))
@@ -56,7 +94,7 @@
 		return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 	}
 
-	function setTagError(field: "projects" | "contexts", message: string | undefined) {
+	function setTagError(field: "projects" | "contexts" | "metadata", message: string | undefined) {
 		tagErrors[field] = message ?? "";
 	}
 
@@ -64,10 +102,11 @@
 		value: string,
 		tags: string[],
 		prefix: "+" | "@",
-		field: "projects" | "contexts"
+		field: "projects" | "contexts",
+		source?: "suggestion"
 	) {
 		const trimmed = value.trim();
-		const clean = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
+		const clean = !source && trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
 		if (!todoTagSchema.safeParse(clean).success) {
 			setTagError(field, "Use a tag name without spaces.");
 			return undefined;
@@ -82,6 +121,9 @@
 
 	function resetForm() {
 		form.reset();
+		$formData.creationDate = today();
+		$formData.completionDate = today();
+		tagErrors.metadata = "";
 		tagErrors.projects = "";
 		tagErrors.contexts = "";
 	}
@@ -118,11 +160,7 @@
 		try {
 			const result = await form.validateForm({ update: true });
 			if (!result.valid) return;
-			const outcome = await createTodoItem({
-				description: normalizeTodoDescription(result.data.description),
-				projects: [...result.data.projects],
-				contexts: [...result.data.contexts],
-			});
+			const outcome = await createTodoItem(draft(result.data));
 			if (outcome.status === "applied") {
 				isCreating = false;
 				open = false;
@@ -165,7 +203,7 @@
 		onclick={() => (open = true)}>+ Add Todo item</Button
 	>
 	<Dialog.Content
-		class="max-h-[calc(100dvh-2rem)] overflow-visible sm:max-w-xl"
+		class="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
 		closeButtonDisabled={controlsDisabled}
 	>
 		<Dialog.Header>
@@ -176,7 +214,10 @@
 			<Form.Field {form} name="description">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>Description</Form.Label>
+						<Form.Label
+							>Description <span class="font-normal text-muted-foreground">(optional)</span
+							></Form.Label
+						>
 						<Input
 							{...props}
 							bind:ref={descriptionInput}
@@ -189,6 +230,75 @@
 				</Form.Control>
 				<Form.FieldErrors />
 			</Form.Field>
+
+			<div class="grid gap-4 sm:grid-cols-2">
+				<Form.Field {form} name="priority">
+					<Form.Control
+						>{#snippet children({ props })}
+							<Form.Label>Priority (optional)</Form.Label>
+							<Select.Root
+								type="single"
+								bind:value={$formData.priority}
+								disabled={controlsDisabled}
+							>
+								<Select.Trigger {...props} class="w-full"
+									>{$formData.priority === "none"
+										? "None"
+										: `(${$formData.priority})`}</Select.Trigger
+								>
+								<Select.Content
+									><Select.Item value="none" label="None">None</Select.Item>
+									{#each priorities as priority}<Select.Item value={priority} label={priority}
+											>({priority})</Select.Item
+										>{/each}
+								</Select.Content></Select.Root
+							>
+						{/snippet}</Form.Control
+					><Form.FieldErrors />
+				</Form.Field>
+				<Form.Field {form} name="creationDate">
+					<Form.Control
+						>{#snippet children({ props })}
+							<Form.Label>Creation date (optional)</Form.Label>
+							<Input
+								{...props}
+								type="date"
+								bind:value={$formData.creationDate}
+								disabled={controlsDisabled}
+							/>
+						{/snippet}</Form.Control
+					><Form.Description>Clear to omit the Creation date.</Form.Description><Form.FieldErrors />
+				</Form.Field>
+			</div>
+			<Form.Field {form} name="completed">
+				<Form.Control
+					>{#snippet children({ props })}
+						<div class="flex items-center gap-2">
+							<Checkbox
+								{...props}
+								bind:checked={$formData.completed}
+								disabled={controlsDisabled}
+							/><Form.Label>Completed</Form.Label>
+						</div>
+					{/snippet}</Form.Control
+				>
+			</Form.Field>
+			{#if $formData.completed}
+				<Form.Field {form} name="completionDate">
+					<Form.Control
+						>{#snippet children({ props })}
+							<Form.Label>Completion date</Form.Label>
+							<Input
+								{...props}
+								type="date"
+								bind:value={$formData.completionDate}
+								disabled={controlsDisabled}
+							/>
+						{/snippet}</Form.Control
+					><Form.Description>Priority is preserved as pri Metadata.</Form.Description
+					><Form.FieldErrors />
+				</Form.Field>
+			{/if}
 
 			<Form.Field {form} name="projects">
 				<Form.Control>
@@ -203,7 +313,7 @@
 							prefix="+"
 							suggestions={projectSuggestions}
 							placeholder="Choose or create a Project"
-							validate={(value, tags) => validateTag(value, tags, "+", "projects")}
+							validate={(value, tags, source) => validateTag(value, tags, "+", "projects", source)}
 							onValueChange={() => setTagError("projects", undefined)}
 							onInvalidChange={(message) => setTagError("projects", message)}
 							disabled={controlsDisabled}
@@ -230,7 +340,7 @@
 							prefix="@"
 							suggestions={contextSuggestions}
 							placeholder="Choose or create a Context"
-							validate={(value, tags) => validateTag(value, tags, "@", "contexts")}
+							validate={(value, tags, source) => validateTag(value, tags, "@", "contexts", source)}
 							onValueChange={() => setTagError("contexts", undefined)}
 							onInvalidChange={(message) => setTagError("contexts", message)}
 							disabled={controlsDisabled}
@@ -240,6 +350,43 @@
 				<Form.Description>Reuse a suggestion or create a new name.</Form.Description>
 				{#if tagErrors.contexts}<p role="alert" class="text-sm font-medium text-destructive">
 						{tagErrors.contexts}
+					</p>{/if}
+				<Form.FieldErrors />
+			</Form.Field>
+
+			<Form.Field {form} name="metadata">
+				<Form.Control
+					>{#snippet children({ props })}
+						<Form.Label>Metadata (optional)</Form.Label>
+						<TagsInput
+							{...props}
+							bind:value={$formData.metadata}
+							placeholder="Add key:value"
+							validate={(value, tags) => {
+								const clean = value.trim();
+								const result = todoMetadataSchema.safeParse(clean);
+								if (!result.success) {
+									setTagError("metadata", result.error.issues[0].message);
+									return undefined;
+								}
+								if (tags.some((tag) => tag.split(":")[0] === clean.split(":")[0])) {
+									setTagError("metadata", "That Metadata key is already selected.");
+									return undefined;
+								}
+								setTagError("metadata", undefined);
+								return clean;
+							}}
+							onValueChange={() => setTagError("metadata", undefined)}
+							onInvalidChange={(message) => setTagError("metadata", message)}
+							disabled={controlsDisabled}
+						/>
+					{/snippet}</Form.Control
+				>
+				<Form.Description
+					>For example, due:2026-10-12 or custom:value. Press Enter to add.</Form.Description
+				>
+				{#if tagErrors.metadata}<p role="alert" class="text-sm font-medium text-destructive">
+						{tagErrors.metadata}
 					</p>{/if}
 				<Form.FieldErrors />
 			</Form.Field>

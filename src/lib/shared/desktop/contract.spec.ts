@@ -75,6 +75,11 @@ const createTodoRequest = {
 	revision: 1,
 	workspaceId,
 	description: "Buy milk",
+	priority: "Z",
+	creationDate: null,
+	completed: true,
+	completionDate: "2026-10-09",
+	metadata: ["custom:value"],
 	projects: ["Home"],
 	contexts: ["errands"],
 };
@@ -101,12 +106,11 @@ test("desktop transport validates and forwards a create Todo mutation", async ()
 test.each([
 	{ ...createTodoRequest, projects: ["Home", "Home"] },
 	{ ...createTodoRequest, contexts: ["errands", "errands"] },
-	{ ...createTodoRequest, projects: ["+Home"] },
 	{ ...createTodoRequest, contexts: ["phone home"] },
 	{ ...createTodoRequest, contexts: ["phone\u0085home"] },
 	{ ...createTodoRequest, description: "Call\u0085+Work" },
-	{ ...createTodoRequest, description: "\u0085" },
-	{ ...createTodoRequest, description: "   " },
+	{ ...createTodoRequest, description: "\u0085", creationDate: null },
+	{ ...createTodoRequest, description: "   ", creationDate: null },
 ])("desktop transport rejects malformed create Todo requests %#", async (request) => {
 	const desktop = createDesktopClient(async () => {
 		throw Error("should not invoke");

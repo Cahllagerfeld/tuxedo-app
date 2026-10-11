@@ -57,7 +57,7 @@
 	);
 
 	function selectSuggestion(suggestion: string) {
-		const validated = validate(suggestion, value);
+		const validated = validate(suggestion, value, "suggestion");
 		if (!validated) return;
 		value = [...value, validated];
 		onValueChange?.(value);

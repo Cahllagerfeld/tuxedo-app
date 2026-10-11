@@ -33,12 +33,18 @@ async function setup(contents: string) {
 function request(
 	confirmed: Awaited<ReturnType<typeof setup>>["confirmed"],
 	workspaceId: string,
-	values: { description?: string; projects?: readonly string[]; contexts?: readonly string[] } = {}
+	values: {
+		description?: string;
+		projects?: readonly string[];
+		contexts?: readonly string[];
+		creationDate?: null;
+	} = {}
 ) {
 	return {
 		scope: confirmed.scope,
 		revision: confirmed.revision,
 		workspaceId,
+		...values,
 		description: values.description ?? "Plan the release",
 		projects: [...(values.projects ?? [])],
 		contexts: [...(values.contexts ?? [])],
@@ -115,15 +121,15 @@ test.each([
 );
 
 test.each([
-	["blank description", { description: " \t " }],
+	["blank description", { description: " \t ", creationDate: null }],
 	["project token in description", { description: "Plan +Project" }],
 	["context token in description", { description: "Plan @home" }],
 	["metadata token in description", { description: "Plan due:tomorrow" }],
-	["duplicate projects", { projects: ["Work", "+Work"] }],
+	["duplicate projects", { projects: ["Work", "Work"] }],
 	["whitespace in context", { contexts: ["at home"] }],
 	["Unicode whitespace in context", { contexts: ["at\u0085home"] }],
 	["Unicode-separated project token", { description: "Call\u0085+Work" }],
-	["Unicode blank description", { description: "\u0085" }],
+	["Unicode blank description", { description: "\u0085", creationDate: null }],
 ] as const)("rejects %s without changing file bytes or confirmed data", async (_name, values) => {
 	const initial = "Keep\r\n";
 	const { backend, todoPath, confirmed, workspaceId } = await setup(initial);
@@ -204,4 +210,80 @@ test("retains the confirmed snapshot and cleans temporary files when atomic repl
 	expect(await readFile(todoPath, "utf8")).toBe("Existing\n");
 	expect(await backend.readSession({})).toEqual(confirmed);
 	expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+});
+
+test("creates full-format completed items and preserves priority as Metadata", async () => {
+	const { backend, todoPath, confirmed, workspaceId } = await setup("Keep\n");
+	const outcome = await backend.createTodo({
+		...request(confirmed, workspaceId),
+		priority: "Z",
+		creationDate: "2026-10-01",
+		completed: true,
+		completionDate: "2026-10-09",
+		metadata: ["due:2026-10-10", "custom:value"],
+	});
+	expect(outcome.status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toBe(
+		"Keep\nx 2026-10-09 2026-10-01 Plan the release due:2026-10-10 custom:value pri:Z\n"
+	);
+	if (outcome.status !== "applied") throw Error(outcome.message);
+	expect(outcome.confirmed.todo_file.items.at(-1)).toMatchObject({
+		completed: true,
+		creation_date: "2026-10-01",
+		completion_date: "2026-10-09",
+		priority: null,
+		metadata: { due: "2026-10-10", custom: "value", pri: "Z" },
+	});
+});
+
+test.each([
+	[
+		{ priority: "A", creationDate: null },
+		"(A) Plan the release",
+		{ priority: "A", creation_date: null },
+	],
+	[
+		{ description: "", projects: ["+Work", "@Home"], creationDate: null },
+		"++Work +@Home",
+		{ projects: ["+Work", "@Home"], creation_date: null },
+	],
+	[
+		{ description: "", priority: "B", creationDate: null },
+		"(B) ",
+		{ priority: "B", creation_date: null },
+	],
+	[{ description: "", creationDate: "2026-10-02" }, "2026-10-02", { creation_date: "2026-10-02" }],
+] as const)("round-trips optional content and dates %#", async (values, line, parsed) => {
+	const { backend, todoPath, confirmed, workspaceId } = await setup("");
+	const outcome = await backend.createTodo({
+		...request(confirmed, workspaceId),
+		...values,
+		projects: [...("projects" in values ? values.projects : [])],
+	});
+	expect(outcome.status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toBe(line);
+	if (outcome.status !== "applied") throw Error(outcome.message);
+	expect(outcome.confirmed.todo_file.items[0]).toMatchObject(parsed);
+});
+
+test.each([
+	{ priority: "a" },
+	{ priority: "AA" },
+	{ creationDate: "2026-02-29" },
+	{ completed: true, completionDate: null },
+	{ completionDate: "2026-10-09" },
+	{ metadata: ["due:tomorrow", "due:today"] },
+	{ metadata: ["bad:has space"] },
+	{ metadata: ["+key:value"] },
+	{ metadata: ["key:too:many"] },
+	{ completed: true, completionDate: "2026-10-09", priority: "A", metadata: ["pri:B"] },
+	{ creationDate: null, description: "x Completed" },
+	{ creationDate: null, description: "(A) Priority" },
+	{ creationDate: null, description: "2026-10-09 Date" },
+])("rejects ambiguous or invalid structured fields without writes %#", async (values) => {
+	const { backend, todoPath, confirmed, workspaceId } = await setup("Keep");
+	const outcome = await backend.createTodo({ ...request(confirmed, workspaceId), ...values });
+	expect(outcome.status).toBe("rejected");
+	expect(await readFile(todoPath, "utf8")).toBe("Keep");
+	expect(await backend.readSession({})).toEqual(confirmed);
 });
