@@ -270,7 +270,10 @@ try {
 	);
 	assert.equal(completed.status, "applied");
 	assert.equal(completed.confirmed.todo_file.items[0].completed, true);
-	assert.match(await readFile(todoPath, "utf8"), /^x \d{4}-\d{2}-\d{2} \(A\) Call Mom/);
+	assert.match(
+		await readFile(todoPath, "utf8"),
+		/^x \d{4}-\d{2}-\d{2} Call Mom \+Family @phone pri:A\n/
+	);
 	const uncompleted = await page.evaluate((input) => window.desktop.setTodoCompletion(input), {
 		...completionTarget,
 		revision: completed.confirmed.revision,
