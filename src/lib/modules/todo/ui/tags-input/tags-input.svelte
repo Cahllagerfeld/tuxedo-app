@@ -89,11 +89,6 @@
 		onValueChange?.(value);
 	}
 
-	function deleteValue(tag: string) {
-		const index = value.findIndex((candidate) => candidate === tag);
-		if (index !== -1) deleteIndex(index);
-	}
-
 	function keydown(event: KeyboardEvent) {
 		const target = event.target as HTMLInputElement;
 		if (event.key === "Escape" && showSuggestions) {
@@ -178,13 +173,13 @@
 	)}
 	aria-disabled={disabled}
 >
-	{#each value as tag, index (tag)}
+	{#each value as tag, index (index)}
 		<TagsInputTag
 			value={tag}
 			{prefix}
 			{disabled}
 			active={index === tagIndex}
-			onDelete={deleteValue}
+			onDelete={() => deleteIndex(index)}
 		/>
 	{/each}
 	<input

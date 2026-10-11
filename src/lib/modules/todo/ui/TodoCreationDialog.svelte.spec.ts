@@ -326,3 +326,23 @@ test("preserves leading prefix characters in existing Project suggestions", asyn
 	await submitDialog();
 	await expect.poll(() => calls[0]?.projects).toEqual(["+Work"]);
 });
+
+test("allows identical Metadata tokens and removes the selected occurrence", async () => {
+	const calls: CreateTodoItemInput[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	for (const value of ["custom:first", "custom:middle", "custom:first"]) {
+		await metadata.fill(value);
+		await pressEnter(metadata);
+	}
+	await expect
+		.element(page.getByRole("button", { name: "Remove custom:first", exact: true }).nth(1))
+		.toBeVisible();
+	await page.getByRole("button", { name: "Remove custom:first", exact: true }).nth(1).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["custom:first", "custom:middle"]);
+});
