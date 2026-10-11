@@ -18,7 +18,7 @@ Run these commands through `devenv shell --`: `pnpm check`, `pnpm test:unit`, `p
 
 Electron integration and package tests keep windows hidden by default. Run `devenv shell -- pnpm test:electron:visible` to show the app and check that it opens maximized with native fullscreen off. Development and package tests also accept `--visible`: `devenv shell -- pnpm test:electron:dev --visible` or `devenv shell -- pnpm test:package --visible`. Hidden tests still use real Electron and exercise the renderer and preload/IPC; only visible mode checks maximization. Normal app launches are unchanged.
 
-The bow-tie application icon lives in `assets/icon.png`; `assets/icon.icns` contains the macOS sizes used for packaging. The renderer uses `static/favicon.png`.
+The bow-tie application icon lives in `assets/icon.png`; `assets/icon.icns` contains the macOS sizes used for packaging. The renderer uses `static/favicon.png`. Unpackaged macOS launches also set the Dock icon from the PNG. The artwork fills the image without transparent padding.
 
 ## Local macOS application
 
