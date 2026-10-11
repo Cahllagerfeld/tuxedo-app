@@ -156,7 +156,6 @@ test("creation reads and parses the Todo file before atomically saving an active
 });
 test.each([
 	"invalid-date",
-	"metadata-only",
 	"missing-file",
 	"blank-name",
 	"bad-color",
@@ -179,11 +178,9 @@ test.each([
 		otherPath,
 		failure === "invalid-date"
 			? "2026-02-30 Impossible"
-			: failure === "metadata-only"
-				? "+Only @context"
-				: failure === "invalid-utf8"
-					? Buffer.from([0xff])
-					: "Second item"
+			: failure === "invalid-utf8"
+				? Buffer.from([0xff])
+				: "Second item"
 	);
 	if (failure === "save-failure") await chmod(directory, 0o500);
 	const result = await backend.createWorkspace({
@@ -217,7 +214,7 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 	const restored = await backend.restoreSession({});
 	expect(restored.session.status).toBe("ready");
 	if (restored.session.status !== "ready") throw Error("No file");
-	expect(restored.session.todo_file.items).toHaveLength(5);
+	expect(restored.session.todo_file.items).toHaveLength(6);
 	expect(restored.session.todo_file.items[0]).toMatchObject({
 		line_number: 1,
 		priority: "A",
@@ -238,12 +235,14 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 			raw: "x 2026-99-99 Impossible completion date +Broken",
 			reason: "date must use YYYY-MM-DD format",
 		},
-		{
-			line_number: 6,
-			raw: "+OnlyMetadata @only due:2026-05-25",
-			reason: "task description is empty",
-		},
 	]);
+	expect(restored.session.todo_file.items[2]).toMatchObject({
+		line_number: 6,
+		description: "+OnlyMetadata @only due:2026-05-25",
+		projects: ["OnlyMetadata"],
+		contexts: ["only"],
+		metadata: { due: "2026-05-25" },
+	});
 	await writeFile(todoPath, await readFile("electron/backend/fixtures/spec_examples.todo.txt"));
 	const examples = await backend.restoreSession({});
 	if (examples.session.status !== "ready") throw Error("No examples");
@@ -292,7 +291,7 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 		creation_date: "1999-01-01",
 		priority: "A",
 	});
-	expect(file.skipped.map((line) => line.line_number)).toEqual([10, 11]);
+	expect(file.skipped.map((line) => line.line_number)).toEqual([10]);
 	await rm(todoPath);
 	const missing = await backend.restoreSession({});
 	expect(missing.session).toMatchObject({
@@ -328,7 +327,7 @@ test("switching persists selection, keeps creation order, and restores on startu
 	)
 		throw Error("Creation failed");
 	const workspaceId = first.confirmed.session.catalogue.active_workspace_id!;
-	await writeFile(firstPath, "First changed\n+Only\n");
+	await writeFile(firstPath, "First changed\n2026-13-01 Invalid\n");
 	const switched = await backend.switchWorkspace({ workspaceId });
 	expect(switched.status).toBe("applied");
 	if (switched.status !== "applied") throw Error(switched.message);
@@ -338,7 +337,10 @@ test("switching persists selection, keeps creation order, and restores on startu
 			active_workspace_id: workspaceId,
 			workspaces: [{ name: "First" }, { name: "Second" }],
 		},
-		todo_file: { items: [{ description: "First changed" }], skipped: [{ raw: "+Only" }] },
+		todo_file: {
+			items: [{ description: "First changed" }],
+			skipped: [{ raw: "2026-13-01 Invalid" }],
+		},
 	});
 	expect(switched.confirmed.revision).toBeGreaterThan(second.confirmed.revision);
 	expect((await createSessionBackend(path).restoreSession({})).session).toEqual(

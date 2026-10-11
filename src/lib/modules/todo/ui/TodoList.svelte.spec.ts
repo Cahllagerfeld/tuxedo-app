@@ -40,6 +40,27 @@ describe("TodoList", () => {
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});
+	it("renders repeated Projects and Contexts once and keeps completion available", async () => {
+		const item = {
+			...todoFile.items[0],
+			raw: "Plan +Tuxedo +Tuxedo @desk @desk",
+			projects: ["Tuxedo", "Tuxedo"],
+			contexts: ["desk", "desk"],
+		};
+		const onToggleComplete = vi.fn();
+		await render(TodoList, {
+			todoFile: { ...todoFile, items: [item] },
+			disabled: false,
+			onToggleComplete,
+			onDelete: vi.fn(),
+		});
+		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
+		expect(page.getByText("+Tuxedo", { exact: true }).elements()).toHaveLength(1);
+		expect(page.getByText("@desk", { exact: true }).elements()).toHaveLength(1);
+		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+		expect(onToggleComplete).toHaveBeenCalledWith(item);
+	});
 	it("does not reread the whole Todo file when keyboard focus moves", async () => {
 		const readLineNumber = vi.fn((index: number) => index + 1);
 		const items = Array.from({ length: 1000 }, (_, index) => ({

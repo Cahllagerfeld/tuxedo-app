@@ -53,7 +53,7 @@ test("reordering persists displayed Todo items in their existing slots across re
 });
 test("external edits anywhere cause a conflict without overwriting the Todo file", async () => {
 	const { todoPath, backend, confirmed } = await setup("First\nLast\n");
-	const contents = "First\nLast\n+Skipped\n";
+	const contents = "First\nLast\n2026-13-01 Invalid\n";
 	await writeFile(todoPath, contents);
 	const result = await backend.reorderTodo({
 		scope: confirmed.scope,
@@ -65,7 +65,7 @@ test("external edits anywhere cause a conflict without overwriting the Todo file
 	expect(await readFile(todoPath, "utf8")).toBe(contents);
 	if (result.status === "rejected") throw Error(result.message);
 	expect(result.confirmed.todo_file.skipped).toEqual([
-		{ line_number: 3, raw: "+Skipped", reason: expect.any(String) },
+		{ line_number: 3, raw: "2026-13-01 Invalid", reason: expect.any(String) },
 	]);
 });
 test.each(["scope", "revision", "workspace", "duplicate", "unknown"])(

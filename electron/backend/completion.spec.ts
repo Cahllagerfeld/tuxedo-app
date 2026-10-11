@@ -65,6 +65,34 @@ test("completion writes adjacent dates and preserves priority as metadata for re
 	expect(await readFile(path, "utf8")).toBe(initial);
 });
 
+test.each(["+GarageSale", "@phone", "due:2026-10-12", "(A) +GarageSale @phone"])(
+	"items without separate description text can be completed, uncompleted, and deleted (%s)",
+	async (initial) => {
+		const { backend, path, target } = await setup(initial);
+		const completed = await backend.setTodoCompletion({ ...target, completed: true });
+		expect(completed.status).toBe("applied");
+		if (completed.status !== "applied") throw Error("completion failed");
+		expect(completed.confirmed.todo_file.items[0].completed).toBe(true);
+		expect(completed.confirmed.todo_file.skipped).toEqual([]);
+		const uncompleted = await backend.setTodoCompletion({
+			...target,
+			revision: completed.confirmed.revision,
+			expectedRaw: completed.confirmed.todo_file.items[0].raw,
+			completed: false,
+		});
+		expect(uncompleted.status).toBe("applied");
+		if (uncompleted.status !== "applied") throw Error("uncompletion failed");
+		expect(await readFile(path, "utf8")).toBe(initial);
+		const deleted = await backend.deleteTodo({
+			...target,
+			revision: uncompleted.confirmed.revision,
+			expectedRaw: initial,
+		});
+		expect(deleted.status).toBe("applied");
+		expect(await readFile(path, "utf8")).toBe("");
+	}
+);
+
 test.each(["x Buy milk", "  x 2026-01-01 (B) 2025-12-31 Buy  milk  "])(
 	"uncompletion removes only marker and completion date (%s)",
 	async (raw) => {
@@ -118,7 +146,7 @@ test("completion reuses matching priority metadata instead of duplicating it", a
 });
 test("completion rereads disk preserving unrelated edits, blank and skipped lines", async () => {
 	const { backend, path, target } = await setup("Buy milk\nSecond\n");
-	await writeFile(path, "Buy milk\r\n\n+Only\nSecond changed");
+	await writeFile(path, "Buy milk\r\n\n2026-13-01 Invalid\nSecond changed");
 	const result = await backend.setTodoCompletion({ ...target, completed: true });
 	expect(result.status).toBe("applied");
 	if (result.status !== "applied") throw Error("failed");
@@ -126,9 +154,12 @@ test("completion rereads disk preserving unrelated edits, blank and skipped line
 		line_number: 4,
 		description: "Second changed",
 	});
-	expect(result.confirmed.todo_file.skipped[0]).toMatchObject({ line_number: 3, raw: "+Only" });
+	expect(result.confirmed.todo_file.skipped[0]).toMatchObject({
+		line_number: 3,
+		raw: "2026-13-01 Invalid",
+	});
 	expect(await readFile(path, "utf8")).toMatch(
-		/^x \d{4}-\d{2}-\d{2} Buy milk\r\n\n\+Only\nSecond changed$/
+		/^x \d{4}-\d{2}-\d{2} Buy milk\r\n\n2026-13-01 Invalid\nSecond changed$/
 	);
 });
 test.each(["changed", "missing"])(
@@ -164,7 +195,7 @@ test.each([
 				: kind === "wrong-revision"
 					? { revision: 999 }
 					: kind === "invalid-target"
-						? { expectedRaw: "+Only" }
+						? { expectedRaw: "2026-13-01 Invalid" }
 						: {}),
 	});
 	if (kind === "write-failure") await chmod(directory, 0o700);

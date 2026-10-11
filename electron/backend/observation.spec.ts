@@ -71,7 +71,7 @@ test("atomic external replacement refreshes through restoration and later deleti
 		await writeFile(join(directory, "inactive.todo"), "Inactive edit");
 		await writeFile(
 			join(directory, "replacement.todo"),
-			"x 2026-10-10 Finished +Home @desk\n(A) Inserted +Work\n+OnlyTag\n"
+			"x 2026-10-10 Finished +Home @desk\n(A) Inserted +Work\n2026-13-01 Invalid\n"
 		);
 		await rename(join(directory, "replacement.todo"), path);
 		await expect.poll(() => changes.length, { timeout: 5000 }).toBe(1);
