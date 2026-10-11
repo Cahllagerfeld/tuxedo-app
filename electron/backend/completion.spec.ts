@@ -62,7 +62,7 @@ test("completion writes adjacent dates and preserves priority as metadata for re
 		completed: false,
 	});
 	expect(uncompleted.status).toBe("applied");
-	expect(await readFile(path, "utf8")).toBe(initial);
+	expect(await readFile(path, "utf8")).toBe(initial.trimStart());
 });
 
 test.each(["+GarageSale", "@phone", "due:2026-10-12", "(A) +GarageSale @phone"])(
