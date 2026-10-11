@@ -192,11 +192,10 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 	};
 }
 
-test("All shows both completion states with the total count and existing facet filters", async () => {
+test("defaults to All with both completion states, the total count, and existing facet filters", async () => {
 	render(Harness, { desktop: adapter() });
 	const all = page.getByRole("button", { name: "All 7", exact: true });
 	await expect.element(all).toBeVisible();
-	await all.click();
 	await expect.element(all).toHaveAttribute("aria-pressed", "true");
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
@@ -223,8 +222,9 @@ test("All shows both completion states with the total count and existing facet f
 		.toHaveTextContent("2 matching items");
 });
 
-test("defaults to Open and combines exact Project and Context filters", async () => {
+test("Open combines exact Project and Context filters", async () => {
 	render(Harness, { desktop: adapter() });
+	await page.getByRole("button", { name: /^Open/ }).click();
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Completed work", { exact: true })).not.toBeInTheDocument();
 	await expect
@@ -310,6 +310,7 @@ test("uses literal case-insensitive substring search and clears no-results state
 
 test("expands inline choices, collapses Contexts, and removes individual active filters", async () => {
 	render(Harness, { desktop: adapter() });
+	await page.getByRole("button", { name: /^Open/ }).click();
 	const more = page.getByRole("button", { name: "Show more Projects" });
 	await expect
 		.element(page.getByRole("button", { name: "+Work", exact: true }))
@@ -354,6 +355,7 @@ test.each([
 	"collapses and reopens $label without clearing its selection",
 	async ({ label, choice, search, chip, count }) => {
 		render(Harness, { desktop: adapter() });
+		await page.getByRole("button", { name: /^Open/ }).click();
 		const header = page.getByRole("button", { name: label, exact: true });
 		const option = page.getByRole("button", { name: choice, exact: true });
 		await expect.element(header).toHaveAttribute("aria-expanded", "true");
@@ -424,7 +426,7 @@ test("resets filters after a successful Workspace switch", async () => {
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
 	await expect
-		.element(page.getByRole("button", { name: /^Open/ }))
+		.element(page.getByRole("button", { name: /^All/ }))
 		.toHaveAttribute("aria-pressed", "true");
 	await expect
 		.element(page.getByRole("button", { name: "Clear filters", exact: true }))
@@ -469,6 +471,7 @@ test("updates the filtered view only after accepted completion", async () => {
 			setTodoCompletion: () => new Promise((resolve) => (finish = resolve)),
 		}),
 	});
+	await page.getByRole("button", { name: /^Open/ }).click();
 	await page.getByRole("button", { name: "Show more Projects" }).click();
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	const checkbox = page.getByRole("checkbox", { name: "Mark Open work complete" });
@@ -552,6 +555,7 @@ test("keeps long filter input and facet labels inside a narrow independently scr
 
 test("shows and clears the active Priority chip while preserving other filters", async () => {
 	render(Harness, { desktop: adapter() });
+	await page.getByRole("button", { name: /^Open/ }).click();
 	await page.getByRole("button", { name: "@Home", exact: true }).click();
 	await page.getByRole("button", { name: "Priority A", exact: true }).click();
 	await expect
@@ -586,6 +590,7 @@ test("scopes choices and counts to the tab, retaining only available selections"
 			}),
 		}),
 	});
+	await page.getByRole("button", { name: /^Open/ }).click();
 	await expect
 		.element(page.getByRole("button", { name: "@Home", exact: true }))
 		.toHaveTextContent("@Home 2");

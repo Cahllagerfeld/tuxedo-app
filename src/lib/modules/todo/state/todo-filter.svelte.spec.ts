@@ -29,12 +29,13 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
-	it("shows both completion states in All and filters their combined facets", () => {
+	it("defaults to All and filters both completion states and their combined facets", () => {
 		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
 		const items = [open, completedOnly];
 		const filter = new TodoFilterState();
+		expect(filter.status).toBe("all");
 		filter.sync("work", items);
-		filter.setStatus("all");
+		expect(filter.status).toBe("all");
 
 		expect(filter.filterItems(items)).toEqual(items);
 		expect(filter.availableFacets.projects).toEqual(["Personal", "Work"]);
@@ -73,7 +74,7 @@ describe("TodoFilterState", () => {
 		filter.toggleProject("Work");
 		filter.sync("personal", [{ ...open, projects: ["Personal"], contexts: [], priority: null }]);
 
-		expect(filter.status).toBe("open");
+		expect(filter.status).toBe("all");
 		expect(filter.selectedProject).toBeNull();
 		expect(filter.selectedContext).toBeNull();
 		expect(filter.selectedPriority).toBeNull();

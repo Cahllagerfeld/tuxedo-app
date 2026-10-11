@@ -12,7 +12,7 @@ export type TodoFilterFacets = Readonly<{
 export class TodoFilterState {
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
-	status = $state<TodoFilterStatus>("open");
+	status = $state<TodoFilterStatus>("all");
 	availableFacets = $derived(
 		summarizeTodoFilterFacets(
 			this.items,
@@ -69,7 +69,7 @@ export class TodoFilterState {
 	};
 
 	reset = () => {
-		this.status = "open";
+		this.status = "all";
 		this.clear();
 	};
 
