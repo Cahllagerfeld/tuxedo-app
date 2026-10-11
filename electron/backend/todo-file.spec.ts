@@ -115,6 +115,24 @@ describe("todo.txt parser", () => {
 		});
 	});
 
+	it.each(["0000-02-29", "0099-02-28", "2000-02-29", "9999-12-31"])(
+		"accepts Gregorian calendar date %s",
+		(date) => {
+			expect(parseTodoFile("/tmp/todo.txt", `${date} Valid`)).toMatchObject({
+				items: [{ creation_date: date }],
+				skipped: [],
+			});
+		}
+	);
+	it.each(["1900-02-29", "2026-00-01", "2026-01-00"])(
+		"rejects impossible Gregorian calendar date %s with the existing reason",
+		(date) => {
+			expect(parseTodoFile("/tmp/todo.txt", `${date} Invalid`)).toMatchObject({
+				items: [],
+				skipped: [{ raw: `${date} Invalid`, reason: "date must use YYYY-MM-DD format" }],
+			});
+		}
+	);
 	it("skips date-shaped tokens with impossible calendar values", () => {
 		const file = parseTodoFile(
 			"/tmp/todo.txt",
