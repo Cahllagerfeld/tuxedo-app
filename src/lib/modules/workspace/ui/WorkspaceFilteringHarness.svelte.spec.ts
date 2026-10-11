@@ -192,6 +192,37 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 	};
 }
 
+test("All shows both completion states with the total count and existing facet filters", async () => {
+	render(Harness, { desktop: adapter() });
+	const all = page.getByRole("button", { name: "All 7", exact: true });
+	await expect.element(all).toBeVisible();
+	await all.click();
+	await expect.element(all).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
+	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("7 matching items");
+
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("2 matching items");
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	await expect.element(page.getByText("Completed work", { exact: true })).not.toBeInTheDocument();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("1 matching item");
+
+	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+	await all.click();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("2 matching items");
+});
+
 test("defaults to Open and combines exact Project and Context filters", async () => {
 	render(Harness, { desktop: adapter() });
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
