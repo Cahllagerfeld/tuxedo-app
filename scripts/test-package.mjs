@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 const bundle = resolve(`out/Tuxedo-darwin-${process.arch}/Tuxedo.app`);
 const executablePath = join(bundle, "Contents/MacOS/Tuxedo");
+const visible = process.argv.includes("--visible");
 const entries = listPackage(join(bundle, "Contents/Resources/app.asar"));
 assert(entries.includes("/build/index.html"));
 assert(entries.includes("/dist-electron/main.js"));
@@ -24,6 +25,7 @@ try {
 		env: {
 			...process.env,
 			TUXEDO_USER_DATA: directory,
+			TUXEDO_TEST_HIDDEN: visible ? "0" : "1",
 			TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
 		},
 		timeout: 20000,
@@ -32,6 +34,10 @@ try {
 	page.setDefaultTimeout(10000);
 	console.log("Packaged initial URL:", page.url());
 	await page.getByText("No workspace open", { exact: true }).waitFor();
+	assert.equal(
+		await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+		visible
+	);
 	assert.equal(page.url(), "tuxedo://app/");
 	assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
 	const route = await page.goto("tuxedo://app/projects/Work");
@@ -78,12 +84,16 @@ try {
 	await rm(directory, { recursive: true, force: true });
 }
 
-const result = spawnSync(process.execPath, ["scripts/test-electron.mjs"], {
-	stdio: "inherit",
-	env: {
-		...process.env,
-		TUXEDO_PACKAGED_EXECUTABLE: executablePath,
-		TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
-	},
-});
+const result = spawnSync(
+	process.execPath,
+	["scripts/test-electron.mjs", ...(visible ? ["--visible"] : [])],
+	{
+		stdio: "inherit",
+		env: {
+			...process.env,
+			TUXEDO_PACKAGED_EXECUTABLE: executablePath,
+			TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
+		},
+	}
+);
 assert.equal(result.status, 0, "Packaged Electron workflow suite");
