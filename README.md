@@ -8,6 +8,8 @@ Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then
 
 The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. A Svelte session controller holds confirmed renderer data and tracks one operation at a time; counts and facets derive from its Todo file.
 
+The Todo-file summary provides total, open, completed, and skipped-line counts. Filter facets and their counts derive from the selected completion view of the confirmed Todo file.
+
 Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
 
 ## Verification
