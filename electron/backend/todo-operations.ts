@@ -199,9 +199,13 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 				if (!parsed.success)
 					return { status: "rejected" as const, message: "Invalid completion request." };
 				const { completed, ...target } = parsed.data;
+				const identity = yield* Identity;
 				return yield* mutateTodo(target, (contents, item) =>
 					replaceTodoLines(contents, [
-						{ lineNumber: item.line_number, raw: setTodoCompletionLine(item, completed) },
+						{
+							lineNumber: item.line_number,
+							raw: setTodoCompletionLine(item, completed, new Date(identity.now())),
+						},
 					])
 				);
 			}),
