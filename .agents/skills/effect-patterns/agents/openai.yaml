@@ -1,0 +1,6 @@
+interface:
+  display_name: "Effect Patterns"
+  short_description: "Ground Effect code in local upstream examples and tests"
+  default_prompt: "Use $effect-patterns to consult the local Effect checkout before implementing this change."
+policy:
+  allow_implicit_invocation: true
