@@ -8,7 +8,7 @@ import {
 	todoCreationIssues,
 	TodoDate,
 } from "./todo-creation";
-import { TodoFileSchema } from "./todo";
+import { TodoFileSchema, TodoItemSchema } from "./todo";
 
 const UUID = TodoCreationRequest.fields.scope;
 const Revision = TodoCreationRequest.fields.revision;
@@ -130,7 +130,7 @@ const TodoMutationRequest = Schema.Struct({
 	scope: UUID,
 	revision: Revision,
 	workspaceId: UUID,
-	lineNumber: Schema.Int.check(Schema.isGreaterThan(0)),
+	lineNumber: TodoItemSchema.fields.line_number,
 	expectedRaw: Schema.String,
 });
 export const todoMutationRequestSchema = effectValidator(TodoMutationRequest);

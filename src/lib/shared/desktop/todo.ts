@@ -1,12 +1,13 @@
 import * as Schema from "effect/Schema";
 import { effectValidator } from "./effect-validation";
+import { TodoPriority } from "./todo-creation";
 
 const LineNumber = Schema.Int.check(Schema.isGreaterThan(0));
 export const TodoItemSchema = Schema.Struct({
 	line_number: LineNumber,
 	raw: Schema.String,
 	completed: Schema.Boolean,
-	priority: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[A-Z]$/u))),
+	priority: Schema.NullOr(TodoPriority),
 	creation_date: Schema.NullOr(Schema.String),
 	completion_date: Schema.NullOr(Schema.String),
 	description: Schema.NonEmptyString,
