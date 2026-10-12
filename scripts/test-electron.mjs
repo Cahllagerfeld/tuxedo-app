@@ -123,12 +123,12 @@ try {
 			assert.equal(initial.scheme, theme);
 			assert.equal(
 				initial.background,
-				theme === "dark" ? "oklch(0.321093 0 0)" : "oklch(0.949119 0 0)"
+				theme === "dark" ? "oklch(0.260325 0 0)" : "oklch(0.949119 0 0)"
 			);
 			const nativeBackground = await application.evaluate(({ BrowserWindow }) =>
 				BrowserWindow.getAllWindows()[0].getBackgroundColor()
 			);
-			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#333333" : "#eeeeee");
+			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#242424" : "#eeeeee");
 		} finally {
 			await cdp.send("Network.setBlockedURLs", { urls: [] });
 			await cdp.detach();
