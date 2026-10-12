@@ -230,3 +230,42 @@ test("runtime disposal lets an admitted catalogue replacement finish before rele
 		todo_file: { items: [{ raw: "First" }] },
 	});
 });
+
+test("successful replacement confirms disk data even when temporary-file cleanup is unavailable", async () => {
+	const { directory, todoPath, cataloguePath } = await setup();
+	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
+		filesystem: {
+			...nodeFileSystem,
+			remove: () =>
+				Effect.fail(new FileSystemFailure({ operation: "remove", cause: Error("cleanup denied") })),
+		},
+	});
+	backends.push(backend);
+	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
+	expect(created.status).toBe("applied");
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("creation failed");
+	expect(await backend.readSession({})).toEqual(created.confirmed);
+	expect(JSON.parse(await readFile(cataloguePath, "utf8"))).toEqual(
+		created.confirmed.session.catalogue
+	);
+	expect((await readdir(directory)).sort()).toEqual(["todo.txt", "workspaces.json"]);
+});
+
+test("exclusive temporary-file acquisition preserves an existing colliding file", async () => {
+	const { directory, todoPath, cataloguePath } = await setup();
+	const id = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
+	const temporaryPath = join(directory, `.tuxedo-${id}.tmp`);
+	await writeFile(temporaryPath, "Existing private content");
+	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
+		identity: { uuid: () => id, now: () => "2026-05-24T10:00:00.000Z" },
+	});
+	backends.push(backend);
+	const before = await backend.readSession({});
+	expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
+		status: "rejected",
+	});
+	expect(await readFile(temporaryPath, "utf8")).toBe("Existing private content");
+	expect(await backend.readSession({})).toEqual(before);
+	await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
+});

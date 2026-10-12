@@ -198,15 +198,16 @@ function sessionLayer(
 				todo?: { todo_file: TodoFile; todoContents: string }
 			) =>
 				Effect.gen(function* () {
-					yield* atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n").pipe(
-						Effect.provideService(FileSystem, fs)
-					);
 					const projected = todo
 						? {
 								session: { status: "ready" as const, catalogue, todo_file: todo.todo_file },
 								todoContents: todo.todoContents,
 							}
 						: yield* projectCatalogue(catalogue);
+					yield* atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n").pipe(
+						Effect.provideService(FileSystem, fs),
+						Effect.provideService(Identity, identity)
+					);
 					return {
 						status: "applied" as const,
 						confirmed: accept(
@@ -326,6 +327,7 @@ function sessionLayer(
 				return await runEffect(
 					atomicWrite(todo_file.path, contents, mode).pipe(
 						Effect.provideService(FileSystem, fs),
+						Effect.provideService(Identity, identity),
 						Effect.map(() => ({
 							status: "applied" as const,
 							confirmed: confirmTodo(previous, workspaceId, todo_file, contents),
