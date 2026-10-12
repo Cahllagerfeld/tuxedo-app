@@ -1,13 +1,13 @@
 import type { DesktopRequest } from "$lib/shared/desktop/contract";
 
-export type CreateTodoItemInput = Omit<
+export type TodoItemDraft = Omit<
 	DesktopRequest<"createTodo">,
 	"scope" | "revision" | "workspaceId"
 >;
 
-export type CreateTodoItemResult =
+export type SaveTodoItemResult =
 	| { status: "applied" }
 	| { status: "conflict"; message: string }
 	| { status: "rejected"; message: string };
 
-export type CreateTodoItem = (input: CreateTodoItemInput) => Promise<CreateTodoItemResult>;
+export type SaveTodoItem = (input: TodoItemDraft) => Promise<SaveTodoItemResult>;

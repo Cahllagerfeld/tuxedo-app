@@ -1,6 +1,6 @@
 # Tuxedo
 
-Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organizes existing todo.txt files into saved Workspaces and supports completion, uncompletion, and precise Todo-item deletion.
+Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organizes existing todo.txt files into saved Workspaces and supports Todo-item creation, editing, completion, uncompletion, reordering, and precise deletion.
 
 ## Development
 
@@ -9,6 +9,10 @@ Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then
 The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. A Svelte session controller holds confirmed renderer data and tracks one operation at a time; counts and facets derive from its Todo file.
 
 The Todo-file summary provides total, open, completed, and skipped-line counts. Filter facets and their counts derive from the selected completion view of the confirmed Todo file.
+
+The shared Todo-item editor supports Description, Priority, Creation date, Projects, Contexts, and `key:value` metadata; completed items also expose their Completion date. Completion records the local date and stores Priority as `pri:A` metadata; uncompletion restores a valid single-letter Priority. The parser also accepts legacy completed items with a leading Priority or no Completion date.
+
+Drag the row handle to reorder the displayed Todo items within their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place. External edits reload the Active workspace's Todo file while the Workspace session is idle. Changed parsed contents show an info notice; a stably unreadable file enters the Empty state with a warning. Mutations check disk contents before writing and return confirmed data or a conflict.
 
 Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
 

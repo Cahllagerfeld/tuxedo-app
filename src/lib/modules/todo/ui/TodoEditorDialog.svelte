@@ -18,14 +18,14 @@
 	import * as Form from "$lib/shared/ui/form";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
-	import type { CreateTodoItem } from "./todo-creation-types";
+	import type { SaveTodoItem } from "./todo-editor-types";
 	import TagsInput from "./tags-input/tags-input.svelte";
 	import PriorityPicker from "./PriorityPicker.svelte";
 	import DatePicker from "./DatePicker.svelte";
 
 	type Props = {
 		todoFile: TodoFile;
-		createTodoItem: CreateTodoItem;
+		saveTodoItem: SaveTodoItem;
 		workspaceName?: string;
 		disabled?: boolean;
 		todoToEdit?: TodoItem;
@@ -34,7 +34,7 @@
 
 	let {
 		todoFile,
-		createTodoItem,
+		saveTodoItem,
 		workspaceName = "",
 		disabled = false,
 		todoToEdit,
@@ -90,7 +90,7 @@
 	// The edit dialog is mounted for one selected Todo item.
 	// svelte-ignore state_referenced_locally
 	let open = $state(!!todoToEdit);
-	let isCreating = $state(false);
+	let isSubmitting = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let metadataInput = $state<ReturnType<typeof TagsInput>>();
 	let triggerButton = $state<HTMLButtonElement | null>(null);
@@ -104,7 +104,7 @@
 	);
 	const todoFileName = $derived(todoFile.path.split(/[\\/]/u).at(-1) ?? todoFile.path);
 	const targetLabel = $derived(workspaceName ? `${workspaceName} · ${todoFileName}` : todoFileName);
-	const controlsDisabled = $derived(disabled || isCreating);
+	const controlsDisabled = $derived(disabled || isSubmitting);
 
 	function uniqueSuggestions(values: readonly string[]) {
 		return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -186,13 +186,13 @@
 		event.preventDefault();
 		if (controlsDisabled) return;
 		if (!metadataInput?.commit()) return;
-		isCreating = true;
+		isSubmitting = true;
 		try {
 			const result = await form.validateForm({ update: true });
 			if (!result.valid) return;
-			const outcome = await createTodoItem(draft(result.data));
+			const outcome = await saveTodoItem(draft(result.data));
 			if (outcome.status === "applied") {
-				isCreating = false;
+				isSubmitting = false;
 				open = false;
 				resetForm();
 				await tick();
@@ -216,7 +216,7 @@
 				description: errorMessage(error),
 			});
 		} finally {
-			isCreating = false;
+			isSubmitting = false;
 		}
 	}
 
@@ -422,7 +422,7 @@
 					>Cancel</Button
 				>
 				<Form.Button disabled={controlsDisabled}
-					>{isCreating
+					>{isSubmitting
 						? todoToEdit
 							? "Saving…"
 							: "Adding…"
