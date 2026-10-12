@@ -98,11 +98,9 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 				const todoContents = yield* readContents(todoPath);
 				const todo_file = parseTodoFile(todoPath, todoContents);
 				if (todo_file.skipped.length)
-					return yield* Effect.fail(
-						new OperationFailure({
-							message: "Cannot create Workspace: Todo file contains skipped lines.",
-						})
-					);
+					return yield* new OperationFailure({
+						message: "Cannot create Workspace: Todo file contains skipped lines.",
+					});
 				const previous = yield* readCatalogue();
 				const workspace = {
 					id: identity.uuid(),
@@ -129,7 +127,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 				const previous = yield* readCatalogue();
 				const workspace = previous.workspaces.find((w) => w.id === workspaceId);
 				if (!workspace)
-					return yield* Effect.fail(new OperationFailure({ message: "Workspace does not exist." }));
+					return yield* new OperationFailure({ message: "Workspace does not exist." });
 				const todoContents = yield* readContents(workspace.todo_path);
 				const todo_file = parseTodoFile(workspace.todo_path, todoContents);
 				const catalogue = { ...previous, active_workspace_id: workspaceId };
@@ -143,7 +141,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 				const { workspaceId } = yield* attempt(() => deleteWorkspaceRequestSchema.parse(request));
 				const previous = yield* readCatalogue();
 				if (!previous.workspaces.some((w) => w.id === workspaceId))
-					return yield* Effect.fail(new OperationFailure({ message: "Workspace does not exist." }));
+					return yield* new OperationFailure({ message: "Workspace does not exist." });
 				const catalogue = yield* attempt(() =>
 					catalogueSchema.parse({
 						...previous,

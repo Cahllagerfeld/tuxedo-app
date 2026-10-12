@@ -26,7 +26,6 @@ import {
 	type TodoFile,
 	type ConfirmedSession,
 } from "../../src/lib/shared/desktop/contract";
-type TodoOutcome = DesktopResponse<"createTodo">;
 
 export function createTodoOperations(cataloguePath: string, state: SessionState) {
 	const confirmTodo = (
@@ -68,13 +67,14 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 	const commitTodo = (
 		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
 		workspaceId: string,
-		todo_file: TodoFile,
+		path: string,
 		contents: string
 	) =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
-			const { mode } = yield* fs.stat(todo_file.path);
-			yield* atomicWrite(todo_file.path, contents, mode);
+			const todo_file = parseTodoFile(path, contents);
+			const { mode } = yield* fs.stat(path);
+			yield* atomicWrite(path, contents, mode);
 			return {
 				status: "applied" as const,
 				confirmed: confirmTodo(previous, workspaceId, todo_file, contents),
@@ -83,7 +83,7 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 	const mutateTodo = (
 		request: DesktopRequest<"deleteTodo">,
 		transform: (contents: string, item: TodoFile["items"][number]) => string
-	): Effect.Effect<TodoOutcome, OperationError, FileSystem | Identity> =>
+	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
 		Effect.gen(function* () {
 			const input = yield* attempt(() => todoMutationRequestSchema.parse(request));
 			const { previous, workspace } = yield* todoMutationContext(input);
@@ -100,17 +100,12 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
 			const rewritten = yield* attempt(() => transform(contents, item));
-			return yield* commitTodo(
-				previous.session,
-				input.workspaceId,
-				parseTodoFile(workspace.todo_path, rewritten),
-				rewritten
-			);
+			return yield* commitTodo(previous.session, input.workspaceId, workspace.todo_path, rewritten);
 		});
 	const mutateTodoFile = (
 		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
 		transform: (contents: string, todoFile: TodoFile) => string
-	): Effect.Effect<TodoOutcome, OperationError, FileSystem | Identity> =>
+	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
 		Effect.gen(function* () {
 			const { previous, workspace } = yield* todoMutationContext(input);
 			const contents = yield* readContents(workspace.todo_path);
@@ -132,12 +127,7 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 						todo_file: current,
 					},
 				};
-			return yield* commitTodo(
-				previous.session,
-				input.workspaceId,
-				parseTodoFile(workspace.todo_path, rewritten),
-				rewritten
-			);
+			return yield* commitTodo(previous.session, input.workspaceId, workspace.todo_path, rewritten);
 		});
 	return {
 		reorderTodo: (request: DesktopRequest<"reorderTodo">) =>
