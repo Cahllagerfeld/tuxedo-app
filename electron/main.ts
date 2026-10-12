@@ -3,7 +3,7 @@ import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createSessionRuntime, desktopSessionBackend } from "./backend/session";
+import { createSessionRuntime, desktopSessionBackend } from "./backend/session-runtime";
 import { registerDesktopOperation } from "./ipc";
 import { createTodoFileObservation } from "./backend/observation";
 import { todoFileChangeEvent } from "../src/lib/shared/desktop/contract";

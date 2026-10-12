@@ -6,7 +6,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSessionBackend } from "./session";
+import { createSessionBackend } from "./session-runtime";
 let nodeFileSystem: FileSystem.FileSystem;
 beforeAll(async () => {
 	nodeFileSystem = await Effect.runPromise(
@@ -336,4 +336,48 @@ test("atomic replacement closes its native file handle before rename", async () 
 	expect(JSON.parse(await readFile(cataloguePath, "utf8"))).toMatchObject({
 		workspaces: [{ name: "Work" }],
 	});
+});
+
+test("switching opens the chosen Todo file without loading the previous Active Todo file", async () => {
+	const { directory, todoPath, cataloguePath } = await setup();
+	const otherPath = join(directory, "other.txt");
+	await writeFile(otherPath, "Other\n");
+	let previousPath: string | undefined;
+	const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
+		filesystem: {
+			...nodeFileSystem,
+			readFile: (path) =>
+				path === previousPath
+					? Effect.die(Error("The previous Todo file must not be loaded"))
+					: nodeFileSystem.readFile(path),
+		},
+	});
+	backends.push(backend);
+	try {
+		const first = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
+		const second = await backend.createWorkspace({
+			name: "Other",
+			color: "green",
+			todoPath: otherPath,
+		});
+		if (
+			first.status !== "applied" ||
+			first.confirmed.session.status !== "ready" ||
+			second.status !== "applied" ||
+			second.confirmed.session.status !== "ready"
+		)
+			throw Error("setup");
+		previousPath = second.confirmed.session.todo_file.path;
+		expect(
+			await backend.switchWorkspace({
+				workspaceId: first.confirmed.session.catalogue.active_workspace_id!,
+			})
+		).toMatchObject({
+			status: "applied",
+			confirmed: { session: { status: "ready", todo_file: { items: [{ raw: "First" }] } } },
+		});
+	} finally {
+		diagnostic.mockRestore();
+	}
 });

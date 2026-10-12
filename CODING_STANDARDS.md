@@ -31,6 +31,6 @@
 
 ## Backend Effect migration
 
-- Main constructs one managed application runtime; desktop handlers retain plain Promise-based requests and responses. `WorkspaceSession` owns the authoritative confirmed state and one Effect semaphore for all lifecycle, transitional Todo-item, and observation operations.
+- Main constructs one managed application runtime; desktop handlers retain plain Promise-based requests and responses. `session-runtime.ts` owns runtime composition and the desktop Promise bridge. `WorkspaceSession` in `session.ts` owns the authoritative confirmed state and one Effect semaphore for all lifecycle, transitional Todo-item, and observation operations. `workspace-lifecycle.ts` owns catalogue persistence and returns loaded data for the session to accept; `todo-operations.ts` uses that same session state.
 - Use `effect/FileSystem` with `@effect/platform-node/NodeFileSystem.layer`; inject that service and date/identity capabilities rather than adding a parallel filesystem adapter. Keep parsing and line transformations as functions. Map expected typed lifecycle failures to existing outcomes; log unexpected defects with the operation name and return a safe message.
 - Atomic persistence acquires exclusive adjacent temporary files in a scope, preserves permissions, synchronizes, closes before rename, and cleans up on failure. Protect replacement and confirmed-state acceptance together from interruption. Transitional Promise operations bridge into the same runtime rather than creating a second state owner or queue.
