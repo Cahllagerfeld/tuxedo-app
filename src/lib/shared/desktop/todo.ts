@@ -1,30 +1,37 @@
-import { z } from "zod";
-export const todoItemSchema = z.strictObject({
-	line_number: z.number().int().positive(),
-	raw: z.string(),
-	completed: z.boolean(),
-	priority: z
-		.string()
-		.regex(/^[A-Z]$/)
-		.nullable(),
-	creation_date: z.string().nullable(),
-	completion_date: z.string().nullable(),
-	description: z.string().min(1),
-	edit: z.strictObject({ description: z.string(), metadata: z.array(z.string()) }),
-	projects: z.array(z.string()),
-	contexts: z.array(z.string()),
-	metadata: z.record(z.string(), z.string()),
+import * as Schema from "effect/Schema";
+import { effectValidator } from "./effect-validation";
+import { TodoPriority } from "./todo-creation";
+
+const LineNumber = Schema.Int.check(Schema.isGreaterThan(0));
+export const TodoItemSchema = Schema.Struct({
+	line_number: LineNumber,
+	raw: Schema.String,
+	completed: Schema.Boolean,
+	priority: Schema.NullOr(TodoPriority),
+	creation_date: Schema.NullOr(Schema.String),
+	completion_date: Schema.NullOr(Schema.String),
+	description: Schema.NonEmptyString,
+	edit: Schema.Struct({
+		description: Schema.String,
+		metadata: Schema.mutable(Schema.Array(Schema.String)),
+	}),
+	projects: Schema.mutable(Schema.Array(Schema.String)),
+	contexts: Schema.mutable(Schema.Array(Schema.String)),
+	metadata: Schema.Record(Schema.String, Schema.String),
 });
-export const skippedLineSchema = z.strictObject({
-	line_number: z.number().int().positive(),
-	raw: z.string(),
-	reason: z.string().min(1),
+export const SkippedLineSchema = Schema.Struct({
+	line_number: LineNumber,
+	raw: Schema.String,
+	reason: Schema.NonEmptyString,
 });
-export const todoFileSchema = z.strictObject({
-	path: z.string().min(1),
-	items: z.array(todoItemSchema),
-	skipped: z.array(skippedLineSchema),
+export const TodoFileSchema = Schema.Struct({
+	path: Schema.NonEmptyString,
+	items: Schema.mutable(Schema.Array(TodoItemSchema)),
+	skipped: Schema.mutable(Schema.Array(SkippedLineSchema)),
 });
-export type TodoFile = z.infer<typeof todoFileSchema>;
-export type TodoItem = z.infer<typeof todoItemSchema>;
-export type SkippedLine = z.infer<typeof skippedLineSchema>;
+export const todoItemSchema = effectValidator(TodoItemSchema);
+export const skippedLineSchema = effectValidator(SkippedLineSchema);
+export const todoFileSchema = effectValidator(TodoFileSchema);
+export type TodoFile = typeof TodoFileSchema.Type;
+export type TodoItem = typeof TodoItemSchema.Type;
+export type SkippedLine = typeof SkippedLineSchema.Type;

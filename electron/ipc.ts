@@ -1,12 +1,12 @@
 import type { BrowserWindow, IpcMain } from "electron";
-import type { z } from "zod";
 import {
 	desktopContract,
 	type DesktopOperation,
 	type DesktopRequest,
+	type DesktopResponse,
 } from "../src/lib/shared/desktop/contract";
 type Request<K extends DesktopOperation> = DesktopRequest<K>;
-type Response<K extends DesktopOperation> = z.infer<(typeof desktopContract)[K]["response"]>;
+type Response<K extends DesktopOperation> = DesktopResponse<K>;
 export function registerDesktopOperation<K extends DesktopOperation>(
 	ipc: IpcMain,
 	getWindow: () => BrowserWindow | null,
