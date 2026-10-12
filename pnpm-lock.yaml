@@ -167,118 +167,118 @@ importers:
   .:
     devDependencies:
       '@electron-forge/cli':
-        specifier: ^8.0.1
+        specifier: 8.0.1
         version: 8.0.1
       '@electron/asar':
-        specifier: ^4.3.1
+        specifier: 4.3.1
         version: 4.3.1
       '@fontsource-variable/figtree':
-        specifier: ^5.3.0
+        specifier: 5.3.0
         version: 5.3.0
       '@fontsource-variable/jetbrains-mono':
-        specifier: ^5.3.0
+        specifier: 5.3.0
         version: 5.3.0
       '@internationalized/date':
-        specifier: ^3.12.4
+        specifier: 3.12.4
         version: 3.12.4
       '@lucide/svelte':
-        specifier: ^1.55.0
+        specifier: 1.55.0
         version: 1.55.0(svelte@5.57.2)
       '@sveltejs/adapter-static':
-        specifier: ^3.0.10
+        specifier: 3.0.10
         version: 3.0.10(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))
       '@sveltejs/kit':
-        specifier: ^2.70.3
+        specifier: 2.70.3
         version: 2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
       '@sveltejs/vite-plugin-svelte':
-        specifier: ^7.3.1
+        specifier: 7.3.1
         version: 7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 4.3.3
         version: 4.3.3(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
       '@tanstack/svelte-hotkeys':
         specifier: 0.13.0
         version: 0.13.0(svelte@5.57.2)
       '@tanstack/svelte-virtual':
-        specifier: ^3.13.40
+        specifier: 3.13.40
         version: 3.13.40(svelte@5.57.2)
       '@types/node':
-        specifier: ^24.19.1
+        specifier: 24.19.1
         version: 24.19.1
       '@vitest/browser-playwright':
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(playwright@1.64.0)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))(vitest@5.0.3)
       bits-ui:
-        specifier: ^2.19.5
+        specifier: 2.19.5
         version: 2.19.5(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)
       cn:
-        specifier: ^0.4.0
+        specifier: 0.4.0
         version: 0.4.0
       electron:
-        specifier: ^44.7.0
+        specifier: 44.7.0
         version: 44.7.0
       formsnap:
-        specifier: ^2.0.1
+        specifier: 2.0.1
         version: 2.0.1(svelte@5.57.2)(sveltekit-superforms@2.31.0(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3))
       mode-watcher:
-        specifier: ^1.1.0
+        specifier: 1.1.0
         version: 1.1.0(svelte@5.57.2)
       playwright:
-        specifier: ^1.64.0
+        specifier: 1.64.0
         version: 1.64.0
       prettier:
-        specifier: ^3.9.10
+        specifier: 3.9.10
         version: 3.9.10
       prettier-plugin-svelte:
-        specifier: ^4.1.1
+        specifier: 4.1.1
         version: 4.1.1(prettier@3.9.10)(svelte@5.57.2)
       prettier-plugin-tailwindcss:
-        specifier: ^0.8.1
+        specifier: 0.8.1
         version: 0.8.1(prettier-plugin-svelte@4.1.1(prettier@3.9.10)(svelte@5.57.2))(prettier@3.9.10)
       shadcn-svelte:
-        specifier: ^1.7.0
+        specifier: 1.7.0
         version: 1.7.0(svelte@5.57.2)
       svelte:
-        specifier: ^5.57.2
+        specifier: 5.57.2
         version: 5.57.2
       svelte-check:
-        specifier: ^4.7.6
+        specifier: 4.7.6
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.2)(typescript@5.9.3)
       svelte-dnd-action:
-        specifier: ^0.9.80
+        specifier: 0.9.80
         version: 0.9.80(svelte@5.57.2)
       svelte-sonner:
-        specifier: ^1.2.1
+        specifier: 1.2.1
         version: 1.2.1(svelte@5.57.2)
       sveltekit-superforms:
-        specifier: ^2.31.0
+        specifier: 2.31.0
         version: 2.31.0(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0)))(svelte@5.57.2)(typescript@5.9.3)
       tailwind-variants:
-        specifier: ^3.3.1
+        specifier: 3.3.1
         version: 3.3.1(tailwindcss@4.3.3)
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 4.3.3
         version: 4.3.3
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: 1.4.0
         version: 1.4.0
       typescript:
-        specifier: ^5.9.3
+        specifier: 5.9.3
         version: 5.9.3
       vite:
-        specifier: ^8.3.4
+        specifier: 8.3.4
         version: 8.3.4(@types/node@24.19.1)(jiti@2.7.0)
       vite-plugin-electron:
-        specifier: ^1.1.2
+        specifier: 1.1.2
         version: 1.1.2(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@types/node@24.19.1)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
       vitest-browser-svelte:
-        specifier: ^3.1.0
+        specifier: 3.1.0
         version: 3.1.0(svelte@5.57.2)(vitest@5.0.3)
       zod:
-        specifier: ^4.6.5
+        specifier: 4.6.5
         version: 4.6.5
 
 packages:
