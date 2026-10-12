@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
-import TodoCreationDialog from "./TodoCreationDialog.svelte";
-import type { CreateTodoItemInput, CreateTodoItemResult } from "./todo-creation-types";
+import TodoEditorDialog from "./TodoEditorDialog.svelte";
+import type { TodoItemDraft, SaveTodoItemResult } from "./todo-editor-types";
 import "../../../../routes/layout.css";
 
 const todoFile: TodoFile = {
@@ -63,10 +63,10 @@ const crowdedTodoFile: TodoFile = {
 };
 
 function renderDialog(
-	createTodoItem: (input: CreateTodoItemInput) => Promise<CreateTodoItemResult>,
+	saveTodoItem: (input: TodoItemDraft) => Promise<SaveTodoItemResult>,
 	file = todoFile
 ) {
-	return render(TodoCreationDialog, { todoFile: file, createTodoItem });
+	return render(TodoEditorDialog, { todoFile: file, saveTodoItem });
 }
 
 function openDialog() {
@@ -83,12 +83,12 @@ async function pressEnter(locator: ReturnType<typeof page.getByPlaceholder>) {
 }
 
 test("opens focused, suggests completed-item tags, and preserves typed tag casing", async () => {
-	const calls: CreateTodoItemInput[] = [];
-	const createTodoItem = async (input: CreateTodoItemInput) => {
+	const calls: TodoItemDraft[] = [];
+	const saveTodoItem = async (input: TodoItemDraft) => {
 		calls.push(input);
 		return { status: "applied" as const };
 	};
-	renderDialog(createTodoItem);
+	renderDialog(saveTodoItem);
 	await openDialog();
 
 	await expect.element(page.getByRole("dialog")).toBeVisible();
@@ -127,8 +127,8 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 });
 
 test("keeps the bottom tag suggestion hit-testable inside the modal", async () => {
-	const createTodoItem = async () => ({ status: "applied" as const });
-	renderDialog(createTodoItem, crowdedTodoFile);
+	const saveTodoItem = async () => ({ status: "applied" as const });
+	renderDialog(saveTodoItem, crowdedTodoFile);
 	await openDialog();
 
 	const contextInput = page.getByPlaceholder("Choose or create a Context");
@@ -161,12 +161,12 @@ test("keeps the bottom tag suggestion hit-testable inside the modal", async () =
 test.each(["Do this +Work key:value", "Call\u0085+Work"])(
 	"rejects Todo tokens in Description (%s) and invalid tags",
 	async (description) => {
-		const calls: CreateTodoItemInput[] = [];
-		const createTodoItem = async (input: CreateTodoItemInput) => {
+		const calls: TodoItemDraft[] = [];
+		const saveTodoItem = async (input: TodoItemDraft) => {
 			calls.push(input);
 			return { status: "applied" as const };
 		};
-		renderDialog(createTodoItem);
+		renderDialog(saveTodoItem);
 		await openDialog();
 
 		await page.getByPlaceholder("What needs doing?").fill(description);
@@ -192,11 +192,11 @@ test.each(["Do this +Work key:value", "Call\u0085+Work"])(
 );
 
 test("retains the draft on conflicts and resets it on cancel", async () => {
-	const createTodoItem = async () => ({
+	const saveTodoItem = async () => ({
 		status: "conflict" as const,
 		message: "changed",
 	});
-	renderDialog(createTodoItem);
+	renderDialog(saveTodoItem);
 	await openDialog();
 	const description = page.getByPlaceholder("What needs doing?");
 	await description.fill("Keep this draft");
@@ -210,7 +210,7 @@ test("retains the draft on conflicts and resets it on cancel", async () => {
 });
 
 test("retains spaces while editing Description and normalizes them only on submission", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };
@@ -242,7 +242,7 @@ test("retains spaces while editing Description and normalizes them only on submi
 });
 
 test("submits optional Priority, Creation date, and custom Metadata for an open Todo item", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };
@@ -325,7 +325,7 @@ test("validates Metadata inline and retains structured drafts on failure", async
 });
 
 test("preserves leading prefix characters in existing Project suggestions", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(
 		async (input) => {
 			calls.push(input);
@@ -341,7 +341,7 @@ test("preserves leading prefix characters in existing Project suggestions", asyn
 });
 
 test("allows identical Metadata tokens and removes the selected occurrence", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };
@@ -361,7 +361,7 @@ test("allows identical Metadata tokens and removes the selected occurrence", asy
 });
 
 test("includes typed Metadata when submitting without pressing Enter", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };
@@ -374,7 +374,7 @@ test("includes typed Metadata when submitting without pressing Enter", async () 
 });
 
 test("rejects invalid typed Metadata on submit and keeps it for correction", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };
@@ -394,7 +394,7 @@ test("rejects invalid typed Metadata on submit and keeps it for correction", asy
 });
 
 test("retains committed and pending Metadata after a failed save without duplicating it", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "rejected", message: "Cannot write" };
@@ -419,7 +419,7 @@ test("retains committed and pending Metadata after a failed save without duplica
 test.each(["None", "A", "B", "C"])(
 	"creates a Todo item with the %s priority button",
 	async (priority) => {
-		const calls: CreateTodoItemInput[] = [];
+		const calls: TodoItemDraft[] = [];
 		renderDialog(async (input) => {
 			calls.push(input);
 			return { status: "applied" };
@@ -437,7 +437,7 @@ test.each(["None", "A", "B", "C"])(
 );
 
 test("validates Other priorities and resets its input when choosing a common priority", async () => {
-	const calls: CreateTodoItemInput[] = [];
+	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {
 		calls.push(input);
 		return { status: "applied" };

@@ -21,12 +21,21 @@ A Todo item without a completion marker or Completion date. Uncompleting a Todo 
 _Avoid_: Active Todo item, pending Todo item
 
 **Completed Todo item**:
-A Todo item marked as completed with the current local date that remains part of its Todo file and retains its position among the other Todo items.
+A Todo item with a completion marker that remains part of its Todo file. Completing it in Tuxedo records the current local Completion date and retains its position; the parser also accepts legacy completed items without a Completion date.
 _Avoid_: Archived Todo item, Done Todo item
 
 **Todo item deletion**:
 The permanent removal of a Todo item's line from its Todo file. It is distinct from completing a Todo item; the deleted line no longer exists in the file.
 _Avoid_: Archive, remove, clear
+
+**Todo-item creation**:
+Appending a new Todo item to the Active workspace's Todo file through the shared Todo-item editor.
+
+**Todo-item editing**:
+Replacing one Todo item's content through the shared Todo-item editor while retaining its physical-line position and line ending. Completed items expose their Completion date as well as their other fields.
+
+**Todo-item reordering**:
+Moving the displayed Todo items among their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place.
 
 **Completion date**:
 The local calendar date on which an open Todo item became completed.
@@ -53,7 +62,7 @@ An exact `@`-prefixed token parsed from a Todo item. Contexts with different spe
 A non-empty Todo-file line that could not be parsed as a Todo item. It is reported separately from parsed Todo-item counts.
 
 **Priority**:
-An uppercase priority parsed from an incomplete Todo item. Priority facets expose distinct values and their Todo-item counts in the selected completion view.
+An uppercase letter parsed from a leading Priority token in an open Todo item or a legacy completed Todo item. Completion stores it as `pri:A` metadata, and uncompletion restores a valid single-letter Priority. Priority facets expose leading Priority values and their Todo-item counts in the selected completion view; `pri:` metadata is not a Priority facet.
 
 **Active workspace**:
 The most recently successfully selected Workspace and the one the app attempts to open on startup. A failed switch does not change it.
@@ -65,7 +74,7 @@ The coherent state returned after a Workspace lifecycle operation: the persisted
 The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
 
 **Workspace session operation**:
-An operation that can replace the current Workspace session snapshot, including restoration, Workspace creation, switching or deletion, and Todo-item completion or deletion. Workspace session operations do not overlap.
+An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, or reordering. Workspace session operations do not overlap.
 
 **Workspace session restoration**:
 The startup attempt to return the Workspace session snapshot for the saved Active workspace. If its Todo file cannot open, the Workspace catalogue remains available and the app enters the Empty state with a warning.

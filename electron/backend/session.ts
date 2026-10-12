@@ -1,4 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
+import { setTodoCompletionLine } from "./complete-todo";
+import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
 import { appendTodoLine, createTodoLine } from "./create-todo";
@@ -268,14 +270,14 @@ export function createSessionBackend(
 						const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
 						if (input.lineNumbers.some((line) => !byLine.has(line)))
 							throw Error("Invalid Todo item position.");
-						const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 						const positions = [...input.lineNumbers].sort((a, b) => a - b);
-						positions.forEach((position, index) => {
-							const line = lines[position - 1];
-							const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
-							lines[position - 1] = byLine.get(input.lineNumbers[index])! + ending;
-						});
-						return lines.join("");
+						return replaceTodoLines(
+							contents,
+							positions.map((lineNumber, index) => ({
+								lineNumber,
+								raw: byLine.get(input.lineNumbers[index])!,
+							}))
+						);
 					});
 				})
 			),
@@ -334,11 +336,7 @@ export function createSessionBackend(
 										.filter(Boolean)
 										.join(" ")
 								: createTodoLine(input);
-						const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-						const line = lines[item.line_number - 1];
-						const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
-						lines[item.line_number - 1] = raw + ending;
-						return lines.join("");
+						return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
 					}
 				);
 				return outcome.status === "rejected"
@@ -361,52 +359,9 @@ export function createSessionBackend(
 					return { status: "rejected" as const, message: "Invalid completion request." };
 				const { completed, ...target } = parsed.data;
 				return mutateTodo(target, (contents, item) => {
-					if (item.completed === completed)
-						throw Error("Todo item already has the requested completion state.");
-					const lines = contents.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-					const line = lines[item.line_number - 1];
-					const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
-					const priorities = [
-						...item.raw.matchAll(
-							/(?:^|\p{White_Space})pri:([^:\p{White_Space}]+)(?=\p{White_Space}|$)/gu
-						),
-					].map((match) => match[1]);
-					let raw: string;
-					if (completed) {
-						const date = new Date();
-						const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-						let rest = item.raw;
-						if (item.priority) {
-							if (priorities.some((priority) => priority !== item.priority))
-								throw Error(
-									"Conflicting priority metadata; edit the Todo file before completing this item."
-								);
-							rest = rest.slice(4);
-							if (!priorities.length) {
-								const trailing = /\p{White_Space}*$/u.exec(rest)![0];
-								rest = `${rest.slice(0, rest.length - trailing.length)} pri:${item.priority}${trailing}`;
-							}
-						}
-						raw = `x ${today} ${rest}`;
-					} else {
-						let rest = item.raw.slice(2);
-						if (item.completion_date) rest = rest.slice(11);
-						if (!item.priority && /^[A-Z]$/.test(item.metadata.pri ?? "")) {
-							if (priorities.some((priority) => priority !== item.metadata.pri))
-								throw Error(
-									"Conflicting priority metadata; edit the Todo file before uncompleting this item."
-								);
-							rest = rest.replace(/(^|\p{White_Space})pri:[A-Z](?=\p{White_Space}|$)/gu, "");
-							rest = `(${item.metadata.pri}) ${rest.replace(/^\p{White_Space}+/u, "")}`;
-						}
-						if (/^\p{White_Space}*$/u.test(rest))
-							throw Error(
-								"Cannot uncomplete a Todo item without remaining content. Edit the Todo file first."
-							);
-						raw = rest;
-					}
-					lines[item.line_number - 1] = raw + ending;
-					return lines.join("");
+					return replaceTodoLines(contents, [
+						{ lineNumber: item.line_number, raw: setTodoCompletionLine(item, completed) },
+					]);
 				});
 			}),
 		switchWorkspace: (request) =>

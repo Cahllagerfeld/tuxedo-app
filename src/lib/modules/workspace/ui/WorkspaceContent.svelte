@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
-	import TodoCreationDialog from "$lib/modules/todo/ui/TodoCreationDialog.svelte";
+	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
@@ -73,19 +73,19 @@
 					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
 				</p>
 			</div>
-			<TodoCreationDialog
+			<TodoEditorDialog
 				todoFile={workspace.todoFile}
-				createTodoItem={workspace.createTodo}
+				saveTodoItem={workspace.createTodo}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
 				disabled={workspace.isOperating}
 			/>
 		</div>
 		{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
 			{#if editingTodo && editingWorkspaceId === workspace.activeWorkspace?.id}
-				<TodoCreationDialog
+				<TodoEditorDialog
 					todoFile={workspace.todoFile}
 					todoToEdit={editingTodo}
-					createTodoItem={(draft) => workspace.editTodo(editingTodo!, draft)}
+					saveTodoItem={(draft) => workspace.editTodo(editingTodo!, draft)}
 					workspaceName={workspace.activeWorkspace?.name ?? ""}
 					disabled={workspace.isOperating}
 					onClose={closeEdit}
