@@ -41,9 +41,9 @@
 </script>
 
 <Sidebar.Root
-	variant="inset"
+	variant="sidebar"
 	{collapsible}
-	class="top-(--window-toolbar-height) h-[calc(100svh-var(--window-toolbar-height))]"
+	class={collapsible === "none" ? "workspace-sidebar" : "workspace-sidebar md:absolute md:h-full"}
 >
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher

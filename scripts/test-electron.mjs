@@ -121,11 +121,14 @@ try {
 			assert.equal(initial.mounted, false, "Startup check must run before the SPA mounts");
 			assert.equal(initial.dark, theme === "dark");
 			assert.equal(initial.scheme, theme);
-			assert.equal(initial.background, theme === "dark" ? "rgb(51, 51, 51)" : "rgb(250, 250, 250)");
+			assert.equal(
+				initial.background,
+				theme === "dark" ? "oklch(0.260325 0 0)" : "oklch(0.949119 0 0)"
+			);
 			const nativeBackground = await application.evaluate(({ BrowserWindow }) =>
 				BrowserWindow.getAllWindows()[0].getBackgroundColor()
 			);
-			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#333333" : "#fafafa");
+			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#242424" : "#eeeeee");
 		} finally {
 			await cdp.send("Network.setBlockedURLs", { urls: [] });
 			await cdp.detach();
@@ -183,11 +186,40 @@ try {
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
-	const expandedWidth = (await page.getByRole("main").boundingBox()).width;
+	const inset = page.locator("[data-slot='app-inset']");
+	const content = page.getByRole("main");
+	assert.equal(await content.count(), 1, "The page must have one main landmark");
+	assert.equal(await content.locator("[data-slot='sidebar']").count(), 0);
+	const sidebar = page.locator("[data-slot='sidebar-container']");
+	const sidebarBackground = await sidebar
+		.locator("[data-slot='sidebar-inner']")
+		.evaluate((element) => getComputedStyle(element).backgroundColor);
+	const windowBackground = await page
+		.locator("[data-slot='sidebar-wrapper']")
+		.evaluate((element) => getComputedStyle(element).backgroundColor);
+	assert.notEqual(sidebarBackground, windowBackground, "Sidebar must have its own background");
+	assert.equal(await inset.locator("[data-slot='sidebar']").count(), 1);
+	const insetBounds = await inset.boundingBox();
+	const sidebarBounds = await sidebar.boundingBox();
+	assert.ok(insetBounds.x > 0, "The full application must have an outer margin");
+	assert.ok(sidebarBounds.x >= insetBounds.x, "Sidebar must sit inside the inset");
+	assert.ok(sidebarBounds.y >= insetBounds.y, "Sidebar must sit below the inset's top edge");
+	assert.ok(
+		sidebarBounds.y + sidebarBounds.height <= insetBounds.y + insetBounds.height,
+		"Sidebar must fit inside the inset's bottom edge"
+	);
+	const expandedWidth = (await content.boundingBox()).width;
 	await sidebarToggle.click();
 	await page.waitForFunction(
-		(width) => document.querySelector("main").getBoundingClientRect().width > width + 100,
+		(width) =>
+			document.querySelector("[data-slot='app-content']").getBoundingClientRect().width >
+			width + 100,
 		expandedWidth
+	);
+	assert.deepEqual(
+		await inset.boundingBox(),
+		insetBounds,
+		"Collapsing keeps the outer inset fixed"
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
 	// Collapsed navigation must not leave keyboard focus on offscreen controls.
@@ -199,9 +231,31 @@ try {
 	assert.ok(focusedLeft >= 0, "Collapsed sidebar navigation must be excluded from keyboard focus");
 	await sidebarToggle.click();
 	await page.waitForFunction(
-		(width) => Math.abs(document.querySelector("main").getBoundingClientRect().width - width) < 2,
+		(width) =>
+			Math.abs(
+				document.querySelector("[data-slot='app-content']").getBoundingClientRect().width - width
+			) < 2,
 		expandedWidth
 	);
+	const windowSize = await application.evaluate(({ BrowserWindow }) => {
+		const window = BrowserWindow.getAllWindows()[0];
+		const size = window.getContentSize();
+		window.setContentSize(600, 700);
+		return size;
+	});
+	await page.waitForFunction(() => matchMedia("(max-width: 767px)").matches);
+	await sidebarToggle.click();
+	await page.getByRole("dialog").waitFor();
+	await page.waitForFunction(() => {
+		const bounds = document.querySelector("[data-mobile='true']").getBoundingClientRect();
+		return bounds.x >= 0 && bounds.y >= 0 && bounds.bottom <= innerHeight;
+	});
+	await page.keyboard.press("Escape");
+	await page.getByRole("dialog").waitFor({ state: "hidden" });
+	await application.evaluate(({ BrowserWindow }, size) => {
+		BrowserWindow.getAllWindows()[0].setContentSize(...size);
+	}, windowSize);
+	await sidebar.waitFor({ state: "visible" });
 
 	const preferences = await application.evaluate(({ BrowserWindow }) =>
 		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()

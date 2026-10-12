@@ -27,11 +27,14 @@
 <ModeWatcher defaultMode="system" disableHeadScriptInjection />
 <Toaster position="top-center" />
 <Sidebar.Provider
-	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-sidebar font-normal antialiased"
-	style="--window-toolbar-height: 2.5rem; --sidebar-width: 14rem;"
+	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
+	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
 	<AppNavbar />
-	<div class="flex min-h-0 flex-1 overflow-hidden">
+	<div
+		data-slot="app-inset"
+		class="relative m-2 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+	>
 		<WorkspaceSidebar
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
@@ -44,7 +47,7 @@
 			deleteWorkspace={appState.workspace.deleteWorkspace}
 			openCreationDialog={appState.openWorkspaceCreationDialog}
 		/>
-		<Sidebar.Inset class="min-h-0 overflow-hidden border border-border shadow-sm">
+		<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			{@render children()}
 			<ReaderStatusBar
 				activeWorkspace={appState.workspace.activeWorkspace}
@@ -52,11 +55,11 @@
 				todoSummary={appState.todos}
 				pendingOperation={appState.workspace.pendingOperation}
 			/>
-		</Sidebar.Inset>
-		<WorkspaceCreationDialog
-			bind:open={appState.isWorkspaceCreationDialogOpen}
-			disabled={appState.workspace.isOperating || appState.workspace.isLoading}
-			createWorkspace={appState.workspace.create}
-		/>
+		</main>
 	</div>
+	<WorkspaceCreationDialog
+		bind:open={appState.isWorkspaceCreationDialogOpen}
+		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
+		createWorkspace={appState.workspace.create}
+	/>
 </Sidebar.Provider>
