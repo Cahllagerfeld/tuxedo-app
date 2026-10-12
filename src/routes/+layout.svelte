@@ -28,7 +28,7 @@
 <Toaster position="top-center" />
 <Sidebar.Provider
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
-	style="--window-toolbar-height: 2.5rem; --sidebar-width: 14rem;"
+	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
 	<AppNavbar />
 	<div
