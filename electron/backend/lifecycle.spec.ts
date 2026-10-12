@@ -381,3 +381,35 @@ test("switching opens the chosen Todo file without loading the previous Active T
 		diagnostic.mockRestore();
 	}
 });
+
+test("Todo-item writes use injected filesystem metadata and preserve confirmed data on failure", async () => {
+	const { todoPath, cataloguePath } = await setup();
+	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
+		filesystem: {
+			...nodeFileSystem,
+			stat: () =>
+				Effect.fail(
+					PlatformError.systemError({
+						_tag: "PermissionDenied",
+						module: "FileSystem",
+						method: "stat",
+					})
+				),
+		},
+	});
+	backends.push(backend);
+	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("setup");
+	expect(
+		await backend.deleteTodo({
+			scope: created.confirmed.scope,
+			revision: created.confirmed.revision,
+			workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+			lineNumber: 1,
+			expectedRaw: "First",
+		})
+	).toMatchObject({ status: "rejected", message: expect.stringContaining("PermissionDenied") });
+	expect(await backend.readSession({})).toEqual(created.confirmed);
+	expect(await readFile(todoPath, "utf8")).toBe("First\n");
+});

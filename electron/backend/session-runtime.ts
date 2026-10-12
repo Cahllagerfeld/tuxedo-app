@@ -27,10 +27,10 @@ export function createSessionRuntime(
 			: NodeFileSystem.layer,
 		dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
 	);
-	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged, (effect) =>
-		runtime.runPromise(effect)
-	).pipe(Layer.provide(capabilities));
-	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession, never> =
+	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged, (effect) => {
+		runtime.runFork(effect);
+	}).pipe(Layer.provideMerge(capabilities));
+	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession | FileSystem | Identity, never> =
 		ManagedRuntime.make(layer);
 	return runtime;
 }
