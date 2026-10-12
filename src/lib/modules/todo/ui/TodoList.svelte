@@ -105,7 +105,7 @@
 	>
 		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
-				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[:focus-visible]:bg-accent"
+				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent"
 				style:height={`${size}px`}
 				style:top={`${start}px`}
 				aria-posinset={index + 1}
@@ -122,7 +122,7 @@
 					data-row-navigation={index}
 					aria-label={`Navigate ${todo.description}`}
 					tabindex={focus.index === index ? 0 : -1}
-					class="absolute inset-0 h-full w-full rounded-none p-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+					class="absolute inset-0 h-full w-full rounded-none p-0 focus-visible:border-transparent focus-visible:ring-0 focus-visible:inset-ring-1 focus-visible:inset-ring-ring focus-visible:outline-none"
 					onkeydown={(event) => focus.keydown(event, todo)}
 				></Button>
 				{#if onReorder}
