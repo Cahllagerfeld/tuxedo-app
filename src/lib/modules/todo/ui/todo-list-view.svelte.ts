@@ -114,6 +114,7 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 		finalize,
 		cancelOnEscape,
 		focusItem: virtualization.focusItem,
+		reveal: virtualization.reveal,
 		onFocusOut: virtualization.onFocusOut,
 	};
 }

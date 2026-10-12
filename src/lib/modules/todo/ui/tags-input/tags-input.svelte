@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { cn } from "$lib/shared/utils.js";
 	import type { TagsInputProps } from "./types";
 	import TagsInputSuggestion from "./tags-input-suggestion.svelte";
@@ -90,9 +92,10 @@
 		const target = event.target as HTMLInputElement;
 		if (event.key === "Escape" && showSuggestions) {
 			event.preventDefault();
+			event.stopPropagation();
 			suggestionIndex = undefined;
 			inputFocused = false;
-			target.blur();
+
 			return;
 		}
 		if (showSuggestions && event.key === "ArrowDown") {
@@ -207,6 +210,7 @@
 	{#if showSuggestions}
 		<div
 			bind:this={listboxEl}
+			{@attach shortcutScope?.surface}
 			id={listboxId}
 			role="listbox"
 			class="absolute top-full right-0 left-0 z-50 mt-1 max-h-50 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"

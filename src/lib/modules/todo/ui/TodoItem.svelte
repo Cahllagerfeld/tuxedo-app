@@ -12,7 +12,7 @@
 		todo: TodoItem;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
-		onDelete: (todo: TodoItem) => void;
+		onDelete: (todo: TodoItem, trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	};
 
@@ -85,7 +85,10 @@
 				><Pencil aria-hidden="true" />Edit</DropdownMenu.Item
 			>
 			<DropdownMenu.Separator />
-			<DropdownMenu.Item {disabled} variant="destructive" onSelect={() => onDelete(todo)}
+			<DropdownMenu.Item
+				{disabled}
+				variant="destructive"
+				onSelect={() => onDelete(todo, menuTrigger)}
 				><Trash2 aria-hidden="true" />Delete</DropdownMenu.Item
 			>
 		</DropdownMenu.Content>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { cn } from "cn";
 	import { type WithoutChildrenOrChild } from "$lib/shared/utils.js";
 	import DropdownMenuPortal from "./dropdown-menu-portal.svelte";
@@ -19,6 +21,7 @@
 
 <DropdownMenuPortal {...portalProps}>
 	<DropdownMenuPrimitive.Content
+		{@attach shortcutScope?.surface}
 		bind:ref
 		data-slot="dropdown-menu-content"
 		{sideOffset}

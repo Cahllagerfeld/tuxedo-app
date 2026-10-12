@@ -1,5 +1,8 @@
 <script lang="ts">
 	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import AppShortcuts from "./AppShortcuts.svelte";
+	import type { AppState } from "./app-state.svelte";
+	let { app }: { app: AppState } = $props();
 </script>
 
 <header
@@ -7,4 +10,5 @@
 >
 	<Sidebar.Trigger class="[app-region:no-drag]" />
 	<span>Tuxedo</span>
+	<AppShortcuts {app} />
 </header>

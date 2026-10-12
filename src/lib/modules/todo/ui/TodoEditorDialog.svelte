@@ -24,12 +24,13 @@
 	import DatePicker from "./DatePicker.svelte";
 
 	type Props = {
+		open?: boolean;
 		todoFile: TodoFile;
 		saveTodoItem: SaveTodoItem;
 		workspaceName?: string;
 		disabled?: boolean;
 		todoToEdit?: TodoItem;
-		onClose?: () => void;
+		onClose?: (uncertain?: boolean) => void;
 	};
 
 	let {
@@ -38,6 +39,7 @@
 		workspaceName = "",
 		disabled = false,
 		todoToEdit,
+		open = $bindable(!!todoToEdit),
 		onClose,
 	}: Props = $props();
 
@@ -87,9 +89,6 @@
 	});
 	const { form: formData } = form;
 
-	// The edit dialog is mounted for one selected Todo item.
-	// svelte-ignore state_referenced_locally
-	let open = $state(!!todoToEdit);
 	let isSubmitting = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
 	let metadataInput = $state<ReturnType<typeof TagsInput>>();
@@ -204,7 +203,7 @@
 				toast.error("Todo file reloaded", { description: outcome.message });
 				if (todoToEdit) {
 					open = false;
-					onClose?.();
+					onClose?.(true);
 				}
 			} else {
 				toast.error(todoToEdit ? "Could not edit Todo item" : "Could not create Todo item", {

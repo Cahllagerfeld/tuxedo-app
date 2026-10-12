@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { cn } from "cn";
 
@@ -10,6 +12,7 @@
 </script>
 
 <DropdownMenuPrimitive.SubContent
+	{@attach shortcutScope?.surface}
 	bind:ref
 	data-slot="dropdown-menu-sub-content"
 	class={cn(

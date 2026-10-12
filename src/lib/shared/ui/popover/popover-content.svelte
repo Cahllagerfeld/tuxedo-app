@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { Popover as PopoverPrimitive } from "bits-ui";
 	import { cn, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
 	import PopoverPortal from "./popover-portal.svelte";
@@ -18,6 +20,7 @@
 
 <PopoverPortal {...portalProps}>
 	<PopoverPrimitive.Content
+		{@attach shortcutScope?.surface}
 		bind:ref
 		data-slot="popover-content"
 		{sideOffset}

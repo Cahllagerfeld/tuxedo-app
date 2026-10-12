@@ -14,6 +14,7 @@
 	import { toast } from "svelte-sonner";
 
 	type Props = {
+		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
@@ -35,6 +36,7 @@
 	};
 
 	let {
+		open = $bindable(false),
 		workspaces,
 		activeWorkspaceId,
 		selectWorkspace,
@@ -80,7 +82,7 @@
 	}
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root bind:open>
 	<DropdownMenu.Trigger
 		>{#snippet child({ props })}<Button
 				{...props}

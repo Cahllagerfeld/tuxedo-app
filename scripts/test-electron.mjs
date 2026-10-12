@@ -636,6 +636,73 @@ try {
 	assert.ok(await page.getByText("Item 1000", { exact: true }).isVisible());
 	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
 
+	const mod = process.platform === "darwin" ? "Meta" : "Control";
+	await page.keyboard.press(`${mod}+/`);
+	const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+	await help.waitFor();
+	assert.ok((await help.textContent()).includes(process.platform === "darwin" ? "⌘" : "Ctrl"));
+	await page.keyboard.press(`${mod}+b`);
+	assert.equal(
+		await page.locator('[data-slot="sidebar"]').getAttribute("data-state"),
+		"expanded",
+		"Help suspends sidebar shortcuts"
+	);
+	await page.keyboard.press("Escape");
+	await help.waitFor({ state: "detached" });
+	await page.keyboard.press(`${mod}+p`);
+	await page.getByRole("menu").waitFor();
+	await page.keyboard.press(`${mod}+n`);
+	assert.equal(await page.getByRole("dialog").count(), 0, "Workspace menu suspends creation");
+	await page.keyboard.press("Escape");
+	await page.getByRole("menu").waitFor({ state: "detached" });
+	await page.keyboard.press(`${mod}+Shift+n`);
+	await page.getByRole("dialog", { name: "Create workspace" }).waitFor();
+	await page.keyboard.press("Escape");
+	await page.getByRole("dialog").waitFor({ state: "detached" });
+	await page.keyboard.press(`${mod}+n`);
+	await page.getByRole("dialog", { name: "New Todo item" }).waitFor();
+	await page.keyboard.press("Escape");
+	await page.getByRole("dialog").waitFor({ state: "detached" });
+	const rowNavigation = page.getByRole("button", { name: "Navigate Item 1000", exact: true });
+	await rowNavigation.focus();
+	await page.keyboard.press("Home");
+	await page.getByRole("button", { name: "Navigate Item 1", exact: true }).waitFor();
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Navigate Item 1"
+	);
+	await page.keyboard.press("End");
+	await rowNavigation.waitFor();
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Navigate Item 1000"
+	);
+	await page.keyboard.press("Enter");
+	await page.getByRole("dialog", { name: "Edit Todo item" }).waitFor();
+	await page.keyboard.press("Escape");
+	await page.getByRole("dialog").waitFor({ state: "detached" });
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Navigate Item 1000"
+	);
+	await page.getByRole("button", { name: "Add Todo item", exact: true }).focus();
+	await viewport.evaluate((element) => {
+		element.scrollTop = 0;
+	});
+	await page.getByText("Item 1", { exact: true }).waitFor();
+	await page.waitForFunction(() => !document.querySelector('[aria-label="Navigate Item 1000"]'));
+	await page.keyboard.press("Tab");
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Todo items",
+		"Tab must reenter row navigation after scrolling away from the old row"
+	);
+	await page.keyboard.press("End");
+	await rowNavigation.waitFor();
+	console.log(
+		"Desktop shortcut help, platform hints, popup suppression, creation, virtualized row navigation and editor return focus passed."
+	);
+
 	const addTodo = page.getByRole("button", { name: "Add Todo item", exact: true });
 	await addTodo.click();
 	const creationDialog = page.getByRole("dialog");
