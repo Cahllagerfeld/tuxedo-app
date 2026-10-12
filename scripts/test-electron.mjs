@@ -309,6 +309,30 @@ try {
 		pri: "Z",
 	});
 
+	const invalidCreationRejected = await page.evaluate(async (confirmed) => {
+		try {
+			await window.desktop.createTodo({
+				scope: confirmed.scope,
+				revision: confirmed.revision,
+				workspaceId: confirmed.workspaceId,
+				description: "Invalid",
+				projects: [],
+				contexts: [],
+				completed: true,
+				completionDate: "2026-02-30",
+				unexpected: true,
+			});
+			return false;
+		} catch {
+			return true;
+		}
+	}, createdTodo.confirmed);
+	assert.equal(invalidCreationRejected, true);
+	assert.equal(
+		(await page.evaluate(() => window.desktop.readSession({}))).revision,
+		createdTodo.confirmed.revision
+	);
+
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",
