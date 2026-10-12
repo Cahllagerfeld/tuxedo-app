@@ -5,12 +5,13 @@ test("desktop transport rejects malformed responses", async () => {
 	await expect(desktop.readSession({})).rejects.toThrow();
 });
 test("desktop transport rejects unsupported request fields before invoking IPC", async () => {
+	let invoked = false;
 	const desktop = createDesktopClient(async () => {
+		invoked = true;
 		throw Error("should not invoke");
 	});
-	await expect(desktop.readSession({ path: "/etc/passwd" } as never)).rejects.toThrow(
-		"Unrecognized key"
-	);
+	await expect(desktop.readSession({ path: "/etc/passwd" } as never)).rejects.toThrow();
+	expect(invoked).toBe(false);
 });
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -186,3 +187,106 @@ test("edits must explicitly preserve or clear Creation date", async () => {
 	).rejects.toThrow();
 	expect(invoked).toBe(false);
 });
+
+test.each([null, [], "", 1, { unexpected: true }])(
+	"empty desktop requests reject non-object or expanded input %#",
+	async (input) => {
+		let invoked = false;
+		const desktop = createDesktopClient(async () => {
+			invoked = true;
+			return { scope, revision: 1, session: { status: "unavailable", error: "Unavailable" } };
+		});
+		await expect(desktop.readSession(input as never)).rejects.toThrow();
+		expect(invoked).toBe(false);
+	}
+);
+
+test.each([
+	{ ...catalogue, active_workspace_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+	{
+		...catalogue,
+		workspaces: [
+			...catalogue.workspaces,
+			{ ...catalogue.workspaces[0], name: "Other", todo_path: "/tmp/other.todo" },
+		],
+	},
+	{
+		...catalogue,
+		workspaces: [
+			...catalogue.workspaces,
+			{
+				...catalogue.workspaces[0],
+				id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+				name: "work",
+				todo_path: "/tmp/other.todo",
+			},
+		],
+	},
+	{
+		...catalogue,
+		workspaces: [
+			...catalogue.workspaces,
+			{ ...catalogue.workspaces[0], id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Other" },
+		],
+	},
+	{ ...catalogue, unexpected: true },
+	...[
+		{ name: " Work " },
+		{ todo_path: " " },
+		{ color: "purple" },
+		{ id: "not-a-uuid" },
+		{ created_at: "2026-02-30T10:00:00Z" },
+		{ created_at: "2026-01-01T10:00:00" },
+		{ created_at: "2026-01-01T24:00:00Z" },
+		{ created_at: "2026-01-01T10:00:00+24:00" },
+		{ unexpected: true },
+	].map((fields) => ({ ...catalogue, workspaces: [{ ...catalogue.workspaces[0], ...fields }] })),
+])("desktop responses reject malformed catalogue data %#", async (invalidCatalogue) => {
+	const desktop = createDesktopClient(async () => ({
+		scope,
+		revision: 1,
+		session: { status: "empty", catalogue: invalidCatalogue, warning: null },
+	}));
+	await expect(desktop.readSession({})).rejects.toThrow();
+});
+
+test.each(["2024-02-29T10:00:00Z", "2026-10-12T10:00:00.123+02:00", "2026-10-12T10:00:00-05:30"])(
+	"desktop catalogue timestamps retain timezone and fractional-second compatibility %s",
+	async (created_at) => {
+		const response = {
+			scope,
+			revision: 1,
+			session: {
+				status: "empty",
+				catalogue: { ...catalogue, workspaces: [{ ...catalogue.workspaces[0], created_at }] },
+				warning: null,
+			},
+		};
+		expect(await createDesktopClient(async () => response).readSession({})).toEqual(response);
+	}
+);
+
+test("Workspace requests trim names while retaining the exact Todo-file reference", async () => {
+	let forwarded: unknown;
+	const response = { status: "rejected", message: "Already exists" };
+	const desktop = createDesktopClient(async (_, request) => {
+		forwarded = request;
+		return response;
+	});
+	expect(
+		await desktop.createWorkspace({ name: " Work ", color: "blue", todoPath: " /tmp/work.todo " })
+	).toEqual(response);
+	expect(forwarded).toEqual({ name: "Work", color: "blue", todoPath: " /tmp/work.todo " });
+});
+
+test.each([-1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+	"desktop responses reject invalid revisions %s",
+	async (revision) => {
+		const desktop = createDesktopClient(async () => ({
+			scope,
+			revision,
+			session: { status: "unavailable", error: "Unavailable" },
+		}));
+		await expect(desktop.readSession({})).rejects.toThrow();
+	}
+);

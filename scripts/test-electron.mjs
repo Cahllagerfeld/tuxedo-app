@@ -782,6 +782,61 @@ try {
 		"Todo-item editing through the row menu, form, preload and backend persists across reload."
 	);
 	console.log("Metadata entered through the form persists in the Todo file and after reload.");
+	// Exercise the sandboxed preload's response and event validators with main-supplied data.
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:select-todo-file");
+		ipcMain.handle("tuxedo:select-todo-file", () => ({ path: "/tmp/unexpected" }));
+	});
+	assert.equal(
+		await page.evaluate(async () => {
+			try {
+				await window.desktop.selectTodoFile({});
+				return false;
+			} catch {
+				return true;
+			}
+		}),
+		true
+	);
+	const signal = {
+		scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
+		revision: 0,
+		workspaceId: "550e8400-e29b-41d4-a716-446655440000",
+		todoPath: "/tmp/validation.todo",
+	};
+	await page.evaluate(() => {
+		window.validationSignals = [];
+		window.validationSignalReceived = new Promise((resolve) => {
+			const unsubscribe = window.desktop.onTodoFileChanged((event) => {
+				window.validationSignals.push(event);
+				if (event.todoPath === "/tmp/validation.todo") {
+					unsubscribe();
+					resolve();
+				}
+			});
+		});
+	});
+	await application.evaluate(({ BrowserWindow }, valid) => {
+		const contents = BrowserWindow.getAllWindows()[0].webContents;
+		for (const invalid of [
+			null,
+			{ ...valid, revision: -1 },
+			{ ...valid, scope: "invalid" },
+			{ ...valid, unexpected: true },
+		])
+			contents.send("tuxedo:todo-file-changed", invalid);
+		contents.send("tuxedo:todo-file-changed", valid);
+	}, signal);
+	assert.deepEqual(
+		await page.evaluate(async () => {
+			await window.validationSignalReceived;
+			return window.validationSignals;
+		}),
+		[signal]
+	);
+	console.log(
+		"Sandboxed preload rejects malformed responses and discards malformed observation events."
+	);
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

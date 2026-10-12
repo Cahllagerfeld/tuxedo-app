@@ -14,7 +14,7 @@
 
 - shadcn-svelte primitive first; missing → shadcn CLI.
 - Tailwind only; `<style>` for what Tailwind cannot express.
-- Forms: shadcn `Form` + Formsnap + Superforms + Zod, `Form.Field` → `Form.Control` → input → `Form.Description`/`Form.FieldErrors`.
+- Forms: shadcn `Form` + Formsnap + Superforms + Effect Schema, `Form.Field` → `Form.Control` → input → `Form.Description`/`Form.FieldErrors`.
 
 ## Desktop contract and ownership
 
@@ -25,6 +25,6 @@
 
 ## Shared Schema migration
 
-- Effect 4 Schema owns Todo-item creation fields and request validation in `src/lib/shared/desktop/todo-creation.ts`. Reuse those constraints in the shared editor and unmigrated editing request; do not add parallel Zod definitions.
+- Effect 4 Schema is canonical for desktop requests, responses, observation events, persisted catalogues, and forms. Reuse shared constraints in `src/lib/shared/desktop`; do not add parallel validator definitions.
 - Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1` and explicit defaults. Keep form strings distinct from nullable/optional desktop dates and preserve field error paths.
-- Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Other contracts continue to use strict Zod schemas until migrated.
+- Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Use `effectValidator` at desktop and persisted-data boundaries. Empty requests use `Schema.Record(Schema.String, Schema.Never)` because an empty `Struct` accepts excess properties.

@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-// Preserve synchronous plain-data validation while Zod operations are migrated.
+// Preserve synchronous plain-data validation at desktop and persisted-data boundaries.
 export function effectValidator<S extends Schema.ConstraintDecoder<unknown>>(schema: S) {
 	const standard = Schema.toStandardSchemaV1(schema, {
 		parseOptions: { onExcessProperty: "error", errors: "all" },
