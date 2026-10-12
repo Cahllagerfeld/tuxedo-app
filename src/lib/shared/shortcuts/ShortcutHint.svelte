@@ -4,4 +4,4 @@
 	let { hotkey }: { hotkey: string } = $props();
 </script>
 
-<Kbd.Group aria-hidden="true"><Kbd.Root>{formatForDisplay(hotkey)}</Kbd.Root></Kbd.Group>
+<Kbd.Group><Kbd.Root>{formatForDisplay(hotkey)}</Kbd.Root></Kbd.Group>
