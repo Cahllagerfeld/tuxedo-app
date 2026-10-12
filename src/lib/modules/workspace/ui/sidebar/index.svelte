@@ -40,7 +40,11 @@
 	}: Props = $props();
 </script>
 
-<Sidebar.Root variant="sidebar" {collapsible} class="md:absolute md:h-full">
+<Sidebar.Root
+	variant="sidebar"
+	{collapsible}
+	class={collapsible === "none" ? undefined : "md:absolute md:h-full"}
+>
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
 			{workspaces}
