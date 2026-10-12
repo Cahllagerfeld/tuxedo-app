@@ -58,8 +58,7 @@
 				{...props}
 				variant="ghost"
 				class="mr-3 ml-auto [app-region:no-drag]"
-				aria-label="Keyboard shortcuts"
-				>Shortcuts <ShortcutHint hotkey={bindings.help.key} /></Button
+				aria-label="Keyboard shortcuts">Shortcuts</Button
 			>
 		{/snippet}</Dialog.Trigger
 	>

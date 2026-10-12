@@ -23,8 +23,6 @@
 	import PriorityPicker from "./PriorityPicker.svelte";
 	import DatePicker from "./DatePicker.svelte";
 
-	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
-	import { createTodoShortcut } from "./shortcuts";
 	type Props = {
 		open?: boolean;
 		todoFile: TodoFile;
@@ -241,8 +239,7 @@
 			variant="outline"
 			{disabled}
 			aria-label="Add Todo item"
-			onclick={() => (open = true)}
-			>+ Add Todo item <ShortcutHint hotkey={createTodoShortcut.key} /></Button
+			onclick={() => (open = true)}>+ Add Todo item</Button
 		>
 	{/if}
 	<Dialog.Content
