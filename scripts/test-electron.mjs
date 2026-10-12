@@ -183,9 +183,18 @@ try {
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
-	const inset = page.getByRole("main");
-	const content = inset.locator(":scope > [data-slot='app-content']");
+	const inset = page.locator("[data-slot='app-inset']");
+	const content = page.getByRole("main");
+	assert.equal(await content.count(), 1, "The page must have one main landmark");
+	assert.equal(await content.locator("[data-slot='sidebar']").count(), 0);
 	const sidebar = page.locator("[data-slot='sidebar-container']");
+	const sidebarBackground = await sidebar
+		.locator("[data-slot='sidebar-inner']")
+		.evaluate((element) => getComputedStyle(element).backgroundColor);
+	const windowBackground = await page
+		.locator("[data-slot='sidebar-wrapper']")
+		.evaluate((element) => getComputedStyle(element).backgroundColor);
+	assert.notEqual(sidebarBackground, windowBackground, "Sidebar must have its own background");
 	assert.equal(await inset.locator("[data-slot='sidebar']").count(), 1);
 	const insetBounds = await inset.boundingBox();
 	const sidebarBounds = await sidebar.boundingBox();

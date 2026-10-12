@@ -43,7 +43,7 @@
 <Sidebar.Root
 	variant="sidebar"
 	{collapsible}
-	class={collapsible === "none" ? undefined : "md:absolute md:h-full"}
+	class={collapsible === "none" ? "workspace-sidebar" : "workspace-sidebar md:absolute md:h-full"}
 >
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
