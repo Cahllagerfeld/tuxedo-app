@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { setTodoCompletionLine } from "./complete-todo";
 import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
@@ -215,7 +215,7 @@ export function createSessionBackend(
 			}
 			const rewritten = transform(contents, item);
 			const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-			await atomicWrite(workspace.todo_path, rewritten);
+			await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
 			return {
 				status: "applied",
 				confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
@@ -254,7 +254,7 @@ export function createSessionBackend(
 				},
 			};
 		const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-		await atomicWrite(workspace.todo_path, rewritten);
+		await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
 		return {
 			status: "applied",
 			confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
@@ -324,6 +324,8 @@ export function createSessionBackend(
 				const outcome = await mutateTodo(
 					{ scope: targetScope, revision: targetRevision, workspaceId, lineNumber, expectedRaw },
 					(contents, item) => {
+						if (input.completed && item.completion_date && !input.completionDate)
+							throw Error("Choose a Completion date for a completed Todo item.");
 						const raw =
 							input.completed && input.priority
 								? [

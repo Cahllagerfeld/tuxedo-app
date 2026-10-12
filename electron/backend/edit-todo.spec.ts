@@ -65,6 +65,23 @@ test("a changed target returns a conflict without overwriting disk", async () =>
 	if (outcome.status !== "conflict") throw Error("Expected conflict");
 	expect(outcome.confirmed.todo_file.items[1].description).toBe("Changed externally");
 });
+test("editing cannot clear an existing Completion date", async () => {
+	const { backend, todoPath, request } = await setup();
+	const raw = "x 2026-10-09 Old";
+	await writeFile(todoPath, raw);
+	const restored = await backend.restoreSession({});
+	const outcome = await backend.editTodo({
+		...request,
+		revision: restored.revision,
+		lineNumber: 1,
+		expectedRaw: raw,
+		creationDate: null,
+		completionDate: null,
+	});
+	expect(outcome.status).toBe("rejected");
+	expect(await readFile(todoPath, "utf8")).toBe(raw);
+	expect(await backend.readSession({})).toEqual(restored);
+});
 test("invalid edits and stale session targets preserve disk and confirmed data", async () => {
 	const { backend, todoPath, request } = await setup();
 	const before = await readFile(todoPath, "utf8");
