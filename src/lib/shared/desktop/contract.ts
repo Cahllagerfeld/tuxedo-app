@@ -1,4 +1,12 @@
 import { z } from "zod";
+import * as Schema from "effect/Schema";
+import { effectValidator } from "./effect-validation";
+import {
+	createTodoRequestSchema,
+	todoCreationFields,
+	todoCreationIssues,
+	TodoDate,
+} from "./todo-creation";
 import { todoFileSchema } from "./todo";
 export const workspaceSchema = z.strictObject({
 	id: z.uuid(),
@@ -105,131 +113,44 @@ export const todoOutcomeSchema = z.discriminatedUnion("status", [
 export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
 	completed: z.boolean(),
 });
-export function normalizeTodoDescription(value: string): string {
-	return value
-		.trim()
-		.replace(/\p{White_Space}+/gu, " ")
-		.trim();
-}
+export {
+	createTodoRequestSchema,
+	normalizeTodoDescription,
+	todoTagSchema,
+	todoDateSchema,
+	todoMetadataSchema,
+} from "./todo-creation";
 
-function containsTodoToken(value: string): boolean {
-	return normalizeTodoDescription(value)
-		.split(" ")
-		.some(
-			(token) =>
-				/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token)
-		);
+// Unmigrated editing reuses the canonical Effect field and cross-field validation.
+function zodFromEffect<S extends Schema.ConstraintDecoder<unknown>>(schema: S) {
+	const validator = effectValidator(schema);
+	return z.unknown().transform((value, ctx): S["Type"] => {
+		const result = validator.safeParse(value);
+		if (result.success) return result.data;
+		for (const issue of result.error.issues)
+			ctx.addIssue({
+				code: "custom",
+				message: issue.message,
+				path: issue.path?.map((part) => (typeof part === "object" ? part.key : part)),
+			});
+		return z.NEVER;
+	});
 }
-
-export const todoTagSchema = z
-	.string()
-	.min(1)
-	.refine((value) => value === value.trim(), "Todo tags must be trimmed")
-	.refine((value) => !/[\s\p{White_Space}]/u.test(value), "Todo tags must not contain whitespace");
-const todoTagListSchema = z
-	.array(todoTagSchema)
-	.refine((values) => new Set(values).size === values.length, "Todo tags must be unique");
-export const todoDescriptionSchema = z
-	.string()
-
-	.refine(
-		(value) => !containsTodoToken(value),
-		"Use the Project, Context, and Metadata inputs for these tokens."
-	);
-export const todoDateSchema = z.iso.date("Use a valid date in YYYY-MM-DD format.");
-export const todoMetadataSchema = z
-	.string()
-	.regex(
-		/^[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+$/u,
-		"Use key:value without spaces or extra colons."
-	)
-	.refine((value) => !/^[+@]/u.test(value), "Metadata keys must not start with + or @.");
-const todoCreationFields = {
-	description: todoDescriptionSchema,
-	projects: todoTagListSchema,
-	contexts: todoTagListSchema,
-	priority: z
-		.string()
-		.regex(/^[A-Z]$/u)
-		.nullable()
-		.optional(),
-	creationDate: todoDateSchema.nullable().optional(),
-	completed: z.boolean().optional(),
-	completionDate: todoDateSchema.nullable().optional(),
-	metadata: z.array(todoMetadataSchema).optional(),
-};
-export const todoCreationSchema = z
-	.strictObject(todoCreationFields)
-	.superRefine(validateTodoCreation);
-export function validateTodoCreation(
-	input: z.infer<typeof todoCreationSchema>,
-	ctx: z.RefinementCtx,
-	editing = false
-) {
-	const issue = (path: string, message: string) =>
-		ctx.addIssue({ code: "custom", path: [path], message });
-	if (
-		input.completed &&
-		!input.completionDate &&
-		(!editing || (input.creationDate && !input.priority))
-	)
-		issue("completionDate", "Choose a Completion date for a completed Todo item.");
-	if (!input.completed && input.completionDate)
-		issue("completionDate", "Only completed Todo items have a Completion date.");
-	if (
-		!editing &&
-		input.completed &&
-		input.priority &&
-		input.metadata?.some((value) => value.startsWith("pri:"))
-	)
-		issue(
-			"metadata",
-			"Remove pri Metadata or clear Priority; Priority is saved as pri Metadata on completion."
-		);
-	const description = normalizeTodoDescription(input.description);
-	const followedByTokens = !!(
-		input.projects.length ||
-		input.contexts.length ||
-		input.metadata?.length ||
-		(input.completed && input.priority)
-	);
-	const leadingText = description + (followedByTokens ? " " : "");
-	if (
-		!description &&
-		!input.projects.length &&
-		!input.contexts.length &&
-		!input.metadata?.length &&
-		!input.priority &&
-		input.creationDate === null &&
-		!input.completed
-	)
-		issue("description", "Enter a Description or another Todo-item value.");
-	// Prefix-looking text would be parsed as structured fields when dates are omitted.
-	if (
-		input.creationDate === null &&
-		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
-			((!input.priority || (input.completed && !editing)) && /^\([A-Z]\) /u.test(leadingText)) ||
-			(!input.completed && !input.priority && /^x /u.test(leadingText)))
-	)
-		issue(
-			"description",
-			"Use the Priority, date, and Completed controls for leading Todo markers."
-		);
-}
-export const createTodoRequestSchema = todoCreationSchema.safeExtend({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	workspaceId: z.uuid(),
-});
 export const editTodoRequestSchema = z
 	.strictObject({
-		...todoCreationFields,
 		...todoMutationRequestSchema.shape,
-		creationDate: todoDateSchema.nullable(),
+		description: zodFromEffect(todoCreationFields.description),
+		projects: zodFromEffect(todoCreationFields.projects),
+		contexts: zodFromEffect(todoCreationFields.contexts),
+		priority: zodFromEffect(todoCreationFields.priority).optional(),
+		creationDate: zodFromEffect(Schema.NullOr(TodoDate)),
 		completed: z.boolean(),
+		completionDate: zodFromEffect(todoCreationFields.completionDate).optional(),
+		metadata: zodFromEffect(todoCreationFields.metadata).optional(),
 	})
 	.superRefine((input, ctx) => {
-		validateTodoCreation(input, ctx, true);
+		for (const issue of todoCreationIssues(input, true))
+			ctx.addIssue({ code: "custom", path: issue.path, message: issue.issue });
 	});
 export const reorderTodoRequestSchema = z.strictObject({
 	scope: z.uuid(),
@@ -301,11 +222,11 @@ export const desktopContract = {
 	},
 } as const;
 export type DesktopOperation = keyof typeof desktopContract;
-export type DesktopRequest<K extends DesktopOperation> = keyof z.infer<
-	(typeof desktopContract)[K]["request"]
+export type DesktopRequest<K extends DesktopOperation> = keyof ReturnType<
+	(typeof desktopContract)[K]["request"]["parse"]
 > extends never
 	? Record<string, never>
-	: z.infer<(typeof desktopContract)[K]["request"]>;
+	: ReturnType<(typeof desktopContract)[K]["request"]["parse"]>;
 export type DesktopAPI = {
 	[K in DesktopOperation]: (
 		request: DesktopRequest<K>
