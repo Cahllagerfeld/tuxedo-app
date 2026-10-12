@@ -56,8 +56,11 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 		metadata,
 	};
 }
+export function decodeTodoContents(contents: Uint8Array): string {
+	return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(contents);
+}
 export async function readTodoContents(path: string): Promise<string> {
-	return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await readFile(path));
+	return decodeTodoContents(await readFile(path));
 }
 export function parseTodoFile(path: string, contents: string): TodoFile {
 	const result: TodoFile = { path, items: [], skipped: [] };

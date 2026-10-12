@@ -4,9 +4,11 @@ import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
 import { appendTodoLine, createTodoLine } from "./create-todo";
-import { readTodoContents, parseTodoFile } from "./todo-file";
+import { decodeTodoContents, readTodoContents, parseTodoFile } from "./todo-file";
 import { Cause, Context, Data, Effect, Layer, ManagedRuntime, Semaphore } from "effect";
-import { FileSystem, FileSystemFailure, fileSystemLayer } from "./filesystem";
+import { FileSystem } from "effect/FileSystem";
+import { badArgument, type PlatformError } from "effect/PlatformError";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Identity, identityLayer } from "./identity";
 import type { TodoFileObservationAdapter } from "./observation";
 import {
@@ -36,7 +38,7 @@ export class WorkspaceSession extends Context.Service<WorkspaceSession, SessionE
 	"tuxedo/backend/WorkspaceSession"
 ) {}
 class WorkspaceFailure extends Data.TaggedError("WorkspaceFailure")<{ message: string }> {}
-type LifecycleFailure = FileSystemFailure | WorkspaceFailure;
+type LifecycleFailure = PlatformError | WorkspaceFailure;
 const validate = <A>(parse: () => A) =>
 	Effect.try({
 		try: parse,
@@ -44,7 +46,7 @@ const validate = <A>(parse: () => A) =>
 			new WorkspaceFailure({ message: error instanceof Error ? error.message : String(error) }),
 	});
 export type SessionDependencies = {
-	filesystem?: FileSystem["Service"];
+	filesystem?: FileSystem;
 	identity?: Identity["Service"];
 };
 
@@ -59,6 +61,21 @@ function sessionLayer(
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
 			const identity = yield* Identity;
+			const readContents = (path: string) =>
+				fs.readFile(path).pipe(
+					Effect.flatMap((bytes) =>
+						Effect.try({
+							try: () => decodeTodoContents(bytes),
+							catch: (cause) =>
+								badArgument({
+									module: "FileSystem",
+									method: "readFile",
+									description: "Invalid UTF-8 file contents",
+									cause,
+								}),
+						})
+					)
+				);
 			const semaphore = yield* Semaphore.make(1);
 			const scope = identity.uuid();
 			yield* Effect.addFinalizer(() => Effect.sync(() => observation?.stop()));
@@ -97,9 +114,9 @@ function sessionLayer(
 								"observe",
 								Effect.gen(function* () {
 									if (current !== confirmed) return;
-									const contents = yield* fs
-										.read(ready.todo_file.path)
-										.pipe(Effect.catchTag("FileSystemFailure", () => Effect.succeed(undefined)));
+									const contents = yield* readContents(ready.todo_file.path).pipe(
+										Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
+									);
 									if (contents === confirmedTodoContents) return;
 									onTodoFileChanged({
 										scope: current.scope,
@@ -120,7 +137,7 @@ function sessionLayer(
 				Effect.gen(function* () {
 					const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
 					if (!active) return { session: { status: "empty" as const, catalogue, warning: null } };
-					return yield* fs.read(active.todo_path).pipe(
+					return yield* readContents(active.todo_path).pipe(
 						Effect.map((todoContents) => ({
 							session: {
 								status: "ready" as const,
@@ -129,7 +146,7 @@ function sessionLayer(
 							},
 							todoContents,
 						})),
-						Effect.catchTag("FileSystemFailure", () =>
+						Effect.catchTag("PlatformError", () =>
 							Effect.succeed({
 								session: {
 									status: "empty" as const,
@@ -142,18 +159,15 @@ function sessionLayer(
 				});
 			const load = (): Effect.Effect<{ confirmed: ConfirmedSession; todoContents?: string }> =>
 				Effect.gen(function* () {
-					const contents = yield* fs.read(cataloguePath);
+					const contents = yield* readContents(cataloguePath);
 					const catalogue = yield* validate(() => catalogueSchema.parse(JSON.parse(contents)));
 					return yield* projectCatalogue(catalogue);
 				}).pipe(
 					Effect.catchTags({
-						FileSystemFailure: (error) =>
+						PlatformError: (error) =>
 							Effect.succeed({
 								session:
-									error.cause &&
-									typeof error.cause === "object" &&
-									"code" in error.cause &&
-									error.cause.code === "ENOENT"
+									error.reason._tag === "NotFound"
 										? {
 												status: "empty" as const,
 												catalogue: {
@@ -232,7 +246,7 @@ function sessionLayer(
 					operation,
 					effect.pipe(
 						Effect.catchTags({
-							FileSystemFailure: (error) =>
+							PlatformError: (error) =>
 								Effect.succeed({ status: "rejected" as const, message: prefix + error.message }),
 							WorkspaceFailure: (error) =>
 								Effect.succeed({ status: "rejected" as const, message: prefix + error.message }),
@@ -504,8 +518,8 @@ function sessionLayer(
 						"Cannot create Workspace: ",
 						Effect.gen(function* () {
 							const input = yield* validate(() => createWorkspaceRequestSchema.parse(request));
-							const todoPath = yield* fs.realpath(input.todoPath);
-							const todoContents = yield* fs.read(todoPath);
+							const todoPath = yield* fs.realPath(input.todoPath);
+							const todoContents = yield* readContents(todoPath);
 							const todo_file = parseTodoFile(todoPath, todoContents);
 							if (todo_file.skipped.length)
 								return yield* Effect.fail(
@@ -545,7 +559,7 @@ function sessionLayer(
 								return yield* Effect.fail(
 									new WorkspaceFailure({ message: "Workspace does not exist." })
 								);
-							const todoContents = yield* fs.read(workspace.todo_path);
+							const todoContents = yield* readContents(workspace.todo_path);
 							const todo_file = parseTodoFile(workspace.todo_path, todoContents);
 							return yield* commitCatalogue(
 								{ ...previous, active_workspace_id: workspaceId },
@@ -591,7 +605,9 @@ export function createSessionRuntime(
 	dependencies: SessionDependencies = {}
 ) {
 	const capabilities = Layer.merge(
-		dependencies.filesystem ? Layer.succeed(FileSystem, dependencies.filesystem) : fileSystemLayer,
+		dependencies.filesystem
+			? Layer.succeed(FileSystem, dependencies.filesystem)
+			: NodeFileSystem.layer,
 		dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
 	);
 	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged, (effect) =>

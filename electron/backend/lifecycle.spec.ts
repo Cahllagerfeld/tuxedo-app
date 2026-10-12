@@ -1,10 +1,18 @@
-import { afterEach, expect, test, vi } from "vitest";
-import { Effect } from "effect";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
+import { Effect, Exit } from "effect";
+import * as FileSystem from "effect/FileSystem";
+import * as PlatformError from "effect/PlatformError";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSessionBackend } from "./session";
-import { FileSystemFailure, nodeFileSystem } from "./filesystem";
+let nodeFileSystem: FileSystem.FileSystem;
+beforeAll(async () => {
+	nodeFileSystem = await Effect.runPromise(
+		FileSystem.FileSystem.pipe(Effect.provide(NodeFileSystem.layer))
+	);
+});
 
 const directories: string[] = [];
 const backends: ReturnType<typeof createSessionBackend>[] = [];
@@ -68,7 +76,12 @@ test("failed replacement preserves disk and confirmed data, cleans temporary fil
 			rename: (from, to) =>
 				fail
 					? Effect.fail(
-							new FileSystemFailure({ operation: "rename", cause: Error("replacement denied") })
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "rename",
+								description: "replacement denied",
+							})
 						)
 					: nodeFileSystem.rename(from, to),
 		},
@@ -104,14 +117,25 @@ test("failed synchronization preserves the catalogue and closes and cleans the t
 	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
 		filesystem: {
 			...nodeFileSystem,
-			open: (path) =>
-				nodeFileSystem.open(path).pipe(
-					Effect.map((handle) => ({
-						writeFile: handle.writeFile.bind(handle),
-						chmod: handle.chmod.bind(handle),
-						close: handle.close.bind(handle),
-						sync: () => (fail ? Promise.reject(Error("sync denied")) : handle.sync()),
-					}))
+			open: (path, options) =>
+				nodeFileSystem.open(path, options).pipe(
+					Effect.map((handle) => {
+						const sync = handle.sync;
+						return Object.defineProperty(handle, "sync", {
+							value: Effect.suspend(() =>
+								fail
+									? Effect.fail(
+											PlatformError.systemError({
+												_tag: "PermissionDenied",
+												module: "FileSystem",
+												method: "sync",
+												description: "sync denied",
+											})
+										)
+									: sync
+							),
+						});
+					})
 				),
 		},
 	});
@@ -169,8 +193,8 @@ test("unexpected lifecycle defects are diagnosed with operation context and safe
 	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
 		filesystem: {
 			...nodeFileSystem,
-			realpath: (path) =>
-				fail ? Effect.die(Error("private diagnostic detail")) : nodeFileSystem.realpath(path),
+			realPath: (path) =>
+				fail ? Effect.die(Error("private diagnostic detail")) : nodeFileSystem.realPath(path),
 		},
 	});
 	backends.push(backend);
@@ -237,7 +261,14 @@ test("successful replacement confirms disk data even when temporary-file cleanup
 		filesystem: {
 			...nodeFileSystem,
 			remove: () =>
-				Effect.fail(new FileSystemFailure({ operation: "remove", cause: Error("cleanup denied") })),
+				Effect.fail(
+					PlatformError.systemError({
+						_tag: "PermissionDenied",
+						module: "FileSystem",
+						method: "remove",
+						description: "cleanup denied",
+					})
+				),
 		},
 	});
 	backends.push(backend);
@@ -268,4 +299,41 @@ test("exclusive temporary-file acquisition preserves an existing colliding file"
 	expect(await readFile(temporaryPath, "utf8")).toBe("Existing private content");
 	expect(await backend.readSession({})).toEqual(before);
 	await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("atomic replacement closes its native file handle before rename", async () => {
+	const { todoPath, cataloguePath } = await setup();
+	let opened: FileSystem.File | undefined;
+	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
+		filesystem: {
+			...nodeFileSystem,
+			open: (path, options) =>
+				nodeFileSystem.open(path, options).pipe(
+					Effect.tap((handle) =>
+						Effect.sync(() => {
+							opened = handle;
+						})
+					)
+				),
+			rename: (from, to) =>
+				Effect.gen(function* () {
+					if (!opened || Exit.isSuccess(yield* Effect.exit(opened.stat)))
+						return yield* Effect.fail(
+							PlatformError.badArgument({
+								module: "FileSystem",
+								method: "rename",
+								description: "Temporary file is still open",
+							})
+						);
+					yield* nodeFileSystem.rename(from, to);
+				}),
+		},
+	});
+	backends.push(backend);
+	expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
+		status: "applied",
+	});
+	expect(JSON.parse(await readFile(cataloguePath, "utf8"))).toMatchObject({
+		workspaces: [{ name: "Work" }],
+	});
 });
