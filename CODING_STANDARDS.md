@@ -27,4 +27,4 @@
 
 - Effect 4 Schema owns Todo-item creation fields and request validation in `src/lib/shared/desktop/todo-creation.ts`. Reuse those constraints in the shared editor and unmigrated editing request; do not add parallel Zod definitions.
 - Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1` and explicit defaults. Keep form strings distinct from nullable/optional desktop dates and preserve field error paths.
-- Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Other contracts continue to use strict Zod schemas until migrated. See [ADR-0006](docs/adr/0006-expand-shared-validation-with-effect-schema.md).
+- Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Other contracts continue to use strict Zod schemas until migrated.
