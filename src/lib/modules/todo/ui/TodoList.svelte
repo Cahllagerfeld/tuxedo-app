@@ -98,7 +98,7 @@
 		onkeydown={(event) => focus.keydown(event)}
 		aria-label="Todo items"
 		class="relative w-full"
-		use:dragHandleZone={list.zoneOptions}
+		use:dragHandleZone={{ ...list.zoneOptions, zoneTabIndex: focus.index < 0 ? 0 : -1 }}
 		onconsider={list.consider}
 		onfinalize={list.finalize}
 		style:height={`${list.totalSize}px`}

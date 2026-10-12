@@ -1080,3 +1080,53 @@ test("Workspace switching clears old navigation focus even when both files have 
 	await userEvent.keyboard("{Space}");
 	expect(mutations).toBe(0);
 });
+
+test("Tab reenters row navigation after leaving and scrolling to another virtualization window", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const items = Array.from({ length: 1000 }, (_, index) => ({
+		...todo,
+		line_number: index + 1,
+		raw: `Item ${index + 1}`,
+		description: `Item ${index + 1}`,
+		projects: [],
+	}));
+	let loads = 0;
+	let notify!: (change: TodoFileChange) => void;
+	render(Harness, {
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					revision: ++loads,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				}) as ConfirmedSession,
+		}),
+	});
+	const first = page.getByRole("button", { name: "Navigate Item 1", exact: true });
+	await expect.element(first).toBeVisible();
+	(first.element() as HTMLElement).focus();
+	(
+		page.getByRole("button", { name: "Add Todo item", exact: true }).element() as HTMLElement
+	).focus();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => loads).toBe(2);
+	const viewport = document.querySelector<HTMLElement>(
+		'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+	)!;
+	viewport.scrollTop = viewport.scrollHeight;
+	await expect.element(page.getByText("Item 1000", { exact: true })).toBeVisible();
+	await expect.element(first).not.toBeInTheDocument();
+	await userEvent.keyboard("{Tab}");
+	await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
+	await userEvent.keyboard("{ArrowDown}");
+	await expect.element(first).toHaveFocus();
+});

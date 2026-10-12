@@ -25,6 +25,7 @@ export function createTodoListFocus(inputs: Inputs) {
 	onMount(() => {
 		const track = () => {
 			ownedFocus = !!inputs.root?.contains(document.activeElement);
+			if (!ownedFocus) navigationIndex = -1;
 		};
 		document.addEventListener("focusin", track);
 		return () => document.removeEventListener("focusin", track);
@@ -73,7 +74,7 @@ export function createTodoListFocus(inputs: Inputs) {
 						(todo) => todo.line_number === focusedTodo?.line_number && todo.raw === focusedTodo?.raw
 					);
 			const same = index >= 0;
-			if (same) navigationIndex = index;
+			if (same && ownedFocus) navigationIndex = index;
 			if (!same) {
 				if (ownedFocus) inputs.fallback?.focus();
 				navigationIndex = -1;

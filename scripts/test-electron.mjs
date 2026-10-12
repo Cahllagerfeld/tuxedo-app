@@ -685,6 +685,20 @@ try {
 		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
 		"Navigate Item 1000"
 	);
+	await page.getByRole("button", { name: "Add Todo item", exact: true }).focus();
+	await viewport.evaluate((element) => {
+		element.scrollTop = 0;
+	});
+	await page.getByText("Item 1", { exact: true }).waitFor();
+	await page.waitForFunction(() => !document.querySelector('[aria-label="Navigate Item 1000"]'));
+	await page.keyboard.press("Tab");
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Todo items",
+		"Tab must reenter row navigation after scrolling away from the old row"
+	);
+	await page.keyboard.press("End");
+	await rowNavigation.waitFor();
 	console.log(
 		"Desktop shortcut help, platform hints, popup suppression, creation, virtualized row navigation and editor return focus passed."
 	);
