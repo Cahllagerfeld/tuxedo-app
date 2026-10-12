@@ -27,13 +27,13 @@
 <ModeWatcher defaultMode="system" disableHeadScriptInjection />
 <Toaster position="top-center" />
 <Sidebar.Provider
-	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-sidebar font-normal antialiased"
+	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 14rem;"
 >
 	<AppNavbar />
 	<div
 		data-slot="app-inset"
-		class="relative m-2 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+		class="relative m-2 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-content-background shadow-sm"
 	>
 		<WorkspaceSidebar
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}

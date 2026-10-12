@@ -85,7 +85,7 @@ void app.whenReady().then(async () => {
 		callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] } });
 	});
 	const createWindow = async () => {
-		const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? "#333333" : "#fafafa");
+		const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? "#333333" : "#eeeeee");
 		const window = new BrowserWindow({
 			show: false,
 			backgroundColor: backgroundColor(),

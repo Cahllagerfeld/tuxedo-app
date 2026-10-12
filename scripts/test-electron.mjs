@@ -121,11 +121,14 @@ try {
 			assert.equal(initial.mounted, false, "Startup check must run before the SPA mounts");
 			assert.equal(initial.dark, theme === "dark");
 			assert.equal(initial.scheme, theme);
-			assert.equal(initial.background, theme === "dark" ? "rgb(51, 51, 51)" : "rgb(250, 250, 250)");
+			assert.equal(
+				initial.background,
+				theme === "dark" ? "oklch(0.321093 0 0)" : "oklch(0.949119 0 0)"
+			);
 			const nativeBackground = await application.evaluate(({ BrowserWindow }) =>
 				BrowserWindow.getAllWindows()[0].getBackgroundColor()
 			);
-			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#333333" : "#fafafa");
+			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#333333" : "#eeeeee");
 		} finally {
 			await cdp.send("Network.setBlockedURLs", { urls: [] });
 			await cdp.detach();

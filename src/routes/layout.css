@@ -6,11 +6,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
-.workspace-sidebar {
-	--sidebar: color-mix(in oklab, var(--muted) 75%, var(--background));
-}
-
 :root {
+	--window-background: oklch(0.949119 0 0);
+	--content-background: oklch(1 0 0);
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0 0);
 	--card: oklch(1 0 0);
@@ -53,6 +51,8 @@
 }
 
 .dark {
+	--window-background: oklch(0.321093 0 0);
+	--content-background: oklch(0.382879 0 0);
 	--background: oklch(0.145 0 0);
 	--foreground: oklch(0.985 0 0);
 	--card: oklch(0.205 0 0);
@@ -94,6 +94,8 @@
 }
 
 @theme inline {
+	--color-window-background: var(--window-background);
+	--color-content-background: var(--content-background);
 	--font-sans: "Figtree Variable", sans-serif;
 	--font-mono: "JetBrains Mono Variable", monospace;
 	--color-sidebar-ring: var(--sidebar-ring);
