@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
 import { appendTodoLine, createTodoLine } from "./create-todo";
@@ -213,7 +213,7 @@ export function createSessionBackend(
 			}
 			const rewritten = transform(contents, item);
 			const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-			await atomicWrite(workspace.todo_path, rewritten);
+			await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
 			return {
 				status: "applied",
 				confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
@@ -252,7 +252,7 @@ export function createSessionBackend(
 				},
 			};
 		const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-		await atomicWrite(workspace.todo_path, rewritten);
+		await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
 		return {
 			status: "applied",
 			confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
