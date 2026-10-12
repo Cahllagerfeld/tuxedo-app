@@ -31,7 +31,9 @@
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 14rem;"
 >
 	<AppNavbar />
-	<div class="flex min-h-0 flex-1 overflow-hidden">
+	<Sidebar.Inset
+		class="m-1 min-h-0 w-auto flex-row overflow-hidden rounded-xl border border-border shadow-sm"
+	>
 		<WorkspaceSidebar
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
@@ -44,7 +46,7 @@
 			deleteWorkspace={appState.workspace.deleteWorkspace}
 			openCreationDialog={appState.openWorkspaceCreationDialog}
 		/>
-		<Sidebar.Inset class="min-h-0 overflow-hidden border border-border shadow-sm">
+		<div data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			{@render children()}
 			<ReaderStatusBar
 				activeWorkspace={appState.workspace.activeWorkspace}
@@ -52,11 +54,11 @@
 				todoSummary={appState.todos}
 				pendingOperation={appState.workspace.pendingOperation}
 			/>
-		</Sidebar.Inset>
-		<WorkspaceCreationDialog
-			bind:open={appState.isWorkspaceCreationDialogOpen}
-			disabled={appState.workspace.isOperating || appState.workspace.isLoading}
-			createWorkspace={appState.workspace.create}
-		/>
-	</div>
+		</div>
+	</Sidebar.Inset>
+	<WorkspaceCreationDialog
+		bind:open={appState.isWorkspaceCreationDialogOpen}
+		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
+		createWorkspace={appState.workspace.create}
+	/>
 </Sidebar.Provider>
