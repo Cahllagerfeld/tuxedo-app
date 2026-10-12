@@ -322,6 +322,8 @@ export function createSessionBackend(
 				const outcome = await mutateTodo(
 					{ scope: targetScope, revision: targetRevision, workspaceId, lineNumber, expectedRaw },
 					(contents, item) => {
+						if (input.completed && item.completion_date && !input.completionDate)
+							throw Error("Choose a Completion date for a completed Todo item.");
 						const raw =
 							input.completed && input.priority
 								? [
