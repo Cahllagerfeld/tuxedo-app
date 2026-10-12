@@ -119,7 +119,7 @@ describe("TodoList", () => {
 		expect(onToggleComplete).toHaveBeenCalledWith(items[999]);
 		await page.getByRole("button", { name: "Actions for Todo item 1000", exact: true }).click();
 		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-		expect(onDelete).toHaveBeenCalledWith(items[999]);
+		expect(onDelete).toHaveBeenCalledWith(items[999], expect.any(HTMLButtonElement));
 		viewport.scrollTop = 0;
 		await expect.element(page.getByText("Todo item 1", { exact: true })).toBeVisible();
 		viewport.closest<HTMLElement>('[data-slot="scroll-area"]')!.style.height = "200px";
@@ -396,4 +396,46 @@ it("expands a drag started in the middle without losing unmounted Todo items", a
 	await expect
 		.poll(() => page.getByRole("list", { name: "Todo items" }).element().children.length)
 		.toBeLessThan(30);
+});
+
+it("row navigation crosses the virtualization window and keeps native controls separate", async () => {
+	const items = Array.from({ length: 1000 }, (_, index) => ({
+		...todoFile.items[0],
+		line_number: index + 1,
+		description: `Item ${index + 1}`,
+	}));
+	const onToggleComplete = vi.fn();
+	await render(TodoList, {
+		todoFile: { ...todoFile, items },
+		disabled: false,
+		onToggleComplete,
+		onDelete: vi.fn(),
+		onReorder: vi.fn(),
+	});
+	const list = page.getByRole("list", { name: "Todo items" });
+	await expect.element(list).toBeVisible();
+	(list.element() as HTMLElement).focus();
+	await userEvent.keyboard("{ArrowDown}{ArrowUp}");
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Item 1", exact: true }))
+		.toHaveFocus();
+	await userEvent.keyboard("{End}{ArrowDown}");
+	const last = page.getByRole("button", { name: "Navigate Item 1000", exact: true });
+	await expect.element(last).toHaveFocus();
+	await expect.element(last).toBeVisible();
+	await userEvent.keyboard("{Home}{ArrowDown}");
+	const second = page.getByRole("button", { name: "Navigate Item 2", exact: true });
+	await expect.element(second).toHaveFocus();
+	second
+		.element()
+		.dispatchEvent(new KeyboardEvent("keydown", { key: " ", repeat: true, bubbles: true }));
+	expect(onToggleComplete).not.toHaveBeenCalled();
+	await userEvent.keyboard("{Space}");
+	expect(onToggleComplete).toHaveBeenCalledTimes(1);
+	await userEvent.keyboard("{Tab}");
+	await expect
+		.element(page.getByRole("button", { name: "Reorder Item 2", exact: true }))
+		.toHaveFocus();
+	await userEvent.keyboard("{Space}{ArrowDown}{Escape}");
+	expect(onToggleComplete).toHaveBeenCalledTimes(1);
 });

@@ -12,6 +12,7 @@
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 	type Props = {
+		switcherOpen?: boolean;
 		workspaces: readonly Workspace[];
 		todoSummary: TodoFileSummary;
 		activeWorkspaceId: string | null;
@@ -26,6 +27,7 @@
 	};
 
 	let {
+		switcherOpen = $bindable(false),
 		workspaces,
 		todoSummary,
 		activeWorkspaceId,
@@ -47,6 +49,7 @@
 >
 	<Sidebar.Header class="p-3">
 		<WorkspaceSwitcher
+			bind:open={switcherOpen}
 			{workspaces}
 			{activeWorkspaceId}
 			{disabled}

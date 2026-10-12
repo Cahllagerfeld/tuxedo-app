@@ -12,6 +12,8 @@ export class AppState {
 	todoFilter = new TodoFilterState();
 	filteredTodoItems: ReturnType<TodoFilterState["filterItems"]>;
 	isWorkspaceCreationDialogOpen = $state(false);
+	isWorkspaceSwitcherOpen = $state(false);
+	isTodoCreationOpen = $state(false);
 
 	constructor(
 		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)

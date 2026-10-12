@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { setAppState } from "@/app/app-context";
 	import { AppState } from "@/app/app-state.svelte";
+	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import AppNavbar from "@/app/AppNavbar.svelte";
 	import ReaderStatusBar from "@/app/ReaderStatusBar.svelte";
 	import WorkspaceSidebar from "@/modules/workspace/ui/sidebar/index.svelte";
@@ -13,6 +14,7 @@
 	import "./layout.css";
 	let { children } = $props();
 
+	setShortcutScope();
 	const appState = new AppState();
 	setAppState(appState);
 
@@ -30,12 +32,13 @@
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
-	<AppNavbar />
+	<AppNavbar app={appState} />
 	<div
 		data-slot="app-inset"
 		class="relative m-1 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
 	>
 		<WorkspaceSidebar
+			bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
 			workspaces={appState.workspace.catalogue?.workspaces ?? []}
 			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 			todoSummary={appState.todos}

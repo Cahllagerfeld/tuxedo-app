@@ -13,7 +13,10 @@
 	} from "$lib/modules/workspace/state/workspace-session-types";
 	import { toast } from "svelte-sonner";
 
+	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
+	import { workspaceShortcuts as bindings } from "./shortcuts";
 	type Props = {
+		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
 		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
@@ -35,6 +38,7 @@
 	};
 
 	let {
+		open = $bindable(false),
 		workspaces,
 		activeWorkspaceId,
 		selectWorkspace,
@@ -80,7 +84,7 @@
 	}
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root bind:open>
 	<DropdownMenu.Trigger
 		>{#snippet child({ props })}<Button
 				{...props}
@@ -102,6 +106,7 @@
 				{:else}
 					<ChevronDown class="shrink-0" aria-hidden="true" />
 				{/if}
+				<ShortcutHint hotkey={bindings.workspace.key} />
 				<span class="sr-only"
 					>Select workspace: {activeWorkspace?.name ?? "No workspace selected"}</span
 				>
@@ -150,7 +155,7 @@
 		<DropdownMenu.Separator />
 		<DropdownMenu.Item {disabled} onclick={openCreationDialog}>
 			<Plus aria-hidden="true" />
-			New workspace
+			New workspace <ShortcutHint hotkey={bindings.createWorkspace.key} />
 		</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

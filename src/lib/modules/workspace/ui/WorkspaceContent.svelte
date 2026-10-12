@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { tick } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
@@ -16,30 +15,40 @@
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 	type Props = {
+		creationOpen?: boolean;
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		openWorkspaceCreationDialog: () => void;
 	};
 
-	let { workspace, todoFilter, filteredTodoItems, openWorkspaceCreationDialog }: Props = $props();
+	let {
+		creationOpen = $bindable(false),
+		workspace,
+		todoFilter,
+		filteredTodoItems,
+		openWorkspaceCreationDialog,
+	}: Props = $props();
 	let editingTodo = $state<TodoItem | null>(null);
-	let editTrigger: HTMLElement | null = null;
+	let todoList = $state<ReturnType<typeof TodoList>>();
+	let editRecovery: ReturnType<ReturnType<typeof TodoList>["captureFocus"]> | undefined;
 	let editingWorkspaceId = $state<string>();
 	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
-		editTrigger = trigger;
+		editRecovery = todoList?.captureFocus(todo, true, trigger);
 		editingWorkspaceId = workspace.activeWorkspace?.id;
 		editingTodo = todo;
 	}
-	function closeEdit() {
+	function closeEdit(uncertain = false) {
 		editingTodo = null;
-		void tick().then(() => editTrigger?.focus());
+		void editRecovery?.restore(uncertain);
 	}
 
 	let todoViewport = $state<HTMLElement | null>(null);
 
 	async function toggleTodoCompletion(todo: TodoItem) {
+		const recovery = todoList?.captureFocus(todo);
 		const result = await workspace.setCompletion(todo);
+		void recovery?.restore(result.status === "conflict");
 		if (result.status === "conflict") {
 			toast.error("Todo file reloaded");
 		} else if (result.status === "rejected") {
@@ -47,8 +56,10 @@
 		}
 	}
 
-	async function deleteTodoItem(todo: TodoItem) {
+	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
+		const recovery = todoList?.captureFocus(todo, false, trigger);
 		const result = await workspace.deleteTodo(todo);
+		void recovery?.restore(result.status === "conflict", result.status === "applied");
 		if (result.status === "conflict") {
 			toast.error("Todo file reloaded");
 		} else if (result.status === "rejected") {
@@ -74,6 +85,7 @@
 				</p>
 			</div>
 			<TodoEditorDialog
+				bind:open={creationOpen}
 				todoFile={workspace.todoFile}
 				saveTodoItem={workspace.createTodo}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
@@ -99,6 +111,7 @@
 			bind:viewportRef={todoViewport}
 			class="h-full w-full"
 			aria-label="Todo item results"
+			viewportTabIndex={-1}
 		>
 			{#if workspace.session.status === "loading"}
 				<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
@@ -148,18 +161,21 @@
 								>
 							{/if}
 						</Empty.Root>
-					{:else}
-						<TodoList
-							scrollElement={todoViewport}
-							todoFile={workspace.todoFile}
-							items={filteredTodoItems}
-							disabled={workspace.isOperating}
-							onToggleComplete={toggleTodoCompletion}
-							onDelete={deleteTodoItem}
-							onEdit={startEdit}
-							onReorder={reorderTodoItems}
-						/>
 					{/if}
+					<TodoList
+						showEmpty={workspace.todoFile.items.length === 0}
+						bind:this={todoList}
+						fallback={todoViewport}
+						workspaceId={workspace.activeWorkspace?.id ?? ""}
+						scrollElement={todoViewport}
+						todoFile={workspace.todoFile}
+						items={filteredTodoItems}
+						disabled={workspace.isOperating}
+						onToggleComplete={toggleTodoCompletion}
+						onDelete={deleteTodoItem}
+						onEdit={startEdit}
+						onReorder={reorderTodoItems}
+					/>
 				{:else}
 					<Empty.Root aria-label="No active workspace">
 						<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { SIDEBAR_SHORTCUT } from "./constants";
+	import { formatForDisplay } from "@tanstack/svelte-hotkeys";
 	import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
 	import { Button } from "$lib/shared/ui/button/index.js";
 	import { cn } from "$lib/shared/utils.js";
@@ -19,6 +21,7 @@
 
 <Button
 	bind:ref
+	title={`Toggle Sidebar (${formatForDisplay(SIDEBAR_SHORTCUT.key)})`}
 	data-sidebar="trigger"
 	data-slot="sidebar-trigger"
 	variant="ghost"

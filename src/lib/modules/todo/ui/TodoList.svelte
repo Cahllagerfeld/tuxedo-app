@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { createTodoListFocus } from "./todo-list-focus.svelte";
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import type { TodoFile } from "$lib/modules/todo/domain/todo";
+	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { dragHandle, dragHandleZone } from "svelte-dnd-action";
 	import GripVertical from "@lucide/svelte/icons/grip-vertical";
@@ -9,17 +12,23 @@
 
 	type TodoListProps = {
 		todoFile: TodoFile;
+		showEmpty?: boolean;
+		workspaceId?: string;
+		fallback?: HTMLElement | null;
 		scrollElement: HTMLElement | null;
 		items?: readonly TodoFile["items"][number][];
 		disabled: boolean;
 		onToggleComplete: (todo: TodoFile["items"][number]) => void;
-		onDelete: (todo: TodoFile["items"][number]) => void;
+		onDelete: (todo: TodoFile["items"][number], trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoFile["items"][number], trigger: HTMLButtonElement | null) => void;
 		onReorder?: (items: readonly TodoFile["items"][number][]) => void;
 	};
 
 	let {
 		todoFile,
+		showEmpty = true,
+		workspaceId = todoFile.path,
+		fallback = null,
 		scrollElement,
 		items = todoFile.items,
 		disabled,
@@ -46,12 +55,47 @@
 			return onReorder;
 		},
 	});
+
+	let root = $state<HTMLUListElement | null>(null);
+	const scope = getShortcutScope();
+	const focus = createTodoListFocus({
+		get items() {
+			return items;
+		},
+		get todoFile() {
+			return todoFile;
+		},
+		get workspaceId() {
+			return workspaceId;
+		},
+		get root() {
+			return root;
+		},
+		get fallback() {
+			return items.length > 0 ? root : (fallback ?? root);
+		},
+		get disabled() {
+			return disabled;
+		},
+		get dragging() {
+			return list.dragging;
+		},
+		scope,
+		reveal: list.reveal,
+		onToggle: (todo) => onToggleComplete(todo),
+		onEdit: (todo, trigger) => onEdit?.(todo, trigger),
+	});
+	export const captureFocus = focus.capture;
 </script>
 
 <svelte:window onkeydowncapture={list.cancelOnEscape} />
 
 {#if items.length > 0}
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 	<ul
+		bind:this={root}
+		tabindex={focus.index < 0 ? 0 : -1}
+		onkeydown={(event) => focus.keydown(event)}
 		aria-label="Todo items"
 		class="relative w-full"
 		use:dragHandleZone={list.zoneOptions}
@@ -61,14 +105,26 @@
 	>
 		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
-				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50"
+				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[:focus-visible]:bg-accent"
 				style:height={`${size}px`}
 				style:top={`${start}px`}
 				aria-posinset={index + 1}
 				aria-setsize={items.length}
-				onfocusin={() => list.focusItem(todo)}
+				onfocusin={() => {
+					list.focusItem(todo);
+					focus.remember(todo);
+				}}
 				onfocusout={list.onFocusOut}
 			>
+				<Button
+					variant="ghost"
+					type="button"
+					data-row-navigation={index}
+					aria-label={`Navigate ${todo.description}`}
+					tabindex={focus.index === index ? 0 : -1}
+					class="absolute inset-0 h-full w-full rounded-none p-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+					onkeydown={(event) => focus.keydown(event, todo)}
+				></Button>
 				{#if onReorder}
 					<div
 						role="button"
@@ -76,12 +132,12 @@
 						use:dragHandle
 						aria-disabled={disabled || items.length < 2}
 						aria-label={`Reorder ${todo.description}`}
-						class="ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
+						class="relative z-10 ml-3 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-40"
 					>
 						<GripVertical class="size-4" aria-hidden="true" />
 					</div>
 				{/if}
-				<div class="min-w-0 flex-1">
+				<div class="relative z-10 min-w-0 flex-1">
 					<TodoItem
 						{todo}
 						disabled={disabled || list.dragging}
@@ -93,7 +149,7 @@
 			</li>
 		{/each}
 	</ul>
-{:else}
+{:else if showEmpty}
 	<Empty.Root aria-label="No valid Todo items" class="min-h-full rounded-none border-0">
 		<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
 		<Empty.Header>

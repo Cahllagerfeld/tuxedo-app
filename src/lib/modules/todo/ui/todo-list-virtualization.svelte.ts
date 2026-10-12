@@ -87,6 +87,10 @@ export function createTodoListVirtualization(inputs: TodoListVirtualizationInput
 		focusItem(item: TodoItem) {
 			focusedLine = item.line_number;
 		},
+		reveal(item: TodoItem) {
+			focusedLine = item.line_number;
+			get(virtualizer).scrollToIndex(inputs.items.indexOf(item), { align: "auto" });
+		},
 		onFocusOut(event: FocusEvent) {
 			if (
 				!(event.currentTarget instanceof HTMLElement) ||

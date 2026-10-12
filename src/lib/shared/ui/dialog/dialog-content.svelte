@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { Dialog as DialogPrimitive } from "bits-ui";
 	import DialogPortal from "./dialog-portal.svelte";
 	import type { Snippet } from "svelte";
@@ -28,6 +30,7 @@
 <DialogPortal {...portalProps}>
 	<Dialog.Overlay />
 	<DialogPrimitive.Content
+		{@attach shortcutScope?.surface}
 		bind:ref
 		data-slot="dialog-content"
 		class={cn(

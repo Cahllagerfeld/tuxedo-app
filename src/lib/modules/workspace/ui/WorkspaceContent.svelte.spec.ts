@@ -1,5 +1,5 @@
 import { page, userEvent } from "vitest/browser";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { toast } from "svelte-sonner";
 import type {
@@ -652,4 +652,431 @@ test("editing a completed token-only item prefills empty Description and retains
 	});
 	await expect.element(page.getByRole("textbox", { name: /Description/ })).toHaveValue("Updated");
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("row navigation focus opens the existing editor and returns after Escape", async () => {
+	render(Harness, { desktop: adapter() });
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await expect.element(row).toBeVisible();
+	(row.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Enter}");
+	await expect.element(page.getByRole("dialog", { name: "Edit Todo item" })).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(row).toHaveFocus();
+});
+
+test("shell shortcuts open existing surfaces, show hints, and suspend background bindings", async () => {
+	await page.viewport(1200, 800);
+	render(Harness, { desktop: adapter(), shell: true });
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}p{/${mod}}`);
+	await expect.element(page.getByRole("menu")).toBeVisible();
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await userEvent.keyboard(`{${mod}>}{Shift>}N{/Shift}{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "Create workspace" })).toBeVisible();
+	await userEvent.keyboard(`{${mod}>}b{/${mod}}`);
+	expect(document.querySelector('[data-sidebar="sidebar"]')?.getAttribute("data-state")).not.toBe(
+		"collapsed"
+	);
+	await userEvent.keyboard("{Escape}");
+	await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "New Todo item" })).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+	await expect.element(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+	await expect.element(page.getByText("Open Workspace switcher", { exact: true })).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await userEvent.keyboard(`{${mod}>}/{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+});
+
+test.each(["next", "previous", "empty"])(
+	"completion hiding a focused row recovers to %s",
+	async (direction) => {
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
+		const items =
+			direction === "empty" ? [todo] : direction === "next" ? [todo, neighbor] : [neighbor, todo];
+		await page.viewport(1200, 800);
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				restoreSession: async () =>
+					({
+						...initial,
+						session: {
+							...initial.session,
+							todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+						},
+					}) as ConfirmedSession,
+				setTodoCompletion: async () => ({
+					status: "applied",
+					confirmed: confirmedTodo(
+						items.map((item) =>
+							item === todo ? { ...item, completed: true, raw: "x Plan release +Work" } : item
+						)
+					),
+				}),
+			}),
+		});
+		await page.getByRole("button", { name: /^Open / }).click();
+		const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+		await expect.element(row).toBeVisible();
+		(row.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}");
+		await expect.element(row).not.toBeInTheDocument();
+		if (direction === "empty") {
+			expect(document.activeElement).toBe(
+				document.querySelector(
+					'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+				)
+			);
+		} else
+			await expect
+				.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))
+				.toHaveFocus();
+	}
+);
+
+test("a delayed completion respects focus moved to another control", async () => {
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+	await page.viewport(1200, 800);
+	render(Harness, {
+		shell: true,
+		desktop: adapter({
+			setTodoCompletion: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		}),
+	});
+	await page.getByRole("button", { name: /^Open / }).click();
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await expect.element(row).toBeVisible();
+	(row.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	const fallback = document.querySelector<HTMLElement>(
+		'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+	)!;
+	fallback.focus();
+	finish({ status: "applied", confirmed: confirmedTodo([{ ...todo, completed: true }]) });
+	await expect.element(row).not.toBeInTheDocument();
+	expect(document.activeElement).toBe(fallback);
+});
+
+test("external refresh retains unchanged row focus and sends uncertain identity to the list", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	let notify!: (change: TodoFileChange) => void;
+	let loads = 0;
+	const changed = { ...todo, raw: "Different content", description: "Different content" };
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					revision: ++loads,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items: [loads < 3 ? todo : changed], skipped: [] },
+					},
+				}) as ConfirmedSession,
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await expect.element(row).toBeVisible();
+	(row.element() as HTMLElement).focus();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => loads).toBe(2);
+	await expect.element(row).toHaveFocus();
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("Different content", { exact: true })).toBeVisible();
+	await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
+});
+
+test("deleting through Actions focuses the next physical-line neighbor", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items: [todo, neighbor], skipped: [] },
+					},
+				}) as ConfirmedSession,
+			deleteTodo: async () => ({
+				status: "applied",
+				confirmed: confirmedTodo([{ ...neighbor, line_number: 1 }]),
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))
+		.toHaveFocus();
+});
+
+test.each([
+	["MacIntel", "Meta", "Control", "⌘"],
+	["Win32", "Control", "Meta", "Ctrl"],
+	["Linux x86_64", "Control", "Meta", "Ctrl"],
+])("%s uses its platform modifier and hint", async (platform, mod, other, hint) => {
+	const platformMock = vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+	const agentMock = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(platform);
+	try {
+		await page.viewport(1200, 800);
+		const view = await render(Harness, { desktop: adapter(), shell: true });
+		await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+		await userEvent.keyboard(`{${other}>}n{/${other}}`);
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+		await expect.element(page.getByRole("dialog", { name: "New Todo item" })).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+		await expect.element(page.getByRole("dialog")).toMatchTextContent(hint);
+		await view.unmount();
+	} finally {
+		platformMock.mockRestore();
+		agentMock.mockRestore();
+	}
+});
+
+test("shortcuts clean up on remount and modifier actions remain usable while typing", async () => {
+	await page.viewport(1200, 800);
+	const view = await render(Harness, { desktop: adapter(), shell: true });
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	await view.unmount();
+	render(Harness, { desktop: adapter(), shell: true });
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	const input = page.getByRole("searchbox", { name: "Find a filter" });
+	await input.fill("Work");
+	await userEvent.keyboard("{Space}{ArrowDown}{Enter}");
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}b{/${mod}}`);
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state"))
+		.toBe("collapsed");
+	await userEvent.keyboard(`{${mod}>}b{/${mod}}`);
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state"))
+		.toBe("expanded");
+	await userEvent.keyboard(`{${mod}>}k{/${mod}}`);
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("loading suspends mutations, help remains available, and held sidebar keys fire once", async () => {
+	await page.viewport(1200, 800);
+	let ready!: (session: ConfirmedSession) => void;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: () =>
+				new Promise((resolve) => {
+					ready = resolve;
+				}),
+		}),
+		shell: true,
+	});
+	await expect.element(page.getByText("Loading workspaces…", { exact: true })).toBeVisible();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	await userEvent.keyboard(`{${mod}>}p{/${mod}}`);
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	await userEvent.keyboard(`{${mod}>}/{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	ready(initial);
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	const options = {
+		key: "b",
+		code: "KeyB",
+		bubbles: true,
+		metaKey: mod === "Meta",
+		ctrlKey: mod === "Control",
+	};
+	document.dispatchEvent(new KeyboardEvent("keydown", options));
+	document.dispatchEvent(new KeyboardEvent("keydown", { ...options, repeat: true }));
+	document.dispatchEvent(new KeyboardEvent("keyup", options));
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state"))
+		.toBe("collapsed");
+});
+
+test("nested editor suggestions consume Escape before the editor and suppress background keys", async () => {
+	await page.viewport(1200, 800);
+	render(Harness, { desktop: adapter(), shell: true });
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	const dialog = page.getByRole("dialog", { name: "New Todo item" });
+	await expect.element(dialog).toBeVisible();
+	await dialog.getByPlaceholder("Choose or create a Project").click();
+	await expect.element(page.getByRole("listbox")).toBeVisible();
+	await userEvent.keyboard(`{${mod}>}b{/${mod}}`);
+	await userEvent.keyboard("{Escape}");
+	await expect.element(page.getByRole("listbox")).not.toBeInTheDocument();
+	await expect.element(dialog).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(dialog).not.toBeInTheDocument();
+});
+
+test("editing a row out of a Project filter returns focus to its visible neighbor", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1200, 800);
+	const neighbor = { ...todo, line_number: 2, raw: "Neighbor +Work", description: "Neighbor" };
+	render(Harness, {
+		shell: true,
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items: [todo, neighbor], skipped: [] },
+					},
+				}) as ConfirmedSession,
+			editTodo: async () => ({
+				status: "applied",
+				confirmed: confirmedTodo([
+					{ ...todo, raw: "Plan release +Home", projects: ["Home"] },
+					neighbor,
+				]),
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await expect.element(row).toBeVisible();
+	(row.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Enter}");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))
+		.toHaveFocus();
+});
+
+test.each(["applied", "conflict", "rejected"] as const)(
+	"row completion %s uses one admitted mutation and existing feedback",
+	async (status) => {
+		await page.viewport(1200, 800);
+		let calls = 0;
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				setTodoCompletion: () => {
+					calls++;
+					return new Promise((resolve) => {
+						finish = resolve;
+					});
+				},
+			}),
+		});
+		const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+		await expect.element(row).toBeVisible();
+		(row.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Space}{Enter}");
+		const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+		await userEvent.keyboard(`{${mod}>}p{/${mod}}`);
+		await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		expect(calls).toBe(1);
+		const confirmed = confirmedTodo([
+			{
+				...todo,
+				completed: status === "applied",
+				raw: status === "applied" ? "x Plan release +Work" : "Changed",
+				description: status === "applied" ? todo.description : "Changed",
+			},
+		]);
+		if (status === "rejected") finish({ status, message: "Permission denied" });
+		else if (status === "conflict") finish({ status, confirmed, message: "Changed externally" });
+		else finish({ status, confirmed });
+		if (status === "conflict") {
+			await expect.element(page.getByText("Todo file reloaded", { exact: true })).toBeVisible();
+			await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
+		} else {
+			await expect.element(row).toHaveFocus();
+			if (status === "rejected")
+				await expect.element(page.getByText("Permission denied", { exact: true })).toBeVisible();
+			else
+				await expect
+					.element(
+						page.getByRole("checkbox", { name: "Mark Plan release incomplete", exact: true })
+					)
+					.toBeChecked();
+		}
+	}
+);
+
+test("Workspace switching clears old navigation focus even when both files have the same line and content", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1200, 800);
+	const secondId = "550e8400-e29b-41d4-a716-446655440001";
+	const secondWorkspace = {
+		...initial.session.catalogue.workspaces[0],
+		id: secondId,
+		name: "Home",
+		todo_path: "/tmp/home.todo",
+	};
+	const catalogue = {
+		...initial.session.catalogue,
+		workspaces: [...initial.session.catalogue.workspaces, secondWorkspace],
+	};
+	let mutations = 0;
+	render(Harness, {
+		shell: true,
+		desktop: adapter({
+			restoreSession: async () =>
+				({ ...initial, session: { ...initial.session, catalogue } }) as ConfirmedSession,
+			switchWorkspace: async () => ({
+				status: "applied",
+				confirmed: {
+					...initial,
+					revision: 2,
+					session: {
+						...initial.session,
+						catalogue: { ...catalogue, active_workspace_id: secondId },
+						todo_file: { path: "/tmp/home.todo", items: [todo], skipped: [] },
+					},
+				} as ConfirmedSession,
+			}),
+			setTodoCompletion: async () => {
+				mutations++;
+				return { status: "rejected", message: "unused" };
+			},
+		}),
+	});
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await expect.element(row).toBeVisible();
+	(row.element() as HTMLElement).focus();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}p{/${mod}}`);
+	await page.getByRole("menuitem", { name: "Home", exact: true }).click();
+	await expect.element(page.getByLabelText("Reader status")).toMatchTextContent("Workspace: Home");
+	await expect.element(row).toHaveAttribute("tabindex", "-1");
+	await userEvent.keyboard("{Space}");
+	expect(mutations).toBe(0);
 });

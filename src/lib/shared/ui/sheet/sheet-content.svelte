@@ -3,6 +3,8 @@
 </script>
 
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { Dialog as SheetPrimitive } from "bits-ui";
 	import XIcon from "@lucide/svelte/icons/x";
 	import { Button } from "$lib/shared/ui/button/index.js";
@@ -31,6 +33,7 @@
 <SheetPortal {...portalProps}>
 	<SheetOverlay />
 	<SheetPrimitive.Content
+		{@attach shortcutScope?.surface}
 		bind:ref
 		data-slot="sheet-content"
 		data-side={side}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	const shortcutScope = getShortcutScope();
 	import { AlertDialog as AlertDialogPrimitive } from "bits-ui";
 	import AlertDialogPortal from "./alert-dialog-portal.svelte";
 	import AlertDialogOverlay from "./alert-dialog-overlay.svelte";
@@ -21,6 +23,7 @@
 <AlertDialogPortal {...portalProps}>
 	<AlertDialogOverlay />
 	<AlertDialogPrimitive.Content
+		{@attach shortcutScope?.surface}
 		bind:ref
 		data-slot="alert-dialog-content"
 		data-size={size}

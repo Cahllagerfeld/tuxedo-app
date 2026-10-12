@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { rowShortcuts } from "./shortcuts";
+	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
@@ -12,7 +14,7 @@
 		todo: TodoItem;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
-		onDelete: (todo: TodoItem) => void;
+		onDelete: (todo: TodoItem, trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	};
 
@@ -82,10 +84,15 @@
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content align="end">
 			<DropdownMenu.Item disabled={disabled || !onEdit} onSelect={() => onEdit?.(todo, menuTrigger)}
-				><Pencil aria-hidden="true" />Edit</DropdownMenu.Item
+				><Pencil aria-hidden="true" />Edit <ShortcutHint
+					hotkey={rowShortcuts.edit.key}
+				/></DropdownMenu.Item
 			>
 			<DropdownMenu.Separator />
-			<DropdownMenu.Item {disabled} variant="destructive" onSelect={() => onDelete(todo)}
+			<DropdownMenu.Item
+				{disabled}
+				variant="destructive"
+				onSelect={() => onDelete(todo, menuTrigger)}
 				><Trash2 aria-hidden="true" />Delete</DropdownMenu.Item
 			>
 		</DropdownMenu.Content>
