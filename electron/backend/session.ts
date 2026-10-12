@@ -1,11 +1,13 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { setTodoCompletionLine } from "./complete-todo";
 import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
 import { atomicWrite } from "./atomic-write";
 import { appendTodoLine, createTodoLine } from "./create-todo";
 import { readTodoContents, parseTodoFile } from "./todo-file";
-import { randomUUID } from "node:crypto";
+import { Cause, Context, Data, Effect, Layer, ManagedRuntime, Semaphore } from "effect";
+import { FileSystem, FileSystemFailure, fileSystemLayer } from "./filesystem";
+import { Identity, identityLayer } from "./identity";
 import type { TodoFileObservationAdapter } from "./observation";
 import {
 	catalogueSchema,
@@ -19,403 +21,614 @@ import {
 	setTodoCompletionRequestSchema,
 	type Catalogue,
 	type DesktopRequest,
+	type DesktopResponse,
 	type TodoFile,
 	type ConfirmedSession,
 	type DesktopAPI,
 	type TodoFileChange,
 } from "../../src/lib/shared/desktop/contract";
 type SessionBackend = Omit<DesktopAPI, "selectTodoFile">;
+type SessionOperation = keyof SessionBackend;
+type SessionEffects = {
+	[K in SessionOperation]: (request: DesktopRequest<K>) => Effect.Effect<DesktopResponse<K>>;
+};
+export class WorkspaceSession extends Context.Service<WorkspaceSession, SessionEffects>()(
+	"tuxedo/backend/WorkspaceSession"
+) {}
+class WorkspaceFailure extends Data.TaggedError("WorkspaceFailure")<{ message: string }> {}
+type LifecycleFailure = FileSystemFailure | WorkspaceFailure;
+const validate = <A>(parse: () => A) =>
+	Effect.try({
+		try: parse,
+		catch: (error) =>
+			new WorkspaceFailure({ message: error instanceof Error ? error.message : String(error) }),
+	});
+export type SessionDependencies = {
+	filesystem?: FileSystem["Service"];
+	identity?: Identity["Service"];
+};
+
+function sessionLayer(
+	cataloguePath: string,
+	observation: TodoFileObservationAdapter | undefined,
+	onTodoFileChanged: (event: TodoFileChange) => void,
+	runEffect: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>
+) {
+	return Layer.effect(
+		WorkspaceSession,
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const identity = yield* Identity;
+			const semaphore = yield* Semaphore.make(1);
+			const scope = identity.uuid();
+			yield* Effect.addFinalizer(() => Effect.sync(() => observation?.stop()));
+			let revision = 0;
+			let confirmed: ConfirmedSession | undefined;
+			let confirmedTodoContents: string | undefined;
+			let busy = false;
+			const diagnostic = (operation: string, cause: unknown) =>
+				Effect.sync(() =>
+					console.error(`Workspace session ${operation} failed unexpectedly`, cause)
+				);
+			const serialize = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
+				semaphore.withPermit(
+					Effect.gen(function* () {
+						busy = true;
+						return yield* effect;
+					}).pipe(
+						Effect.ensuring(
+							Effect.sync(() => {
+								busy = false;
+								syncObservation();
+							})
+						),
+						Effect.uninterruptible,
+						Effect.withSpan(`WorkspaceSession.${operation}`)
+					)
+				);
+			const syncObservation = () => {
+				const current = confirmed;
+				const ready = current?.session.status === "ready" ? current.session : null;
+				try {
+					observation?.retarget(ready?.todo_file.path ?? null, () => {
+						if (busy || !current || !ready || current !== confirmed) return;
+						void runEffect(
+							serialize(
+								"observe",
+								Effect.gen(function* () {
+									if (current !== confirmed) return;
+									const contents = yield* fs
+										.read(ready.todo_file.path)
+										.pipe(Effect.catchTag("FileSystemFailure", () => Effect.succeed(undefined)));
+									if (contents === confirmedTodoContents) return;
+									onTodoFileChanged({
+										scope: current.scope,
+										revision: current.revision,
+										workspaceId: ready.catalogue.active_workspace_id!,
+										todoPath: ready.todo_file.path,
+									});
+								})
+							).pipe(Effect.catchCause((cause) => diagnostic("observe", Cause.pretty(cause))))
+						);
+					});
+				} catch (cause) {
+					// Observation stays best-effort even when a platform adapter fails.
+					console.error("Workspace session observation failed", cause);
+				}
+			};
+			const projectCatalogue = (catalogue: Catalogue) =>
+				Effect.gen(function* () {
+					const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
+					if (!active) return { session: { status: "empty" as const, catalogue, warning: null } };
+					return yield* fs.read(active.todo_path).pipe(
+						Effect.map((todoContents) => ({
+							session: {
+								status: "ready" as const,
+								catalogue,
+								todo_file: parseTodoFile(active.todo_path, todoContents),
+							},
+							todoContents,
+						})),
+						Effect.catchTag("FileSystemFailure", () =>
+							Effect.succeed({
+								session: {
+									status: "empty" as const,
+									catalogue,
+									warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
+								},
+							})
+						)
+					);
+				});
+			const load = (): Effect.Effect<{ confirmed: ConfirmedSession; todoContents?: string }> =>
+				Effect.gen(function* () {
+					const contents = yield* fs.read(cataloguePath);
+					const catalogue = yield* validate(() => catalogueSchema.parse(JSON.parse(contents)));
+					return yield* projectCatalogue(catalogue);
+				}).pipe(
+					Effect.catchTags({
+						FileSystemFailure: (error) =>
+							Effect.succeed({
+								session:
+									error.cause &&
+									typeof error.cause === "object" &&
+									"code" in error.cause &&
+									error.cause.code === "ENOENT"
+										? {
+												status: "empty" as const,
+												catalogue: {
+													version: 1 as const,
+													workspaces: [],
+													active_workspace_id: null,
+												},
+												warning: null,
+											}
+										: unavailableCatalogue(),
+							}),
+						WorkspaceFailure: () => Effect.succeed({ session: unavailableCatalogue() }),
+					}),
+					Effect.map((projected) => ({
+						confirmed: { scope, revision: revision++, session: projected.session },
+						todoContents: "todoContents" in projected ? projected.todoContents : undefined,
+					}))
+				);
+			const unavailableCatalogue = () => ({
+				status: "unavailable" as const,
+				error: `Cannot read Workspace catalogue at ${cataloguePath}. Check its permissions or restore a valid version-1 backup. The file has been preserved.`,
+			});
+			const accept = (next: ConfirmedSession, todoContents?: string): ConfirmedSession => {
+				confirmed = next;
+				confirmedTodoContents = todoContents;
+				return next;
+			};
+			const confirmTodo = (
+				previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
+				workspaceId: string,
+				todo_file: TodoFile,
+				contents: string
+			) => {
+				const next = accept(
+					{ scope, revision: revision++, session: { ...previous, todo_file } },
+					contents
+				);
+				return { scope, revision: next.revision, workspaceId, todo_file };
+			};
+			const commitCatalogue = (
+				catalogue: Catalogue,
+				todo?: { todo_file: TodoFile; todoContents: string }
+			) =>
+				Effect.gen(function* () {
+					yield* atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n").pipe(
+						Effect.provideService(FileSystem, fs)
+					);
+					const projected = todo
+						? {
+								session: { status: "ready" as const, catalogue, todo_file: todo.todo_file },
+								todoContents: todo.todoContents,
+							}
+						: yield* projectCatalogue(catalogue);
+					return {
+						status: "applied" as const,
+						confirmed: accept(
+							{ scope, revision: revision++, session: projected.session },
+							"todoContents" in projected ? projected.todoContents : undefined
+						),
+					};
+				});
+			const availableCatalogue = () =>
+				Effect.gen(function* () {
+					const existing = (yield* load()).confirmed;
+					if (existing.session.status === "unavailable")
+						return yield* Effect.fail(new WorkspaceFailure({ message: existing.session.error }));
+					return existing.session.catalogue;
+				});
+			const lifecycle = <A>(
+				operation: string,
+				prefix: string,
+				effect: Effect.Effect<A, LifecycleFailure>
+			) =>
+				serialize(
+					operation,
+					effect.pipe(
+						Effect.catchTags({
+							FileSystemFailure: (error) =>
+								Effect.succeed({ status: "rejected" as const, message: prefix + error.message }),
+							WorkspaceFailure: (error) =>
+								Effect.succeed({ status: "rejected" as const, message: prefix + error.message }),
+						}),
+						Effect.catchDefect((cause) =>
+							diagnostic(operation, cause).pipe(
+								Effect.as({
+									status: "rejected" as const,
+									message: prefix + "An unexpected error occurred. Try again.",
+								})
+							)
+						)
+					)
+				);
+			const read = (operation: "readSession" | "restoreSession") =>
+				serialize(
+					operation,
+					Effect.gen(function* () {
+						if (operation === "restoreSession" || !confirmed) {
+							const loaded = yield* load();
+							accept(loaded.confirmed, loaded.todoContents);
+						}
+						return confirmed!;
+					}).pipe(
+						Effect.catchDefect((cause) =>
+							diagnostic(operation, cause).pipe(
+								Effect.map(
+									() =>
+										confirmed ??
+										accept({
+											scope,
+											revision: revision++,
+											session: {
+												status: "unavailable",
+												error:
+													"Cannot restore the Workspace session. An unexpected error occurred. Try again.",
+											},
+										})
+								)
+							)
+						)
+					)
+				);
+			// Transitional Todo-item methods run in the same runtime, state, and permit.
+			const legacyOperation = <A>(operation: string, run: () => Promise<A>) =>
+				serialize(operation, Effect.promise(run));
+			const rejected = async <T>(prefix: string, operation: () => Promise<T>) => {
+				try {
+					return await operation();
+				} catch (error) {
+					return {
+						status: "rejected" as const,
+						message: prefix + (error instanceof Error ? error.message : String(error)),
+					};
+				}
+			};
+			const todoMutationContext = async (
+				target: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
+			) => {
+				if (!confirmed) {
+					const loaded = await runEffect(load());
+					confirmed = loaded.confirmed;
+					confirmedTodoContents = loaded.todoContents;
+				}
+				const previous = confirmed;
+				if (
+					previous.scope !== target.scope ||
+					previous.revision !== target.revision ||
+					previous.session.status !== "ready" ||
+					previous.session.catalogue.active_workspace_id !== target.workspaceId
+				)
+					throw Error("The Workspace session changed. Try again with its current Todo file.");
+				const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
+				const workspace = catalogue.workspaces.find(
+					(workspace) => workspace.id === target.workspaceId
+				);
+				if (
+					catalogue.active_workspace_id !== target.workspaceId ||
+					!workspace ||
+					workspace.todo_path !== previous.session.todo_file.path
+				)
+					throw Error("The Active workspace changed.");
+				return { previous: { ...previous, session: previous.session }, workspace };
+			};
+			const commitTodo = async (
+				previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
+				workspaceId: string,
+				todo_file: TodoFile,
+				contents: string
+			) => {
+				const mode = (await stat(todo_file.path)).mode;
+				return await runEffect(
+					atomicWrite(todo_file.path, contents, mode).pipe(
+						Effect.provideService(FileSystem, fs),
+						Effect.map(() => ({
+							status: "applied" as const,
+							confirmed: confirmTodo(previous, workspaceId, todo_file, contents),
+						})),
+						Effect.uninterruptible
+					)
+				);
+			};
+			const mutateTodo = async (
+				request: DesktopRequest<"deleteTodo">,
+				transform: (contents: string, item: TodoFile["items"][number]) => string
+			): Promise<Awaited<ReturnType<DesktopAPI["deleteTodo"]>>> => {
+				try {
+					const input = todoMutationRequestSchema.parse(request);
+					const { previous, workspace } = await todoMutationContext(input);
+					const expected = parseTodoFile(workspace.todo_path, input.expectedRaw);
+					if (
+						expected.items.length !== 1 ||
+						expected.skipped.length ||
+						/\n/.test(input.expectedRaw)
+					)
+						throw Error("Invalid Todo item target.");
+					const contents = await readTodoContents(workspace.todo_path);
+					const current = parseTodoFile(workspace.todo_path, contents);
+					const item = current.items.find((item) => item.line_number === input.lineNumber);
+					if (!item || item.raw !== input.expectedRaw) {
+						return {
+							status: "conflict",
+							message: "The Todo item changed on disk. Review its current contents.",
+							confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
+						};
+					}
+					const rewritten = transform(contents, item);
+					const todo_file = parseTodoFile(workspace.todo_path, rewritten);
+					return await commitTodo(previous.session, input.workspaceId, todo_file, rewritten);
+				} catch (error) {
+					return {
+						status: "rejected",
+						message: error instanceof Error ? error.message : String(error),
+					};
+				}
+			};
+
+			const mutateTodoFile = async (
+				input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
+				transform: (contents: string, todoFile: TodoFile) => string
+			): Promise<Awaited<ReturnType<DesktopAPI["reorderTodo"]>>> => {
+				const { previous, workspace } = await todoMutationContext(input);
+				const contents = await readTodoContents(workspace.todo_path);
+				const current = parseTodoFile(workspace.todo_path, contents);
+				if (contents !== confirmedTodoContents) {
+					return {
+						status: "conflict",
+						message: "The Todo file changed on disk. Review its current contents.",
+						confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
+					};
+				}
+				const rewritten = transform(contents, current);
+				if (rewritten === contents)
+					return {
+						status: "applied",
+						confirmed: {
+							scope,
+							revision: previous.revision,
+							workspaceId: input.workspaceId,
+							todo_file: current,
+						},
+					};
+				const todo_file = parseTodoFile(workspace.todo_path, rewritten);
+				return await commitTodo(previous.session, input.workspaceId, todo_file, rewritten);
+			};
+			const todoOperations: Pick<
+				SessionEffects,
+				"reorderTodo" | "createTodo" | "editTodo" | "deleteTodo" | "setTodoCompletion"
+			> = {
+				reorderTodo: (request) =>
+					legacyOperation("reorderTodo", () =>
+						rejected("Cannot reorder Todo items: ", async () => {
+							const input = reorderTodoRequestSchema.parse(request);
+							return await mutateTodoFile(input, (contents, todoFile) => {
+								const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
+								if (input.lineNumbers.some((line) => !byLine.has(line)))
+									throw Error("Invalid Todo item position.");
+								const positions = [...input.lineNumbers].sort((a, b) => a - b);
+								return replaceTodoLines(
+									contents,
+									positions.map((lineNumber, index) => ({
+										lineNumber,
+										raw: byLine.get(input.lineNumbers[index])!,
+									}))
+								);
+							});
+						})
+					),
+				createTodo: (request) =>
+					legacyOperation("createTodo", () =>
+						rejected("Cannot create Todo item: ", async () => {
+							const input = createTodoRequestSchema.parse(request);
+							return await mutateTodoFile(input, (contents) =>
+								appendTodoLine(contents, createTodoLine(input))
+							);
+						})
+					),
+				editTodo: (request) =>
+					legacyOperation("editTodo", async () => {
+						const parsed = editTodoRequestSchema.safeParse(request);
+						if (!parsed.success)
+							return { status: "rejected" as const, message: "Invalid Todo-item edit." };
+						const input = parsed.data;
+						const {
+							scope: targetScope,
+							revision: targetRevision,
+							workspaceId,
+							lineNumber,
+							expectedRaw,
+						} = input;
+						const outcome = await mutateTodo(
+							{
+								scope: targetScope,
+								revision: targetRevision,
+								workspaceId,
+								lineNumber,
+								expectedRaw,
+							},
+							(contents, item) => {
+								if (input.completed && item.completion_date && !input.completionDate)
+									throw Error("Choose a Completion date for a completed Todo item.");
+								const raw =
+									input.completed && input.priority
+										? [
+												"x",
+												input.completionDate,
+												createTodoLine({ ...input, completed: false, completionDate: null }),
+											]
+												.filter(Boolean)
+												.join(" ")
+										: createTodoLine(input);
+								return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
+							}
+						);
+						return outcome.status === "rejected"
+							? { ...outcome, message: `Cannot edit Todo item: ${outcome.message}` }
+							: outcome;
+					}),
+				deleteTodo: (request) =>
+					legacyOperation("deleteTodo", async () => {
+						const outcome = await mutateTodo(request, (contents) =>
+							deleteTodoLine(contents, request.lineNumber)
+						);
+						return outcome.status === "rejected"
+							? { ...outcome, message: `Cannot delete Todo item: ${outcome.message}` }
+							: outcome;
+					}),
+				setTodoCompletion: (request) =>
+					legacyOperation("setTodoCompletion", async () => {
+						const parsed = setTodoCompletionRequestSchema.safeParse(request);
+						if (!parsed.success)
+							return { status: "rejected" as const, message: "Invalid completion request." };
+						const { completed, ...target } = parsed.data;
+						return mutateTodo(target, (contents, item) => {
+							return replaceTodoLines(contents, [
+								{ lineNumber: item.line_number, raw: setTodoCompletionLine(item, completed) },
+							]);
+						});
+					}),
+			};
+			return WorkspaceSession.of({
+				...todoOperations,
+				readSession: () => read("readSession"),
+				restoreSession: () => read("restoreSession"),
+				createWorkspace: (request) =>
+					lifecycle(
+						"createWorkspace",
+						"Cannot create Workspace: ",
+						Effect.gen(function* () {
+							const input = yield* validate(() => createWorkspaceRequestSchema.parse(request));
+							const todoPath = yield* fs.realpath(input.todoPath);
+							const todoContents = yield* fs.read(todoPath);
+							const todo_file = parseTodoFile(todoPath, todoContents);
+							if (todo_file.skipped.length)
+								return yield* Effect.fail(
+									new WorkspaceFailure({
+										message: "Cannot create Workspace: Todo file contains skipped lines.",
+									})
+								);
+							const previous = yield* availableCatalogue();
+							const workspace = {
+								id: identity.uuid(),
+								name: input.name,
+								color: input.color,
+								todo_path: todoPath,
+								created_at: identity.now(),
+							};
+							const catalogue = yield* validate(() =>
+								catalogueSchema.parse({
+									...previous,
+									active_workspace_id: workspace.id,
+									workspaces: [...previous.workspaces, workspace],
+								})
+							);
+							return yield* commitCatalogue(catalogue, { todo_file, todoContents });
+						})
+					),
+				switchWorkspace: (request) =>
+					lifecycle(
+						"switchWorkspace",
+						"Cannot open Workspace: ",
+						Effect.gen(function* () {
+							const { workspaceId } = yield* validate(() =>
+								switchWorkspaceRequestSchema.parse(request)
+							);
+							const previous = yield* availableCatalogue();
+							const workspace = previous.workspaces.find((w) => w.id === workspaceId);
+							if (!workspace)
+								return yield* Effect.fail(
+									new WorkspaceFailure({ message: "Workspace does not exist." })
+								);
+							const todoContents = yield* fs.read(workspace.todo_path);
+							const todo_file = parseTodoFile(workspace.todo_path, todoContents);
+							return yield* commitCatalogue(
+								{ ...previous, active_workspace_id: workspaceId },
+								{ todo_file, todoContents }
+							);
+						})
+					),
+				deleteWorkspace: (request) =>
+					lifecycle(
+						"deleteWorkspace",
+						"Cannot delete Workspace: ",
+						Effect.gen(function* () {
+							const { workspaceId } = yield* validate(() =>
+								deleteWorkspaceRequestSchema.parse(request)
+							);
+							const previous = yield* availableCatalogue();
+							if (!previous.workspaces.some((w) => w.id === workspaceId))
+								return yield* Effect.fail(
+									new WorkspaceFailure({ message: "Workspace does not exist." })
+								);
+							const catalogue = yield* validate(() =>
+								catalogueSchema.parse({
+									...previous,
+									workspaces: previous.workspaces.filter((w) => w.id !== workspaceId),
+									active_workspace_id:
+										previous.active_workspace_id === workspaceId
+											? null
+											: previous.active_workspace_id,
+								})
+							);
+							return yield* commitCatalogue(catalogue);
+						})
+					),
+			});
+		})
+	);
+}
+
+export function createSessionRuntime(
+	cataloguePath: string,
+	observation?: TodoFileObservationAdapter,
+	onTodoFileChanged: (event: TodoFileChange) => void = () => {},
+	dependencies: SessionDependencies = {}
+) {
+	const capabilities = Layer.merge(
+		dependencies.filesystem ? Layer.succeed(FileSystem, dependencies.filesystem) : fileSystemLayer,
+		dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
+	);
+	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged, (effect) =>
+		runtime.runPromise(effect)
+	).pipe(Layer.provide(capabilities));
+	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession, never> =
+		ManagedRuntime.make(layer);
+	return runtime;
+}
+
+export function desktopSessionBackend(
+	runtime: ReturnType<typeof createSessionRuntime>
+): SessionBackend & { dispose: () => Promise<void> } {
+	const run = <K extends SessionOperation>(operation: K, request: DesktopRequest<K>) =>
+		runtime.runPromise(
+			WorkspaceSession.use((session) => session[operation](request)).pipe(Effect.uninterruptible)
+		);
+	return {
+		readSession: (request) => run("readSession", request),
+		restoreSession: (request) => run("restoreSession", request),
+		createWorkspace: (request) => run("createWorkspace", request),
+		switchWorkspace: (request) => run("switchWorkspace", request),
+		deleteWorkspace: (request) => run("deleteWorkspace", request),
+		createTodo: (request) => run("createTodo", request),
+		editTodo: (request) => run("editTodo", request),
+		setTodoCompletion: (request) => run("setTodoCompletion", request),
+		deleteTodo: (request) => run("deleteTodo", request),
+		reorderTodo: (request) => run("reorderTodo", request),
+		dispose: () => runtime.dispose(),
+	};
+}
 
 export function createSessionBackend(
 	cataloguePath: string,
 	observation?: TodoFileObservationAdapter,
-	onTodoFileChanged: (event: TodoFileChange) => void = () => {}
-): SessionBackend {
-	const scope = randomUUID();
-	let revision = 0;
-	let confirmed: ConfirmedSession | undefined;
-	let confirmedTodoContents: string | undefined;
-	let queue: Promise<unknown> = Promise.resolve();
-	let busy = false;
-	const syncObservation = () => {
-		const current = confirmed;
-		const ready = current?.session.status === "ready" ? current.session : null;
-		observation?.retarget(ready?.todo_file.path ?? null, () => {
-			if (busy || !current || !ready || current !== confirmed) return;
-			void serialize(async () => {
-				if (current !== confirmed) return;
-				try {
-					// Delayed watch events from own writes must not interrupt a renderer drag.
-					if ((await readTodoContents(ready.todo_file.path)) === confirmedTodoContents) return;
-				} catch {
-					// An unreadable file still needs restoration into Empty.
-				}
-				onTodoFileChanged({
-					scope: current.scope,
-					revision: current.revision,
-					workspaceId: ready.catalogue.active_workspace_id!,
-					todoPath: ready.todo_file.path,
-				});
-			});
-		});
-	};
-	const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
-		const run = async () => {
-			busy = true;
-			try {
-				return await operation();
-			} finally {
-				busy = false;
-				syncObservation();
-			}
-		};
-		const next = queue.then(run, run);
-		queue = next.catch(() => undefined);
-		return next;
-	};
-	const projectCatalogue = async (
-		catalogue: Catalogue
-	): Promise<{ session: ConfirmedSession["session"]; todoContents?: string }> => {
-		const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
-		if (!active) return { session: { status: "empty", catalogue, warning: null } };
-		try {
-			const todoContents = await readTodoContents(active.todo_path);
-			return {
-				session: {
-					status: "ready",
-					catalogue,
-					todo_file: parseTodoFile(active.todo_path, todoContents),
-				},
-				todoContents,
-			};
-		} catch {
-			return {
-				session: {
-					status: "empty",
-					catalogue,
-					warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
-				},
-			};
-		}
-	};
-	const load = async (): Promise<{ confirmed: ConfirmedSession; todoContents?: string }> => {
-		let session: ConfirmedSession["session"];
-		let todoContents: string | undefined;
-		try {
-			const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
-			const projected = await projectCatalogue(catalogue);
-			session = projected.session;
-			todoContents = projected.todoContents;
-		} catch (error) {
-			if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-				session = {
-					status: "empty",
-					catalogue: { version: 1, workspaces: [], active_workspace_id: null },
-					warning: null,
-				};
-			else
-				session = {
-					status: "unavailable",
-					error: `Cannot read Workspace catalogue at ${cataloguePath}. Check its permissions or restore a valid version-1 backup. The file has been preserved.`,
-				};
-		}
-		return { confirmed: { scope, revision: revision++, session }, todoContents };
-	};
-	const accept = (next: ConfirmedSession, todoContents?: string): ConfirmedSession => {
-		confirmed = next;
-		confirmedTodoContents = todoContents;
-		return next;
-	};
-	const confirmTodo = (
-		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
-		workspaceId: string,
-		todo_file: TodoFile,
-		contents: string
-	) => {
-		const next = accept(
-			{ scope, revision: revision++, session: { ...previous, todo_file } },
-			contents
-		);
-		return { scope, revision: next.revision, workspaceId, todo_file };
-	};
-	const commitCatalogue = async (
-		catalogue: Catalogue,
-		todo?: { todo_file: TodoFile; todoContents: string }
-	) => {
-		await atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n");
-		const projected = todo
-			? {
-					session: { status: "ready" as const, catalogue, todo_file: todo.todo_file },
-					todoContents: todo.todoContents,
-				}
-			: await projectCatalogue(catalogue);
-		return {
-			status: "applied" as const,
-			confirmed: accept(
-				{ scope, revision: revision++, session: projected.session },
-				projected.todoContents
-			),
-		};
-	};
-	const rejected = async <T>(prefix: string, operation: () => Promise<T>) => {
-		try {
-			return await operation();
-		} catch (error) {
-			return {
-				status: "rejected" as const,
-				message: prefix + (error instanceof Error ? error.message : String(error)),
-			};
-		}
-	};
-	const todoMutationContext = async (
-		target: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
-	) => {
-		if (!confirmed) {
-			const loaded = await load();
-			confirmed = loaded.confirmed;
-			confirmedTodoContents = loaded.todoContents;
-		}
-		const previous = confirmed;
-		if (
-			previous.scope !== target.scope ||
-			previous.revision !== target.revision ||
-			previous.session.status !== "ready" ||
-			previous.session.catalogue.active_workspace_id !== target.workspaceId
-		)
-			throw Error("The Workspace session changed. Try again with its current Todo file.");
-		const catalogue = catalogueSchema.parse(JSON.parse(await readFile(cataloguePath, "utf8")));
-		const workspace = catalogue.workspaces.find((workspace) => workspace.id === target.workspaceId);
-		if (
-			catalogue.active_workspace_id !== target.workspaceId ||
-			!workspace ||
-			workspace.todo_path !== previous.session.todo_file.path
-		)
-			throw Error("The Active workspace changed.");
-		return { previous: { ...previous, session: previous.session }, workspace };
-	};
-	const mutateTodo = async (
-		request: DesktopRequest<"deleteTodo">,
-		transform: (contents: string, item: TodoFile["items"][number]) => string
-	): Promise<Awaited<ReturnType<DesktopAPI["deleteTodo"]>>> => {
-		try {
-			const input = todoMutationRequestSchema.parse(request);
-			const { previous, workspace } = await todoMutationContext(input);
-			const expected = parseTodoFile(workspace.todo_path, input.expectedRaw);
-			if (expected.items.length !== 1 || expected.skipped.length || /\n/.test(input.expectedRaw))
-				throw Error("Invalid Todo item target.");
-			const contents = await readTodoContents(workspace.todo_path);
-			const current = parseTodoFile(workspace.todo_path, contents);
-			const item = current.items.find((item) => item.line_number === input.lineNumber);
-			if (!item || item.raw !== input.expectedRaw) {
-				return {
-					status: "conflict",
-					message: "The Todo item changed on disk. Review its current contents.",
-					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
-				};
-			}
-			const rewritten = transform(contents, item);
-			const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-			await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
-			return {
-				status: "applied",
-				confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
-			};
-		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	};
-
-	const mutateTodoFile = async (
-		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
-		transform: (contents: string, todoFile: TodoFile) => string
-	): Promise<Awaited<ReturnType<DesktopAPI["reorderTodo"]>>> => {
-		const { previous, workspace } = await todoMutationContext(input);
-		const contents = await readTodoContents(workspace.todo_path);
-		const current = parseTodoFile(workspace.todo_path, contents);
-		if (contents !== confirmedTodoContents) {
-			return {
-				status: "conflict",
-				message: "The Todo file changed on disk. Review its current contents.",
-				confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
-			};
-		}
-		const rewritten = transform(contents, current);
-		if (rewritten === contents)
-			return {
-				status: "applied",
-				confirmed: {
-					scope,
-					revision: previous.revision,
-					workspaceId: input.workspaceId,
-					todo_file: current,
-				},
-			};
-		const todo_file = parseTodoFile(workspace.todo_path, rewritten);
-		await atomicWrite(workspace.todo_path, rewritten, (await stat(workspace.todo_path)).mode);
-		return {
-			status: "applied",
-			confirmed: confirmTodo(previous.session, input.workspaceId, todo_file, rewritten),
-		};
-	};
-
-	return {
-		reorderTodo: (request) =>
-			serialize(() =>
-				rejected("Cannot reorder Todo items: ", async () => {
-					const input = reorderTodoRequestSchema.parse(request);
-					return await mutateTodoFile(input, (contents, todoFile) => {
-						const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
-						if (input.lineNumbers.some((line) => !byLine.has(line)))
-							throw Error("Invalid Todo item position.");
-						const positions = [...input.lineNumbers].sort((a, b) => a - b);
-						return replaceTodoLines(
-							contents,
-							positions.map((lineNumber, index) => ({
-								lineNumber,
-								raw: byLine.get(input.lineNumbers[index])!,
-							}))
-						);
-					});
-				})
-			),
-		createTodo: (request) =>
-			serialize(() =>
-				rejected("Cannot create Todo item: ", async () => {
-					const input = createTodoRequestSchema.parse(request);
-					return await mutateTodoFile(input, (contents) =>
-						appendTodoLine(contents, createTodoLine(input))
-					);
-				})
-			),
-		deleteWorkspace: (request) =>
-			serialize(() =>
-				rejected("Cannot delete Workspace: ", async () => {
-					const { workspaceId } = deleteWorkspaceRequestSchema.parse(request);
-					const existing = (await load()).confirmed;
-					if (existing.session.status === "unavailable") throw Error(existing.session.error);
-					const previous = existing.session.catalogue;
-					if (!previous.workspaces.some((w) => w.id === workspaceId))
-						throw Error("Workspace does not exist.");
-					const catalogue = catalogueSchema.parse({
-						...previous,
-						workspaces: previous.workspaces.filter((w) => w.id !== workspaceId),
-						active_workspace_id:
-							previous.active_workspace_id === workspaceId ? null : previous.active_workspace_id,
-					});
-					return await commitCatalogue(catalogue);
-				})
-			),
-		editTodo: (request) =>
-			serialize(async () => {
-				const parsed = editTodoRequestSchema.safeParse(request);
-				if (!parsed.success)
-					return { status: "rejected" as const, message: "Invalid Todo-item edit." };
-				const input = parsed.data;
-				const {
-					scope: targetScope,
-					revision: targetRevision,
-					workspaceId,
-					lineNumber,
-					expectedRaw,
-				} = input;
-				const outcome = await mutateTodo(
-					{ scope: targetScope, revision: targetRevision, workspaceId, lineNumber, expectedRaw },
-					(contents, item) => {
-						if (input.completed && item.completion_date && !input.completionDate)
-							throw Error("Choose a Completion date for a completed Todo item.");
-						const raw =
-							input.completed && input.priority
-								? [
-										"x",
-										input.completionDate,
-										createTodoLine({ ...input, completed: false, completionDate: null }),
-									]
-										.filter(Boolean)
-										.join(" ")
-								: createTodoLine(input);
-						return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
-					}
-				);
-				return outcome.status === "rejected"
-					? { ...outcome, message: `Cannot edit Todo item: ${outcome.message}` }
-					: outcome;
-			}),
-		deleteTodo: (request) =>
-			serialize(async () => {
-				const outcome = await mutateTodo(request, (contents) =>
-					deleteTodoLine(contents, request.lineNumber)
-				);
-				return outcome.status === "rejected"
-					? { ...outcome, message: `Cannot delete Todo item: ${outcome.message}` }
-					: outcome;
-			}),
-		setTodoCompletion: (request) =>
-			serialize(async () => {
-				const parsed = setTodoCompletionRequestSchema.safeParse(request);
-				if (!parsed.success)
-					return { status: "rejected" as const, message: "Invalid completion request." };
-				const { completed, ...target } = parsed.data;
-				return mutateTodo(target, (contents, item) => {
-					return replaceTodoLines(contents, [
-						{ lineNumber: item.line_number, raw: setTodoCompletionLine(item, completed) },
-					]);
-				});
-			}),
-		switchWorkspace: (request) =>
-			serialize(() =>
-				rejected("Cannot open Workspace: ", async () => {
-					const { workspaceId } = switchWorkspaceRequestSchema.parse(request);
-					const existing = (await load()).confirmed;
-					if (existing.session.status === "unavailable") throw Error(existing.session.error);
-					const workspace = existing.session.catalogue.workspaces.find((w) => w.id === workspaceId);
-					if (!workspace) throw Error("Workspace does not exist.");
-					const todoContents = await readTodoContents(workspace.todo_path);
-					const todo_file = parseTodoFile(workspace.todo_path, todoContents);
-					const catalogue = { ...existing.session.catalogue, active_workspace_id: workspaceId };
-					return await commitCatalogue(catalogue, { todo_file, todoContents });
-				})
-			),
-		createWorkspace: (request) =>
-			serialize(() =>
-				rejected("Cannot create Workspace: ", async () => {
-					const input = createWorkspaceRequestSchema.parse(request);
-					const todoPath = await realpath(input.todoPath);
-					const todoContents = await readTodoContents(todoPath);
-					const todo_file = parseTodoFile(todoPath, todoContents);
-					if (todo_file.skipped.length)
-						throw Error("Cannot create Workspace: Todo file contains skipped lines.");
-					const existing = (await load()).confirmed;
-					if (existing.session.status === "unavailable") throw Error(existing.session.error);
-					const workspace = {
-						id: randomUUID(),
-						name: input.name,
-						color: input.color,
-						todo_path: todoPath,
-						created_at: new Date().toISOString(),
-					};
-					const catalogue = catalogueSchema.parse({
-						...existing.session.catalogue,
-						active_workspace_id: workspace.id,
-						workspaces: [...existing.session.catalogue.workspaces, workspace],
-					});
-					return await commitCatalogue(catalogue, { todo_file, todoContents });
-				})
-			),
-		readSession: () =>
-			serialize(async () => {
-				if (!confirmed) {
-					const loaded = await load();
-					accept(loaded.confirmed, loaded.todoContents);
-				}
-				return confirmed!;
-			}),
-		restoreSession: () =>
-			serialize(async () => {
-				const loaded = await load();
-				return accept(loaded.confirmed, loaded.todoContents);
-			}),
-	};
+	onTodoFileChanged?: (event: TodoFileChange) => void,
+	dependencies?: SessionDependencies
+) {
+	return desktopSessionBackend(
+		createSessionRuntime(cataloguePath, observation, onTodoFileChanged, dependencies)
+	);
 }

@@ -28,3 +28,9 @@
 - Effect 4 Schema is canonical for desktop requests, responses, observation events, persisted catalogues, and forms. Reuse shared constraints in `src/lib/shared/desktop`; do not add parallel validator definitions.
 - Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1` and explicit defaults. Keep form strings distinct from nullable/optional desktop dates and preserve field error paths.
 - Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Use `effectValidator` at desktop and persisted-data boundaries. Empty requests use `Schema.Record(Schema.String, Schema.Never)` because an empty `Struct` accepts excess properties.
+
+## Backend Effect migration
+
+- Main constructs one managed application runtime; desktop handlers retain plain Promise-based requests and responses. `WorkspaceSession` owns the authoritative confirmed state and one Effect semaphore for all lifecycle, transitional Todo-item, and observation operations.
+- Inject filesystem and date/identity capabilities through services. Keep parsing and line transformations as functions. Map expected typed lifecycle failures to existing outcomes; log unexpected defects with the operation name and return a safe message.
+- Atomic persistence acquires exclusive adjacent temporary files in a scope, preserves permissions, synchronizes, closes before rename, and cleans up on failure. Protect replacement and confirmed-state acceptance together from interruption. Transitional Promise operations bridge into the same runtime rather than creating a second state owner or queue.

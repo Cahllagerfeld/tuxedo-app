@@ -1,21 +1,25 @@
-import { mkdir, open, rename, rm } from "node:fs/promises";
+import { Effect } from "effect";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-export async function atomicWrite(path: string, contents: string, mode = 0o600): Promise<void> {
-	const directory = dirname(path);
-	await mkdir(directory, { recursive: true });
-	const temporary = join(directory, `.tuxedo-${randomUUID()}.tmp`);
-	try {
-		const handle = await open(temporary, "wx", 0o600);
-		try {
-			await handle.writeFile(contents, "utf8");
-			await handle.chmod(mode);
-			await handle.sync();
-		} finally {
-			await handle.close();
-		}
-		await rename(temporary, path);
-	} finally {
-		await rm(temporary, { force: true });
-	}
-}
+import { FileSystem, fileIO } from "./filesystem";
+
+export const atomicWrite = (path: string, contents: string, mode = 0o600) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem;
+		const directory = dirname(path);
+		yield* fs.mkdir(directory);
+		const temporary = join(directory, `.tuxedo-${randomUUID()}.tmp`);
+		let closed = false;
+		// Own cleanup only after exclusive creation; never remove a colliding file.
+		const handle = yield* Effect.acquireRelease(fs.open(temporary), (handle) =>
+			(closed ? Effect.void : Effect.orDie(fileIO("close", () => handle.close()))).pipe(
+				Effect.ensuring(Effect.orDie(fs.remove(temporary)))
+			)
+		);
+		yield* fileIO("write", () => handle.writeFile(contents, "utf8"));
+		yield* fileIO("chmod", () => handle.chmod(mode));
+		yield* fileIO("sync", () => handle.sync());
+		yield* fileIO("close", () => handle.close());
+		closed = true;
+		yield* fs.rename(temporary, path);
+	}).pipe(Effect.scoped, Effect.uninterruptible);

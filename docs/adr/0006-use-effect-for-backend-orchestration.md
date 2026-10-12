@@ -1,0 +1,5 @@
+# Use Effect for backend orchestration
+
+Adopt Effect 4 services, typed failures, scopes, and serialization in the Electron-independent backend so dependencies, resource lifetimes, and operation ordering share one model. Main constructs one managed application runtime; the narrow desktop API remains plain data and Promises, and the Svelte Workspace session controller retains confirmed renderer state, preserving ADR-0004 and ADR-0005.
+
+The rollout in [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91) uses independently runnable PRs into the Effect integration branch. Workspace lifecycle operations establish the filesystem and date/identity services, one authoritative session and semaphore, and scoped atomic writes; transitional Todo-item methods and observation callbacks use the same state, serialization, and runtime. Dedicated later slices migrate the remaining Todo-item orchestration, observation resources, and main-process shutdown.
