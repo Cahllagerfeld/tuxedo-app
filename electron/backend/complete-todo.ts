@@ -1,6 +1,6 @@
 import type { TodoItem } from "../../src/lib/shared/desktop/todo";
 
-export function setTodoCompletionLine(item: TodoItem, completed: boolean): string {
+export function setTodoCompletionLine(item: TodoItem, completed: boolean, date: Date): string {
 	if (item.completed === completed)
 		throw Error("Todo item already has the requested completion state.");
 	const priorities = [
@@ -8,7 +8,6 @@ export function setTodoCompletionLine(item: TodoItem, completed: boolean): strin
 	].map((match) => match[1]);
 	let raw: string;
 	if (completed) {
-		const date = new Date();
 		const today = `${String(date.getFullYear()).padStart(4, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 		let rest = item.raw;
 		if (item.priority) {

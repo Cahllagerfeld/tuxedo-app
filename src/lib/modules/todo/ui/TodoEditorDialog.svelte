@@ -1,17 +1,14 @@
 <script lang="ts">
 	import { tick } from "svelte";
-	import { z } from "zod";
 	import {
-		createTodoRequestSchema,
-		normalizeTodoDescription,
-		todoDescriptionSchema,
 		todoTagSchema,
-		todoDateSchema,
 		todoMetadataSchema,
-		validateTodoCreation,
-	} from "$lib/shared/desktop/contract";
+		todoEditorSchema,
+		todoEditorDraft,
+		type TodoEditorData,
+	} from "$lib/shared/desktop/todo-creation";
 	import { defaults, superForm } from "sveltekit-superforms";
-	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
+	import { standard, standardClient } from "sveltekit-superforms/adapters";
 	import type { TodoFile, TodoItem } from "$lib/modules/todo/domain/todo";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
@@ -43,50 +40,24 @@
 		onClose,
 	}: Props = $props();
 
-	const dateField = z.union([z.literal(""), todoDateSchema]);
 	function today() {
 		const date = new Date();
 		return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 	}
-	const schema = z
-		.object({
-			description: todoDescriptionSchema.default(""),
-			projects: createTodoRequestSchema.shape.projects.default([]),
-			contexts: createTodoRequestSchema.shape.contexts.default([]),
-			priority: z
-				.string()
-				.regex(/^(none|[A-Z])$/u, "Choose None, A, B, C, or enter one letter from D to Z.")
-				.default("none"),
-			creationDate: dateField.default(today()),
-			completionDate: dateField.default(""),
-			metadata: z.array(todoMetadataSchema).default([]),
-		})
-		.superRefine((data, ctx) => {
-			validateTodoCreation(draft(data), ctx, !!todoToEdit);
-		});
-	function draft(data: {
-		description: string;
-		projects: string[];
-		contexts: string[];
-		priority: string;
-		creationDate: string;
-		completionDate: string;
-		metadata: string[];
-	}) {
-		return {
-			...data,
-			description: normalizeTodoDescription(data.description),
-			priority: data.priority === "none" ? null : data.priority,
-			creationDate: data.creationDate || null,
-			completed: todoToEdit?.completed ?? false,
-			completionDate: data.completionDate || null,
-		};
+	const schema = todoEditorSchema(() => ({
+		editing: !!todoToEdit,
+		completed: todoToEdit?.completed ?? false,
+	}));
+	function draft(data: TodoEditorData) {
+		return todoEditorDraft(data, todoToEdit?.completed ?? false);
 	}
-
-	const form = superForm(defaults(initialValues(), zod4(schema)), {
-		validators: zod4Client(schema),
-		SPA: true,
-	});
+	const form = superForm(
+		defaults(initialValues(), standard(schema, { defaults: initialValues() })),
+		{
+			validators: standardClient(schema),
+			SPA: true,
+		}
+	);
 	const { form: formData } = form;
 
 	let isSubmitting = $state(false);
@@ -135,7 +106,16 @@
 	}
 
 	function initialValues() {
-		if (!todoToEdit) return { creationDate: today() };
+		if (!todoToEdit)
+			return {
+				description: "",
+				projects: [],
+				contexts: [],
+				priority: "none",
+				creationDate: today(),
+				completionDate: "",
+				metadata: [],
+			};
 		return {
 			description: todoToEdit.edit.description,
 			projects: [...new Set(todoToEdit.projects)],

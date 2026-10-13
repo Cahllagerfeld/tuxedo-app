@@ -1,248 +1,190 @@
-import { z } from "zod";
-import { todoFileSchema } from "./todo";
-export const workspaceSchema = z.strictObject({
-	id: z.uuid(),
-	name: z
-		.string()
-		.min(1)
-		.refine((value) => value === value.trim(), "Workspace name must be trimmed"),
-	color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
-	todo_path: z
-		.string()
-		.refine((value) => value.trim().length > 0, "Todo-file path must not be empty"),
-	created_at: z.iso.datetime({ offset: true }),
+import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
+import { effectValidator } from "./effect-validation";
+import {
+	createTodoRequestSchema,
+	TodoCreationRequest,
+	todoCreationFields,
+	todoCreationIssues,
+	TodoDate,
+} from "./todo-creation";
+import { TodoFileSchema, TodoItemSchema } from "./todo";
+
+const UUID = TodoCreationRequest.fields.scope;
+const Revision = TodoCreationRequest.fields.revision;
+const WorkspaceColor = Schema.Literals([
+	"blue",
+	"green",
+	"amber",
+	"red",
+	"violet",
+	"pink",
+	"cyan",
+	"orange",
+]);
+const TodoPath = Schema.String.check(
+	Schema.makeFilter((value) =>
+		value.trim().length > 0 ? undefined : "Choose the exact Todo file for this workspace."
+	)
+);
+const WorkspaceName = Schema.String.pipe(
+	Schema.decodeTo(
+		Schema.String.check(
+			Schema.makeFilter((value) => (value.length > 0 ? undefined : "Enter a workspace name."))
+		),
+		{ decode: SchemaGetter.trim(), encode: SchemaGetter.passthrough() }
+	)
+);
+const CreatedAt = Schema.String.check(
+	Schema.makeFilter((value) =>
+		/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u.test(
+			value
+		) && Schema.is(TodoDate)(value.slice(0, 10))
+			? undefined
+			: "Use an ISO datetime with a timezone."
+	)
+);
+const WorkspaceSchema = Schema.Struct({
+	id: UUID,
+	name: Schema.NonEmptyString.check(Schema.isTrimmed()),
+	color: WorkspaceColor,
+	todo_path: TodoPath,
+	created_at: CreatedAt,
 });
-export const catalogueSchema = z
-	.strictObject({
-		version: z.literal(1),
-		active_workspace_id: z.uuid().nullable(),
-		workspaces: z.array(workspaceSchema),
-	})
-	.superRefine((catalogue, ctx) => {
+const CatalogueSchema = Schema.Struct({
+	version: Schema.Literal(1),
+	active_workspace_id: Schema.NullOr(UUID),
+	workspaces: Schema.mutable(Schema.Array(WorkspaceSchema)),
+}).check(
+	Schema.makeFilter((catalogue) => {
+		const issues: string[] = [];
 		for (const field of ["id", "name", "todo_path"] as const) {
 			const values = catalogue.workspaces.map((workspace) =>
 				field === "name" ? workspace.name.toLowerCase() : workspace[field]
 			);
-			if (new Set(values).size !== values.length)
-				ctx.addIssue({ code: "custom", message: `Duplicate Workspace ${field}` });
+			if (new Set(values).size !== values.length) issues.push(`Duplicate Workspace ${field}`);
 		}
 		if (
 			catalogue.active_workspace_id !== null &&
 			!catalogue.workspaces.some((w) => w.id === catalogue.active_workspace_id)
 		)
-			ctx.addIssue({ code: "custom", message: "Active workspace is missing" });
-	});
+			issues.push("Active workspace is missing");
+		return issues;
+	})
+);
+export const workspaceSchema = effectValidator(WorkspaceSchema);
+export const catalogueSchema = effectValidator(CatalogueSchema);
 export { todoItemSchema, todoFileSchema } from "./todo";
 export type { TodoFile } from "./todo";
-export type Catalogue = z.infer<typeof catalogueSchema>;
-export const createWorkspaceRequestSchema = z.strictObject({
-	name: z.string().trim().min(1),
-	color: workspaceSchema.shape.color,
-	todoPath: z
-		.string()
-		.refine((value) => value.trim().length > 0, "Todo-file path must not be empty"),
+export type Catalogue = typeof CatalogueSchema.Type;
+export const WorkspaceCreationRequest = Schema.Struct({
+	name: Schema.mutableKey(WorkspaceName),
+	color: Schema.mutableKey(WorkspaceColor),
+	todoPath: Schema.mutableKey(TodoPath),
 });
-export const sessionSchema = z
-	.discriminatedUnion("status", [
-		z.strictObject({
-			status: z.literal("ready"),
-			catalogue: catalogueSchema,
-			todo_file: todoFileSchema,
-		}),
-		z.strictObject({
-			status: z.literal("empty"),
-			catalogue: catalogueSchema,
-			warning: z.string().nullable(),
-		}),
-		z.strictObject({ status: z.literal("unavailable"), error: z.string().min(1) }),
-	])
-	.superRefine((session, context) => {
+export const createWorkspaceRequestSchema = effectValidator(WorkspaceCreationRequest);
+const SessionSchema = Schema.Union([
+	Schema.Struct({
+		status: Schema.Literal("ready"),
+		catalogue: CatalogueSchema,
+		todo_file: TodoFileSchema,
+	}),
+	Schema.Struct({
+		status: Schema.Literal("empty"),
+		catalogue: CatalogueSchema,
+		warning: Schema.NullOr(Schema.String),
+	}),
+	Schema.Struct({ status: Schema.Literal("unavailable"), error: Schema.NonEmptyString }),
+]).check(
+	Schema.makeFilter((session) => {
 		if (session.status !== "ready") return;
 		const active = session.catalogue.workspaces.find(
 			(w) => w.id === session.catalogue.active_workspace_id
 		);
-		if (!active || active.todo_path !== session.todo_file.path)
-			context.addIssue({
-				code: "custom",
-				message: "Loaded Todo file must belong to the Active workspace",
-			});
-	});
-export const confirmedSessionSchema = z.strictObject({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	session: sessionSchema,
-});
-export type ConfirmedSession = z.infer<typeof confirmedSessionSchema>;
-export const sessionOutcomeSchema = z.discriminatedUnion("status", [
-	z.strictObject({ status: z.literal("applied"), confirmed: confirmedSessionSchema }),
-	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
-]);
-export const switchWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
-export const deleteWorkspaceRequestSchema = z.strictObject({ workspaceId: z.uuid() });
-export const todoMutationRequestSchema = z.strictObject({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	workspaceId: z.uuid(),
-	lineNumber: z.number().int().positive(),
-	expectedRaw: z.string(),
-});
-export const confirmedTodoSchema = z.strictObject({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	workspaceId: z.uuid(),
-	todo_file: todoFileSchema,
-});
-export type ConfirmedTodo = z.infer<typeof confirmedTodoSchema>;
-export const todoOutcomeSchema = z.discriminatedUnion("status", [
-	z.strictObject({ status: z.literal("applied"), confirmed: confirmedTodoSchema }),
-	z.strictObject({
-		status: z.literal("conflict"),
-		confirmed: confirmedTodoSchema,
-		message: z.string().min(1),
-	}),
-	z.strictObject({ status: z.literal("rejected"), message: z.string().min(1) }),
-]);
-export const setTodoCompletionRequestSchema = todoMutationRequestSchema.extend({
-	completed: z.boolean(),
-});
-export function normalizeTodoDescription(value: string): string {
-	return value
-		.trim()
-		.replace(/\p{White_Space}+/gu, " ")
-		.trim();
-}
-
-function containsTodoToken(value: string): boolean {
-	return normalizeTodoDescription(value)
-		.split(" ")
-		.some(
-			(token) =>
-				/^[+@]\S+$/u.test(token) || /^[^:\p{White_Space}]+:[^:\p{White_Space}]+$/u.test(token)
-		);
-}
-
-export const todoTagSchema = z
-	.string()
-	.min(1)
-	.refine((value) => value === value.trim(), "Todo tags must be trimmed")
-	.refine((value) => !/[\s\p{White_Space}]/u.test(value), "Todo tags must not contain whitespace");
-const todoTagListSchema = z
-	.array(todoTagSchema)
-	.refine((values) => new Set(values).size === values.length, "Todo tags must be unique");
-export const todoDescriptionSchema = z
-	.string()
-
-	.refine(
-		(value) => !containsTodoToken(value),
-		"Use the Project, Context, and Metadata inputs for these tokens."
-	);
-export const todoDateSchema = z.iso.date("Use a valid date in YYYY-MM-DD format.");
-export const todoMetadataSchema = z
-	.string()
-	.regex(
-		/^[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+$/u,
-		"Use key:value without spaces or extra colons."
-	)
-	.refine((value) => !/^[+@]/u.test(value), "Metadata keys must not start with + or @.");
-const todoCreationFields = {
-	description: todoDescriptionSchema,
-	projects: todoTagListSchema,
-	contexts: todoTagListSchema,
-	priority: z
-		.string()
-		.regex(/^[A-Z]$/u)
-		.nullable()
-		.optional(),
-	creationDate: todoDateSchema.nullable().optional(),
-	completed: z.boolean().optional(),
-	completionDate: todoDateSchema.nullable().optional(),
-	metadata: z.array(todoMetadataSchema).optional(),
-};
-export const todoCreationSchema = z
-	.strictObject(todoCreationFields)
-	.superRefine(validateTodoCreation);
-export function validateTodoCreation(
-	input: z.infer<typeof todoCreationSchema>,
-	ctx: z.RefinementCtx,
-	editing = false
-) {
-	const issue = (path: string, message: string) =>
-		ctx.addIssue({ code: "custom", path: [path], message });
-	if (
-		input.completed &&
-		!input.completionDate &&
-		(!editing || (input.creationDate && !input.priority))
-	)
-		issue("completionDate", "Choose a Completion date for a completed Todo item.");
-	if (!input.completed && input.completionDate)
-		issue("completionDate", "Only completed Todo items have a Completion date.");
-	if (
-		!editing &&
-		input.completed &&
-		input.priority &&
-		input.metadata?.some((value) => value.startsWith("pri:"))
-	)
-		issue(
-			"metadata",
-			"Remove pri Metadata or clear Priority; Priority is saved as pri Metadata on completion."
-		);
-	const description = normalizeTodoDescription(input.description);
-	const followedByTokens = !!(
-		input.projects.length ||
-		input.contexts.length ||
-		input.metadata?.length ||
-		(input.completed && input.priority)
-	);
-	const leadingText = description + (followedByTokens ? " " : "");
-	if (
-		!description &&
-		!input.projects.length &&
-		!input.contexts.length &&
-		!input.metadata?.length &&
-		!input.priority &&
-		input.creationDate === null &&
-		!input.completed
-	)
-		issue("description", "Enter a Description or another Todo-item value.");
-	// Prefix-looking text would be parsed as structured fields when dates are omitted.
-	if (
-		input.creationDate === null &&
-		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
-			((!input.priority || (input.completed && !editing)) && /^\([A-Z]\) /u.test(leadingText)) ||
-			(!input.completed && !input.priority && /^x /u.test(leadingText)))
-	)
-		issue(
-			"description",
-			"Use the Priority, date, and Completed controls for leading Todo markers."
-		);
-}
-export const createTodoRequestSchema = todoCreationSchema.safeExtend({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	workspaceId: z.uuid(),
-});
-export const editTodoRequestSchema = z
-	.strictObject({
-		...todoCreationFields,
-		...todoMutationRequestSchema.shape,
-		creationDate: todoDateSchema.nullable(),
-		completed: z.boolean(),
+		return !active || active.todo_path !== session.todo_file.path
+			? "Loaded Todo file must belong to the Active workspace"
+			: undefined;
 	})
-	.superRefine((input, ctx) => {
-		validateTodoCreation(input, ctx, true);
-	});
-export const reorderTodoRequestSchema = z.strictObject({
-	scope: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	workspaceId: z.uuid(),
-	lineNumbers: z
-		.array(z.number().int().positive())
-		.min(2)
-		.refine(
-			(values) => new Set(values).size === values.length,
-			"Todo item positions must be unique"
-		),
+);
+export const sessionSchema = effectValidator(SessionSchema);
+const ConfirmedSessionSchema = Schema.Struct({
+	scope: UUID,
+	revision: Revision,
+	session: SessionSchema,
 });
+export const confirmedSessionSchema = effectValidator(ConfirmedSessionSchema);
+export type ConfirmedSession = typeof ConfirmedSessionSchema.Type;
+const Rejected = Schema.Struct({
+	status: Schema.Literal("rejected"),
+	message: Schema.NonEmptyString,
+});
+export const sessionOutcomeSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({ status: Schema.Literal("applied"), confirmed: ConfirmedSessionSchema }),
+		Rejected,
+	])
+);
+export const switchWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
+export const deleteWorkspaceRequestSchema = switchWorkspaceRequestSchema;
+const TodoMutationRequest = Schema.Struct({
+	scope: UUID,
+	revision: Revision,
+	workspaceId: UUID,
+	lineNumber: TodoItemSchema.fields.line_number,
+	expectedRaw: Schema.String,
+});
+export const todoMutationRequestSchema = effectValidator(TodoMutationRequest);
+const ConfirmedTodoSchema = Schema.Struct({
+	scope: Schema.mutableKey(UUID),
+	revision: Schema.mutableKey(Revision),
+	workspaceId: Schema.mutableKey(UUID),
+	todo_file: TodoFileSchema,
+});
+export const confirmedTodoSchema = effectValidator(ConfirmedTodoSchema);
+export type ConfirmedTodo = typeof ConfirmedTodoSchema.Type;
+export const todoOutcomeSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({ status: Schema.Literal("applied"), confirmed: ConfirmedTodoSchema }),
+		Schema.Struct({
+			status: Schema.Literal("conflict"),
+			confirmed: ConfirmedTodoSchema,
+			message: Schema.NonEmptyString,
+		}),
+		Rejected,
+	])
+);
+export const setTodoCompletionRequestSchema = effectValidator(
+	Schema.Struct({ ...TodoMutationRequest.fields, completed: Schema.Boolean })
+);
+export {
+	createTodoRequestSchema,
+	normalizeTodoDescription,
+	todoTagSchema,
+	todoDateSchema,
+	todoMetadataSchema,
+} from "./todo-creation";
+export const editTodoRequestSchema = effectValidator(
+	Schema.Struct({
+		...TodoMutationRequest.fields,
+		...todoCreationFields,
+		creationDate: Schema.NullOr(TodoDate),
+		completed: Schema.Boolean,
+	}).check(Schema.makeFilter((input) => todoCreationIssues(input, true)))
+);
+export const reorderTodoRequestSchema = effectValidator(
+	Schema.Struct({
+		scope: UUID,
+		revision: Revision,
+		workspaceId: UUID,
+		lineNumbers: Schema.mutable(Schema.Array(TodoMutationRequest.fields.lineNumber)).check(
+			Schema.isMinLength(2),
+			Schema.makeFilter((values) =>
+				new Set(values).size === values.length ? undefined : "Todo item positions must be unique"
+			)
+		),
+	})
+);
+const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
 export const desktopContract = {
 	editTodo: {
 		channel: "tuxedo:edit-todo",
@@ -281,8 +223,8 @@ export const desktopContract = {
 	},
 	selectTodoFile: {
 		channel: "tuxedo:select-todo-file",
-		request: z.strictObject({}),
-		response: z.string().min(1).nullable(),
+		request: emptyRequestSchema,
+		response: effectValidator(Schema.NullOr(Schema.NonEmptyString)),
 	},
 	createWorkspace: {
 		channel: "tuxedo:create-workspace",
@@ -291,36 +233,37 @@ export const desktopContract = {
 	},
 	readSession: {
 		channel: "tuxedo:read-session",
-		request: z.strictObject({}),
+		request: emptyRequestSchema,
 		response: confirmedSessionSchema,
 	},
 	restoreSession: {
 		channel: "tuxedo:restore-session",
-		request: z.strictObject({}),
+		request: emptyRequestSchema,
 		response: confirmedSessionSchema,
 	},
 } as const;
 export type DesktopOperation = keyof typeof desktopContract;
-export type DesktopRequest<K extends DesktopOperation> = keyof z.infer<
-	(typeof desktopContract)[K]["request"]
-> extends never
-	? Record<string, never>
-	: z.infer<(typeof desktopContract)[K]["request"]>;
+export type DesktopRequest<K extends DesktopOperation> = ReturnType<
+	(typeof desktopContract)[K]["request"]["parse"]
+>;
+export type DesktopResponse<K extends DesktopOperation> = ReturnType<
+	(typeof desktopContract)[K]["response"]["parse"]
+>;
 export type DesktopAPI = {
-	[K in DesktopOperation]: (
-		request: DesktopRequest<K>
-	) => Promise<z.infer<(typeof desktopContract)[K]["response"]>>;
+	[K in DesktopOperation]: (request: DesktopRequest<K>) => Promise<DesktopResponse<K>>;
 };
 export const todoFileChangeEvent = {
 	channel: "tuxedo:todo-file-changed",
-	payload: z.strictObject({
-		scope: z.uuid(),
-		revision: z.number().int().nonnegative(),
-		workspaceId: z.uuid(),
-		todoPath: z.string().min(1),
-	}),
+	payload: effectValidator(
+		Schema.Struct({
+			scope: TodoCreationRequest.fields.scope,
+			revision: TodoCreationRequest.fields.revision,
+			workspaceId: TodoCreationRequest.fields.workspaceId,
+			todoPath: Schema.NonEmptyString,
+		})
+	),
 } as const;
-export type TodoFileChange = z.infer<typeof todoFileChangeEvent.payload>;
+export type TodoFileChange = ReturnType<typeof todoFileChangeEvent.payload.parse>;
 export type TodoFileObservation = {
 	onTodoFileChanged: (listener: (event: TodoFileChange) => void) => () => void;
 };
@@ -330,11 +273,11 @@ export function createDesktopClient(
 	const call = async <K extends DesktopOperation>(
 		operation: K,
 		request: DesktopRequest<K>
-	): Promise<z.infer<(typeof desktopContract)[K]["response"]>> => {
+	): Promise<DesktopResponse<K>> => {
 		const contract = desktopContract[operation];
 		return contract.response.parse(
 			await invoke(contract.channel, contract.request.parse(request))
-		) as z.infer<(typeof desktopContract)[K]["response"]>;
+		) as DesktopResponse<K>;
 	};
 	return {
 		editTodo: (request) => call("editTodo", request),

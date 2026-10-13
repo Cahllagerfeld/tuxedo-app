@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend } from "./session";
+import { createSessionBackend } from "./session-runtime";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -64,6 +64,18 @@ test("a changed target returns a conflict without overwriting disk", async () =>
 	expect(await readFile(todoPath, "utf8")).toBe(contents);
 	if (outcome.status !== "conflict") throw Error("Expected conflict");
 	expect(outcome.confirmed.todo_file.items[1].description).toBe("Changed externally");
+});
+test("editing retains external changes to other physical lines", async () => {
+	const { backend, todoPath, request } = await setup();
+	await writeFile(todoPath, `Changed elsewhere\n${request.expectedRaw}\r\n\nLast`);
+	const outcome = await backend.editTodo(request);
+	expect(outcome.status).toBe("applied");
+	if (outcome.status !== "applied") throw Error(outcome.message);
+	expect(outcome.confirmed.todo_file.items[0].raw).toBe("Changed elsewhere");
+	expect(outcome.confirmed.todo_file.items[1].line_number).toBe(2);
+	expect(await readFile(todoPath, "utf8")).toBe(
+		"Changed elsewhere\nx 2026-10-09 2026-10-01 Updated +Home @desk custom:first custom:last\r\n\nLast"
+	);
 });
 test("editing cannot clear an existing Completion date", async () => {
 	const { backend, todoPath, request } = await setup();

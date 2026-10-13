@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { z } from "zod";
+	import * as Schema from "effect/Schema";
+	import { WorkspaceCreationRequest } from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
-	import { zod4, zod4Client } from "sveltekit-superforms/adapters";
+	import { standard, standardClient } from "sveltekit-superforms/adapters";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
@@ -18,11 +19,10 @@
 		disabled?: boolean;
 	};
 
-	const schema = z.object({
-		name: z.string().trim().min(1, "Enter a workspace name."),
-		color: z.enum(["blue", "green", "amber", "red", "violet", "pink", "cyan", "orange"]),
-		todoPath: z.string().min(1, "Choose the exact Todo file for this workspace."),
+	const schema = Schema.toStandardSchemaV1(WorkspaceCreationRequest, {
+		parseOptions: { onExcessProperty: "error", errors: "all" },
 	});
+	const initialValues: CreateWorkspaceInput = { name: "", color: "blue", todoPath: "" };
 	const colors: Array<{
 		token: Workspace["color"];
 		label: string;
@@ -85,7 +85,10 @@
 		createWorkspace,
 		disabled = false,
 	}: Props = $props();
-	const form = superForm(defaults(zod4(schema)), { validators: zod4Client(schema), SPA: true });
+	const form = superForm(defaults(initialValues, standard(schema, { defaults: initialValues })), {
+		validators: standardClient(schema),
+		SPA: true,
+	});
 	const { form: formData } = form;
 	let serverError = $state("");
 	let isCreating = $state(false);
@@ -113,7 +116,7 @@
 	}
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		const result = await form.validateForm();
+		const result = await form.validateForm({ update: true });
 		if (!result.valid) return;
 		isCreating = true;
 		serverError = "";

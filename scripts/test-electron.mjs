@@ -82,6 +82,25 @@ try {
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(confirmed.session.status, "empty");
 	assert.deepEqual(confirmed.session.catalogue.workspaces, []);
+	await application.evaluate(({ dialog }) => {
+		globalThis.originalOpenDialog = dialog.showOpenDialog;
+		dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+	});
+	try {
+		assert.equal(await page.evaluate(() => window.desktop.selectTodoFile({})), null);
+		await application.evaluate(({ dialog }) => {
+			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: ["/tmp/chosen.todo"] });
+		});
+		assert.equal(await page.evaluate(() => window.desktop.selectTodoFile({})), "/tmp/chosen.todo");
+	} finally {
+		await application.evaluate(({ dialog }) => {
+			dialog.showOpenDialog = globalThis.originalOpenDialog;
+			delete globalThis.originalOpenDialog;
+		});
+	}
+	console.log(
+		"Todo-file dialog cancellation and selection pass through the admitted desktop bridge."
+	);
 	assert.equal(await page.evaluate(() => typeof window.require), "undefined");
 	assert.equal(await page.evaluate(() => typeof window.process), "undefined");
 	assert.equal(
@@ -309,6 +328,30 @@ try {
 		pri: "Z",
 	});
 
+	const invalidCreationRejected = await page.evaluate(async (confirmed) => {
+		try {
+			await window.desktop.createTodo({
+				scope: confirmed.scope,
+				revision: confirmed.revision,
+				workspaceId: confirmed.workspaceId,
+				description: "Invalid",
+				projects: [],
+				contexts: [],
+				completed: true,
+				completionDate: "2026-02-30",
+				unexpected: true,
+			});
+			return false;
+		} catch {
+			return true;
+		}
+	}, createdTodo.confirmed);
+	assert.equal(invalidCreationRejected, true);
+	assert.equal(
+		(await page.evaluate(() => window.desktop.readSession({}))).revision,
+		createdTodo.confirmed.revision
+	);
+
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",
@@ -409,6 +452,15 @@ try {
 	assert.equal(await page.locator('[data-sonner-toast][data-type="info"]').count(), 1);
 	assert.equal(await page.locator('[data-sonner-toast][data-type="error"]').count(), 0);
 	assert.match(await page.getByLabel("Reader status").textContent(), /1 skipped line/);
+	await page.getByRole("button", { name: /^All\s*2$/ }).waitFor();
+	await page.getByRole("button", { name: /^Open\s*1$/ }).waitFor();
+	await page.getByRole("button", { name: /^Completed\s*1$/ }).waitFor();
+	assert.match(
+		await page.getByRole("button", { name: "+Observed", exact: true }).textContent(),
+		/1/
+	);
+	assert.match(await page.getByRole("button", { name: "@desk", exact: true }).textContent(), /1/);
+	await page.getByRole("button", { name: "Priority B", exact: true }).waitFor();
 	const observed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
 	await writeFile(
@@ -427,7 +479,7 @@ try {
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	console.log(
-		"Todo-file observation: external edit, summary, preload signal, and equivalent-save notice checks passed."
+		"Todo-file observation: external edit, items, counts, facets, skipped lines, preload signal, and equivalent-save notice checks passed."
 	);
 	const deleted = await page.evaluate(
 		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),
@@ -758,9 +810,124 @@ try {
 		"Todo-item editing through the row menu, form, preload and backend persists across reload."
 	);
 	console.log("Metadata entered through the form persists in the Todo file and after reload.");
+	// Exercise the sandboxed preload's response and event validators with main-supplied data.
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:select-todo-file");
+		ipcMain.handle("tuxedo:select-todo-file", () => ({ path: "/tmp/unexpected" }));
+	});
+	assert.equal(
+		await page.evaluate(async () => {
+			try {
+				await window.desktop.selectTodoFile({});
+				return false;
+			} catch {
+				return true;
+			}
+		}),
+		true
+	);
+	const signal = {
+		scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
+		revision: 0,
+		workspaceId: "550e8400-e29b-41d4-a716-446655440000",
+		todoPath: "/tmp/validation.todo",
+	};
+	await page.evaluate(() => {
+		window.validationSignals = [];
+		window.validationSignalReceived = new Promise((resolve) => {
+			const unsubscribe = window.desktop.onTodoFileChanged((event) => {
+				window.validationSignals.push(event);
+				if (event.todoPath === "/tmp/validation.todo") {
+					unsubscribe();
+					resolve();
+				}
+			});
+		});
+	});
+	await application.evaluate(({ BrowserWindow }, valid) => {
+		const contents = BrowserWindow.getAllWindows()[0].webContents;
+		for (const invalid of [
+			null,
+			{ ...valid, revision: -1 },
+			{ ...valid, scope: "invalid" },
+			{ ...valid, unexpected: true },
+		])
+			contents.send("tuxedo:todo-file-changed", invalid);
+		contents.send("tuxedo:todo-file-changed", valid);
+	}, signal);
+	assert.deepEqual(
+		await page.evaluate(async () => {
+			await window.validationSignalReceived;
+			return window.validationSignals;
+		}),
+		[signal]
+	);
+	console.log(
+		"Sandboxed preload rejects malformed responses and discards malformed observation events."
+	);
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);
+	const exited = once(application.process(), "exit", { signal: AbortSignal.timeout(15000) });
+	await application.evaluate(({ app }) => {
+		app.quit();
+	});
+	assert.equal((await exited)[0], 0, "Normal quit must complete cleanup and exit successfully");
+	application = undefined;
+	console.log("Real Electron normal quit drained and exited successfully.");
+	application = await launchApplication();
+	const stuckPage = await application.firstWindow();
+	await stuckPage.waitForFunction(() => typeof window.desktop?.selectTodoFile === "function");
+	await application.evaluate(({ dialog }) => {
+		globalThis.dialogEntered = false;
+		dialog.showOpenDialog = () => {
+			globalThis.dialogEntered = true;
+			return new Promise(() => {});
+		};
+	});
+	await stuckPage.evaluate(() => {
+		void window.desktop.selectTodoFile({}).catch(() => {});
+	});
+	await application.evaluate(async () => {
+		while (!globalThis.dialogEntered) await new Promise((resolve) => setTimeout(resolve, 10));
+	});
+	let shutdownDiagnostic = "";
+	application.process().stderr.setEncoding("utf8");
+	application.process().stderr.on("data", (chunk) => {
+		shutdownDiagnostic += chunk;
+	});
+	const forcedExit = once(application.process(), "exit", { signal: AbortSignal.timeout(15000) });
+	await application.evaluate(({ app }) => {
+		app.quit();
+		app.quit();
+	});
+	assert.equal((await forcedExit)[0], 1, "A stuck dialog must reach the bounded quit fallback");
+	assert.match(shutdownDiagnostic, /Application shutdown deadline exceeded/);
+	assert.match(shutdownDiagnostic, /selectTodoFile/);
+	application = undefined;
+	console.log(
+		"Real Electron stuck-dialog quit reached the 10-second fallback with pending-operation diagnostics."
+	);
+	if (!packagedExecutable) {
+		const failed = spawn(electronPath, [resolve("dist-electron/main.js")], {
+			env: { ...environment, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1" },
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let diagnostic = "";
+		failed.stderr.setEncoding("utf8");
+		failed.stderr.on("data", (chunk) => {
+			diagnostic += chunk;
+		});
+		try {
+			const [code] = await once(failed, "exit", { signal: AbortSignal.timeout(15000) });
+			assert.equal(code, 1, diagnostic);
+			assert.match(diagnostic, /Desktop startup failed/);
+			assert.doesNotMatch(diagnostic, /shutdown deadline exceeded/);
+		} finally {
+			if (failed.exitCode === null && failed.signalCode === null) failed.kill();
+		}
+		console.log("Real Electron renderer startup failure cleaned up and exited with a diagnostic.");
+	}
 } finally {
 	try {
 		await application?.close();

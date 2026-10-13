@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { todoDateSchema, type TodoFile } from "../../src/lib/shared/desktop/contract";
 // Rust's char::is_whitespace uses Unicode White_Space; a BOM is source content.
 const trimStart = (value: string) => value.replace(/^\p{White_Space}+/u, "");
@@ -56,8 +55,8 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 		metadata,
 	};
 }
-export async function readTodoContents(path: string): Promise<string> {
-	return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await readFile(path));
+export function decodeTodoContents(contents: Uint8Array): string {
+	return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(contents);
 }
 export function parseTodoFile(path: string, contents: string): TodoFile {
 	const result: TodoFile = { path, items: [], skipped: [] };
