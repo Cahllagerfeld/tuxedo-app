@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Semaphore } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
@@ -18,14 +18,17 @@ import type {
 } from "../../src/lib/shared/desktop/contract";
 export type SessionBackend = Omit<DesktopAPI, "selectTodoFile">;
 export type SessionOperation = keyof SessionBackend;
-type SessionEffects = {
+export type SessionEffects = {
 	[K in SessionOperation]: (
 		request: DesktopRequest<K>
 	) => Effect.Effect<DesktopResponse<K>, never, FileSystem | Identity>;
 };
-export class WorkspaceSession extends Context.Service<WorkspaceSession, SessionEffects>()(
-	"tuxedo/backend/WorkspaceSession"
-) {}
+export class WorkspaceSession extends Context.Service<
+	WorkspaceSession,
+	SessionEffects & {
+		stopObservation: Effect.Effect<void>;
+	}
+>()("tuxedo/backend/WorkspaceSession") {}
 export type SessionState = {
 	readonly todoContents: string | undefined;
 	readonly read: Effect.Effect<ConfirmedSession, never, FileSystem>;
@@ -35,8 +38,7 @@ export type SessionState = {
 export function sessionLayer(
 	cataloguePath: string,
 	observation: TodoFileObservationAdapter | undefined,
-	onTodoFileChanged: (event: TodoFileChange) => void,
-	runObserved: (effect: Effect.Effect<void, never, FileSystem | Identity>) => void
+	onTodoFileChanged: (event: TodoFileChange) => void
 ) {
 	return Layer.effect(
 		WorkspaceSession,
@@ -45,7 +47,8 @@ export function sessionLayer(
 			const workspace = createWorkspaceLifecycle(cataloguePath);
 			const semaphore = yield* Semaphore.make(1);
 			const scope = identity.uuid();
-			yield* Effect.addFinalizer(() => Effect.sync(() => observation?.stop()));
+			let observed: { current: ConfirmedSession; scope: Scope.Closeable } | undefined;
+			let observationDisposed = false;
 			let revision = 0;
 			let confirmed: ConfirmedSession | undefined;
 			let todoContents: string | undefined;
@@ -69,56 +72,98 @@ export function sessionLayer(
 			const serialize = <A, E>(
 				operation: string,
 				effect: Effect.Effect<A, E, FileSystem | Identity>
-			) =>
+			): Effect.Effect<A, E, FileSystem | Identity> =>
 				semaphore.withPermit(
 					Effect.gen(function* () {
 						busy = true;
 						return yield* effect;
 					}).pipe(
 						Effect.ensuring(
-							Effect.sync(() => {
+							Effect.gen(function* () {
+								yield* syncObservation;
 								busy = false;
-								syncObservation();
 							})
 						),
 						Effect.uninterruptible,
 						Effect.withSpan(`WorkspaceSession.${operation}`)
 					)
 				);
-			const syncObservation = () => {
-				const current = confirmed;
-				const ready = current?.session.status === "ready" ? current.session : null;
-				try {
-					observation?.retarget(ready?.todo_file.path ?? null, () => {
-						if (busy || !current || !ready || current !== confirmed) return;
-						runObserved(
-							serialize(
-								"observe",
-								Effect.gen(function* () {
-									if (current !== confirmed) return;
-									const contents = yield* readContents(ready.todo_file.path).pipe(
-										Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
-									);
-									if (contents === todoContents) return;
-									onTodoFileChanged({
-										scope: current.scope,
-										revision: current.revision,
-										workspaceId: ready.catalogue.active_workspace_id!,
-										todoPath: ready.todo_file.path,
-									});
-								})
-							).pipe(
-								Effect.catchCause((cause) =>
-									Effect.sync(() => diagnostic("observe", Cause.pretty(cause)))
+			const closeObservation = Effect.gen(function* () {
+				const previous = observed;
+				observed = undefined;
+				if (previous)
+					yield* Scope.close(previous.scope, Exit.void).pipe(
+						Effect.catchCause((cause) =>
+							Effect.sync(() => diagnostic("observation release", Cause.pretty(cause)))
+						)
+					);
+			});
+			yield* Effect.addFinalizer(() =>
+				Effect.gen(function* () {
+					observationDisposed = true;
+					yield* closeObservation;
+				})
+			);
+			const syncObservation: Effect.Effect<void, never, FileSystem | Identity> = Effect.gen(
+				function* () {
+					if (!observation || observationDisposed || observed?.current === confirmed) return;
+					yield* closeObservation;
+					const current = confirmed;
+					if (!current || current.session.status !== "ready") return;
+					const ready = current.session;
+					const targetScope = yield* Scope.make();
+					observed = { current, scope: targetScope };
+					const refresh = Effect.suspend(() => {
+						if (busy || current !== confirmed || observed?.scope !== targetScope)
+							return Effect.void;
+						return serialize(
+							"observe",
+							Effect.gen(function* () {
+								if (current !== confirmed || observed?.scope !== targetScope) return;
+								const contents = yield* readContents(ready.todo_file.path).pipe(
+									Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
+								);
+								if (
+									contents === todoContents ||
+									current !== confirmed ||
+									observed?.scope !== targetScope
 								)
+									return;
+								onTodoFileChanged({
+									scope: current.scope,
+									revision: current.revision,
+									workspaceId: ready.catalogue.active_workspace_id!,
+									todoPath: ready.todo_file.path,
+								});
+							})
+						).pipe(
+							Effect.catchCause((cause) =>
+								Effect.sync(() => diagnostic("observe", Cause.pretty(cause)))
 							)
 						);
 					});
-				} catch (cause) {
-					// Observation stays best-effort even when a platform adapter fails.
-					console.error("Workspace session observation failed", cause);
+					yield* Effect.gen(function* () {
+						const signals = yield* Effect.acquireRelease(Queue.unbounded<void>(), Queue.shutdown);
+						yield* observation.observe(ready.todo_file.path, () => {
+							if (observed?.scope === targetScope) Queue.offerUnsafe(signals, undefined);
+						});
+						yield* Stream.fromQueue(signals).pipe(
+							Stream.debounce("250 millis"),
+							Stream.runForEach(() => refresh),
+							Effect.interruptible,
+							Effect.forkScoped
+						);
+					}).pipe(
+						Scope.provide(targetScope),
+						Effect.catchCause((cause) =>
+							Effect.gen(function* () {
+								yield* closeObservation;
+								diagnostic("observation", Cause.pretty(cause));
+							})
+						)
+					);
 				}
-			};
+			);
 			const operation = <A>(
 				name: string,
 				prefix: string,
@@ -169,6 +214,7 @@ export function sessionLayer(
 				);
 			const todos = createTodoOperations(cataloguePath, state);
 			return WorkspaceSession.of({
+				stopObservation: semaphore.withPermit(closeObservation),
 				readSession: () => read("readSession"),
 				restoreSession: () => read("restoreSession"),
 				createWorkspace: (request) =>
