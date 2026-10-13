@@ -7,6 +7,7 @@ import {
 	sessionLayer,
 	type SessionBackend,
 	type SessionOperation,
+	type SessionEffects,
 } from "./session";
 import type { TodoFileObservationAdapter } from "./observation";
 import type { DesktopRequest, TodoFileChange } from "../../src/lib/shared/desktop/contract";
@@ -27,9 +28,9 @@ export function createSessionRuntime(
 			: NodeFileSystem.layer,
 		dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
 	);
-	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged, (effect) => {
-		runtime.runFork(effect);
-	}).pipe(Layer.provideMerge(capabilities));
+	const layer = sessionLayer(cataloguePath, observation, onTodoFileChanged).pipe(
+		Layer.provideMerge(capabilities)
+	);
 	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession | FileSystem | Identity, never> =
 		ManagedRuntime.make(layer);
 	return runtime;
@@ -37,10 +38,13 @@ export function createSessionRuntime(
 
 export function desktopSessionBackend(
 	runtime: ReturnType<typeof createSessionRuntime>
-): SessionBackend & { dispose: () => Promise<void> } {
+): SessionBackend & { dispose: () => Promise<void>; stopObservation: () => Promise<void> } {
 	const run = <K extends SessionOperation>(operation: K, request: DesktopRequest<K>) =>
 		runtime.runPromise(
-			WorkspaceSession.use((session) => session[operation](request)).pipe(Effect.uninterruptible)
+			WorkspaceSession.use((session) => {
+				const operations: SessionEffects = session;
+				return operations[operation](request);
+			}).pipe(Effect.uninterruptible)
 		);
 	return {
 		readSession: (request) => run("readSession", request),
@@ -53,6 +57,8 @@ export function desktopSessionBackend(
 		setTodoCompletion: (request) => run("setTodoCompletion", request),
 		deleteTodo: (request) => run("deleteTodo", request),
 		reorderTodo: (request) => run("reorderTodo", request),
+		stopObservation: () =>
+			runtime.runPromise(WorkspaceSession.use((session) => session.stopObservation)),
 		dispose: () => runtime.dispose(),
 	};
 }

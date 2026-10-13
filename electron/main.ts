@@ -49,7 +49,9 @@ void app.whenReady().then(async () => {
 		}
 	);
 	const backend = desktopSessionBackend(runtime);
-	app.on("before-quit", observation.stop);
+	app.on("before-quit", () => {
+		void backend.stopObservation();
+	});
 	app.on("will-quit", () => {
 		void runtime.dispose();
 	});
@@ -116,7 +118,7 @@ void app.whenReady().then(async () => {
 			nativeTheme.removeListener("updated", updateBackground);
 			if (mainWindow === window) {
 				mainWindow = null;
-				observation.stop();
+				void backend.stopObservation();
 			}
 		});
 		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

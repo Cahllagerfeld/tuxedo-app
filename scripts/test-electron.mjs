@@ -433,6 +433,15 @@ try {
 	assert.equal(await page.locator('[data-sonner-toast][data-type="info"]').count(), 1);
 	assert.equal(await page.locator('[data-sonner-toast][data-type="error"]').count(), 0);
 	assert.match(await page.getByLabel("Reader status").textContent(), /1 skipped line/);
+	await page.getByRole("button", { name: /^All\s*2$/ }).waitFor();
+	await page.getByRole("button", { name: /^Open\s*1$/ }).waitFor();
+	await page.getByRole("button", { name: /^Completed\s*1$/ }).waitFor();
+	assert.match(
+		await page.getByRole("button", { name: "+Observed", exact: true }).textContent(),
+		/1/
+	);
+	assert.match(await page.getByRole("button", { name: "@desk", exact: true }).textContent(), /1/);
+	await page.getByRole("button", { name: "Priority B", exact: true }).waitFor();
 	const observed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
 	await writeFile(
@@ -451,7 +460,7 @@ try {
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	console.log(
-		"Todo-file observation: external edit, summary, preload signal, and equivalent-save notice checks passed."
+		"Todo-file observation: external edit, items, counts, facets, skipped lines, preload signal, and equivalent-save notice checks passed."
 	);
 	const deleted = await page.evaluate(
 		(workspaceId) => window.desktop.deleteWorkspace({ workspaceId }),

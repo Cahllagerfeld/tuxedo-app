@@ -1,4 +1,7 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
+import { Effect } from "effect";
+import { FileSystem } from "effect/FileSystem";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, mkdir, rm, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,25 +11,43 @@ import type { TodoFileChange } from "../../src/lib/shared/desktop/contract";
 import { rename } from "node:fs/promises";
 
 const directories: string[] = [];
+const backends: ReturnType<typeof createSessionBackend>[] = [];
+let filesystem: FileSystem;
+beforeAll(async () => {
+	filesystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(NodeFileSystem.layer)));
+});
 afterEach(async () => {
+	await Promise.all(backends.splice(0).map((backend) => backend.dispose()));
+	vi.restoreAllMocks();
 	await Promise.all(
 		directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
 	);
 });
 
-test("observation attaches only to confirmed Active Todo files and stops in Empty", async () => {
+test("retargeting cancels debounce work and rejects released callbacks, including the same path", async () => {
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
 	directories.push(directory);
-	const paths: (string | null)[] = [];
-	const observation: TodoFileObservationAdapter = {
-		retarget(path) {
-			paths.push(path);
+	const subscriptions: { path: string; signal: () => void; released: boolean }[] = [];
+	const changes: TodoFileChange[] = [];
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		{
+			observe: (path, signal) =>
+				Effect.acquireRelease(
+					Effect.sync(() => {
+						const subscription = { path, signal, released: false };
+						subscriptions.push(subscription);
+						return subscription;
+					}),
+					(subscription) =>
+						Effect.sync(() => {
+							subscription.released = true;
+						})
+				).pipe(Effect.asVoid),
 		},
-		stop() {},
-	};
-	const backend = createSessionBackend(join(directory, "workspaces.json"), observation);
-	await backend.restoreSession({});
-	expect(paths.at(-1)).toBe(null);
+		(event) => changes.push(event)
+	);
+	backends.push(backend);
 	const firstPath = join(directory, "first.todo");
 	const secondPath = join(directory, "second.todo");
 	await writeFile(firstPath, "First");
@@ -38,13 +59,273 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	});
 	if (first.status !== "applied" || first.confirmed.session.status !== "ready")
 		throw Error("Expected Ready");
-	expect(paths.at(-1)).toBe(firstPath);
+	await writeFile(firstPath, "External first");
+	subscriptions[0].signal();
 	await backend.createWorkspace({ name: "Second", color: "green", todoPath: secondPath });
-	expect(paths.at(-1)).toBe(secondPath);
+	expect(subscriptions[0].released).toBe(true);
 	await backend.switchWorkspace({
 		workspaceId: first.confirmed.session.catalogue.active_workspace_id!,
 	});
-	expect(paths.at(-1)).toBe(firstPath);
+	await writeFile(firstPath, "Latest first");
+	subscriptions[0].signal();
+	subscriptions[1].signal();
+	await new Promise((resolve) => setTimeout(resolve, 350));
+	expect(changes).toEqual([]);
+	subscriptions[2].signal();
+	await expect.poll(() => changes.length).toBe(1);
+	const restored = await backend.restoreSession({});
+	expect(restored.session).toMatchObject({
+		status: "ready",
+		todo_file: { items: [{ description: "Latest first" }] },
+	});
+	await writeFile(firstPath, "After disposal");
+	subscriptions.at(-1)!.signal();
+	await backend.dispose();
+	for (const subscription of subscriptions) subscription.signal();
+	await new Promise((resolve) => setTimeout(resolve, 350));
+	expect(subscriptions.every((subscription) => subscription.released)).toBe(true);
+	expect(changes).toHaveLength(1);
+});
+
+test.each(["failure", "defect"])(
+	"partially acquired observation resources close after %s without rejecting session operations",
+	async (failure) => {
+		const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+		directories.push(directory);
+		const path = join(directory, "active.todo");
+		await writeFile(path, "First");
+		let subscriptions = 0;
+		const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+		const backend = createSessionBackend(join(directory, "workspaces.json"), {
+			observe: () =>
+				Effect.gen(function* () {
+					yield* Effect.acquireRelease(
+						Effect.sync(() => {
+							subscriptions++;
+						}),
+						() =>
+							Effect.sync(() => {
+								subscriptions--;
+							})
+					);
+					yield* failure === "failure"
+						? Effect.fail("Cannot observe")
+						: Effect.die("Cannot observe");
+				}),
+		});
+		backends.push(backend);
+		const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+		expect(created.status).toBe("applied");
+		expect(subscriptions).toBe(0);
+		expect(diagnostic).toHaveBeenCalled();
+		if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+			throw Error("Expected Ready");
+		const outcome = await backend.createTodo({
+			scope: created.confirmed.scope,
+			revision: created.confirmed.revision,
+			workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+			description: "Second",
+			projects: [],
+			contexts: [],
+		});
+		expect(outcome.status).toBe("applied");
+		expect(subscriptions).toBe(0);
+		expect((await backend.restoreSession({})).session).toMatchObject({
+			status: "ready",
+			todo_file: { items: [{ description: "First" }, { description: "Second" }] },
+		});
+	}
+);
+
+test("debounced signals are suppressed while restoration is busy and release in unavailable", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const path = join(directory, "active.todo");
+	const cataloguePath = join(directory, "workspaces.json");
+	await writeFile(path, "First");
+	let signal!: () => void;
+	let subscribed = false;
+	let pause = false;
+	let reading = false;
+	let resume!: () => void;
+	const gate = new Promise<void>((resolve) => {
+		resume = resolve;
+	});
+	const changes: TodoFileChange[] = [];
+	const backend = createSessionBackend(
+		cataloguePath,
+		{
+			observe: (_path, changed) =>
+				Effect.acquireRelease(
+					Effect.sync(() => {
+						signal = changed;
+						subscribed = true;
+					}),
+					() =>
+						Effect.sync(() => {
+							subscribed = false;
+						})
+				),
+		},
+		(event) => changes.push(event),
+		{
+			filesystem: {
+				...filesystem,
+				readFile: (file) =>
+					Effect.gen(function* () {
+						if (pause && file === path) {
+							reading = true;
+							yield* Effect.promise(() => gate);
+						}
+						return yield* filesystem.readFile(file);
+					}),
+			},
+		}
+	);
+	backends.push(backend);
+	await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	await writeFile(path, "External edit");
+	pause = true;
+	const restore = backend.restoreSession({});
+	try {
+		await expect.poll(() => reading).toBe(true);
+		signal();
+		await new Promise((resolve) => setTimeout(resolve, 350));
+		expect(changes).toEqual([]);
+	} finally {
+		resume();
+	}
+	expect((await restore).session).toMatchObject({
+		status: "ready",
+		todo_file: { items: [{ description: "External edit" }] },
+	});
+	await writeFile(cataloguePath, "invalid");
+	expect((await backend.restoreSession({})).session.status).toBe("unavailable");
+	expect(subscribed).toBe(false);
+	signal();
+	await new Promise((resolve) => setTimeout(resolve, 350));
+	expect(changes).toEqual([]);
+});
+
+test("observation release defects do not reject successful Workspace switches", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const firstPath = join(directory, "first.todo");
+	const secondPath = join(directory, "second.todo");
+	await writeFile(firstPath, "First");
+	await writeFile(secondPath, "Second");
+	vi.spyOn(console, "error").mockImplementation(() => {});
+	const backend = createSessionBackend(join(directory, "workspaces.json"), {
+		observe: () => Effect.acquireRelease(Effect.void, () => Effect.die("release failed")),
+	});
+	backends.push(backend);
+	await backend.createWorkspace({ name: "First", color: "blue", todoPath: firstPath });
+	const second = await backend.createWorkspace({
+		name: "Second",
+		color: "green",
+		todoPath: secondPath,
+	});
+	expect(second).toMatchObject({
+		status: "applied",
+		confirmed: { session: { todo_file: { path: secondPath } } },
+	});
+});
+
+test("disposal releases observation resources when admitted restoration finishes", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const path = join(directory, "active.todo");
+	await writeFile(path, "First");
+	let subscribed = false;
+	let pause = false;
+	let reading = false;
+	let resume!: () => void;
+	const gate = new Promise<void>((resolve) => {
+		resume = resolve;
+	});
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		{
+			observe: () =>
+				Effect.acquireRelease(
+					Effect.sync(() => {
+						subscribed = true;
+					}),
+					() =>
+						Effect.sync(() => {
+							subscribed = false;
+						})
+				),
+		},
+		undefined,
+		{
+			filesystem: {
+				...filesystem,
+				readFile: (file) =>
+					Effect.gen(function* () {
+						if (pause && file === path) {
+							reading = true;
+							yield* Effect.promise(() => gate);
+						}
+						return yield* filesystem.readFile(file);
+					}),
+			},
+		}
+	);
+	backends.push(backend);
+	await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	pause = true;
+	const restore = backend.restoreSession({});
+	let disposal: Promise<void> | undefined;
+	try {
+		await expect.poll(() => reading).toBe(true);
+		disposal = backend.dispose();
+	} finally {
+		resume();
+	}
+	const [, disposed] = await Promise.allSettled([restore, disposal]);
+	expect(disposed.status).toBe("fulfilled");
+	expect(subscribed).toBe(false);
+});
+
+test("observation attaches only to confirmed Active Todo files and stops in Empty", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const paths = new Set<string>();
+	const observation: TodoFileObservationAdapter = {
+		observe: (path) =>
+			Effect.acquireRelease(
+				Effect.sync(() => {
+					paths.add(path);
+				}),
+				() =>
+					Effect.sync(() => {
+						paths.delete(path);
+					})
+			),
+	};
+	const backend = createSessionBackend(join(directory, "workspaces.json"), observation);
+	backends.push(backend);
+	await backend.restoreSession({});
+	expect([...paths]).toEqual([]);
+	const firstPath = join(directory, "first.todo");
+	const secondPath = join(directory, "second.todo");
+	await writeFile(firstPath, "First");
+	await writeFile(secondPath, "Second");
+	const first = await backend.createWorkspace({
+		name: "First",
+		color: "blue",
+		todoPath: firstPath,
+	});
+	if (first.status !== "applied" || first.confirmed.session.status !== "ready")
+		throw Error("Expected Ready");
+	expect([...paths]).toEqual([firstPath]);
+	await backend.createWorkspace({ name: "Second", color: "green", todoPath: secondPath });
+	expect([...paths]).toEqual([secondPath]);
+	await backend.switchWorkspace({
+		workspaceId: first.confirmed.session.catalogue.active_workspace_id!,
+	});
+	expect([...paths]).toEqual([firstPath]);
 	await rm(firstPath);
 	const refreshed = await backend.restoreSession({});
 	expect(refreshed.session).toMatchObject({
@@ -52,7 +333,7 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 		warning: expect.stringContaining(firstPath),
 		catalogue: { workspaces: expect.any(Array) },
 	});
-	expect(paths.at(-1)).toBe(null);
+	expect([...paths]).toEqual([]);
 });
 
 test("atomic external replacement refreshes through restoration and later deletion enters Empty", async () => {
@@ -101,7 +382,7 @@ test("atomic external replacement refreshes through restoration and later deleti
 			warning: expect.stringContaining(path),
 		});
 	} finally {
-		observation.stop();
+		await backend.dispose();
 	}
 });
 
@@ -130,7 +411,7 @@ test("renaming the containing directory refreshes the missing Active Todo-file p
 			catalogue: { workspaces: [expect.objectContaining({ todo_path: path })] },
 		});
 	} finally {
-		observation.stop();
+		await backend.dispose();
 	}
 });
 
@@ -142,13 +423,14 @@ test("observation ignores delayed signals for confirmed contents after own write
 	const backend = createSessionBackend(
 		join(directory, "workspaces.json"),
 		{
-			retarget: (_path, changed) => {
-				signal = changed;
-			},
-			stop() {},
+			observe: (_path, changed) =>
+				Effect.sync(() => {
+					signal = changed;
+				}),
 		},
 		(event) => changes.push(event)
 	);
+	backends.push(backend);
 	const path = join(directory, "active.todo");
 	await writeFile(path, "First\nLast");
 	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
@@ -162,11 +444,10 @@ test("observation ignores delayed signals for confirmed contents after own write
 	});
 	expect(reordered.status).toBe("applied");
 	signal();
-	await backend.readSession({});
+	await new Promise((resolve) => setTimeout(resolve, 350));
 	expect(changes).toEqual([]);
 	// A real external edit still signals, including a save with the same parsed summary.
 	await writeFile(path, "Last\nFirst\n");
 	signal();
-	await backend.readSession({});
-	expect(changes).toHaveLength(1);
+	await expect.poll(() => changes.length).toBe(1);
 });
