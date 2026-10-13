@@ -23,13 +23,13 @@
 - One Svelte session controller holds confirmed backend data and the current operation and target, and reports errors. Startup read errors remain session state; action outcomes report operation errors for contextual UI notifications. Admission is synchronous: Workspace session operations do not overlap, and confirmed data remains visible until a result is accepted. Lifecycle results replace one coherent session; scoped Todo-item results require the matching Workspace, backend scope, and revision. Counts and facets derive from the confirmed Todo file; dialogs and form inputs remain ephemeral Svelte state.
 - Test backend public operations with real temporary files, controller behavior through typed desktop adapters, reactive UI integration with Svelte harnesses, and preload/IPC through real Electron. Renderer imports cannot expose Node/Electron capabilities; backend domain modules remain Electron-independent.
 
-## Shared Schema migration
+## Shared Schema validation
 
 - Effect 4 Schema is canonical for desktop requests, responses, observation events, persisted catalogues, and forms. Reuse shared constraints in `src/lib/shared/desktop`; do not add parallel validator definitions.
 - Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1` and explicit defaults. Keep form strings distinct from nullable/optional desktop dates and preserve field error paths.
 - Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Use `effectValidator` at desktop and persisted-data boundaries. Empty requests use `Schema.Record(Schema.String, Schema.Never)` because an empty `Struct` accepts excess properties.
 
-## Backend Effect migration
+## Backend Effect orchestration
 
 - Main constructs one managed application runtime; desktop handlers retain plain Promise-based requests and responses. `session-runtime.ts` owns runtime composition and the desktop Promise bridge. `WorkspaceSession` in `session.ts` owns the authoritative confirmed state and one Effect semaphore for all lifecycle, Todo-item, and observation operations. `workspace-lifecycle.ts` owns catalogue persistence and returns loaded data for the session to accept; `todo-operations.ts` uses that same session state.
 - `application-runtime.ts` owns synchronous desktop/lifecycle admission, tracking of admitted work, and the application Scope around that managed runtime. Main runs startup, activation, dialogs, and IPC only at lifecycle/transport edges; Electron calls remain thin scoped adapters. Window child Scopes release native-theme subscriptions and windows; the application Scope releases IPC handlers, protocol and permission/header handlers, and platform subscriptions, including on startup failure.
