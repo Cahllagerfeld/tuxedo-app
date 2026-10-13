@@ -162,7 +162,7 @@
 
 	function blur() {
 		tagIndex = undefined;
-		setTimeout(() => (inputFocused = false), 150);
+		inputFocused = false;
 	}
 </script>
 

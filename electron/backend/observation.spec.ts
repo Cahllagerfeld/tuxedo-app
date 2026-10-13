@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSessionBackend } from "./session";
+import { createSessionBackend } from "./session-runtime";
 import { createTodoFileObservation, type TodoFileObservationAdapter } from "./observation";
 import type { TodoFileChange } from "../../src/lib/shared/desktop/contract";
 import { rename } from "node:fs/promises";

@@ -9,9 +9,9 @@ Use the original Effect repository as the primary source for implementation patt
 
 ## Locate and match the source
 
-Resolve `references/effect` from this repository's root. If working in a Git worktree without the ignored reference checkout, inspect `git worktree list --porcelain` and use `references/effect` from an existing checkout of this project. If another upstream checkout was explicitly supplied, use that one.
+Resolve `.repos/effect` from this repository's root. This is a committed, squashed subtree available in every clone and worktree. Read `.repos/README.md` for its upstream commit and update procedure. If another upstream checkout was explicitly supplied, use that one.
 
-Compare the application's installed or locked Effect version with `packages/effect/package.json` in the checkout, and note the checkout's branch and commit. For a new adoption, use the version selected for the task. A matching major alone does not prove a recently added API exists in the application's patch version: check the installed declarations or matching local source when they differ. Report material mismatches rather than silently using APIs from upstream main.
+Compare the application's installed or locked Effect version with `packages/effect/package.json` in the source, and note the upstream commit recorded in `.repos/README.md` (or the branch and commit of an explicitly supplied checkout). For a new adoption, use the version selected for the task. A matching major alone does not prove a recently added API exists in the application's patch version: check the installed declarations or matching local source when they differ. Report material mismatches rather than silently using APIs from upstream main.
 
 Keep the reference checkout read-only. Perform application edits, dependency changes, and validation in the target project under its own instructions. Updating or switching the upstream checkout is a separate action, not part of looking up a pattern.
 

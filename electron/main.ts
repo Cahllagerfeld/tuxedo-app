@@ -3,7 +3,7 @@ import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createSessionBackend } from "./backend/session";
+import { createSessionRuntime, desktopSessionBackend } from "./backend/session-runtime";
 import { registerDesktopOperation } from "./ipc";
 import { createTodoFileObservation } from "./backend/observation";
 import { todoFileChangeEvent } from "../src/lib/shared/desktop/contract";
@@ -37,7 +37,7 @@ app.on("window-all-closed", () => {
 
 void app.whenReady().then(async () => {
 	const observation = createTodoFileObservation();
-	const backend = createSessionBackend(
+	const runtime = createSessionRuntime(
 		join(app.getPath("userData"), "workspaces.json"),
 		observation,
 		(event) => {
@@ -48,7 +48,11 @@ void app.whenReady().then(async () => {
 				);
 		}
 	);
+	const backend = desktopSessionBackend(runtime);
 	app.on("before-quit", observation.stop);
+	app.on("will-quit", () => {
+		void runtime.dispose();
+	});
 	protocol.handle("tuxedo", (request) => {
 		const url = new URL(request.url);
 		if (url.host !== "app" || request.method !== "GET")

@@ -2,19 +2,24 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend } from "./session";
+import { createSessionBackend, type SessionDependencies } from "./session-runtime";
 const directories: string[] = [];
 afterEach(async () => {
 	await Promise.all(
 		directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
 	);
 });
-async function setup(contents: string) {
+async function setup(contents: string, dependencies?: SessionDependencies) {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-completion-"));
 	directories.push(directory);
 	const path = join(directory, "todo.txt");
 	await writeFile(path, contents);
-	const backend = createSessionBackend(join(directory, "workspaces.json"));
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		undefined,
+		undefined,
+		dependencies
+	);
 	const created = await backend.createWorkspace({
 		name: "Personal",
 		color: "blue",
@@ -39,12 +44,16 @@ async function setup(contents: string) {
 }
 test("completion writes adjacent dates and preserves priority as metadata for restoration", async () => {
 	const initial = "(A) 2026-05-24 Call Mom +Family @phone  \r\n\nOther\nFinal";
-	const { backend, path, target } = await setup(initial);
+	const { backend, path, target } = await setup(initial, {
+		identity: {
+			uuid: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			now: () => new Date(2030, 0, 2, 0, 30).toISOString(),
+		},
+	});
 	const applied = await backend.setTodoCompletion({ ...target, completed: true });
 	expect(applied.status).toBe("applied");
 	if (applied.status !== "applied") throw Error("completion failed");
-	const now = new Date();
-	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+	const today = "2030-01-02";
 	expect(await readFile(path, "utf8")).toBe(
 		`x ${today} 2026-05-24 Call Mom +Family @phone pri:A  \r\n\nOther\nFinal`
 	);
