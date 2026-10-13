@@ -48,6 +48,7 @@ export function sessionLayer(
 			const semaphore = yield* Semaphore.make(1);
 			const scope = identity.uuid();
 			let observed: { current: ConfirmedSession; scope: Scope.Closeable } | undefined;
+			let observationDisposed = false;
 			let revision = 0;
 			let confirmed: ConfirmedSession | undefined;
 			let todoContents: string | undefined;
@@ -97,10 +98,15 @@ export function sessionLayer(
 						)
 					);
 			});
-			yield* Effect.addFinalizer(() => closeObservation);
+			yield* Effect.addFinalizer(() =>
+				Effect.gen(function* () {
+					observationDisposed = true;
+					yield* closeObservation;
+				})
+			);
 			const syncObservation: Effect.Effect<void, never, FileSystem | Identity> = Effect.gen(
 				function* () {
-					if (!observation || observed?.current === confirmed) return;
+					if (!observation || observationDisposed || observed?.current === confirmed) return;
 					yield* closeObservation;
 					const current = confirmed;
 					if (!current || current.session.status !== "ready") return;
@@ -117,7 +123,12 @@ export function sessionLayer(
 								const contents = yield* readContents(ready.todo_file.path).pipe(
 									Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
 								);
-								if (contents === todoContents) return;
+								if (
+									contents === todoContents ||
+									current !== confirmed ||
+									observed?.scope !== targetScope
+								)
+									return;
 								onTodoFileChanged({
 									scope: current.scope,
 									revision: current.revision,

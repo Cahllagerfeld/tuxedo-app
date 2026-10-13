@@ -1,4 +1,4 @@
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Identity, identityLayer } from "./identity";
@@ -58,7 +58,12 @@ export function desktopSessionBackend(
 		deleteTodo: (request) => run("deleteTodo", request),
 		reorderTodo: (request) => run("reorderTodo", request),
 		stopObservation: () =>
-			runtime.runPromise(WorkspaceSession.use((session) => session.stopObservation)),
+			runtime
+				.runPromiseExit(WorkspaceSession.use((session) => session.stopObservation))
+				.then((exit) => {
+					if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
+						console.error("Workspace session observation stop failed", Cause.pretty(exit.cause));
+				}),
 		dispose: () => runtime.dispose(),
 	};
 }

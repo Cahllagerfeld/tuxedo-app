@@ -277,15 +277,80 @@ test("disposal releases observation resources when admitted restoration finishes
 	pause = true;
 	const restore = backend.restoreSession({});
 	let disposal: Promise<void> | undefined;
+	let stopping: Promise<void> | undefined;
 	try {
 		await expect.poll(() => reading).toBe(true);
+		stopping = backend.stopObservation();
 		disposal = backend.dispose();
 	} finally {
 		resume();
 	}
-	const [, disposed] = await Promise.allSettled([restore, disposal]);
+	const [, disposed, stopped] = await Promise.allSettled([restore, disposal, stopping]);
 	expect(disposed.status).toBe("fulfilled");
+	expect(stopped.status).toBe("fulfilled");
 	expect(subscribed).toBe(false);
+});
+
+test("disposal during an observation read releases resources and suppresses the stale event", async () => {
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+	directories.push(directory);
+	const path = join(directory, "active.todo");
+	await writeFile(path, "First");
+	let signal!: () => void;
+	let subscriptions = 0;
+	let pause = false;
+	let reading = false;
+	let resume!: () => void;
+	const gate = new Promise<void>((resolve) => {
+		resume = resolve;
+	});
+	const changes: TodoFileChange[] = [];
+	const backend = createSessionBackend(
+		join(directory, "workspaces.json"),
+		{
+			observe: (_path, changed) =>
+				Effect.acquireRelease(
+					Effect.sync(() => {
+						subscriptions++;
+						signal = changed;
+					}),
+					() =>
+						Effect.sync(() => {
+							subscriptions--;
+						})
+				),
+		},
+		(event) => changes.push(event),
+		{
+			filesystem: {
+				...filesystem,
+				readFile: (file) =>
+					Effect.gen(function* () {
+						if (pause && file === path) {
+							reading = true;
+							yield* Effect.promise(() => gate);
+						}
+						return yield* filesystem.readFile(file);
+					}),
+			},
+		}
+	);
+	backends.push(backend);
+	await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	await writeFile(path, "External edit");
+	pause = true;
+	signal();
+	let disposal: Promise<void> | undefined;
+	try {
+		await expect.poll(() => reading).toBe(true);
+		disposal = backend.dispose();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	} finally {
+		resume();
+	}
+	await disposal;
+	expect(subscriptions).toBe(0);
+	expect(changes).toEqual([]);
 });
 
 test("observation attaches only to confirmed Active Todo files and stops in Empty", async () => {
