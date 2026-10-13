@@ -401,55 +401,80 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	expect([...paths]).toEqual([]);
 });
 
-test("atomic external replacement refreshes through restoration and later deletion enters Empty", async () => {
-	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
-	directories.push(directory);
-	const observation = createTodoFileObservation();
-	const changes: TodoFileChange[] = [];
-	const backend = createSessionBackend(join(directory, "workspaces.json"), observation, (event) => {
-		changes.push(event);
-	});
-	try {
-		const path = join(directory, "active.todo");
-		await writeFile(path, "Original");
-		const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
-		if (created.status !== "applied") throw Error("Expected creation");
-		await writeFile(join(directory, "inactive.todo"), "Inactive edit");
-		await writeFile(
-			join(directory, "replacement.todo"),
-			"x 2026-10-10 Finished +Home @desk\n(A) Inserted +Work\n2026-13-01 Invalid\n"
+test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
+	"native observation refreshes through restoration after %s",
+	async (change) => {
+		const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+		directories.push(directory);
+		const observation = createTodoFileObservation();
+		const changes: TodoFileChange[] = [];
+		const backend = createSessionBackend(
+			join(directory, "workspaces.json"),
+			observation,
+			(event) => {
+				changes.push(event);
+			}
 		);
-		await rename(join(directory, "replacement.todo"), path);
-		await expect.poll(() => changes.length, { timeout: 5000 }).toBe(1);
-		expect(changes[0]).toMatchObject({
-			scope: created.confirmed.scope,
-			revision: created.confirmed.revision,
-			todoPath: path,
-		});
-		const refreshed = await backend.restoreSession({});
-		if (refreshed.session.status !== "ready") throw Error("Expected Ready");
-		expect(refreshed.session.todo_file.items.map((item) => item.description)).toEqual([
-			"Finished",
-			"Inserted",
-		]);
-		expect(refreshed.session.todo_file.items[0].completed).toBe(true);
-		expect(refreshed.session.todo_file.skipped).toHaveLength(1);
-		// A brief missing entry during save should still reload as Ready.
-		await rename(path, join(directory, "backup.todo"));
-		await writeFile(join(directory, "backup.todo"), "Saved after a brief missing entry\n");
-		await rename(join(directory, "backup.todo"), path);
-		await expect.poll(() => changes.length, { timeout: 5000 }).toBe(2);
-		expect((await backend.restoreSession({})).session.status).toBe("ready");
-		await rm(path);
-		await expect.poll(() => changes.length, { timeout: 5000 }).toBe(3);
-		expect((await backend.restoreSession({})).session).toMatchObject({
-			status: "empty",
-			warning: expect.stringContaining(path),
-		});
-	} finally {
-		await backend.dispose();
+		try {
+			const path = join(directory, "active.todo");
+			await writeFile(path, "Original");
+			const created = await backend.createWorkspace({
+				name: "Work",
+				color: "blue",
+				todoPath: path,
+			});
+			if (created.status !== "applied") throw Error("Expected creation");
+			await writeFile(join(directory, "inactive.todo"), "Inactive edit");
+			if (change === "atomic replacement") {
+				await writeFile(
+					join(directory, "replacement.todo"),
+					"x 2026-10-10 Finished +Home @desk\n(A) Inserted +Work\n2026-13-01 Invalid\n"
+				);
+				await rename(join(directory, "replacement.todo"), path);
+			} else if (change === "briefly missing entry") {
+				await rename(path, join(directory, "backup.todo"));
+				await writeFile(join(directory, "backup.todo"), "Saved after a brief missing entry\n");
+				await rename(join(directory, "backup.todo"), path);
+			} else {
+				await rm(path);
+			}
+			// Native watchers can deliver multiple signals for one filesystem change.
+			await expect
+				.poll(() => changes.some((event) => event.revision === created.confirmed.revision), {
+					timeout: 3000,
+				})
+				.toBe(true);
+			expect(changes.find((event) => event.revision === created.confirmed.revision)).toMatchObject({
+				scope: created.confirmed.scope,
+				revision: created.confirmed.revision,
+				todoPath: path,
+			});
+			const refreshed = await backend.restoreSession({});
+			if (change === "deletion") {
+				expect(refreshed.session).toMatchObject({
+					status: "empty",
+					warning: expect.stringContaining(path),
+				});
+				return;
+			}
+			if (refreshed.session.status !== "ready") throw Error("Expected Ready");
+			if (change === "atomic replacement") {
+				expect(refreshed.session.todo_file.items.map((item) => item.description)).toEqual([
+					"Finished",
+					"Inserted",
+				]);
+				expect(refreshed.session.todo_file.items[0].completed).toBe(true);
+				expect(refreshed.session.todo_file.skipped).toHaveLength(1);
+			} else {
+				expect(refreshed.session.todo_file.items.map((item) => item.description)).toEqual([
+					"Saved after a brief missing entry",
+				]);
+			}
+		} finally {
+			await backend.dispose();
+		}
 	}
-});
+);
 
 test("renaming the containing directory refreshes the missing Active Todo-file path into Empty", async () => {
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
