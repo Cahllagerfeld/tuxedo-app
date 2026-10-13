@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  jsdom: ~30.0.1
+  jsdom: 30.0.1
 
 patchedDependencies:
   '@changesets/get-github-info@1.0.1': 4b2756eb490a2ad802075423f6b08a5f50f12307ec25e117b20a79e12236b625
@@ -15,16 +15,16 @@ importers:
   .:
     devDependencies:
       '@babel/cli':
-        specifier: ^8.0.6
+        specifier: 8.0.6
         version: 8.0.6(@babel/core@8.0.7)
       '@babel/core':
-        specifier: ^8.0.7
+        specifier: 8.0.7
         version: 8.0.7
       '@babel/plugin-transform-export-namespace-from':
-        specifier: ^8.0.1
+        specifier: 8.0.1
         version: 8.0.1(@babel/core@8.0.7)
       '@babel/plugin-transform-modules-commonjs':
-        specifier: ^8.0.1
+        specifier: 8.0.1
         version: 8.0.1(@babel/core@8.0.7)
       '@changesets/changelog-github':
         specifier: 1.0.1
@@ -51,7 +51,7 @@ importers:
         specifier: workspace:^
         version: link:packages/tools/oxc
       '@effect/tsgo':
-        specifier: ^0.51.1
+        specifier: 0.51.1
         version: 0.51.1
       '@effect/utils':
         specifier: workspace:^
@@ -60,97 +60,97 @@ importers:
         specifier: workspace:^
         version: link:packages/vitest
       '@faker-js/faker':
-        specifier: ^10.6.0
+        specifier: 10.6.0
         version: 10.6.0
       '@rollup/plugin-node-resolve':
-        specifier: ^16.0.3
+        specifier: 16.0.3
         version: 16.0.3(rollup@4.64.5)
       '@rollup/plugin-replace':
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3(rollup@4.64.5)
       '@rollup/plugin-terser':
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0(rollup@4.64.5)
       '@types/jscodeshift':
-        specifier: ^17.3.0
+        specifier: 17.3.0
         version: 17.3.0
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(vitest@5.0.3)
       '@vitest/web-worker':
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(vitest@5.0.3)
       ast-types:
-        specifier: ^0.16.3
+        specifier: 0.16.3
         version: 0.16.3
       babel-plugin-annotate-pure-calls:
-        specifier: ^0.5.0
+        specifier: 0.5.0
         version: 0.5.0(@babel/core@8.0.7)
       dprint:
-        specifier: ^0.61.1
+        specifier: 0.61.1
         version: 0.61.1
       fast-check:
-        specifier: ^4.10.2
+        specifier: 4.10.2
         version: 4.10.2
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
       happy-dom:
-        specifier: ^20.14.6
+        specifier: 20.14.6
         version: 20.14.6
       jscodeshift:
-        specifier: ^17.4.0
+        specifier: 17.4.0
         version: 17.4.0(supports-color@10.2.2)
       lalph:
-        specifier: ^0.3.139
+        specifier: 0.3.139
         version: 0.3.139
       madge:
-        specifier: ^8.0.0
+        specifier: 8.0.0
         version: 8.0.0(supports-color@10.2.2)(typescript@7.0.2)
       oxlint:
-        specifier: ^1.87.0
+        specifier: 1.87.0
         version: 1.87.0
       pkg-pr-new:
         specifier: 0.0.91
         version: 0.0.91
       playwright:
-        specifier: ^1.64.0
+        specifier: 1.64.0
         version: 1.64.0
       rollup:
-        specifier: ^4.64.5
+        specifier: 4.64.5
         version: 4.64.5
       rollup-plugin-bundle-stats:
-        specifier: ^4.22.3
+        specifier: 4.22.3
         version: 4.22.3(core-js@3.47.0)(rolldown@1.2.13)(rollup@4.64.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       rollup-plugin-esbuild:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1(esbuild@0.28.2)(rollup@4.64.5)(supports-color@10.2.2)
       rollup-plugin-visualizer:
-        specifier: ^7.1.1
+        specifier: 7.1.1
         version: 7.1.1(rolldown@1.2.13)(rollup@4.64.5)
       terser:
-        specifier: ^5.51.2
+        specifier: 5.51.2
         version: 5.51.2
       tstyche:
-        specifier: ^7.2.5
+        specifier: 7.2.5
         version: 7.2.5(typescript@7.0.2)
       typescript:
-        specifier: ^7.0.2
+        specifier: 7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.3.4
+        specifier: 8.3.4
         version: 8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(happy-dom@20.14.6)(jsdom@30.0.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       vitest-websocket-mock:
-        specifier: ^0.8.0
+        specifier: 0.8.0
         version: 0.8.0(vitest@5.0.3)
       zod:
-        specifier: ^4.6.5
+        specifier: 4.6.5
         version: 4.6.5
 
   ai-docs:
@@ -225,14 +225,14 @@ importers:
         specifier: workspace:*
         version: link:../packages/effect
       hono:
-        specifier: ^4.13.13
+        specifier: 4.13.13
         version: 4.13.13
       nodemailer:
-        specifier: ^10.1.0
+        specifier: 10.1.0
         version: 10.1.0
     devDependencies:
       '@types/nodemailer':
-        specifier: ^8.0.2
+        specifier: 8.0.2
         version: 8.0.2
 
   packages/ai/anthropic:
@@ -274,61 +274,61 @@ importers:
   packages/atom/react:
     devDependencies:
       '@testing-library/dom':
-        specifier: ^10.4.2
+        specifier: 10.4.2
         version: 10.4.2
       '@testing-library/jest-dom':
-        specifier: ^7.0.1
+        specifier: 7.0.1
         version: 7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.3)
       '@testing-library/react':
-        specifier: ^16.3.3
+        specifier: 16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@types/react':
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0
       '@types/react-dom':
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
       '@types/scheduler':
-        specifier: ^0.28.0
+        specifier: 0.28.0
         version: 0.28.0
       effect:
         specifier: workspace:^
         version: link:../../effect
       jsdom:
-        specifier: ~30.0.1
+        specifier: 30.0.1
         version: 30.0.1
       react:
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0
       react-dom:
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
       react-error-boundary:
-        specifier: ^6.1.6
+        specifier: 6.1.6
         version: 6.1.6(@types/react@19.3.0)(react@19.3.0)
       scheduler:
-        specifier: ^0.28.0
+        specifier: 0.28.0
         version: 0.28.0
 
   packages/atom/solid:
     devDependencies:
       '@solidjs/testing-library':
-        specifier: ^0.8.10
+        specifier: 0.8.10
         version: 0.8.10(solid-js@1.9.17)
       '@testing-library/dom':
-        specifier: ^10.4.2
+        specifier: 10.4.2
         version: 10.4.2
       '@testing-library/jest-dom':
-        specifier: ^7.0.1
+        specifier: 7.0.1
         version: 7.0.1(@testing-library/dom@10.4.2)(vitest@5.0.3)
       effect:
         specifier: workspace:^
         version: link:../../effect
       jsdom:
-        specifier: ~30.0.1
+        specifier: 30.0.1
         version: 30.0.1
       solid-js:
-        specifier: ^1.9.17
+        specifier: 1.9.17
         version: 1.9.17
 
   packages/atom/vue:
@@ -337,40 +337,40 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       vue:
-        specifier: ^3.5.43
+        specifier: 3.5.43
         version: 3.5.43(typescript@7.0.2)
 
   packages/effect:
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       ajv:
-        specifier: ^8.20.0
+        specifier: 8.20.0
         version: 8.20.0
       ajv-draft-04:
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0(ajv@8.20.0)
       ast-types:
-        specifier: ^0.16.3
+        specifier: 0.16.3
         version: 0.16.3
       esbuild:
-        specifier: ^0.28.2
+        specifier: 0.28.2
         version: 0.28.2
       immer:
-        specifier: ^11.1.21
+        specifier: 11.1.21
         version: 11.1.21
       miniflare:
         specifier: 5.20260925.0-alpha
         version: 5.20260925.0-alpha(@types/node@26.6.5)
       protobufjs:
-        specifier: ^8.8.0
+        specifier: 8.8.0
         version: 8.8.0
       tinybench:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1
       valibot:
-        specifier: ^1.5.0
+        specifier: 1.5.0
         version: 1.5.0(typescript@7.0.2)
 
   packages/opentelemetry:
@@ -380,46 +380,46 @@ importers:
         version: link:../effect
     devDependencies:
       '@opentelemetry/api':
-        specifier: ^1.9.1
+        specifier: 1.9.1
         version: 1.9.1
       '@opentelemetry/api-logs':
-        specifier: ^0.223.0
+        specifier: 0.223.0
         version: 0.223.0
       '@opentelemetry/context-async-hooks':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-metrics-otlp-http':
         specifier: 0.223.0
         version: 0.223.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-prometheus':
-        specifier: ^0.223.0
+        specifier: 0.223.0
         version: 0.223.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-trace-otlp-http':
-        specifier: ^0.223.0
+        specifier: 0.223.0
         version: 0.223.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-exporter-base':
-        specifier: ^0.223.0
+        specifier: 0.223.0
         version: 0.223.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-logs':
-        specifier: ^0.223.0
+        specifier: 0.223.0
         version: 0.223.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-metrics':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-base':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-node':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-web':
-        specifier: ^2.12.0
+        specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions':
-        specifier: ^1.43.0
+        specifier: 1.43.0
         version: 1.43.0
 
   packages/platform/browser:
@@ -428,10 +428,10 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       fake-indexeddb:
-        specifier: ^6.2.5
+        specifier: 6.2.5
         version: 6.2.5
       mock-xmlhttprequest:
-        specifier: ^8.4.1
+        specifier: 8.4.1
         version: 8.4.1
 
   packages/platform/bun:
@@ -441,13 +441,13 @@ importers:
         version: link:../node-shared
     devDependencies:
       '@types/bun':
-        specifier: ^1.4.2
+        specifier: 1.4.2
         version: 1.4.2
       effect:
         specifier: workspace:^
         version: link:../../effect
       tinybench:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1
 
   packages/platform/deno:
@@ -475,16 +475,16 @@ importers:
         specifier: jsr:^1.0.19
         version: '@jsr/std__assert@1.0.19'
       '@testcontainers/redis':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       '@types/deno':
-        specifier: ^2.7.0
+        specifier: 2.7.0
         version: 2.7.0
       effect:
         specifier: workspace:^
         version: link:../../effect
       tinybench:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1
 
   packages/platform/node:
@@ -493,57 +493,57 @@ importers:
         specifier: workspace:^
         version: link:../node-shared
       undici:
-        specifier: ^8.11.2
+        specifier: 8.11.2
         version: 8.11.2
     devDependencies:
       '@testcontainers/mysql':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       '@testcontainers/postgresql':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       '@testcontainers/redis':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
         version: link:../../effect
       redis:
-        specifier: ^6.3.0
+        specifier: 6.3.0
         version: 6.3.0(@opentelemetry/api@1.9.1)
 
   packages/platform/node-shared:
     dependencies:
       '@types/ws':
-        specifier: ^8.18.2
+        specifier: 8.18.2
         version: 8.18.2
       ws:
-        specifier: ^8.22.0
+        specifier: 8.22.0
         version: 8.22.0
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
         version: link:../../effect
       tar:
-        specifier: ^7.5.22
+        specifier: 7.5.22
         version: 7.5.22
       testcontainers:
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       tinybench:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1
 
   packages/sql/clickhouse:
     dependencies:
       '@clickhouse/client':
-        specifier: ^1.24.1
+        specifier: 1.24.1
         version: 1.24.1
     devDependencies:
       '@effect/platform-node':
@@ -556,7 +556,7 @@ importers:
   packages/sql/d1:
     dependencies:
       '@cloudflare/workers-types':
-        specifier: ^5.20261010.1
+        specifier: 5.20261010.1
         version: 5.20261010.1
     devDependencies:
       effect:
@@ -569,24 +569,24 @@ importers:
   packages/sql/libsql:
     dependencies:
       '@libsql/client':
-        specifier: ^0.18.0
+        specifier: 0.18.0
         version: 0.18.0
     devDependencies:
       effect:
         specifier: workspace:^
         version: link:../../effect
       testcontainers:
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
 
   packages/sql/mssql:
     dependencies:
       tedious:
-        specifier: ^20.3.5
+        specifier: 20.3.5
         version: 20.3.5(supports-color@10.2.2)
     devDependencies:
       '@testcontainers/mssqlserver':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       effect:
         specifier: workspace:^
@@ -595,11 +595,11 @@ importers:
   packages/sql/mysql2:
     dependencies:
       mysql2:
-        specifier: ^3.24.5
+        specifier: 3.24.5
         version: 3.24.5(@types/node@26.6.5)
     devDependencies:
       '@testcontainers/mysql':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       effect:
         specifier: workspace:^
@@ -608,25 +608,25 @@ importers:
   packages/sql/pg:
     devDependencies:
       '@testcontainers/postgresql':
-        specifier: ^12.2.0
+        specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
         version: link:../../effect
       postgres:
-        specifier: ^3.4.9
+        specifier: 3.4.9
         version: 3.4.9
       tinybench:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1
 
   packages/sql/pglite:
     dependencies:
       '@electric-sql/pglite':
-        specifier: ^0.5.8
+        specifier: 0.5.8
         version: 0.5.8
     devDependencies:
       effect:
@@ -639,7 +639,7 @@ importers:
         specifier: workspace:^
         version: link:../../platform/bun
       '@types/bun':
-        specifier: ^1.4.2
+        specifier: 1.4.2
         version: 1.4.2
       effect:
         specifier: workspace:^
@@ -648,13 +648,13 @@ importers:
   packages/sql/sqlite-do:
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: ^5.20261010.1
+        specifier: 5.20261010.1
         version: 5.20261010.1
       effect:
         specifier: workspace:^
         version: link:../../effect
       esbuild:
-        specifier: ^0.28.2
+        specifier: 0.28.2
         version: 0.28.2
       miniflare:
         specifier: 5.20260925.0-alpha
@@ -666,7 +666,7 @@ importers:
         specifier: workspace:^
         version: link:../../platform/node
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
@@ -675,7 +675,7 @@ importers:
   packages/sql/sqlite-react-native:
     devDependencies:
       '@op-engineering/op-sqlite':
-        specifier: ^18.2.5
+        specifier: 18.2.5
         version: 18.2.5(react-native@0.83.0(@babel/core@8.0.7)(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2))(react@19.3.0)
       effect:
         specifier: workspace:^
@@ -684,7 +684,7 @@ importers:
   packages/sql/sqlite-wasm:
     devDependencies:
       '@effect/wa-sqlite':
-        specifier: ^0.2.1
+        specifier: 0.2.1
         version: 0.2.1
       effect:
         specifier: workspace:^
@@ -702,14 +702,14 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
       yaml:
-        specifier: ^2.9.1
+        specifier: 2.9.1
         version: 2.9.1
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
 
   packages/tools/ai-docgen:
@@ -721,14 +721,14 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
       yaml:
-        specifier: ^2.9.1
+        specifier: 2.9.1
         version: 2.9.1
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
 
   packages/tools/api-diff:
@@ -740,17 +740,17 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       yaml:
-        specifier: ^2.9.1
+        specifier: 2.9.1
         version: 2.9.1
     devDependencies:
       '@effect/vitest':
         specifier: workspace:^
         version: link:../../vitest
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       typescript:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       typescript-compiler:
         specifier: npm:typescript@6.0.3
@@ -765,118 +765,118 @@ importers:
         specifier: workspace:^
         version: link:../../platform/node
       '@rollup/plugin-node-resolve':
-        specifier: ^16.0.3
+        specifier: 16.0.3
         version: 16.0.3(rollup@4.64.5)
       '@rollup/plugin-replace':
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3(rollup@4.64.5)
       '@rollup/plugin-terser':
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0(rollup@4.64.5)
       effect:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
       rollup:
-        specifier: ^4.64.5
+        specifier: 4.64.5
         version: 4.64.5
       rollup-plugin-esbuild:
-        specifier: ^6.2.1
+        specifier: 6.2.1
         version: 6.2.1(esbuild@0.28.2)(rollup@4.64.5)(supports-color@10.2.2)
       rollup-plugin-visualizer:
-        specifier: ^7.1.1
+        specifier: 7.1.1
         version: 7.1.1(rolldown@1.2.13)(rollup@4.64.5)
     devDependencies:
       '@babel/core':
-        specifier: ^8.0.7
+        specifier: 8.0.7
         version: 8.0.7
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       babel-plugin-annotate-pure-calls:
-        specifier: ^0.5.0
+        specifier: 0.5.0
         version: 0.5.0(@babel/core@8.0.7)
       esbuild:
-        specifier: ^0.28.2
+        specifier: 0.28.2
         version: 0.28.2
 
   packages/tools/docgen:
     dependencies:
       '@babel/code-frame':
-        specifier: ^8.0.6
+        specifier: 8.0.6
         version: 8.0.6
       '@effect/markdown-toc':
-        specifier: ^0.1.0
+        specifier: 0.1.0
         version: 0.1.0
       '@effect/platform-node':
         specifier: workspace:^
         version: link:../../platform/node
       chalk:
-        specifier: ^6.0.1
+        specifier: 6.0.1
         version: 6.0.1
       doctrine:
-        specifier: ^3.0.0
+        specifier: 3.0.0
         version: 3.0.0
       effect:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
       prettier:
-        specifier: ^3.9.10
+        specifier: 3.9.10
         version: 3.9.10
       ts-morph:
-        specifier: ^28.0.0
+        specifier: 28.0.0
         version: 28.0.0
       tsconfck:
-        specifier: ^3.1.6
+        specifier: 3.1.6
         version: 3.1.6(typescript@6.0.3)
     devDependencies:
       '@effect/vitest':
         specifier: workspace:^
         version: link:../../vitest
       '@types/babel__code-frame':
-        specifier: ^7.27.0
+        specifier: 7.27.0
         version: 7.27.0
       '@types/doctrine':
-        specifier: ^0.0.9
+        specifier: 0.0.9
         version: 0.0.9
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       tsx:
-        specifier: ^4.23.15
+        specifier: 4.23.15
         version: 4.23.15
       typescript:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(happy-dom@20.14.6)(jsdom@30.0.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/tools/doctest:
     dependencies:
       rolldown:
-        specifier: ^1.2.13
+        specifier: 1.2.13
         version: 1.2.13
     devDependencies:
       '@effect/vitest':
         specifier: workspace:^
         version: link:../../vitest
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
         version: link:../../effect
       vite:
-        specifier: ^8.3.4
+        specifier: 8.3.4
         version: 8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(happy-dom@20.14.6)(jsdom@30.0.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/tools/jsdocs:
@@ -885,20 +885,20 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
     devDependencies:
       '@effect/vitest':
         specifier: workspace:^
         version: link:../../vitest
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       typescript:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(happy-dom@20.14.6)(jsdom@30.0.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/tools/openapi-generator:
@@ -907,39 +907,39 @@ importers:
         specifier: workspace:^
         version: link:../../platform/node
       swagger2openapi:
-        specifier: ^7.0.8
+        specifier: 7.0.8
         version: 7.0.8
     devDependencies:
       '@types/swagger2openapi':
-        specifier: ^7.0.4
+        specifier: 7.0.4
         version: 7.0.4
       effect:
         specifier: workspace:^
         version: link:../../effect
       json-schema-typed:
-        specifier: ^8.0.2
+        specifier: 8.0.2
         version: 8.0.2
       openapi-typescript:
-        specifier: ^7.13.0
+        specifier: 7.13.0
         version: 7.13.0(typescript@7.0.2)
       rolldown:
-        specifier: ^1.2.13
+        specifier: 1.2.13
         version: 1.2.13
 
   packages/tools/oxc:
     dependencies:
       '@oxlint/plugins':
-        specifier: ^1.87.0
+        specifier: 1.87.0
         version: 1.87.0
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       typescript:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^5.0.3
+        specifier: 5.0.3
         version: 5.0.3(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.3)(happy-dom@20.14.6)(jsdom@30.0.1)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/tools/utils:
@@ -951,17 +951,17 @@ importers:
         specifier: workspace:^
         version: link:../../effect
       glob:
-        specifier: ^13.0.6
+        specifier: 13.0.6
         version: 13.0.6
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
 
   packages/vitest:
     devDependencies:
       '@types/node':
-        specifier: ^26.6.5
+        specifier: 26.6.5
         version: 26.6.5
       effect:
         specifier: workspace:^
@@ -6387,7 +6387,7 @@ packages:
       '@vitest/coverage-v8': 5.0.3
       '@vitest/ui': 5.0.3
       happy-dom: '*'
-      jsdom: ~30.0.1
+      jsdom: 30.0.1
       vite: ^6.4.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':

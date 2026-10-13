@@ -64,12 +64,12 @@
   },
   "devDependencies": {
     "effect": "workspace:^",
-    "testcontainers": "^12.2.0"
+    "testcontainers": "12.2.0"
   },
   "peerDependencies": {
     "effect": "workspace:^"
   },
   "dependencies": {
-    "@libsql/client": "^0.18.0"
+    "@libsql/client": "0.18.0"
   }
 }

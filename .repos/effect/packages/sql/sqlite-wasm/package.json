@@ -61,11 +61,11 @@
     "check": "tsc -b tsconfig.json"
   },
   "devDependencies": {
-    "@effect/wa-sqlite": "^0.2.1",
+    "@effect/wa-sqlite": "0.2.1",
     "effect": "workspace:^"
   },
   "peerDependencies": {
-    "@effect/wa-sqlite": ">=0.1.2 <0.2.0",
+    "@effect/wa-sqlite": ">=0.1.2 <0.3.0",
     "effect": "workspace:^"
   }
 }

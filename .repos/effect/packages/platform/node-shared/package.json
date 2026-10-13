@@ -69,14 +69,14 @@
     "effect": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "26.6.5",
     "effect": "workspace:^",
-    "tar": "^7.5.22",
-    "testcontainers": "^12.2.0",
-    "tinybench": "^6.2.1"
+    "tar": "7.5.22",
+    "testcontainers": "12.2.0",
+    "tinybench": "6.2.1"
   },
   "dependencies": {
-    "@types/ws": "^8.18.2",
-    "ws": "^8.22.0"
+    "@types/ws": "8.18.2",
+    "ws": "8.22.0"
   }
 }
