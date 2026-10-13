@@ -875,6 +875,39 @@ try {
 	assert.equal((await exited)[0], 0, "Normal quit must complete cleanup and exit successfully");
 	application = undefined;
 	console.log("Real Electron normal quit drained and exited successfully.");
+	application = await launchApplication();
+	const stuckPage = await application.firstWindow();
+	await stuckPage.waitForFunction(() => typeof window.desktop?.selectTodoFile === "function");
+	await application.evaluate(({ dialog }) => {
+		globalThis.dialogEntered = false;
+		dialog.showOpenDialog = () => {
+			globalThis.dialogEntered = true;
+			return new Promise(() => {});
+		};
+	});
+	await stuckPage.evaluate(() => {
+		void window.desktop.selectTodoFile({}).catch(() => {});
+	});
+	await application.evaluate(async () => {
+		while (!globalThis.dialogEntered) await new Promise((resolve) => setTimeout(resolve, 10));
+	});
+	let shutdownDiagnostic = "";
+	application.process().stderr.setEncoding("utf8");
+	application.process().stderr.on("data", (chunk) => {
+		shutdownDiagnostic += chunk;
+	});
+	const forcedExit = once(application.process(), "exit", { signal: AbortSignal.timeout(15000) });
+	await application.evaluate(({ app }) => {
+		app.quit();
+		app.quit();
+	});
+	assert.equal((await forcedExit)[0], 1, "A stuck dialog must reach the bounded quit fallback");
+	assert.match(shutdownDiagnostic, /Application shutdown deadline exceeded/);
+	assert.match(shutdownDiagnostic, /selectTodoFile/);
+	application = undefined;
+	console.log(
+		"Real Electron stuck-dialog quit reached the 10-second fallback with pending-operation diagnostics."
+	);
 	if (!packagedExecutable) {
 		const failed = spawn(electronPath, [resolve("dist-electron/main.js")], {
 			env: { ...environment, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1" },
