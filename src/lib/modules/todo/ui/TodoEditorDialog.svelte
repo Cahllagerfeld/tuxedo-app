@@ -27,6 +27,8 @@
 		workspaceName?: string;
 		disabled?: boolean;
 		todoToEdit?: TodoItem;
+		initialProject?: string | null;
+		initialContext?: string | null;
 		onClose?: (uncertain?: boolean) => void;
 	};
 
@@ -36,6 +38,8 @@
 		workspaceName = "",
 		disabled = false,
 		todoToEdit,
+		initialProject = null,
+		initialContext = null,
 		open = $bindable(!!todoToEdit),
 		onClose,
 	}: Props = $props();
@@ -109,8 +113,8 @@
 		if (!todoToEdit)
 			return {
 				description: "",
-				projects: [],
-				contexts: [],
+				projects: initialProject === null ? [] : [initialProject],
+				contexts: initialContext === null ? [] : [initialContext],
 				priority: "none",
 				creationDate: today(),
 				completionDate: "",
@@ -134,7 +138,9 @@
 		tagErrors.contexts = "";
 	}
 
-	function focusDescription() {
+	function handleOpenAutoFocus(event: Event) {
+		event.preventDefault();
+		resetForm();
 		void tick().then(() => descriptionInput?.focus());
 	}
 
@@ -144,10 +150,7 @@
 			return;
 		}
 		open = nextOpen;
-		if (nextOpen) {
-			resetForm();
-			focusDescription();
-		} else {
+		if (!nextOpen) {
 			resetForm();
 			onClose?.();
 			void tick().then(() => triggerButton?.focus());
@@ -225,6 +228,7 @@
 	<Dialog.Content
 		class="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
 		closeButtonDisabled={controlsDisabled}
+		onOpenAutoFocus={handleOpenAutoFocus}
 	>
 		<Dialog.Header class="shrink-0">
 			<Dialog.Title>{todoToEdit ? "Edit Todo item" : "New Todo item"}</Dialog.Title>

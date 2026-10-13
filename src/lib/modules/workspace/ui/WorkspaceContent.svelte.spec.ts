@@ -665,6 +665,25 @@ test("row navigation focus opens the existing editor and returns after Escape", 
 	await expect.element(row).toHaveFocus();
 });
 
+test("keyboard creation reads current filters each time the dialog opens", async () => {
+	await page.viewport(1200, 800);
+	render(Harness, { desktop: adapter(), shell: true });
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	const mod = navigator.platform.includes("Mac") ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	await expect
+		.element(page.getByRole("button", { name: "Remove +Work", exact: true }))
+		.toBeVisible();
+	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveFocus();
+	await userEvent.keyboard("{Escape}");
+	await page.getByRole("button", { name: "Clear Project Work", exact: true }).click();
+	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "New Todo item" })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Remove +Work", exact: true }))
+		.not.toBeInTheDocument();
+});
+
 test("shell shortcuts open existing surfaces, show hints, and suspend background bindings", async () => {
 	await page.viewport(1200, 800);
 	render(Harness, { desktop: adapter(), shell: true });

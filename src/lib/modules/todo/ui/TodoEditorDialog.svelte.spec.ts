@@ -73,6 +73,28 @@ function openDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0).click();
 }
 
+test("editing retains the Todo item's tags instead of creation defaults", async () => {
+	let saved: TodoItemDraft | undefined;
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: todoFile.items[0],
+		initialProject: "Personal",
+		initialContext: "Home",
+		saveTodoItem: async (input) => {
+			saved = input;
+			return { status: "applied" };
+		},
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Remove +Work", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Remove @Office", exact: true }))
+		.toBeVisible();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => saved).toMatchObject({ projects: ["Work"], contexts: ["Office"] });
+});
+
 function submitDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1).click();
 }
