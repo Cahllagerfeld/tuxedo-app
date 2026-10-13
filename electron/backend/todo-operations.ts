@@ -151,8 +151,9 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 		createTodo: (request: DesktopRequest<"createTodo">) =>
 			Effect.gen(function* () {
 				const input = yield* attempt(() => createTodoRequestSchema.parse(request));
+				const identity = yield* Identity;
 				return yield* mutateTodoFile(input, (contents) =>
-					appendTodoLine(contents, createTodoLine(input))
+					appendTodoLine(contents, createTodoLine(input, new Date(identity.now())))
 				);
 			}),
 		editTodo: (request: DesktopRequest<"editTodo">) =>
