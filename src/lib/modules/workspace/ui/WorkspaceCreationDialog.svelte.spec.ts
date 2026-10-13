@@ -1,9 +1,32 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import WorkspaceCreationDialog from "./WorkspaceCreationDialog.svelte";
+import "../../../../routes/layout.css";
 
 describe("WorkspaceCreationDialog", () => {
+	it("keeps pending creation visible through Escape and outside clicks", async () => {
+		let finish!: (outcome: { status: "rejected"; message: string }) => void;
+		render(WorkspaceCreationDialog, {
+			open: true,
+			selectFile: async () => "/tmp/work.todo",
+			createWorkspace: () => new Promise((resolve) => (finish = resolve)),
+		});
+		await page.getByLabelText("Workspace name").fill("Work");
+		await page.getByText("Choose Todo file", { exact: true }).click();
+		await page.getByRole("button", { name: "Create workspace" }).click();
+		await expect.element(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("dialog")).toBeVisible();
+		await userEvent.click(document.querySelector('[data-slot="dialog-overlay"]')!, {
+			position: { x: 5, y: 5 },
+		});
+		await expect.element(page.getByRole("dialog")).toBeVisible();
+		finish({ status: "rejected", message: "Could not read Todo file." });
+		await expect.element(page.getByRole("alert")).toHaveTextContent("Could not read Todo file.");
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	});
 	it("requires a name and selected Todo file before creation", async () => {
 		const selectFile = vi.fn(async () => "/tmp/work.todo");
 		const createWorkspace = vi.fn(async () => ({ status: "applied" as const }));

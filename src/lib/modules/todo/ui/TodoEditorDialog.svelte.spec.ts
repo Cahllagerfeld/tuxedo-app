@@ -77,6 +77,44 @@ function submitDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(1).click();
 }
 
+test("submission commits typed Projects and Contexts without Enter", async () => {
+	let saved: TodoItemDraft | undefined;
+	renderDialog(async (input) => {
+		saved = input;
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByPlaceholder("What needs doing?").fill("Ship release");
+	await page.getByPlaceholder("Choose or create a Project").fill("+Release");
+	await page.getByPlaceholder("Choose or create a Context").fill("@Office");
+	await submitDialog();
+	await expect.poll(() => saved).toMatchObject({ projects: ["Release"], contexts: ["Office"] });
+});
+
+test.each(["Project", "Context"])(
+	"invalid typed %s blocks submission until corrected",
+	async (field) => {
+		let saved: TodoItemDraft | undefined;
+		renderDialog(async (input) => {
+			saved = input;
+			return { status: "applied" };
+		});
+		await openDialog();
+		await page.getByPlaceholder("What needs doing?").fill("Ship release");
+		const input = page.getByPlaceholder(`Choose or create a ${field}`);
+		await input.fill("two words");
+		await submitDialog();
+		await expect.element(page.getByText("Use a tag name without spaces.")).toBeVisible();
+		expect(saved).toBeUndefined();
+		await expect.element(input).toHaveValue("two words");
+		await input.fill("Release");
+		await submitDialog();
+		await expect
+			.poll(() => saved)
+			.toMatchObject(field === "Project" ? { projects: ["Release"] } : { contexts: ["Release"] });
+	}
+);
+
 async function pressEnter(locator: ReturnType<typeof page.getByPlaceholder>) {
 	const input = locator.element() as HTMLInputElement;
 	input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

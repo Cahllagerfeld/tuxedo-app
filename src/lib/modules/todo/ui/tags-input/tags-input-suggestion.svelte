@@ -12,13 +12,12 @@
 <button
 	{id}
 	type="button"
+	tabindex="-1"
 	role="option"
 	aria-selected={active}
 	class="w-full cursor-default rounded-sm px-2 py-1.5 text-left text-sm outline-hidden transition-colors select-none hover:bg-accent aria-selected:bg-accent"
-	onmousedown={(event) => {
-		event.preventDefault();
-		onSelect(value);
-	}}
+	onmousedown={(event) => event.preventDefault()}
+	onclick={() => onSelect(value)}
 >
 	{value}
 </button>
