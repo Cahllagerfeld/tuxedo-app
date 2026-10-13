@@ -13,7 +13,7 @@ export function registerDesktopOperation<K extends DesktopOperation>(
 	trusted: (url: string) => boolean,
 	operation: K,
 	handler: (request: Request<K>) => Promise<Response<K>>
-): void {
+): () => void {
 	const contract = desktopContract[operation];
 	ipc.handle(contract.channel, async (event, request: unknown) => {
 		const window = getWindow();
@@ -28,4 +28,5 @@ export function registerDesktopOperation<K extends DesktopOperation>(
 		const input = contract.request.parse(request) as Request<K>;
 		return contract.response.parse(await handler(input));
 	});
+	return () => ipc.removeHandler(contract.channel);
 }

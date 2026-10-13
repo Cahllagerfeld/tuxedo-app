@@ -3,10 +3,17 @@ import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { Effect, Exit, Scope } from "effect";
+import { WorkspaceSession } from "./backend/session";
 import { createSessionRuntime, desktopSessionBackend } from "./backend/session-runtime";
 import { registerDesktopOperation } from "./ipc";
 import { createTodoFileObservation } from "./backend/observation";
-import { todoFileChangeEvent } from "../src/lib/shared/desktop/contract";
+import {
+	todoFileChangeEvent,
+	type DesktopOperation,
+	type DesktopRequest,
+	type DesktopResponse,
+} from "../src/lib/shared/desktop/contract";
 const here = dirname(fileURLToPath(import.meta.url));
 app.setName("Tuxedo Electron");
 app.setPath(
@@ -31,136 +38,224 @@ const trusted = (url: string) => {
 };
 let mainWindow: BrowserWindow | null = null;
 
-app.on("window-all-closed", () => {
-	if (process.platform !== "darwin") app.quit();
+const observation = createTodoFileObservation();
+const runtime = createSessionRuntime(
+	join(app.getPath("userData"), "workspaces.json"),
+	observation,
+	(event) => {
+		if (mainWindow && !mainWindow.isDestroyed() && trusted(mainWindow.webContents.getURL()))
+			mainWindow.webContents.send(
+				todoFileChangeEvent.channel,
+				todoFileChangeEvent.payload.parse(event)
+			);
+	}
+);
+const backend = desktopSessionBackend(runtime);
+let quitAllowed = false;
+let quitting = false;
+app.on("before-quit", (event) => {
+	if (quitAllowed) return;
+	event.preventDefault();
+	if (quitting) return;
+	quitting = true;
+	void backend.shutdown().then((result) => {
+		if (result !== "complete") {
+			app.exit(1);
+			return;
+		}
+		quitAllowed = true;
+		app.quit();
+	});
 });
-
-void app.whenReady().then(async () => {
-	const observation = createTodoFileObservation();
-	const runtime = createSessionRuntime(
-		join(app.getPath("userData"), "workspaces.json"),
-		observation,
-		(event) => {
-			if (mainWindow && !mainWindow.isDestroyed() && trusted(mainWindow.webContents.getURL()))
-				mainWindow.webContents.send(
-					todoFileChangeEvent.channel,
-					todoFileChangeEvent.payload.parse(event)
-				);
-		}
-	);
-	const backend = desktopSessionBackend(runtime);
-	app.on("before-quit", () => {
-		void backend.stopObservation();
-	});
-	app.on("will-quit", () => {
-		void runtime.dispose();
-	});
-	protocol.handle("tuxedo", (request) => {
-		const url = new URL(request.url);
-		if (url.host !== "app" || request.method !== "GET")
-			return new Response("Forbidden", { status: 403 });
-		const root = resolve(here, "../build");
-		let path: string;
-		try {
-			path = resolve(root, "." + decodeURIComponent(url.pathname));
-		} catch {
-			return new Response("Invalid path", { status: 400 });
-		}
-		if (path !== root && !path.startsWith(root + sep))
-			return new Response("Forbidden", { status: 403 });
-		if (url.pathname === "/" || !url.pathname.split("/").pop()?.includes("."))
-			path = join(root, "index.html");
-		return net.fetch(pathToFileURL(path).href);
-	});
-	session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-		callback(false)
-	);
-	session.defaultSession.setPermissionCheckHandler(() => false);
-	const scriptPolicy = devOrigin
-		? "'unsafe-inline'"
-		: [
-				...readFileSync(resolve(here, "../build/index.html"), "utf8").matchAll(
-					/<script\b[^>]*>([\s\S]*?)<\/script>/g
-				),
-			]
-				.filter((match) => match[1])
-				.map((match) => `'sha256-${createHash("sha256").update(match[1]).digest("base64")}'`)
-				.join(" ");
-	session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-		const csp = `default-src 'self'; script-src 'self' ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'${devOrigin ? ` ${devOrigin.replace("http:", "ws:")}` : ""}; object-src 'none'; frame-src 'none'; base-uri 'none'`;
-		callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] } });
-	});
-	const createWindow = async () => {
-		const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? "#242424" : "#eeeeee");
-		const window = new BrowserWindow({
-			show: false,
-			backgroundColor: backgroundColor(),
-			width: 1200,
-			height: 850,
-			...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
-			webPreferences: {
-				preload: join(here, "preload.cjs"),
-				sandbox: true,
-				contextIsolation: true,
-				nodeIntegration: false,
-				webSecurity: true,
-			},
-		});
-		mainWindow = window;
-		const updateBackground = () => window.setBackgroundColor(backgroundColor());
-		nativeTheme.on("updated", updateBackground);
-		window.once("ready-to-show", () => {
-			if (process.env.TUXEDO_TEST_HIDDEN === "1") return;
-			window.maximize();
-			window.show();
-		});
-		window.on("closed", () => {
-			nativeTheme.removeListener("updated", updateBackground);
-			if (mainWindow === window) {
-				mainWindow = null;
-				void backend.stopObservation();
-			}
-		});
-		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-		window.webContents.on("will-navigate", (event, url) => {
-			if (!trusted(url)) event.preventDefault();
-		});
-		window.webContents.on("will-redirect", (event, url) => {
-			if (!trusted(url)) event.preventDefault();
-		});
-		window.webContents.on("will-frame-navigate", (event) => {
-			if (!trusted(event.url)) event.preventDefault();
-		});
-		window.webContents.on("will-attach-webview", (event) => event.preventDefault());
-		await window.loadURL(devOrigin ?? "tuxedo://app/");
+const owned = (acquire: () => void, release: () => void) =>
+	Effect.acquireRelease(Effect.sync(acquire), () => Effect.sync(release));
+const startup = Effect.gen(function* () {
+	yield* Effect.promise(() => app.whenReady());
+	const windowsClosed = () => {
+		if (process.platform !== "darwin" && !quitting) app.quit();
 	};
-	const getWindow = () => mainWindow;
-	registerDesktopOperation(ipcMain, getWindow, trusted, "readSession", backend.readSession);
-	registerDesktopOperation(
-		ipcMain,
-		getWindow,
-		trusted,
-		"setTodoCompletion",
-		backend.setTodoCompletion
+	yield* owned(
+		() => app.on("window-all-closed", windowsClosed),
+		() => app.removeListener("window-all-closed", windowsClosed)
 	);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteTodo", backend.deleteTodo);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "editTodo", backend.editTodo);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "reorderTodo", backend.reorderTodo);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "createTodo", backend.createTodo);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "switchWorkspace", backend.switchWorkspace);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "restoreSession", backend.restoreSession);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "createWorkspace", backend.createWorkspace);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "deleteWorkspace", backend.deleteWorkspace);
-	registerDesktopOperation(ipcMain, getWindow, trusted, "selectTodoFile", async () => {
-		if (!mainWindow) throw Error("No application window");
-		const result = await dialog.showOpenDialog(mainWindow, {
-			title: "Choose Todo file",
-			properties: ["openFile"],
-		});
-		return result.canceled ? null : (result.filePaths[0] ?? null);
+	yield* owned(
+		() =>
+			protocol.handle("tuxedo", (request) => {
+				const url = new URL(request.url);
+				if (url.host !== "app" || request.method !== "GET")
+					return new Response("Forbidden", { status: 403 });
+				const root = resolve(here, "../build");
+				let path: string;
+				try {
+					path = resolve(root, "." + decodeURIComponent(url.pathname));
+				} catch {
+					return new Response("Invalid path", { status: 400 });
+				}
+				if (path !== root && !path.startsWith(root + sep))
+					return new Response("Forbidden", { status: 403 });
+				if (url.pathname === "/" || !url.pathname.split("/").pop()?.includes("."))
+					path = join(root, "index.html");
+				return net.fetch(pathToFileURL(path).href);
+			}),
+		() => protocol.unhandle("tuxedo")
+	);
+	yield* owned(
+		() => {
+			session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
+				callback(false)
+			);
+			session.defaultSession.setPermissionCheckHandler(() => false);
+		},
+		() => {
+			session.defaultSession.setPermissionRequestHandler(null);
+			session.defaultSession.setPermissionCheckHandler(null);
+		}
+	);
+	const scriptPolicy = yield* Effect.sync(() =>
+		devOrigin
+			? "'unsafe-inline'"
+			: [
+					...readFileSync(resolve(here, "../build/index.html"), "utf8").matchAll(
+						/<script\b[^>]*>([\s\S]*?)<\/script>/g
+					),
+				]
+					.filter((match) => match[1])
+					.map((match) => `'sha256-${createHash("sha256").update(match[1]).digest("base64")}'`)
+					.join(" ")
+	);
+	yield* owned(
+		() =>
+			session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+				const csp = `default-src 'self'; script-src 'self' ${scriptPolicy}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'${devOrigin ? ` ${devOrigin.replace("http:", "ws:")}` : ""}; object-src 'none'; frame-src 'none'; base-uri 'none'`;
+				callback({
+					responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] },
+				});
+			}),
+		() => session.defaultSession.webRequest.onHeadersReceived(null)
+	);
+	const applicationScope = yield* Effect.scope;
+	const createWindow = Effect.gen(function* () {
+		const windowScope = yield* Scope.fork(applicationScope);
+		yield* Effect.gen(function* () {
+			const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? "#242424" : "#eeeeee");
+			const window = yield* Effect.acquireRelease(
+				Effect.sync(
+					() =>
+						new BrowserWindow({
+							show: false,
+							backgroundColor: backgroundColor(),
+							width: 1200,
+							height: 850,
+							...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
+							webPreferences: {
+								preload: join(here, "preload.cjs"),
+								sandbox: true,
+								contextIsolation: true,
+								nodeIntegration: false,
+								webSecurity: true,
+							},
+						})
+				),
+				(window) =>
+					Effect.sync(() => {
+						if (!window.isDestroyed()) window.destroy();
+					})
+			);
+			mainWindow = window;
+			const updateBackground = () => window.setBackgroundColor(backgroundColor());
+			yield* owned(
+				() => nativeTheme.on("updated", updateBackground),
+				() => nativeTheme.removeListener("updated", updateBackground)
+			);
+			window.once("ready-to-show", () => {
+				if (process.env.TUXEDO_TEST_HIDDEN === "1") return;
+				window.maximize();
+				window.show();
+			});
+			const closed = () => {
+				if (mainWindow === window) mainWindow = null;
+				if (!quitting)
+					void backend
+						.run(
+							"window closed",
+							Scope.close(windowScope, Exit.void).pipe(
+								Effect.andThen(WorkspaceSession.use((session) => session.stopObservation))
+							)
+						)
+						.catch((error) => console.error("Window release failed", error));
+			};
+			yield* owned(
+				() => window.on("closed", closed),
+				() => {
+					window.removeListener("closed", closed);
+					if (mainWindow === window) mainWindow = null;
+				}
+			);
+			window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+			window.webContents.on("will-navigate", (event, url) => {
+				if (!trusted(url)) event.preventDefault();
+			});
+			window.webContents.on("will-redirect", (event, url) => {
+				if (!trusted(url)) event.preventDefault();
+			});
+			window.webContents.on("will-frame-navigate", (event) => {
+				if (!trusted(event.url)) event.preventDefault();
+			});
+			window.webContents.on("will-attach-webview", (event) => event.preventDefault());
+			yield* Effect.promise(() => window.loadURL(devOrigin ?? "tuxedo://app/"));
+		}).pipe(Scope.provide(windowScope));
 	});
-	app.on("activate", () => {
-		if (BrowserWindow.getAllWindows().length === 0) void createWindow();
-	});
-	await createWindow();
+	const getWindow = () => mainWindow;
+	const register = <K extends DesktopOperation>(
+		operation: K,
+		handler: (request: DesktopRequest<K>) => Promise<DesktopResponse<K>>
+	) =>
+		Effect.acquireRelease(
+			Effect.sync(() => registerDesktopOperation(ipcMain, getWindow, trusted, operation, handler)),
+			(release) => Effect.sync(release)
+		);
+	yield* register("readSession", backend.readSession);
+	yield* register("setTodoCompletion", backend.setTodoCompletion);
+	yield* register("deleteTodo", backend.deleteTodo);
+	yield* register("editTodo", backend.editTodo);
+	yield* register("reorderTodo", backend.reorderTodo);
+	yield* register("createTodo", backend.createTodo);
+	yield* register("switchWorkspace", backend.switchWorkspace);
+	yield* register("restoreSession", backend.restoreSession);
+	yield* register("createWorkspace", backend.createWorkspace);
+	yield* register("deleteWorkspace", backend.deleteWorkspace);
+
+	yield* Effect.acquireRelease(
+		Effect.sync(() =>
+			registerDesktopOperation(ipcMain, getWindow, trusted, "selectTodoFile", () =>
+				backend.run(
+					"selectTodoFile",
+					Effect.promise(async () => {
+						if (!mainWindow) throw Error("No application window");
+						const result = await dialog.showOpenDialog(mainWindow, {
+							title: "Choose Todo file",
+							properties: ["openFile"],
+						});
+						return result.canceled ? null : (result.filePaths[0] ?? null);
+					})
+				)
+			)
+		),
+		(release) => Effect.sync(release)
+	);
+	const activate = () => {
+		if (!quitting && BrowserWindow.getAllWindows().length === 0)
+			void backend.run("activate", createWindow).catch(startupFailed);
+	};
+	yield* owned(
+		() => app.on("activate", activate),
+		() => app.removeListener("activate", activate)
+	);
+	yield* createWindow;
 });
+function startupFailed(error: unknown) {
+	console.error("Desktop startup failed", error);
+	quitting = true;
+	void backend.shutdown().then(() => app.exit(1));
+}
+void backend.run("startup", startup).catch(startupFailed);
