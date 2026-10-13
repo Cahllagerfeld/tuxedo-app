@@ -89,6 +89,8 @@
 				todoFile={workspace.todoFile}
 				saveTodoItem={workspace.createTodo}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
+				initialProject={todoFilter.selectedProject}
+				initialContext={todoFilter.selectedContext}
 				disabled={workspace.isOperating}
 			/>
 		</div>

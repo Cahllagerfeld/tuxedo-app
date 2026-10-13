@@ -207,6 +207,59 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 	};
 }
 
+test("creation seeds active Project and Context filters and refreshes them on reopening", async () => {
+	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
+	render(Harness, {
+		desktop: adapter({
+			createTodo: async (input) => {
+				request = input;
+				return { status: "rejected", message: "Keep the draft open" };
+			},
+		}),
+	});
+	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "@Home", exact: true }).click();
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	const trigger = page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0);
+	await trigger.click();
+	const dialog = page.getByRole("dialog", { name: "New Todo item" });
+	await expect
+		.element(dialog.getByRole("button", { name: "Remove +Work", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(dialog.getByRole("button", { name: "Remove @Home", exact: true }))
+		.toBeVisible();
+	await page.getByPlaceholder("What needs doing?").fill("New work");
+	await dialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
+	await expect
+		.poll(() => request)
+		.toMatchObject({
+			projects: ["Work"],
+			contexts: ["Home"],
+			priority: null,
+			completed: false,
+		});
+	await dialog.getByRole("button", { name: "Remove +Work", exact: true }).click();
+	await dialog.getByRole("button", { name: "Remove @Home", exact: true }).click();
+	await dialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
+	await expect.poll(() => request).toMatchObject({ projects: [], contexts: [] });
+	await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("button", { name: "Clear Project Work", exact: true }).click();
+	await page.getByRole("button", { name: "Clear Context Home", exact: true }).click();
+	await page.getByRole("button", { name: "+Personal", exact: true }).click();
+	await trigger.click();
+	await expect
+		.element(dialog.getByRole("button", { name: "Remove +Personal", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(dialog.getByRole("button", { name: "Remove +Work", exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(dialog.getByRole("button", { name: "Remove @Home", exact: true }))
+		.not.toBeInTheDocument();
+});
+
 test("defaults to All with both completion states, the total count, and existing facet filters", async () => {
 	render(Harness, { desktop: adapter() });
 	const all = page.getByRole("button", { name: "All 7", exact: true });
