@@ -38,7 +38,8 @@ export type SessionState = {
 export function sessionLayer(
 	cataloguePath: string,
 	observation: TodoFileObservationAdapter | undefined,
-	onTodoFileChanged: (event: TodoFileChange) => void
+	onTodoFileChanged: (event: TodoFileChange) => void,
+	isShuttingDown: () => boolean = () => false
 ) {
 	return Layer.effect(
 		WorkspaceSession,
@@ -106,7 +107,13 @@ export function sessionLayer(
 			);
 			const syncObservation: Effect.Effect<void, never, FileSystem | Identity> = Effect.gen(
 				function* () {
-					if (!observation || observationDisposed || observed?.current === confirmed) return;
+					if (
+						!observation ||
+						observationDisposed ||
+						isShuttingDown() ||
+						observed?.current === confirmed
+					)
+						return;
 					yield* closeObservation;
 					const current = confirmed;
 					if (!current || current.session.status !== "ready") return;
@@ -114,16 +121,23 @@ export function sessionLayer(
 					const targetScope = yield* Scope.make();
 					observed = { current, scope: targetScope };
 					const refresh = Effect.suspend(() => {
-						if (busy || current !== confirmed || observed?.scope !== targetScope)
+						if (
+							isShuttingDown() ||
+							busy ||
+							current !== confirmed ||
+							observed?.scope !== targetScope
+						)
 							return Effect.void;
 						return serialize(
 							"observe",
 							Effect.gen(function* () {
-								if (current !== confirmed || observed?.scope !== targetScope) return;
+								if (isShuttingDown() || current !== confirmed || observed?.scope !== targetScope)
+									return;
 								const contents = yield* readContents(ready.todo_file.path).pipe(
 									Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
 								);
 								if (
+									isShuttingDown() ||
 									contents === todoContents ||
 									current !== confirmed ||
 									observed?.scope !== targetScope
@@ -145,7 +159,8 @@ export function sessionLayer(
 					yield* Effect.gen(function* () {
 						const signals = yield* Effect.acquireRelease(Queue.unbounded<void>(), Queue.shutdown);
 						yield* observation.observe(ready.todo_file.path, () => {
-							if (observed?.scope === targetScope) Queue.offerUnsafe(signals, undefined);
+							if (!isShuttingDown() && observed?.scope === targetScope)
+								Queue.offerUnsafe(signals, undefined);
 						});
 						yield* Stream.fromQueue(signals).pipe(
 							Stream.debounce("250 millis"),

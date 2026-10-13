@@ -82,6 +82,25 @@ try {
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(confirmed.session.status, "empty");
 	assert.deepEqual(confirmed.session.catalogue.workspaces, []);
+	await application.evaluate(({ dialog }) => {
+		globalThis.originalOpenDialog = dialog.showOpenDialog;
+		dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+	});
+	try {
+		assert.equal(await page.evaluate(() => window.desktop.selectTodoFile({})), null);
+		await application.evaluate(({ dialog }) => {
+			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: ["/tmp/chosen.todo"] });
+		});
+		assert.equal(await page.evaluate(() => window.desktop.selectTodoFile({})), "/tmp/chosen.todo");
+	} finally {
+		await application.evaluate(({ dialog }) => {
+			dialog.showOpenDialog = globalThis.originalOpenDialog;
+			delete globalThis.originalOpenDialog;
+		});
+	}
+	console.log(
+		"Todo-file dialog cancellation and selection pass through the admitted desktop bridge."
+	);
 	assert.equal(await page.evaluate(() => typeof window.require), "undefined");
 	assert.equal(await page.evaluate(() => typeof window.process), "undefined");
 	assert.equal(
@@ -849,6 +868,33 @@ try {
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);
+	const exited = once(application.process(), "exit", { signal: AbortSignal.timeout(15000) });
+	await application.evaluate(({ app }) => {
+		app.quit();
+	});
+	assert.equal((await exited)[0], 0, "Normal quit must complete cleanup and exit successfully");
+	application = undefined;
+	console.log("Real Electron normal quit drained and exited successfully.");
+	if (!packagedExecutable) {
+		const failed = spawn(electronPath, [resolve("dist-electron/main.js")], {
+			env: { ...environment, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1" },
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let diagnostic = "";
+		failed.stderr.setEncoding("utf8");
+		failed.stderr.on("data", (chunk) => {
+			diagnostic += chunk;
+		});
+		try {
+			const [code] = await once(failed, "exit", { signal: AbortSignal.timeout(15000) });
+			assert.equal(code, 1, diagnostic);
+			assert.match(diagnostic, /Desktop startup failed/);
+			assert.doesNotMatch(diagnostic, /shutdown deadline exceeded/);
+		} finally {
+			if (failed.exitCode === null && failed.signalCode === null) failed.kill();
+		}
+		console.log("Real Electron renderer startup failure cleaned up and exited with a diagnostic.");
+	}
 } finally {
 	try {
 		await application?.close();
