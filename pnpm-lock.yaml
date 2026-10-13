@@ -169,6 +169,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(redis@6.3.0)
+      '@effect/vitest':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)(vitest@5.0.3)
       '@electron-forge/cli':
         specifier: 8.0.1
         version: 8.0.1
@@ -315,6 +318,12 @@ packages:
     peerDependencies:
       effect: ^4.0.3
       redis: '>=5.0.0 <7.0.0'
+
+  '@effect/vitest@4.0.3':
+    resolution: {integrity: sha512-jsIkpssf0CFuOeycW2sQZkWx0qzlsRv+JIkzd9qQpoFDcHC9JZFSdIjEBAhsdp20pDy4Y/b2vT/ew7wXZxvEig==}
+    peerDependencies:
+      effect: ^4.0.3
+      vitest: '>=5.0.0 <6.0.0'
 
   '@electron-forge/cli@8.0.1':
     resolution: {integrity: sha512-zbkmgt7vtL8OBY7YDwVizhCfAHJLpmQtA35iOKGWPpLWRZbGADVyIUZz3QZrbc2V81/BkrBerURIBXdd/fnyhQ==}
@@ -2151,6 +2160,11 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/vitest@4.0.3(effect@4.0.3)(vitest@5.0.3)':
+    dependencies:
+      effect: 4.0.3
+      vitest: 5.0.3(@types/node@24.19.1)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(vite@8.3.4(@types/node@24.19.1)(jiti@2.7.0))
 
   '@electron-forge/cli@8.0.1':
     dependencies:

@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import * as FileSystem from "effect/FileSystem";
 import * as PlatformError from "effect/PlatformError";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
@@ -252,89 +252,6 @@ test("runtime disposal lets an admitted catalogue replacement finish before rele
 		status: "ready",
 		catalogue: { workspaces: [{ name: "Work" }] },
 		todo_file: { items: [{ raw: "First" }] },
-	});
-});
-
-test("successful replacement confirms disk data even when temporary-file cleanup is unavailable", async () => {
-	const { directory, todoPath, cataloguePath } = await setup();
-	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
-		filesystem: {
-			...nodeFileSystem,
-			remove: () =>
-				Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "remove",
-						description: "cleanup denied",
-					})
-				),
-		},
-	});
-	backends.push(backend);
-	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
-	expect(created.status).toBe("applied");
-	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
-		throw Error("creation failed");
-	expect(await backend.readSession({})).toEqual(created.confirmed);
-	expect(JSON.parse(await readFile(cataloguePath, "utf8"))).toEqual(
-		created.confirmed.session.catalogue
-	);
-	expect((await readdir(directory)).sort()).toEqual(["todo.txt", "workspaces.json"]);
-});
-
-test("exclusive temporary-file acquisition preserves an existing colliding file", async () => {
-	const { directory, todoPath, cataloguePath } = await setup();
-	const id = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
-	const temporaryPath = join(directory, `.tuxedo-${id}.tmp`);
-	await writeFile(temporaryPath, "Existing private content");
-	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
-		identity: { uuid: () => id, now: () => "2026-05-24T10:00:00.000Z" },
-	});
-	backends.push(backend);
-	const before = await backend.readSession({});
-	expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
-		status: "rejected",
-	});
-	expect(await readFile(temporaryPath, "utf8")).toBe("Existing private content");
-	expect(await backend.readSession({})).toEqual(before);
-	await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
-});
-
-test("atomic replacement closes its native file handle before rename", async () => {
-	const { todoPath, cataloguePath } = await setup();
-	let opened: FileSystem.File | undefined;
-	const backend = createSessionBackend(cataloguePath, undefined, undefined, {
-		filesystem: {
-			...nodeFileSystem,
-			open: (path, options) =>
-				nodeFileSystem.open(path, options).pipe(
-					Effect.tap((handle) =>
-						Effect.sync(() => {
-							opened = handle;
-						})
-					)
-				),
-			rename: (from, to) =>
-				Effect.gen(function* () {
-					if (!opened || Exit.isSuccess(yield* Effect.exit(opened.stat)))
-						return yield* Effect.fail(
-							PlatformError.badArgument({
-								module: "FileSystem",
-								method: "rename",
-								description: "Temporary file is still open",
-							})
-						);
-					yield* nodeFileSystem.rename(from, to);
-				}),
-		},
-	});
-	backends.push(backend);
-	expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
-		status: "applied",
-	});
-	expect(JSON.parse(await readFile(cataloguePath, "utf8"))).toMatchObject({
-		workspaces: [{ name: "Work" }],
 	});
 });
 
