@@ -66,6 +66,8 @@
 
 	let isSubmitting = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
+	let projectInput = $state<ReturnType<typeof TagsInput>>();
+	let contextInput = $state<ReturnType<typeof TagsInput>>();
 	let metadataInput = $state<ReturnType<typeof TagsInput>>();
 	let triggerButton = $state<HTMLButtonElement | null>(null);
 	let tagErrors = $state({ projects: "", contexts: "", metadata: "" });
@@ -167,7 +169,7 @@
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		if (controlsDisabled) return;
-		if (!metadataInput?.commit()) return;
+		if (!projectInput?.commit() || !contextInput?.commit() || !metadataInput?.commit()) return;
 		isSubmitting = true;
 		try {
 			const result = await form.validateForm({ update: true });
@@ -319,6 +321,7 @@
 							<TagsInput
 								{...props}
 								bind:value={$formData.projects}
+								bind:this={projectInput}
 								prefix="+"
 								suggestions={projectSuggestions}
 								placeholder="Choose or create a Project"
@@ -346,6 +349,7 @@
 							<TagsInput
 								{...props}
 								bind:value={$formData.contexts}
+								bind:this={contextInput}
 								prefix="@"
 								suggestions={contextSuggestions}
 								placeholder="Choose or create a Context"

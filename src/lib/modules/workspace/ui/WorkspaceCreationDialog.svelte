@@ -137,7 +137,11 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content showCloseButton={false}>
+	<Dialog.Content
+		showCloseButton={false}
+		escapeKeydownBehavior={isCreating ? "ignore" : "close"}
+		interactOutsideBehavior={isCreating ? "ignore" : "close"}
+	>
 		<Dialog.Header
 			><Dialog.Title>Create workspace</Dialog.Title><Dialog.Description
 				>Create a saved Workspace for one Todo file.</Dialog.Description
@@ -180,7 +184,7 @@
 						/>{/snippet}</Form.Control
 				>
 				<div class="flex flex-wrap gap-2">
-					{#each colors as option}<Button
+					{#each colors as option (option.token)}<Button
 							type="button"
 							class={cn(
 								"aspect-square shrink-0 rounded-full",
