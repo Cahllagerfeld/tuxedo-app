@@ -55,12 +55,16 @@ describe("TodoList", () => {
 			onToggleComplete: vi.fn(),
 			onDelete: vi.fn(),
 		});
-		await expect.element(page.getByText("Overdue · 2026-10-13", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("Today · 2026-10-14", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("2026-10-13", { exact: true })).toBeVisible();
+		await expect.element(page.getByTitle("Overdue · 2026-10-13", { exact: true })).toBeVisible();
+		await expect.element(page.getByTitle("Today · 2026-10-14", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("img", { name: "Invalid due date", exact: true }))
+			.toBeVisible();
+		expect(document.querySelectorAll("time")).toHaveLength(3);
 		await expect
 			.element(page.getByText("Invalid due date: 2026-02-30", { exact: true }))
-			.toBeVisible();
+			.not.toBeInTheDocument();
 	});
 	beforeEach(async () => {
 		await page.viewport(800, 600);
@@ -85,6 +89,31 @@ describe("TodoList", () => {
 		expect(page.getByText("@desk", { exact: true }).elements()).toHaveLength(1);
 		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
 		expect(onToggleComplete).toHaveBeenCalledWith(item);
+	});
+	it("budgets tags across Projects and Contexts and leaves legacy completed rows undated", async () => {
+		const item = {
+			...todoFile.items[0],
+			projects: ["One", "Two", "Three", "One"],
+			contexts: ["desk", "home"],
+		};
+		await render(TodoList, {
+			todoFile: {
+				...todoFile,
+				items: [
+					item,
+					{ ...todoFile.items[1], completion_date: null, metadata: { due: "2026-07-12" } },
+				],
+			},
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		await expect.element(page.getByText("+One", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("+3", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("+Two", { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByText("@home", { exact: true })).not.toBeInTheDocument();
+		expect(document.querySelectorAll("time")).toHaveLength(1);
 	});
 	it("does not reread the whole Todo file when keyboard focus moves", async () => {
 		const readLineNumber = vi.fn((index: number) => index + 1);
@@ -232,9 +261,7 @@ describe("TodoList", () => {
 		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("due:2026-07-12", { exact: true })).not.toBeInTheDocument();
-		await expect
-			.element(page.getByText("Completed 2026-07-11", { exact: true }))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan complete" }))
 			.not.toBeChecked();

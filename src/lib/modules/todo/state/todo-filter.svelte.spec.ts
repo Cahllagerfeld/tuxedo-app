@@ -56,7 +56,10 @@ describe("TodoFilterState", () => {
 		filter.toggleDue("upcoming");
 		expect(filter.filterItems(items)).toEqual([]);
 		filter.toggleDue("none");
-		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([4, 5]);
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([5]);
+		filter.toggleDue("invalid");
+		expect(filter.invalidDueCount).toBe(1);
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([4]);
 		filter.toggleProject("Other");
 		expect(filter.filterItems(items)).toEqual([]);
 		filter.clear();
@@ -66,7 +69,7 @@ describe("TodoFilterState", () => {
 		filter.sync("personal", items);
 		expect(filter.selectedDue).toBeNull();
 	});
-	it.each(["overdue", "today", "upcoming", "none"] as const)(
+	it.each(["overdue", "today", "upcoming", "none", "invalid"] as const)(
 		"applies %s only to open items and clears it in Completed",
 		(category) => {
 			const due = {
@@ -74,6 +77,7 @@ describe("TodoFilterState", () => {
 				today: "2026-10-14",
 				upcoming: "2026-10-15",
 				none: undefined,
+				invalid: "2026-02-30",
 			}[category];
 			const datedOpen: TodoItem = { ...open, metadata: due ? { due } : {} };
 			const datedCompleted = { ...completed, metadata: datedOpen.metadata };
@@ -98,6 +102,20 @@ describe("TodoFilterState", () => {
 			]);
 		}
 	);
+	it("clears the repair filter when the last invalid open Due date is repaired or completed", () => {
+		const invalid = { ...open, metadata: { due: "broken" } };
+		const filter = new TodoFilterState();
+		filter.sync("work", [invalid, { ...completed, metadata: invalid.metadata }]);
+		expect(filter.invalidDueCount).toBe(1);
+		filter.toggleDue("invalid");
+		filter.sync("work", [{ ...invalid, metadata: { due: "2026-10-14" } }]);
+		expect(filter.invalidDueCount).toBe(0);
+		expect(filter.selectedDue).toBeNull();
+		filter.sync("work", [invalid]);
+		filter.toggleDue("invalid");
+		filter.sync("work", [{ ...invalid, completed: true }]);
+		expect(filter.selectedDue).toBeNull();
+	});
 	it("defaults to All and filters both completion states and their combined facets", () => {
 		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
 		const items = [open, completedOnly];

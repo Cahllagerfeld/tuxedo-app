@@ -1,11 +1,12 @@
 import { todoDateSchema } from "$lib/shared/desktop/todo-creation";
 
-export type TodoDueCategory = "overdue" | "today" | "upcoming" | "none";
+export type TodoDueCategory = "overdue" | "today" | "upcoming" | "none" | "invalid";
 export const dueLabels: Record<TodoDueCategory, string> = {
 	overdue: "Overdue",
 	today: "Today",
 	upcoming: "Upcoming",
 	none: "No due date",
+	invalid: "Invalid due date",
 };
 
 export function validDueDate(value: string | undefined): string | null {
@@ -18,5 +19,6 @@ export function localToday(date = new Date()): string {
 
 export function dueCategory(value: string | undefined, today: string): TodoDueCategory {
 	const due = validDueDate(value);
-	return !due ? "none" : due < today ? "overdue" : due === today ? "today" : "upcoming";
+	if (!due) return value === undefined ? "none" : "invalid";
+	return due < today ? "overdue" : due === today ? "today" : "upcoming";
 }

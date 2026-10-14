@@ -25,6 +25,11 @@ export class TodoFilterState {
 	selectedPriority = $state<string | null>(null);
 	selectedDue = $state<TodoDueCategory | null>(null);
 	today = $state(localToday());
+	invalidDueCount = $derived(
+		this.items.filter(
+			(item) => !item.completed && dueCategory(item.metadata.due, this.today) === "invalid"
+		).length
+	);
 
 	toggleDue = (category: TodoDueCategory) => {
 		if (this.status === "completed") return;
@@ -93,6 +98,7 @@ export class TodoFilterState {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
+		if (this.selectedDue === "invalid" && this.invalidDueCount === 0) this.clearDue();
 		this.reconcile(this.availableFacets);
 	};
 
