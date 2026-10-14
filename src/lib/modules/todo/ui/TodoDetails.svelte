@@ -46,17 +46,18 @@
 	}
 </script>
 
-<div data-todo-details class="flex h-full min-h-0 flex-col">
-	<div class="flex h-12 shrink-0 items-center justify-between border-b px-6">
-		<p class="text-xs font-medium text-muted-foreground">Todo item details</p>
-		<Button variant="ghost" size="icon-sm" aria-label="Close details" onclick={onClose}
-			><X aria-hidden="true" /></Button
-		>
-	</div>
+<div data-todo-details class="relative flex h-full min-h-0 flex-col">
+	<Button
+		variant="ghost"
+		size="icon-sm"
+		class="absolute top-4 right-4 z-10"
+		aria-label="Close details"
+		onclick={onClose}><X aria-hidden="true" /></Button
+	>
 	<ScrollArea class="min-h-0 flex-1" aria-label="Todo item details content" viewportTabIndex={-1}>
 		<div class="space-y-6 p-6">
 			<div>
-				<p class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+				<p class="mb-3 flex min-h-5 items-center gap-2 pr-8 text-xs text-muted-foreground">
 					{#if todo.completed}<Check class="size-3.5" aria-hidden="true" />{/if}{todo.completed
 						? "Completed"
 						: "Open"}
