@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tick } from "svelte";
+	import { linear } from "svelte/easing";
+	import { prefersReducedMotion } from "svelte/motion";
 	import { MediaQuery } from "svelte/reactivity";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
@@ -46,6 +48,18 @@
 				) ?? (detailUpdating ? selected : null))
 			: null
 	);
+	function revealDetails(node: HTMLElement) {
+		return () => {
+			const grow = Number(getComputedStyle(node).flexGrow);
+			const width = node.getBoundingClientRect().width;
+			return {
+				duration: prefersReducedMotion.current || !wide.current ? 0 : 200,
+				easing: linear,
+				// Keep text at its final width while the Pane reveals it.
+				css: (t: number) => `flex-grow: ${grow * t}; --detail-width: ${width}px;`,
+			};
+		};
+	}
 	function selectTodo(todo: TodoItem) {
 		selected = todo;
 		selectedWorkspaceId = workspace.activeWorkspace?.id;
@@ -178,18 +192,16 @@
 	}}
 />
 
-{#snippet details()}
-	{#if selectedTodo && workspace.todoFile}
-		<TodoDetails
-			todo={selectedTodo}
-			path={workspace.todoFile.path}
-			disabled={workspace.isOperating}
-			onClose={closeDetails}
-			onEdit={startEdit}
-			onToggleComplete={toggleTodoCompletion}
-			onDelete={deleteTodoItem}
-		/>
-	{/if}
+{#snippet details(todo: TodoItem, path: string)}
+	<TodoDetails
+		{todo}
+		{path}
+		disabled={workspace.isOperating}
+		onClose={closeDetails}
+		onEdit={startEdit}
+		onToggleComplete={toggleTodoCompletion}
+		onDelete={deleteTodoItem}
+	/>
 {/snippet}
 
 {#if workspace.todoFile}
@@ -269,12 +281,22 @@
 				</ScrollArea>
 			</div>
 		</Resizable.Pane>
-		{#if selectedTodo && wide.current}
+		{#if selectedTodo && wide.current && workspace.todoFile}
+			{@const todo = selectedTodo}
+			{@const path = workspace.todoFile.path}
 			<Resizable.Handle aria-label="Resize Todo item details" />
 			<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
-				<aside bind:this={desktopDetails} aria-label="Todo item details" class="h-full">
-					{@render details()}
-				</aside>
+				{#snippet child({ props })}
+					<div {...props} transition:revealDetails|global>
+						<aside
+							bind:this={desktopDetails}
+							aria-label="Todo item details"
+							class="h-full w-[var(--detail-width,100%)]"
+						>
+							{@render details(todo, path)}
+						</aside>
+					</div>
+				{/snippet}
 			</Resizable.Pane>
 		{/if}
 	</Resizable.PaneGroup>
@@ -295,7 +317,9 @@
 			<Sheet.Description class="sr-only"
 				>Full description, attributes, and raw line.</Sheet.Description
 			>
-			{@render details()}
+			{#if selectedTodo && workspace.todoFile}
+				{@render details(selectedTodo, workspace.todoFile.path)}
+			{/if}
 		</Sheet.Content>
 	</Sheet.Root>
 {/if}

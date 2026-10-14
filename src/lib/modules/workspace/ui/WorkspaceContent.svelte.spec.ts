@@ -2,6 +2,7 @@ import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { toast } from "svelte-sonner";
+import { prefersReducedMotion } from "svelte/motion";
 import type {
 	ConfirmedSession,
 	DesktopAPI,
@@ -1449,3 +1450,57 @@ test("Tab reenters row navigation after leaving and scrolling to another virtual
 	await userEvent.keyboard("{ArrowDown}");
 	await expect.element(first).toHaveFocus();
 });
+
+test.each([false, true])(
+	"detail motion respects reduced motion (%s) without animating item navigation",
+	async (reduced) => {
+		await page.viewport(1400, 900);
+		const preference = vi.spyOn(prefersReducedMotion, "current", "get").mockReturnValue(reduced);
+		const animations = vi.spyOn(HTMLElement.prototype, "animate");
+		try {
+			const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
+			render(Harness, {
+				desktop: adapter({
+					restoreSession: async () =>
+						({
+							...initial,
+							session: {
+								...initial.session,
+								status: "ready",
+								todo_file: { path: "/tmp/work.todo", items: [todo, neighbor], skipped: [] },
+							},
+						}) as ConfirmedSession,
+				}),
+			});
+			await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+			const panel = page.getByRole("complementary", { name: "Todo item details" });
+			await expect.element(panel).toBeVisible();
+			const element = panel.element();
+			const pane = element.parentElement;
+			const panelAnimations = () =>
+				animations.mock.calls.filter((_, index) => animations.mock.contexts[index] === pane);
+			if (reduced) expect(panelAnimations()).toHaveLength(0);
+			else {
+				await expect.poll(() => panelAnimations().length).toBeGreaterThan(0);
+				expect(panelAnimations().at(-1)?.[1]).toMatchObject({ duration: 200 });
+				expect(panelAnimations().at(-1)?.[0]).toEqual(
+					expect.arrayContaining([expect.objectContaining({ flexGrow: "0" })])
+				);
+			}
+			const before = panelAnimations().length;
+			await page.getByRole("button", { name: "Navigate Neighbor", exact: true }).click();
+			await expect
+				.element(panel.getByRole("heading", { name: "Neighbor", exact: true }))
+				.toBeVisible();
+			expect(panel.element()).toBe(element);
+			expect(panelAnimations()).toHaveLength(before);
+			await panel.getByRole("button", { name: "Close details", exact: true }).click();
+			await expect.element(panel).not.toBeInTheDocument();
+			if (reduced) expect(panelAnimations()).toHaveLength(0);
+			else expect(panelAnimations().length).toBeGreaterThan(before);
+		} finally {
+			animations.mockRestore();
+			preference.mockRestore();
+		}
+	}
+);
