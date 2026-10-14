@@ -207,7 +207,7 @@
 	{/key}
 {/if}
 
-<div class="min-h-0 min-w-0 flex-1">
+<div data-todo-reader class="min-h-0 min-w-0 flex-1">
 	<Resizable.PaneGroup direction="horizontal">
 		<Resizable.Pane defaultSize={58} minSize={35} class="flex min-h-0 flex-col">
 			<div class="min-h-0 min-w-0 flex-1">

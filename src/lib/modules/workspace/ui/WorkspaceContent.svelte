@@ -35,6 +35,16 @@
 		filteredTodoItems,
 		openWorkspaceCreationDialog,
 	}: Props = $props();
+	let emptyViewport = $state<HTMLElement | null>(null);
+	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
+	$effect.pre(() => {
+		if (
+			!workspace.todoFile &&
+			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
+		) {
+			void tick().then(() => emptyViewport?.focus());
+		}
+	});
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let searchButton = $state<HTMLButtonElement | null>(null);
 	let searchOpen = $state(false);
@@ -151,7 +161,12 @@
 		<WorkspaceTodoReader {workspace} {todoFilter} {filteredTodoItems} />
 	{:else}
 		<div class="min-h-0 min-w-0 flex-1">
-			<ScrollArea class="h-full w-full" aria-label="Todo item results" viewportTabIndex={-1}>
+			<ScrollArea
+				bind:viewportRef={emptyViewport}
+				class="h-full w-full"
+				aria-label="Todo item results"
+				viewportTabIndex={-1}
+			>
 				{#if workspace.session.status === "loading"}
 					<Empty.Root
 						aria-label="Loading workspace session"

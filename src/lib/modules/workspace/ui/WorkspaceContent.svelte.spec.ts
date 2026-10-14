@@ -231,6 +231,44 @@ test("an external replacement clears details and cannot reopen a reused physical
 	await expect.element(panel).not.toBeInTheDocument();
 });
 
+test("an unreadable external reload transfers detail focus to the Empty-state viewport", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1400, 900);
+	const catalogue = initial.session.catalogue;
+	let loads = 0;
+	let notify!: (change: TodoFileChange) => void;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				loads++
+					? {
+							scope,
+							revision: 2,
+							session: { status: "empty", catalogue, warning: "Todo file unreadable" },
+						}
+					: initial,
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	(
+		panel.getByRole("button", { name: "Close details", exact: true }).element() as HTMLElement
+	).focus();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("Todo file unreadable", { exact: true })).toBeVisible();
+	await expect.element(panel).not.toBeInTheDocument();
+	const viewport = document.querySelector<HTMLElement>(
+		'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+	);
+	await expect.poll(() => document.activeElement).toBe(viewport);
+});
+
 test("narrow details use a Sheet, allow editing, and restore the row after Escape", async () => {
 	await page.viewport(700, 800);
 	render(Harness, { desktop: adapter() });
