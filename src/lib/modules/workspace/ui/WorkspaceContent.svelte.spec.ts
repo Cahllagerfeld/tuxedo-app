@@ -1577,3 +1577,29 @@ test("a failed saved-view read warns while the confirmed Todo file remains usabl
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
 });
+
+test("saving a view by shortcut opens the naming dialog and respects dialog scope", async () => {
+	render(Harness, { desktop: adapter(), shell: true });
+	const mod = navigator.platform.includes("Mac") ? "Meta" : "Control";
+	await expect
+		.element(page.getByRole("button", { name: "Saved views", exact: true }))
+		.toBeEnabled();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("release");
+	await userEvent.keyboard(`{${mod}>}{Shift>}S{/Shift}{/${mod}}`);
+	await expect.element(page.getByRole("dialog", { name: "Save current view" })).toBeVisible();
+	await page.getByRole("textbox", { name: "View name" }).fill("Release view");
+	await userEvent.keyboard(`{${mod}>}{Shift>}S{/Shift}{/${mod}}`);
+	await expect
+		.element(page.getByRole("textbox", { name: "View name" }))
+		.toHaveValue("Release view");
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
+	await expect
+		.element(page.getByRole("dialog").getByText("Save current view", { exact: true }))
+		.toBeVisible();
+	await userEvent.keyboard(`{${mod}>}{Shift>}S{/Shift}{/${mod}}`);
+	await expect
+		.element(page.getByRole("dialog", { name: "Save current view" }))
+		.not.toBeInTheDocument();
+});

@@ -7,8 +7,10 @@
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import Bookmark from "@lucide/svelte/icons/bookmark";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
-	import { mergeProps } from "bits-ui";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import { createHotkey } from "@tanstack/svelte-hotkeys";
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
+	import { saveViewShortcut } from "./shortcuts";
 	import * as Popover from "$lib/shared/ui/popover";
 	import { Button } from "$lib/shared/ui/button";
 	import { Input } from "$lib/shared/ui/input";
@@ -33,6 +35,23 @@
 		SPA: true,
 	});
 	const { form: formData } = form;
+	const shortcutScope = getShortcutScope();
+	const canSave = $derived(
+		!!workspace.todoFile && !workspace.isOperating && !workspace.savedViewsError
+	);
+	function openSave() {
+		if (!canSave) return;
+		form.reset();
+		error = "";
+		menuOpen = false;
+		saveOpen = true;
+	}
+	createHotkey(saveViewShortcut.key, openSave, () => ({
+		enabled: (shortcutScope?.available ?? true) && canSave,
+		ignoreInputs: false,
+		preventDefault: true,
+		requireReset: true,
+	}));
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (workspace.isOperating) return;
@@ -52,28 +71,19 @@
 </script>
 
 <Popover.Root bind:open={menuOpen}>
-	<Tooltip.Provider>
-		<Tooltip.Root>
-			<Popover.Trigger>
-				{#snippet child({ props: popoverProps })}
-					<Tooltip.Trigger>
-						{#snippet child({ props: tooltipProps })}
-							<Button
-								{...mergeProps(popoverProps, tooltipProps)}
-								variant="ghost"
-								size="icon"
-								aria-label="Saved views"
-								disabled={workspace.isOperating}
-							>
-								<Bookmark class="size-4" aria-hidden="true" />
-							</Button>
-						{/snippet}
-					</Tooltip.Trigger>
-				{/snippet}
-			</Popover.Trigger>
-			<Tooltip.Content>Saved views</Tooltip.Content>
-		</Tooltip.Root>
-	</Tooltip.Provider>
+	<Popover.Trigger>
+		{#snippet child({ props })}
+			<Button
+				{...props}
+				variant="ghost"
+				size="icon"
+				aria-label="Saved views"
+				disabled={workspace.isOperating}
+			>
+				<Bookmark class="size-4" aria-hidden="true" />
+			</Button>
+		{/snippet}
+	</Popover.Trigger>
 	<Popover.Content align="end" class="w-72">
 		<div class="grid gap-2">
 			<p class="text-sm font-medium">Saved views</p>
@@ -105,14 +115,13 @@
 			</div>
 			<Button
 				variant="outline"
-				disabled={workspace.isOperating || !!workspace.savedViewsError}
-				onclick={() => {
-					form.reset();
-					error = "";
-					menuOpen = false;
-					saveOpen = true;
-				}}>Save current view</Button
+				class="justify-between"
+				aria-label="Save current view"
+				disabled={!canSave}
+				onclick={openSave}
 			>
+				Save current view <ShortcutHint hotkey={saveViewShortcut.key} />
+			</Button>
 		</div>
 	</Popover.Content>
 </Popover.Root>
