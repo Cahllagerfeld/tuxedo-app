@@ -29,13 +29,10 @@
 	let confirmedChecked = $derived(todo.completed);
 	const projects = $derived([...new Set(todo.projects)]);
 	const contexts = $derived([...new Set(todo.contexts)]);
-	const tags = $derived([
-		...projects.map((project) => `+${project}`),
-		...contexts.map((context) => `@${context}`),
+	const tagGroups = $derived([
+		{ label: "Projects", prefix: "+", values: projects, limit: contexts.length ? 1 : 2 },
+		{ label: "Contexts", prefix: "@", values: contexts, limit: projects.length ? 1 : 2 },
 	]);
-	const visibleTags = $derived(
-		projects.length && contexts.length ? [`+${projects[0]}`, `@${contexts[0]}`] : tags.slice(0, 2)
-	);
 	const rowDate = $derived(todo.completed ? todo.completion_date : due);
 
 	function requestCompletionChange() {
@@ -78,20 +75,38 @@
 	<div
 		class="hidden max-w-[25%] min-w-0 shrink items-center gap-2 overflow-hidden font-mono text-xs text-muted-foreground sm:flex"
 	>
-		{#each visibleTags as tag (tag)}
-			<span
-				class={cn("min-w-0 truncate", tag.startsWith("+") && "text-[var(--priority-b)]")}
-				title={tag}>{tag}</span
-			>
-		{/each}
-		{#if tags.length > visibleTags.length}
-			<span
-				class="shrink-0"
-				title={tags.filter((tag) => !visibleTags.includes(tag)).join(" ")}
-				aria-label={`${tags.length - visibleTags.length} more Projects and Contexts`}
-				>+{tags.length - visibleTags.length}</span
-			>
-		{/if}
+		<Tooltip.Provider>
+			{#each tagGroups as group (group.label)}
+				{#if group.values.length}
+					<div
+						class={cn(
+							"flex min-w-0 items-center gap-1",
+							group.prefix === "+" && "text-[var(--priority-b)]"
+						)}
+					>
+						{#each group.values.slice(0, group.limit) as value (value)}
+							<span class="min-w-0 truncate" title={`${group.prefix}${value}`}
+								>{group.prefix}{value}</span
+							>
+						{/each}
+						{#if group.values.length > group.limit}
+							<Tooltip.Root>
+								<Tooltip.Trigger
+									aria-label={`${group.values.length - group.limit} more ${group.label}`}
+									class="shrink-0 rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									>+{group.values.length - group.limit}</Tooltip.Trigger
+								>
+								<Tooltip.Content role="tooltip" class="flex-col items-start font-mono">
+									{#each group.values.slice(group.limit) as value (value)}
+										<span class="break-all">{group.prefix}{value}</span>
+									{/each}
+								</Tooltip.Content>
+							</Tooltip.Root>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		</Tooltip.Provider>
 	</div>
 	{#if rowDate}
 		<span

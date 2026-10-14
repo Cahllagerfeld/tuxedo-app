@@ -129,11 +129,61 @@ describe("TodoList", () => {
 		});
 		await expect.element(page.getByText("+One", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("+3", { exact: true })).toBeVisible();
+		const projectOverflow = page.getByRole("button", { name: "2 more Projects", exact: true });
+		const contextOverflow = page.getByRole("button", { name: "1 more Contexts", exact: true });
+		await expect.element(projectOverflow).toHaveTextContent("+2");
+		await expect.element(contextOverflow).toHaveTextContent("+1");
+		expect(getComputedStyle(projectOverflow.element()).color).toBe(
+			getComputedStyle(page.getByText("+One", { exact: true }).element()).color
+		);
+		expect(getComputedStyle(contextOverflow.element()).color).toBe(
+			getComputedStyle(page.getByText("@desk", { exact: true }).element()).color
+		);
+		expect(getComputedStyle(projectOverflow.element()).color).not.toBe(
+			getComputedStyle(contextOverflow.element()).color
+		);
 		await expect.element(page.getByText("+Two", { exact: true })).not.toBeInTheDocument();
 		await expect.element(page.getByText("@home", { exact: true })).not.toBeInTheDocument();
 		expect(document.querySelectorAll("time")).toHaveLength(1);
+		await projectOverflow.hover();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("+Two+Three");
+		await userEvent.keyboard("{Escape}");
+		await contextOverflow.hover();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("@home");
+		await userEvent.keyboard("{Escape}");
+		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(projectOverflow).toHaveFocus();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("+Two+Three");
 	});
+	it.each(["Projects", "Contexts"] as const)(
+		"shows two visible %s when the other group is absent",
+		async (group) => {
+			const values = ["One", "Two", "Three", "Four", "One"];
+			const prefix = group === "Projects" ? "+" : "@";
+			await render(TodoList, {
+				todoFile: {
+					...todoFile,
+					items: [
+						{
+							...todoFile.items[0],
+							projects: group === "Projects" ? values : [],
+							contexts: group === "Contexts" ? values : [],
+						},
+					],
+				},
+				disabled: false,
+				onToggleComplete: vi.fn(),
+				onDelete: vi.fn(),
+			});
+			await expect.element(page.getByText(`${prefix}One`, { exact: true })).toBeVisible();
+			await expect.element(page.getByText(`${prefix}Two`, { exact: true })).toBeVisible();
+			await page.getByRole("button", { name: `2 more ${group}`, exact: true }).hover();
+			await expect
+				.element(page.getByRole("tooltip"))
+				.toHaveTextContent(`${prefix}Three${prefix}Four`);
+		}
+	);
 	it("does not reread the whole Todo file when keyboard focus moves", async () => {
 		const readLineNumber = vi.fn((index: number) => index + 1);
 		const items = Array.from({ length: 1000 }, (_, index) => ({

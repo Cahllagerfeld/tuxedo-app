@@ -272,7 +272,9 @@ test("shows a counted repair filter only while open invalid Due dates exist", as
 			}),
 		}),
 	});
-	const repair = page.getByRole("button", { name: "Invalid due date", exact: true });
+	const repair = page
+		.getByLabelText("Sidebar filters")
+		.getByRole("button", { name: "Invalid due date", exact: true });
 	await expect.element(repair).toHaveTextContent("Invalid due date1");
 	await repair.click();
 	await expect
