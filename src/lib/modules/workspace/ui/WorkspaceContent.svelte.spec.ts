@@ -245,6 +245,17 @@ test("narrow details use a Sheet, allow editing, and restore the row after Escap
 	await userEvent.keyboard("{Escape}");
 	await expect.element(sheet).toBeVisible();
 	await expect.element(sheet.getByRole("button", { name: "Edit", exact: true })).toHaveFocus();
+	await page.viewport(1400, 800);
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await expect.element(panel).toBeVisible();
+	await expect
+		.element(panel.getByRole("button", { name: "Close details", exact: true }))
+		.toHaveFocus();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(row).toHaveFocus();
+	await page.viewport(700, 800);
+	await userEvent.keyboard("{Enter}");
+	await expect.element(sheet).toBeVisible();
 	await userEvent.keyboard("{Escape}");
 	await expect.element(sheet).not.toBeInTheDocument();
 	await expect.element(row).toHaveFocus();

@@ -52,6 +52,8 @@
 	let selectedPath = $state<string>();
 	let detailUpdating = $state(false);
 	const wide = new MediaQuery("(min-width: 1100px)");
+	let previousWide: boolean | undefined;
+	let desktopDetails = $state<HTMLElement | null>(null);
 	const selectedTodo = $derived(
 		selectedWorkspaceId === workspace.activeWorkspace?.id &&
 			selectedPath === workspace.todoFile?.path
@@ -72,6 +74,13 @@
 	}
 	// External file/lifecycle changes can invalidate a physical-line selection. Restore DOM focus before removing its surface.
 	$effect.pre(() => {
+		const isWide = wide.current;
+		if (previousWide !== isWide) {
+			const ownedFocus = document.activeElement?.closest("[data-todo-details]");
+			previousWide = isWide;
+			if (isWide && ownedFocus)
+				void tick().then(() => desktopDetails?.querySelector<HTMLButtonElement>("button")?.focus());
+		}
 		if (selected && !selectedTodo && !detailUpdating) {
 			if (document.activeElement?.closest("[data-todo-details]")) todoViewport?.focus();
 			selected = null;
@@ -101,7 +110,7 @@
 	}
 	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
 		detailEditTrigger = trigger?.closest("[data-todo-details]") ? trigger : null;
-		editRecovery = todoList?.captureFocus(todo, true, trigger);
+		editRecovery = detailEditTrigger ? undefined : todoList?.captureFocus(todo, true, trigger);
 		editingWorkspaceId = workspace.activeWorkspace?.id;
 		editingTodo = todo;
 	}
@@ -432,7 +441,9 @@
 			{#if selectedTodo && wide.current}
 				<Resizable.Handle withHandle aria-label="Resize Todo item details" />
 				<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
-					<aside aria-label="Todo item details" class="h-full">{@render details()}</aside>
+					<aside bind:this={desktopDetails} aria-label="Todo item details" class="h-full">
+						{@render details()}
+					</aside>
 				</Resizable.Pane>
 			{/if}
 		</Resizable.PaneGroup>
