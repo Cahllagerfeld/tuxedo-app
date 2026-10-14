@@ -1,26 +1,40 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import { badgeVariants } from "$lib/shared/ui/badge";
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "cn";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Pencil from "@lucide/svelte/icons/pencil";
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+	import CalendarDays from "@lucide/svelte/icons/calendar-days";
+	import Check from "@lucide/svelte/icons/check";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import { dueCategory, validDueDate } from "../domain/todo-due";
 
 	type TodoItemProps = {
 		todo: TodoItem;
+		today: string;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem, trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	};
 
-	let { todo, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	let { todo, today, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	const due = $derived(validDueDate(todo.metadata.due));
+	const category = $derived(dueCategory(todo.metadata.due, today));
 	let menuTrigger = $state<HTMLButtonElement | null>(null);
 	let confirmedChecked = $derived(todo.completed);
 	const projects = $derived([...new Set(todo.projects)]);
 	const contexts = $derived([...new Set(todo.contexts)]);
+	const tagGroups = $derived([
+		{ label: "Projects", prefix: "+", values: projects, limit: contexts.length ? 1 : 2 },
+		{ label: "Contexts", prefix: "@", values: contexts, limit: projects.length ? 1 : 2 },
+	]);
+	const rowDate = $derived(todo.completed ? todo.completion_date : due);
 
 	function requestCompletionChange() {
 		confirmedChecked = todo.completed;
@@ -36,7 +50,10 @@
 </script>
 
 <div
-	class={cn("flex h-10 min-w-0 items-center gap-3 px-4", todo.completed && "text-muted-foreground")}
+	class={cn(
+		"@container flex h-10 min-w-0 items-center gap-2 px-3",
+		todo.completed && "text-muted-foreground"
+	)}
 >
 	<Checkbox
 		bind:checked={confirmedChecked}
@@ -57,13 +74,75 @@
 		{todo.description}
 	</p>
 	<div
-		class="hidden max-w-[35%] shrink-0 items-center gap-2 overflow-hidden font-mono text-xs text-muted-foreground sm:flex"
+		class="hidden max-w-[25%] min-w-0 shrink items-center gap-2 overflow-hidden font-mono text-xs text-muted-foreground sm:flex"
 	>
-		{#each projects as project (project)}<span class="truncate text-[var(--priority-b)]"
-				>+{project}</span
-			>{/each}
-		{#each contexts as context (context)}<span class="truncate">@{context}</span>{/each}
+		<Tooltip.Provider>
+			{#each tagGroups as group (group.label)}
+				{#if group.values.length}
+					<div
+						class={cn(
+							"flex min-w-0 items-center gap-1",
+							group.prefix === "+" && "text-[var(--priority-b)]"
+						)}
+					>
+						{#each group.values.slice(0, group.limit) as value (value)}
+							<span class="min-w-0 truncate" title={`${group.prefix}${value}`}
+								>{group.prefix}{value}</span
+							>
+						{/each}
+						{#if group.values.length > group.limit}
+							<Tooltip.Root>
+								<Tooltip.Trigger
+									aria-label={`${group.values.length - group.limit} more ${group.label}`}
+									class={badgeVariants({ variant: "overflow" })}
+									>+{group.values.length - group.limit}</Tooltip.Trigger
+								>
+								<Tooltip.Content role="tooltip" class="flex-col items-start font-mono">
+									{#each group.values.slice(group.limit) as value (value)}
+										<span class="break-all">{group.prefix}{value}</span>
+									{/each}
+								</Tooltip.Content>
+							</Tooltip.Root>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		</Tooltip.Provider>
 	</div>
+	{#if rowDate}
+		<span
+			class={cn(
+				"flex shrink-0 items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs tabular-nums",
+				!todo.completed && category === "overdue"
+					? "bg-destructive/10 text-destructive"
+					: !todo.completed && category === "today"
+						? "bg-accent text-accent-foreground"
+						: "text-muted-foreground"
+			)}
+			title={`${todo.completed ? "Completed" : category === "today" ? "Today ·" : category === "overdue" ? "Overdue ·" : "Due"} ${rowDate}`}
+		>
+			{#if todo.completed}<Check class="size-3 shrink-0" aria-hidden="true" />{:else}<CalendarDays
+					class="size-3 shrink-0"
+					aria-hidden="true"
+				/>{/if}
+			<span class="sr-only">{todo.completed ? "Completed" : "Due"} </span>
+			<time class="sr-only @min-[20rem]:not-sr-only" datetime={rowDate}>{rowDate}</time>
+		</span>
+	{:else if !todo.completed && category === "invalid"}
+		<Tooltip.Provider>
+			<Tooltip.Root>
+				<Tooltip.Trigger
+					aria-label="Invalid due date"
+					class="shrink-0 rounded text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				>
+					<TriangleAlert class="size-3.5" aria-hidden="true" />
+				</Tooltip.Trigger>
+				<Tooltip.Content role="tooltip"
+					>Invalid due date — edit this Todo item to repair it.</Tooltip.Content
+				>
+			</Tooltip.Root>
+		</Tooltip.Provider>
+	{/if}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger>
 			{#snippet child({ props })}

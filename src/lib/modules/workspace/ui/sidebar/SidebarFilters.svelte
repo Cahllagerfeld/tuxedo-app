@@ -7,6 +7,9 @@
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FacetFilter from "./FacetFilter.svelte";
 	import PriorityFilter from "./PriorityFilter.svelte";
+	import { dueLabels, type TodoDueCategory } from "$lib/modules/todo/domain/todo-due";
+	import FilterSection from "./FilterSection.svelte";
+	const dueCategories: TodoDueCategory[] = ["overdue", "today", "upcoming", "none", "invalid"];
 
 	let { todoFilter, disabled }: { todoFilter: TodoFilterState; disabled: boolean } = $props();
 	let search = $state("");
@@ -38,6 +41,25 @@
 	aria-label="Sidebar filters"
 >
 	<div class="min-w-0 pb-3">
+		<FilterSection label="Due date" {search}>
+			{#each dueCategories.filter((category) => (category !== "invalid" || (todoFilter.invalidDueCount > 0 && todoFilter.status !== "completed")) && dueLabels[category]
+						.toLocaleLowerCase()
+						.includes(search.toLocaleLowerCase())) as category (category)}
+				<Button
+					variant="ghost"
+					size="sm"
+					class="h-8 w-full justify-start px-2 font-normal aria-pressed:bg-sidebar-accent"
+					aria-pressed={todoFilter.selectedDue === category}
+					disabled={disabled || todoFilter.status === "completed"}
+					onclick={() => todoFilter.toggleDue(category)}
+					aria-label={dueLabels[category]}
+					>{dueLabels[category]}{#if category === "invalid"}<span
+							class="ml-auto shrink-0 text-xs text-muted-foreground"
+							>{todoFilter.invalidDueCount}</span
+						>{/if}</Button
+				>
+			{/each}
+		</FilterSection>
 		<FacetFilter
 			label="Projects"
 			values={todoFilter.availableFacets.projects}

@@ -1,5 +1,5 @@
 import { page } from "vitest/browser";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
 import Harness from "./WorkspaceFilteringHarness.svelte";
@@ -207,6 +207,94 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 	};
 }
 
+test("date filters and row indicators refresh at local midnight and clear with other filters", async () => {
+	const datedItems = [
+		{ ...items[0], metadata: { due: "2026-10-14" } },
+		{ ...items[1], metadata: { due: "2026-10-15" } },
+	];
+	const view = await render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: datedItems },
+				},
+			}),
+		}),
+	});
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+		.toBeVisible();
+	vi.useFakeTimers({ toFake: ["Date"] });
+	try {
+		vi.setSystemTime(new Date(2026, 9, 14, 23, 59, 59));
+		window.dispatchEvent(new Event("focus"));
+		await page.getByRole("button", { name: "Today", exact: true }).click();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open personal complete", exact: true }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByTitle("Today · 2026-10-14", { exact: true })).toBeVisible();
+		vi.setSystemTime(new Date(2026, 9, 15));
+		await expect.element(page.getByTitle("Today · 2026-10-15", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+			.not.toBeInTheDocument();
+		await page.getByRole("button", { name: "Clear Due Today", exact: true }).click();
+		await expect.element(page.getByTitle("Overdue · 2026-10-14", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "No due date", exact: true }).click();
+		await expect
+			.element(page.getByRole("button", { name: "Clear filters", exact: true }).last())
+			.toBeVisible();
+		await page.getByRole("button", { name: "Clear filters", exact: true }).last().click();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+			.toBeVisible();
+	} finally {
+		view.unmount();
+		vi.useRealTimers();
+	}
+});
+
+test("shows a counted repair filter only while open invalid Due dates exist", async () => {
+	const invalidItems: TodoFile["items"] = [
+		{ ...items[0], metadata: { due: "broken" } },
+		{ ...items[1], metadata: {} },
+	];
+	await render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: invalidItems },
+				},
+			}),
+		}),
+	});
+	const repair = page
+		.getByLabelText("Sidebar filters")
+		.getByRole("button", { name: "Invalid due date", exact: true });
+	await expect.element(repair).toHaveTextContent("Invalid due date1");
+	await repair.click();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open personal complete", exact: true }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Clear Due Invalid due date", exact: true }).click();
+	await page.getByRole("button", { name: "No due date", exact: true }).click();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open personal complete", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+		.not.toBeInTheDocument();
+	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect.element(repair).not.toBeInTheDocument();
+});
+
 test("creation seeds active Project and Context filters and refreshes them on reopening", async () => {
 	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
 	render(Harness, {
@@ -265,6 +353,9 @@ test("defaults to All with both completion states, the total count, and existing
 	const all = page.getByRole("button", { name: "All 7", exact: true });
 	await expect.element(all).toBeVisible();
 	await expect.element(all).toHaveAttribute("aria-pressed", "true");
+	await expect
+		.element(page.getByRole("button", { name: "Invalid due date", exact: true }))
+		.not.toBeInTheDocument();
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
 	await expect
@@ -282,9 +373,17 @@ test("defaults to All with both completion states, the total count, and existing
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
 
+	await page.getByRole("button", { name: "No due date", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Due No due date", exact: true }))
+		.not.toBeInTheDocument();
+	for (const name of ["Overdue", "Today", "Upcoming", "No due date"]) {
+		await expect.element(page.getByRole("button", { name, exact: true })).toBeDisabled();
+	}
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
 	await all.click();
+	await expect.element(page.getByRole("button", { name: "Overdue", exact: true })).toBeEnabled();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("2 matching items");

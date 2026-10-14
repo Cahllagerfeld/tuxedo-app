@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onMount } from "svelte";
+	import { localToday } from "$lib/modules/todo/domain/todo-due";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
@@ -44,6 +46,25 @@
 	}
 
 	let todoViewport = $state<HTMLElement | null>(null);
+
+	onMount(() => {
+		let timer: ReturnType<typeof setTimeout>;
+		function refreshDate() {
+			clearTimeout(timer);
+			const now = new Date();
+			todoFilter.today = localToday(now);
+			const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+			timer = setTimeout(refreshDate, midnight.getTime() - now.getTime());
+		}
+		refreshDate();
+		window.addEventListener("focus", refreshDate);
+		document.addEventListener("visibilitychange", refreshDate);
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener("focus", refreshDate);
+			document.removeEventListener("visibilitychange", refreshDate);
+		};
+	});
 
 	async function toggleTodoCompletion(todo: TodoItem) {
 		const recovery = todoList?.captureFocus(todo);
@@ -147,17 +168,17 @@
 								<Empty.Title>
 									No {todoFilter.status === "all"
 										? ""
-										: `${todoFilter.status} `}items{todoFilter.hasFacetFilters
+										: `${todoFilter.status} `}items{todoFilter.hasFilters
 										? " match these filters"
 										: ""}.
 								</Empty.Title>
 								<Empty.Description>
-									{todoFilter.hasFacetFilters
+									{todoFilter.hasFilters
 										? "Try clearing a filter to see more Todo items."
 										: "There are no Todo items in this completion view."}
 								</Empty.Description>
 							</Empty.Header>
-							{#if todoFilter.hasFacetFilters}
+							{#if todoFilter.hasFilters}
 								<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
 									>Clear filters</Button
 								>
@@ -165,6 +186,7 @@
 						</Empty.Root>
 					{/if}
 					<TodoList
+						today={todoFilter.today}
 						showEmpty={workspace.todoFile.items.length === 0}
 						bind:this={todoList}
 						fallback={todoViewport}

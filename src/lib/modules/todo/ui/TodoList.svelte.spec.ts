@@ -41,6 +41,50 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
+	it("shows due dates with urgency only for open Todo items and identifies malformed dates", async () => {
+		const items = [
+			{ ...todoFile.items[0], metadata: { due: "2026-10-13" } },
+			{ ...todoFile.items[0], line_number: 2, metadata: { due: "2026-10-14" } },
+			{ ...todoFile.items[1], line_number: 3, metadata: { due: "2026-10-13" } },
+			{ ...todoFile.items[0], line_number: 4, metadata: { due: "2026-02-30" } },
+		];
+		render(TodoList, {
+			todoFile: { ...todoFile, items },
+			today: "2026-10-14",
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		await expect.element(page.getByTitle("Overdue · 2026-10-13", { exact: true })).toBeVisible();
+		await expect.element(page.getByTitle("Today · 2026-10-14", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("button", { name: "Invalid due date", exact: true }))
+			.toBeVisible();
+		expect(document.querySelectorAll("time")).toHaveLength(3);
+		await expect
+			.element(page.getByText("Invalid due date: 2026-02-30", { exact: true }))
+			.not.toBeInTheDocument();
+	});
+	it("shows the invalid Due date tooltip on hover and keyboard focus", async () => {
+		await render(TodoList, {
+			todoFile: { ...todoFile, items: [{ ...todoFile.items[0], metadata: { due: "broken" } }] },
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		const warning = page.getByRole("button", { name: "Invalid due date", exact: true });
+		await warning.hover();
+		await expect
+			.element(page.getByRole("tooltip"))
+			.toHaveTextContent("Invalid due date — edit this Todo item to repair it.");
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
+		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(warning).toHaveFocus();
+		await expect.element(page.getByRole("tooltip")).toBeVisible();
+	});
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});
@@ -65,6 +109,81 @@ describe("TodoList", () => {
 		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
 		expect(onToggleComplete).toHaveBeenCalledWith(item);
 	});
+	it("budgets tags across Projects and Contexts and leaves legacy completed rows undated", async () => {
+		const item = {
+			...todoFile.items[0],
+			projects: ["One", "Two", "Three", "One"],
+			contexts: ["desk", "home"],
+		};
+		await render(TodoList, {
+			todoFile: {
+				...todoFile,
+				items: [
+					item,
+					{ ...todoFile.items[1], completion_date: null, metadata: { due: "2026-07-12" } },
+				],
+			},
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		await expect.element(page.getByText("+One", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
+		const projectOverflow = page.getByRole("button", { name: "2 more Projects", exact: true });
+		const contextOverflow = page.getByRole("button", { name: "1 more Contexts", exact: true });
+		await expect.element(projectOverflow).toHaveTextContent("+2");
+		await expect.element(contextOverflow).toHaveTextContent("+1");
+		expect(getComputedStyle(projectOverflow.element()).color).toBe(
+			getComputedStyle(page.getByText("+One", { exact: true }).element()).color
+		);
+		expect(getComputedStyle(contextOverflow.element()).color).toBe(
+			getComputedStyle(page.getByText("@desk", { exact: true }).element()).color
+		);
+		expect(getComputedStyle(projectOverflow.element()).color).not.toBe(
+			getComputedStyle(contextOverflow.element()).color
+		);
+		await expect.element(page.getByText("+Two", { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByText("@home", { exact: true })).not.toBeInTheDocument();
+		expect(document.querySelectorAll("time")).toHaveLength(1);
+		await projectOverflow.hover();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("+Two+Three");
+		await userEvent.keyboard("{Escape}");
+		await contextOverflow.hover();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("@home");
+		await userEvent.keyboard("{Escape}");
+		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(projectOverflow).toHaveFocus();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("+Two+Three");
+	});
+	it.each(["Projects", "Contexts"] as const)(
+		"shows two visible %s when the other group is absent",
+		async (group) => {
+			const values = ["One", "Two", "Three", "Four", "One"];
+			const prefix = group === "Projects" ? "+" : "@";
+			await render(TodoList, {
+				todoFile: {
+					...todoFile,
+					items: [
+						{
+							...todoFile.items[0],
+							projects: group === "Projects" ? values : [],
+							contexts: group === "Contexts" ? values : [],
+						},
+					],
+				},
+				disabled: false,
+				onToggleComplete: vi.fn(),
+				onDelete: vi.fn(),
+			});
+			await expect.element(page.getByText(`${prefix}One`, { exact: true })).toBeVisible();
+			await expect.element(page.getByText(`${prefix}Two`, { exact: true })).toBeVisible();
+			await page.getByRole("button", { name: `2 more ${group}`, exact: true }).hover();
+			await expect
+				.element(page.getByRole("tooltip"))
+				.toHaveTextContent(`${prefix}Three${prefix}Four`);
+		}
+	);
 	it("does not reread the whole Todo file when keyboard focus moves", async () => {
 		const readLineNumber = vi.fn((index: number) => index + 1);
 		const items = Array.from({ length: 1000 }, (_, index) => ({
@@ -211,9 +330,7 @@ describe("TodoList", () => {
 		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("due:2026-07-12", { exact: true })).not.toBeInTheDocument();
-		await expect
-			.element(page.getByText("Completed 2026-07-11", { exact: true }))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
 		await expect
 			.element(page.getByRole("checkbox", { name: "Mark Plan complete" }))
 			.not.toBeChecked();

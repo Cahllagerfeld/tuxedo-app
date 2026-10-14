@@ -7,6 +7,17 @@
 		":configMigration",
 		":maintainLockFilesWeekly"
 	],
+	"ignorePaths": [
+		"**/node_modules/**",
+		"**/bower_components/**",
+		"**/vendor/**",
+		"**/examples/**",
+		"**/__tests__/**",
+		"**/test/**",
+		"**/tests/**",
+		"**/__fixtures__/**",
+		".repos/effect/**"
+	],
 	"timezone": "Europe/Berlin",
 	"schedule": ["* 0-5 * * *"],
 	"updateNotScheduled": false,
