@@ -211,10 +211,12 @@ test("Todo-item search combines with facets and clears independently or with all
 	await render(Harness, { desktop: adapter() });
 	const search = page.getByRole("searchbox", { name: "Search Todo items" });
 	await search.fill("HOME work");
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("2 matching items");
 	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	await expect.element(page.getByLabelText("Active filters")).toBeVisible();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
@@ -242,10 +244,8 @@ test("Todo-item search combines with facets and clears independently or with all
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("7 matching items");
 	await search.fill("reading");
-	await page
-		.getByLabelText("Active filters")
-		.getByRole("button", { name: "Clear filters", exact: true })
-		.click();
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("7 matching items");
