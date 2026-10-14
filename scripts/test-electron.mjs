@@ -300,9 +300,9 @@ try {
 	);
 	const savedView = await page.evaluate((input) => window.desktop.saveView(input), {
 		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
-		name: "Open calls",
+		name: "Calls",
 		filters: {
-			status: "open",
+			status: "all",
 			search: "Call",
 			project: null,
 			context: null,
@@ -473,13 +473,13 @@ try {
 	);
 	assert.deepEqual(await page.evaluate(() => window.desktop.readSavedViews({})), savedView);
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
-	await page.getByRole("button", { name: "Open calls", exact: true }).click();
+	await page.getByRole("button", { name: "Calls", exact: true }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items" }).waitFor();
 	assert.equal(
 		await page.getByRole("searchbox", { name: "Search Todo items" }).inputValue(),
 		"Call"
 	);
-	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
 	const deletedView = await page.evaluate((input) => window.desktop.deleteView(input), {
 		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
 		viewId: savedView.views[0].id,
