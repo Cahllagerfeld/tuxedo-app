@@ -226,14 +226,18 @@ test("Todo-item search combines with facets and clears independently or with all
 	await search.fill("unmatched");
 	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
 	await expect.element(search).toHaveValue("unmatched");
+	await expect
+		.element(page.getByLabelText("No matching Todo items").getByRole("button"))
+		.toHaveTextContent("Clear filters");
 	await page
 		.getByLabelText("No matching Todo items")
-		.getByRole("button", { name: "Clear search", exact: true })
+		.getByRole("button", { name: "Clear filters", exact: true })
 		.click();
 	await expect.element(search).toHaveValue("");
 	await expect
 		.element(page.getByRole("button", { name: "Priority A", exact: true }))
-		.toHaveAttribute("aria-pressed", "true");
+		.toHaveAttribute("aria-pressed", "false");
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
 	await search.fill("work");
 	await page.getByRole("button", { name: "Clear search", exact: true }).click();
 	await expect.element(search).toHaveValue("");

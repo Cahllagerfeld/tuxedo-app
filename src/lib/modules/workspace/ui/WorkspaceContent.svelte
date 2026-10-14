@@ -255,13 +255,6 @@
 								</Empty.Description>
 							</Empty.Header>
 							{#if todoFilter.hasFilters}
-								{#if todoFilter.hasSearch}
-									<Button
-										variant="outline"
-										disabled={workspace.isOperating}
-										onclick={todoFilter.clearSearch}>Clear search</Button
-									>
-								{/if}
 								<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
 									>Clear filters</Button
 								>
