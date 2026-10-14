@@ -439,7 +439,7 @@
 				{@render results()}
 			</Resizable.Pane>
 			{#if selectedTodo && wide.current}
-				<Resizable.Handle withHandle aria-label="Resize Todo item details" />
+				<Resizable.Handle aria-label="Resize Todo item details" />
 				<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
 					<aside bind:this={desktopDetails} aria-label="Todo item details" class="h-full">
 						{@render details()}
