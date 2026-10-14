@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import { badgeVariants } from "$lib/shared/ui/badge";
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "cn";
@@ -93,7 +94,7 @@
 							<Tooltip.Root>
 								<Tooltip.Trigger
 									aria-label={`${group.values.length - group.limit} more ${group.label}`}
-									class="shrink-0 rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									class={badgeVariants({ variant: "overflow" })}
 									>+{group.values.length - group.limit}</Tooltip.Trigger
 								>
 								<Tooltip.Content role="tooltip" class="flex-col items-start font-mono">
