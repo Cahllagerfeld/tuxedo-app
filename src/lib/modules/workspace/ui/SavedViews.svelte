@@ -5,6 +5,10 @@
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
 	import * as Form from "$lib/shared/ui/form";
 	import * as Dialog from "$lib/shared/ui/dialog";
+	import Bookmark from "@lucide/svelte/icons/bookmark";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import { mergeProps } from "bits-ui";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
 	import * as Popover from "$lib/shared/ui/popover";
 	import { Button } from "$lib/shared/ui/button";
 	import { Input } from "$lib/shared/ui/input";
@@ -48,17 +52,31 @@
 </script>
 
 <Popover.Root bind:open={menuOpen}>
-	<Popover.Trigger>
-		{#snippet child({ props })}
-			<Button {...props} variant="outline" size="sm" disabled={workspace.isOperating}
-				>Saved views</Button
-			>
-		{/snippet}
-	</Popover.Trigger>
+	<Tooltip.Provider>
+		<Tooltip.Root>
+			<Popover.Trigger>
+				{#snippet child({ props: popoverProps })}
+					<Tooltip.Trigger>
+						{#snippet child({ props: tooltipProps })}
+							<Button
+								{...mergeProps(popoverProps, tooltipProps)}
+								variant="ghost"
+								size="icon"
+								aria-label="Saved views"
+								disabled={workspace.isOperating}
+							>
+								<Bookmark class="size-4" aria-hidden="true" />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+				{/snippet}
+			</Popover.Trigger>
+			<Tooltip.Content>Saved views</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
 	<Popover.Content align="end" class="w-72">
 		<div class="grid gap-2">
 			<p class="text-sm font-medium">Saved views</p>
-			<p class="text-xs text-muted-foreground">For {workspace.activeWorkspace?.name}</p>
 			{#if workspace.savedViewsError}<p role="alert" class="text-xs text-destructive">
 					{workspace.savedViewsError}
 				</p>{/if}
@@ -75,11 +93,12 @@
 							}}><span class="truncate">{view.name}</span></Button
 						>
 						<Button
-							variant="ghost"
-							size="sm"
+							variant="destructive"
+							size="icon-sm"
 							aria-label={`Delete saved view ${view.name}`}
 							disabled={workspace.isOperating}
-							onclick={() => deleteView(view.id)}>Delete</Button
+							onclick={() => deleteView(view.id)}
+							><Trash2 class="size-4" aria-hidden="true" /></Button
 						>
 					</div>
 				{:else}<p class="py-2 text-xs text-muted-foreground">No saved views yet.</p>{/each}
