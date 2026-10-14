@@ -764,14 +764,16 @@ try {
 	assert.equal(await page.locator("[data-todo-details] code").textContent(), "Item 1000");
 	await application.evaluate(async ({ clipboard, ClipboardItem }) => {
 		globalThis.clipboardBeforeCopyTest = await Promise.all(
-			(await clipboard.read()).map(
-				async (item) =>
-					new ClipboardItem(
-						Object.fromEntries(
-							await Promise.all(item.types.map(async (type) => [type, await item.getType(type)]))
+			(await clipboard.read())
+				.filter((item) => item.types.length > 0)
+				.map(
+					async (item) =>
+						new ClipboardItem(
+							Object.fromEntries(
+								await Promise.all(item.types.map(async (type) => [type, await item.getType(type)]))
+							)
 						)
-					)
-			)
+				)
 		);
 	});
 	try {
@@ -797,7 +799,9 @@ try {
 		assert.equal(await application.evaluate(({ clipboard }) => clipboard.readText()), exactText);
 	} finally {
 		await application.evaluate(async ({ clipboard }) => {
-			await clipboard.write(globalThis.clipboardBeforeCopyTest);
+			if (globalThis.clipboardBeforeCopyTest.length)
+				await clipboard.write(globalThis.clipboardBeforeCopyTest);
+			else clipboard.clear();
 			delete globalThis.clipboardBeforeCopyTest;
 		});
 	}
