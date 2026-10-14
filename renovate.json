@@ -21,12 +21,7 @@
 	"timezone": "Europe/Berlin",
 	"schedule": ["* 0-5 * * *"],
 	"updateNotScheduled": false,
-	"groupSingleUpdates": true,
 	"packageRules": [
-		{
-			"matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
-			"groupName": "routine dependency updates"
-		},
 		{
 			"matchUpdateTypes": ["major"],
 			"dependencyDashboardApproval": true
