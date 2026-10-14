@@ -689,10 +689,17 @@ try {
 	assert.ok((await renderedItems.count()) < 60, "Scrolling must keep Todo-item rendering bounded");
 
 	const mod = process.platform === "darwin" ? "Meta" : "Control";
+	const todoSearch = page.getByRole("searchbox", { name: "Search Todo items" });
+	assert.equal(await todoSearch.count(), 0, "Search is collapsed initially");
 	await page.keyboard.press(`${mod}+/`);
 	const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 	await help.waitFor();
 	assert.ok((await help.textContent()).includes(process.platform === "darwin" ? "⌘" : "Ctrl"));
+	await page.keyboard.press(`${mod}+f`);
+	assert.ok(
+		await help.evaluate((element) => element.contains(document.activeElement)),
+		"Help suspends the search shortcut"
+	);
 	await page.keyboard.press(`${mod}+b`);
 	assert.equal(
 		await page.locator('[data-slot="sidebar"]').getAttribute("data-state"),
@@ -701,6 +708,19 @@ try {
 	);
 	await page.keyboard.press("Escape");
 	await help.waitFor({ state: "detached" });
+	await page.getByRole("searchbox", { name: "Find a filter" }).focus();
+	await page.keyboard.press(`${mod}+f`);
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Search Todo items",
+		"Find shortcut focuses Todo-item search even from another input"
+	);
+	await todoSearch.fill("Item 1000");
+	await page.keyboard.press(`${mod}+f`);
+	assert.equal(await todoSearch.count(), 0, "Find shortcut closes search");
+	await page.keyboard.press(`${mod}+f`);
+	assert.equal(await todoSearch.inputValue(), "", "Closing search clears its query");
+	assert.ok(await todoSearch.evaluate((element) => element === document.activeElement));
 	await page.keyboard.press(`${mod}+p`);
 	await page.getByRole("menu").waitFor();
 	await page.keyboard.press(`${mod}+n`);
@@ -716,6 +736,10 @@ try {
 	await page.keyboard.press("Escape");
 	await page.getByRole("dialog").waitFor({ state: "detached" });
 	const rowNavigation = page.getByRole("button", { name: "Navigate Item 1000", exact: true });
+	await viewport.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+	});
+	await rowNavigation.waitFor();
 	await rowNavigation.focus();
 	await page.keyboard.press("Home");
 	await page.getByRole("button", { name: "Navigate Item 1", exact: true }).waitFor();
@@ -743,6 +767,12 @@ try {
 	});
 	await page.getByText("Item 1", { exact: true }).waitFor();
 	await page.waitForFunction(() => !document.querySelector('[aria-label="Navigate Item 1000"]'));
+	await page.keyboard.press("Tab");
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Search Todo items",
+		"Tab must reach search before the Todo-item list"
+	);
 	await page.keyboard.press("Tab");
 	assert.equal(
 		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),

@@ -539,6 +539,66 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 	await expect.element(handle).not.toBeDisabled();
 });
 
+test("editing a Todo item updates search results while preserving the query", async () => {
+	await render(Harness, {
+		desktop: adapter({
+			editTodo: async () => ({
+				status: "applied",
+				confirmed: confirmedTodo([
+					{ ...todo, raw: "Ship release +Work", description: "Ship release" },
+				]),
+			}),
+		}),
+	});
+	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await search.fill("plan");
+	await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	const dialog = page.getByRole("dialog");
+	await dialog.getByRole("textbox", { name: /Description/ }).fill("Ship release");
+	await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
+	await expect.element(search).toHaveValue("plan");
+	await search.fill("ship");
+	await expect.element(page.getByText("Ship release", { exact: true })).toBeVisible();
+});
+
+test("external reload updates search results while preserving the query", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	let notify!: (change: TodoFileChange) => void;
+	let loads = 0;
+	const changed = { ...todo, raw: "Different content", description: "Different content" };
+	await render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				revision: ++loads,
+				session: {
+					...ready,
+					todo_file: { ...ready.todo_file, items: [loads === 1 ? todo : changed] },
+				},
+			}),
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await search.fill("plan");
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
+	await expect.element(search).toHaveValue("plan");
+	await search.fill("different");
+	await expect.element(page.getByText("Different content", { exact: true })).toBeVisible();
+});
+
 test("row menu opens a prefilled edit form and saves through the scoped session controller", async () => {
 	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["editTodo"]>>) => void;

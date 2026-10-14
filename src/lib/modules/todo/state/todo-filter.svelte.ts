@@ -24,6 +24,9 @@ export class TodoFilterState {
 	selectedContext = $state<string | null>(null);
 	selectedPriority = $state<string | null>(null);
 	selectedDue = $state<TodoDueCategory | null>(null);
+	searchText = $state("");
+	private searchTerms = $derived(this.searchText.toLowerCase().split(/\s+/).filter(Boolean));
+	hasSearch = $derived(this.searchTerms.length > 0);
 	today = $state(localToday());
 	invalidDueCount = $derived(
 		this.items.filter(
@@ -38,9 +41,13 @@ export class TodoFilterState {
 	clearDue = () => {
 		this.selectedDue = null;
 	};
+	clearSearch = () => {
+		this.searchText = "";
+	};
 
 	get hasFilters() {
 		return (
+			this.hasSearch ||
 			this.selectedProject !== null ||
 			this.selectedContext !== null ||
 			this.selectedPriority !== null ||
@@ -81,6 +88,7 @@ export class TodoFilterState {
 	};
 
 	clear = () => {
+		this.clearSearch();
 		this.clearDue();
 		this.selectedProject = null;
 		this.selectedContext = null;
@@ -127,6 +135,17 @@ export class TodoFilterState {
 			if (this.selectedContext !== null && !item.contexts.includes(this.selectedContext))
 				return false;
 			if (this.activePriority !== null && item.priority !== this.activePriority) return false;
+			if (this.hasSearch) {
+				const text = [
+					item.description,
+					...item.projects.map((project) => `+${project}`),
+					...item.contexts.map((context) => `@${context}`),
+					...Object.entries(item.metadata).map(([key, value]) => `${key}:${value}`),
+				]
+					.join(" ")
+					.toLowerCase();
+				if (!this.searchTerms.every((term) => text.includes(term))) return false;
+			}
 			return true;
 		});
 }
