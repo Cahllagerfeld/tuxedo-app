@@ -59,12 +59,31 @@ describe("TodoList", () => {
 		await expect.element(page.getByTitle("Today · 2026-10-14", { exact: true })).toBeVisible();
 		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
 		await expect
-			.element(page.getByRole("img", { name: "Invalid due date", exact: true }))
+			.element(page.getByRole("button", { name: "Invalid due date", exact: true }))
 			.toBeVisible();
 		expect(document.querySelectorAll("time")).toHaveLength(3);
 		await expect
 			.element(page.getByText("Invalid due date: 2026-02-30", { exact: true }))
 			.not.toBeInTheDocument();
+	});
+	it("shows the invalid Due date tooltip on hover and keyboard focus", async () => {
+		await render(TodoList, {
+			todoFile: { ...todoFile, items: [{ ...todoFile.items[0], metadata: { due: "broken" } }] },
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		const warning = page.getByRole("button", { name: "Invalid due date", exact: true });
+		await warning.hover();
+		await expect
+			.element(page.getByRole("tooltip"))
+			.toHaveTextContent("Invalid due date — edit this Todo item to repair it.");
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
+		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(warning).toHaveFocus();
+		await expect.element(page.getByRole("tooltip")).toBeVisible();
 	});
 	beforeEach(async () => {
 		await page.viewport(800, 600);

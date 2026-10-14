@@ -3,6 +3,7 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "cn";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Pencil from "@lucide/svelte/icons/pencil";
@@ -112,14 +113,19 @@
 			<time class="sr-only @min-[20rem]:not-sr-only" datetime={rowDate}>{rowDate}</time>
 		</span>
 	{:else if !todo.completed && category === "invalid"}
-		<span
-			role="img"
-			aria-label="Invalid due date"
-			title="Invalid due date — edit this Todo item to repair it"
-			class="shrink-0 text-destructive"
-		>
-			<TriangleAlert class="size-3.5" aria-hidden="true" />
-		</span>
+		<Tooltip.Provider>
+			<Tooltip.Root>
+				<Tooltip.Trigger
+					aria-label="Invalid due date"
+					class="shrink-0 rounded text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				>
+					<TriangleAlert class="size-3.5" aria-hidden="true" />
+				</Tooltip.Trigger>
+				<Tooltip.Content role="tooltip"
+					>Invalid due date — edit this Todo item to repair it.</Tooltip.Content
+				>
+			</Tooltip.Root>
+		</Tooltip.Provider>
 	{/if}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger>
