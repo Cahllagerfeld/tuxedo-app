@@ -1,4 +1,4 @@
-import { watch } from "node:fs";
+import { watch, watchFile, unwatchFile } from "node:fs";
 import { basename, dirname } from "node:path";
 import { Effect, type Scope } from "effect";
 
@@ -12,6 +12,11 @@ export function createTodoFileObservation(): TodoFileObservationAdapter {
 	return {
 		observe: (path, changed) =>
 			Effect.gen(function* () {
+				// Native macOS events can omit directory moves; stat polling checks the original path.
+				yield* Effect.acquireRelease(
+					Effect.sync(() => watchFile(path, { interval: 1000 }, changed)),
+					() => Effect.sync(() => unwatchFile(path, changed))
+				);
 				const watcher = yield* Effect.acquireRelease(
 					Effect.try(() =>
 						watch(dirname(path), (_event, filename) => {
