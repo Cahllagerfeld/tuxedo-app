@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { createHotkey } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { localToday } from "$lib/modules/todo/domain/todo-due";
@@ -52,17 +52,30 @@
 
 	let todoViewport = $state<HTMLElement | null>(null);
 	let searchInput = $state<HTMLInputElement | null>(null);
+	let searchButton = $state<HTMLButtonElement | null>(null);
+	let searchOpen = $state(false);
+	const searchId = $props.id();
+	async function openSearch() {
+		searchOpen = true;
+		await tick();
+		searchInput?.focus();
+	}
+	function toggleSearch() {
+		if (searchOpen) {
+			todoFilter.clearSearch();
+			searchOpen = false;
+			searchButton?.focus();
+		} else {
+			void openSearch();
+		}
+	}
 	const shortcutScope = getShortcutScope();
-	createHotkey(
-		"Mod+F",
-		() => searchInput?.focus(),
-		() => ({
-			enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
-			ignoreInputs: false,
-			preventDefault: true,
-			requireReset: true,
-		})
-	);
+	createHotkey("Mod+F", toggleSearch, () => ({
+		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
+		ignoreInputs: false,
+		preventDefault: true,
+		requireReset: true,
+	}));
 
 	onMount(() => {
 		let timer: ReturnType<typeof setTimeout>;
@@ -122,15 +135,29 @@
 					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
 				</p>
 			</div>
-			<TodoEditorDialog
-				bind:open={creationOpen}
-				todoFile={workspace.todoFile}
-				saveTodoItem={workspace.createTodo}
-				workspaceName={workspace.activeWorkspace?.name ?? ""}
-				initialProject={todoFilter.selectedProject}
-				initialContext={todoFilter.selectedContext}
-				disabled={workspace.isOperating}
-			/>
+			<div class="flex items-center gap-2">
+				<Button
+					bind:ref={searchButton}
+					variant="ghost"
+					size="icon"
+					aria-label="Toggle Todo-item search"
+					aria-expanded={searchOpen}
+					aria-controls={searchId}
+					disabled={workspace.isOperating}
+					onclick={toggleSearch}
+				>
+					<Search class="size-4" aria-hidden="true" />
+				</Button>
+				<TodoEditorDialog
+					bind:open={creationOpen}
+					todoFile={workspace.todoFile}
+					saveTodoItem={workspace.createTodo}
+					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					initialProject={todoFilter.selectedProject}
+					initialContext={todoFilter.selectedContext}
+					disabled={workspace.isOperating}
+				/>
+			</div>
 		</div>
 		{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
 			{#if editingTodo && editingWorkspaceId === workspace.activeWorkspace?.id}
@@ -144,35 +171,37 @@
 				/>
 			{/if}
 		{/key}
-		<div class="shrink-0 border-b px-5 py-3">
-			<div class="relative min-w-0">
-				<Search
-					class="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground"
-					aria-hidden="true"
-				/>
-				<Input
-					type="search"
-					bind:ref={searchInput}
-					bind:value={todoFilter.searchText}
-					aria-label="Search Todo items"
-					placeholder="Search Todo items…"
-					disabled={workspace.isOperating}
-					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
-				/>
-				{#if todoFilter.searchText}
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						class="absolute top-1 right-1"
-						aria-label="Clear search"
+		{#if searchOpen}
+			<div id={searchId} class="shrink-0 border-b px-5 py-3">
+				<div class="relative min-w-0">
+					<Search
+						class="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground"
+						aria-hidden="true"
+					/>
+					<Input
+						type="search"
+						bind:ref={searchInput}
+						bind:value={todoFilter.searchText}
+						aria-label="Search Todo items"
+						placeholder="Search Todo items…"
 						disabled={workspace.isOperating}
-						onclick={todoFilter.clearSearch}
-					>
-						<X class="size-4" aria-hidden="true" />
-					</Button>
-				{/if}
+						class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+					/>
+					{#if todoFilter.searchText}
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							class="absolute top-1 right-1"
+							aria-label="Clear search"
+							disabled={workspace.isOperating}
+							onclick={todoFilter.clearSearch}
+						>
+							<X class="size-4" aria-hidden="true" />
+						</Button>
+					{/if}
+				</div>
 			</div>
-		</div>
+		{/if}
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	<div class="min-h-0 min-w-0 flex-1">

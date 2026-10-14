@@ -210,6 +210,9 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 test("Todo-item search combines with facets and clears independently or with all filters", async () => {
 	await render(Harness, { desktop: adapter() });
 	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await expect.element(search).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await expect.element(search).toHaveFocus();
 	await search.fill("HOME work");
 	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
 	await expect
@@ -245,7 +248,10 @@ test("Todo-item search combines with facets and clears independently or with all
 		.toHaveTextContent("7 matching items");
 	await search.fill("reading");
 	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
-	await page.getByRole("button", { name: "Clear search", exact: true }).click();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await expect.element(search).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await expect.element(search).toHaveValue("");
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("7 matching items");
@@ -632,6 +638,7 @@ test("resets filters after a successful Workspace switch", async () => {
 		}),
 	});
 	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
@@ -668,6 +675,7 @@ test("preserves filters after a rejected Workspace switch", async () => {
 		}),
 	});
 	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();

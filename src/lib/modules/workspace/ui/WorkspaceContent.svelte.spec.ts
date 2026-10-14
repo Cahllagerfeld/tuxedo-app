@@ -551,6 +551,7 @@ test("editing a Todo item updates search results while preserving the query", as
 		}),
 	});
 	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await search.fill("plan");
 	await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
@@ -588,6 +589,7 @@ test("external reload updates search results while preserving the query", async 
 		},
 	});
 	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await search.fill("plan");
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
 	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
@@ -1202,8 +1204,6 @@ test("Tab reenters row navigation after leaving and scrolling to another virtual
 	viewport.scrollTop = viewport.scrollHeight;
 	await expect.element(page.getByText("Item 1000", { exact: true })).toBeVisible();
 	await expect.element(first).not.toBeInTheDocument();
-	await userEvent.keyboard("{Tab}");
-	await expect.element(page.getByRole("searchbox", { name: "Search Todo items" })).toHaveFocus();
 	await userEvent.keyboard("{Tab}");
 	await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
 	await userEvent.keyboard("{ArrowDown}");
