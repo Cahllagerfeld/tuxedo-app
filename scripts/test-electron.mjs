@@ -694,8 +694,14 @@ try {
 	await page.keyboard.press(`${mod}+/`);
 	const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 	await help.waitFor();
+	// Dialog autofocus runs on the next animation frame, after the surface becomes visible.
+	await page.waitForFunction(
+		(dialog) => dialog.contains(document.activeElement),
+		await help.elementHandle()
+	);
 	assert.ok((await help.textContent()).includes(process.platform === "darwin" ? "⌘" : "Ctrl"));
 	await page.keyboard.press(`${mod}+f`);
+	assert.equal(await todoSearch.count(), 0, "Help keeps Todo-item search closed");
 	assert.ok(
 		await help.evaluate((element) => element.contains(document.activeElement)),
 		"Help suspends the search shortcut"
