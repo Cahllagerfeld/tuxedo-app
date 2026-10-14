@@ -934,9 +934,9 @@ try {
 		)
 	);
 	await page.reload();
-	await viewport.evaluate((element) => {
-		element.scrollTop = element.scrollHeight;
-	});
+	await addTodo.click({ trial: true });
+	await page.getByRole("list", { name: "Todo items", exact: true }).focus();
+	await page.keyboard.press("End");
 	await page.getByText("Edited metadata check", { exact: true }).waitFor();
 	console.log(
 		"Todo-item editing through the row menu, form, preload and backend persists across reload."
