@@ -5,7 +5,7 @@
 	import { localToday } from "$lib/modules/todo/domain/todo-due";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
-	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
+	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
@@ -13,11 +13,9 @@
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
-	import FileText from "@lucide/svelte/icons/file-text";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import Search from "@lucide/svelte/icons/search";
 	import X from "@lucide/svelte/icons/x";
-	import { toast } from "svelte-sonner";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
@@ -37,21 +35,16 @@
 		filteredTodoItems,
 		openWorkspaceCreationDialog,
 	}: Props = $props();
-	let editingTodo = $state<TodoItem | null>(null);
-	let todoList = $state<ReturnType<typeof TodoList>>();
-	let editRecovery: ReturnType<ReturnType<typeof TodoList>["captureFocus"]> | undefined;
-	let editingWorkspaceId = $state<string>();
-	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
-		editRecovery = todoList?.captureFocus(todo, true, trigger);
-		editingWorkspaceId = workspace.activeWorkspace?.id;
-		editingTodo = todo;
-	}
-	function closeEdit(uncertain = false) {
-		editingTodo = null;
-		void editRecovery?.restore(uncertain);
-	}
-
-	let todoViewport = $state<HTMLElement | null>(null);
+	let emptyViewport = $state<HTMLElement | null>(null);
+	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
+	$effect.pre(() => {
+		if (
+			!workspace.todoFile &&
+			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
+		) {
+			void tick().then(() => emptyViewport?.focus());
+		}
+	});
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let searchButton = $state<HTMLButtonElement | null>(null);
 	let searchOpen = $state(false);
@@ -96,35 +89,6 @@
 			document.removeEventListener("visibilitychange", refreshDate);
 		};
 	});
-
-	async function toggleTodoCompletion(todo: TodoItem) {
-		const recovery = todoList?.captureFocus(todo);
-		const result = await workspace.setCompletion(todo);
-		void recovery?.restore(result.status === "conflict");
-		if (result.status === "conflict") {
-			toast.error("Todo file reloaded");
-		} else if (result.status === "rejected") {
-			toast.error("Could not update Todo item", { description: result.message });
-		}
-	}
-
-	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
-		const recovery = todoList?.captureFocus(todo, false, trigger);
-		const result = await workspace.deleteTodo(todo);
-		void recovery?.restore(result.status === "conflict", result.status === "applied");
-		if (result.status === "conflict") {
-			toast.error("Todo file reloaded");
-		} else if (result.status === "rejected") {
-			toast.error("Could not delete Todo item", { description: result.message });
-		}
-	}
-
-	async function reorderTodoItems(items: readonly TodoItem[]) {
-		const result = await workspace.reorderTodo(items);
-		if (result.status === "conflict") toast.error("Todo file reloaded");
-		else if (result.status === "rejected")
-			toast.error("Could not reorder Todo items", { description: result.message });
-	}
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -160,18 +124,6 @@
 				/>
 			</div>
 		</div>
-		{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
-			{#if editingTodo && editingWorkspaceId === workspace.activeWorkspace?.id}
-				<TodoEditorDialog
-					todoFile={workspace.todoFile}
-					todoToEdit={editingTodo}
-					saveTodoItem={(draft) => workspace.editTodo(editingTodo!, draft)}
-					workspaceName={workspace.activeWorkspace?.name ?? ""}
-					disabled={workspace.isOperating}
-					onClose={closeEdit}
-				/>
-			{/if}
-		{/key}
 		{#if searchOpen}
 			<div id={searchId} class="shrink-0 border-b px-5 py-3">
 				<div class="relative min-w-0">
@@ -205,77 +157,39 @@
 		{/if}
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
-	<div class="min-h-0 min-w-0 flex-1">
-		<ScrollArea
-			bind:viewportRef={todoViewport}
-			class="h-full w-full"
-			aria-label="Todo item results"
-			viewportTabIndex={-1}
-		>
-			{#if workspace.session.status === "loading"}
-				<Empty.Root aria-label="Loading workspace session" class="min-h-full rounded-none border-0">
-					<Empty.Media variant="icon"
-						><LoaderCircle class="animate-spin" aria-hidden="true" /></Empty.Media
+	{#if workspace.todoFile}
+		<WorkspaceTodoReader {workspace} {todoFilter} {filteredTodoItems} />
+	{:else}
+		<div class="min-h-0 min-w-0 flex-1">
+			<ScrollArea
+				bind:viewportRef={emptyViewport}
+				class="h-full w-full"
+				aria-label="Todo item results"
+				viewportTabIndex={-1}
+			>
+				{#if workspace.session.status === "loading"}
+					<Empty.Root
+						aria-label="Loading workspace session"
+						class="min-h-full rounded-none border-0"
 					>
-					<Empty.Header>
-						<Empty.Title>Loading workspaces…</Empty.Title>
-						<Empty.Description>Restoring your Workspace session.</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-			{:else if workspace.session.status === "unavailable"}
-				<Empty.Root
-					aria-label="Workspace catalogue unavailable"
-					class="min-h-full rounded-none border-0"
-				>
-					<Alert.Root variant="destructive">
-						<Alert.Title>Workspaces unavailable</Alert.Title>
-						<Alert.Description>{workspace.session.error}</Alert.Description>
-					</Alert.Root>
-				</Empty.Root>
-			{:else}
-				{#if workspace.todoFile}
-					{#if filteredTodoItems.length === 0 && workspace.todoFile.items.length > 0}
-						<Empty.Root
-							aria-label="No matching Todo items"
-							class="min-h-full rounded-none border-0"
+						<Empty.Media variant="icon"
+							><LoaderCircle class="animate-spin" aria-hidden="true" /></Empty.Media
 						>
-							<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
-							<Empty.Header>
-								<Empty.Title>
-									No {todoFilter.status === "all"
-										? ""
-										: `${todoFilter.status} `}items{todoFilter.hasFilters
-										? " match these filters"
-										: ""}.
-								</Empty.Title>
-								<Empty.Description>
-									{todoFilter.hasFilters
-										? "Try clearing a filter to see more Todo items."
-										: "There are no Todo items in this completion view."}
-								</Empty.Description>
-							</Empty.Header>
-							{#if todoFilter.hasFilters}
-								<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
-									>Clear filters</Button
-								>
-							{/if}
-						</Empty.Root>
-					{/if}
-					<TodoList
-						today={todoFilter.today}
-						showEmpty={workspace.todoFile.items.length === 0}
-						bind:this={todoList}
-						fallback={todoViewport}
-						workspaceId={workspace.activeWorkspace?.id ?? ""}
-						scrollElement={todoViewport}
-						todoFile={workspace.todoFile}
-						items={filteredTodoItems}
-						disabled={workspace.isOperating}
-						onToggleComplete={toggleTodoCompletion}
-						onDelete={deleteTodoItem}
-						onEdit={startEdit}
-						onReorder={reorderTodoItems}
-					/>
+						<Empty.Header>
+							<Empty.Title>Loading workspaces…</Empty.Title>
+							<Empty.Description>Restoring your Workspace session.</Empty.Description>
+						</Empty.Header>
+					</Empty.Root>
+				{:else if workspace.session.status === "unavailable"}
+					<Empty.Root
+						aria-label="Workspace catalogue unavailable"
+						class="min-h-full rounded-none border-0"
+					>
+						<Alert.Root variant="destructive">
+							<Alert.Title>Workspaces unavailable</Alert.Title>
+							<Alert.Description>{workspace.session.error}</Alert.Description>
+						</Alert.Root>
+					</Empty.Root>
 				{:else}
 					<Empty.Root aria-label="No active workspace">
 						<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
@@ -294,7 +208,7 @@
 						{/if}
 					</Empty.Root>
 				{/if}
-			{/if}
-		</ScrollArea>
-	</div>
+			</ScrollArea>
+		</div>
+	{/if}
 </div>

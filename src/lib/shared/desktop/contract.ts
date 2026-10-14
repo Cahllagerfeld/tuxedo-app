@@ -186,6 +186,11 @@ export const reorderTodoRequestSchema = effectValidator(
 );
 const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
 export const desktopContract = {
+	writeClipboardText: {
+		channel: "tuxedo:write-clipboard-text",
+		request: effectValidator(Schema.Struct({ text: Schema.String })),
+		response: effectValidator(Schema.Null),
+	},
 	editTodo: {
 		channel: "tuxedo:edit-todo",
 		request: editTodoRequestSchema,
@@ -280,6 +285,7 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		writeClipboardText: (request) => call("writeClipboardText", request),
 		editTodo: (request) => call("editTodo", request),
 		reorderTodo: (request) => call("reorderTodo", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),

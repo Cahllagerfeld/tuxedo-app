@@ -41,6 +41,7 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 	return {
 		restoreSession: restore,
 		readSession: async () => initial,
+		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),

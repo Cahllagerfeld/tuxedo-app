@@ -24,6 +24,9 @@
 		onDelete: (todo: TodoFile["items"][number], trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoFile["items"][number], trigger: HTMLButtonElement | null) => void;
 		onReorder?: (items: readonly TodoFile["items"][number][]) => void;
+		onSelect?: (todo: TodoFile["items"][number]) => void;
+		onNavigate?: (todo: TodoFile["items"][number]) => void;
+		selectedTodo?: TodoFile["items"][number] | null;
 	};
 
 	let {
@@ -39,6 +42,9 @@
 		onDelete,
 		onEdit,
 		onReorder,
+		onSelect,
+		onNavigate,
+		selectedTodo = null,
 	}: TodoListProps = $props();
 
 	const list = createTodoListView({
@@ -87,8 +93,10 @@
 		reveal: list.reveal,
 		onToggle: (todo) => onToggleComplete(todo),
 		onEdit: (todo, trigger) => onEdit?.(todo, trigger),
+		onSelect: (todo) => onSelect?.(todo),
 	});
 	export const captureFocus = focus.capture;
+	export const focusTodo = focus.focusTodo;
 </script>
 
 <svelte:window onkeydowncapture={list.cancelOnEscape} />
@@ -109,13 +117,20 @@
 		{#each list.rows as { todo, index, start, size, key } (key)}
 			<li
 				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent"
+				class:bg-accent={selectedTodo?.line_number === todo.line_number &&
+					selectedTodo?.raw === todo.raw}
 				style:height={`${size}px`}
 				style:top={`${start}px`}
 				aria-posinset={index + 1}
 				aria-setsize={items.length}
-				onfocusin={() => {
+				onfocusin={(event) => {
 					list.focusItem(todo);
 					focus.remember(todo);
+					if (
+						event.target instanceof HTMLElement &&
+						event.target.hasAttribute("data-row-navigation")
+					)
+						onNavigate?.(todo);
 				}}
 				onfocusout={list.onFocusOut}
 			>
@@ -124,9 +139,15 @@
 					type="button"
 					data-row-navigation={index}
 					aria-label={`Navigate ${todo.description}`}
+					aria-expanded={onSelect
+						? selectedTodo?.line_number === todo.line_number && selectedTodo?.raw === todo.raw
+						: undefined}
 					tabindex={focus.index === index ? 0 : -1}
 					class="absolute inset-0 h-full w-full rounded-none p-0 focus-visible:border-transparent focus-visible:ring-0 focus-visible:inset-ring-1 focus-visible:inset-ring-ring focus-visible:outline-none"
 					onkeydown={(event) => focus.keydown(event, todo)}
+					onclick={() => {
+						if (!disabled && !list.dragging) onSelect?.(todo);
+					}}
 				></Button>
 				{#if onReorder}
 					<div
@@ -140,7 +161,7 @@
 						<GripVertical class="size-4" aria-hidden="true" />
 					</div>
 				{/if}
-				<div class="relative z-10 min-w-0 flex-1">
+				<div class="pointer-events-none relative z-10 min-w-0 flex-1">
 					<TodoItem
 						{todo}
 						{today}

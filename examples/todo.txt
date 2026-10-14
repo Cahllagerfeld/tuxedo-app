@@ -16,7 +16,7 @@ Learn how to add 2+2
 Really gotta call Mom (A) @phone
 (b) Lowercase priority-looking token is plain text @work
 (B)->Priority without space is plain text +SpecExamples
-x 2026-05-24 2026-05-23 Finish release +TuxedoApp +Release @computer @github due:2026-05-24 pri:A
+x 2026-10-14 2026-05-23 Finish release +TuxedoApp +Release @computer @github due:2026-05-24 pri:A
 x Completed task without completion date +OptionalDateExample
 
 (A) Review a crowded row with one Project and Context visible +TuxedoApp +Release +Team @computer @review due:2026-10-13

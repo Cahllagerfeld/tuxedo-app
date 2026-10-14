@@ -15,6 +15,7 @@ type Inputs = {
 	reveal: (todo: TodoItem) => void;
 	onToggle: (todo: TodoItem) => void;
 	onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
+	onSelect?: (todo: TodoItem) => void;
 };
 
 export function createTodoListFocus(inputs: Inputs) {
@@ -166,6 +167,11 @@ export function createTodoListFocus(inputs: Inputs) {
 				event.preventDefault();
 				if (!event.repeat) inputs.onEdit?.(todo, event.currentTarget as HTMLButtonElement);
 				return;
+			case rowShortcuts.details.key:
+				if (!todo) return;
+				event.preventDefault();
+				if (!event.repeat) inputs.onSelect?.(todo);
+				return;
 			default:
 				return;
 		}
@@ -173,6 +179,12 @@ export function createTodoListFocus(inputs: Inputs) {
 		void focus(next);
 	}
 	return {
+		focusTodo: (todo: TodoItem) =>
+			focus(
+				inputs.items.findIndex(
+					(item) => item.line_number === todo.line_number && item.raw === todo.raw
+				)
+			),
 		get index() {
 			return navigationIndex;
 		},

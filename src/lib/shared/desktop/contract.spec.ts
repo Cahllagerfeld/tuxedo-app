@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createDesktopClient, todoFileChangeEvent } from "./contract";
+import { createDesktopClient, desktopContract, todoFileChangeEvent } from "./contract";
 test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.readSession({})).rejects.toThrow();
@@ -288,5 +288,32 @@ test.each([-1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])(
 			session: { status: "unavailable", error: "Unavailable" },
 		}));
 		await expect(desktop.readSession({})).rejects.toThrow();
+	}
+);
+
+test("clipboard transport preserves exact text and validates acknowledgement", async () => {
+	const text = "  (A) Café\t+Launch  @home\u00a0due:2026-10-14  ";
+	let forwarded: unknown;
+	const desktop = createDesktopClient(async (channel, request) => {
+		expect(channel).toBe("tuxedo:write-clipboard-text");
+		forwarded = request;
+		return null;
+	});
+	await expect(desktop.writeClipboardText({ text })).resolves.toBeNull();
+	expect(forwarded).toEqual({ text });
+	await expect(
+		createDesktopClient(async () => true).writeClipboardText({ text })
+	).rejects.toThrow();
+	await expect(
+		createDesktopClient(async () => {
+			throw Error("clipboard unavailable");
+		}).writeClipboardText({ text })
+	).rejects.toThrow("clipboard unavailable");
+});
+
+test.each([{}, { text: 42 }, { text: "hello", read: true }])(
+	"clipboard contract rejects malformed requests %#",
+	(request) => {
+		expect(() => desktopContract.writeClipboardText.request.parse(request)).toThrow();
 	}
 );

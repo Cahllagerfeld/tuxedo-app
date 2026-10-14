@@ -16,7 +16,7 @@ import type {
 	DesktopResponse,
 	TodoFileChange,
 } from "../../src/lib/shared/desktop/contract";
-export type SessionBackend = Omit<DesktopAPI, "selectTodoFile">;
+export type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
 export type SessionOperation = keyof SessionBackend;
 export type SessionEffects = {
 	[K in SessionOperation]: (
