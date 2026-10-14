@@ -18,9 +18,12 @@
 		onSwitch();
 	}
 	function keydown(event: KeyboardEvent) {
+		if (event.defaultPrevented) return;
 		if (
 			event.target instanceof HTMLElement &&
-			event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')
+			event.target.closest(
+				'input, textarea, select, [contenteditable="true"], [role="dialog"], [role="separator"]'
+			)
 		)
 			return;
 		if (event.key === "ArrowLeft" || event.key === "ArrowRight") {

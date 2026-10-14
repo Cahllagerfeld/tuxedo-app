@@ -5,6 +5,7 @@
 	import { tick } from "svelte";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Sheet from "$lib/shared/ui/sheet";
+	import * as Resizable from "$lib/shared/ui/resizable";
 	import PrototypeSwitcher from "$lib/shared/ui/PrototypeSwitcher.svelte";
 	import type { TodoItem } from "../domain/todo";
 	import { validDueDate } from "../domain/todo-due";
@@ -152,8 +153,8 @@
 		</div>
 		<span class="rounded border px-2 py-1 text-xs text-muted-foreground">Detail prototype</span>
 	</header>
-	<div class="flex min-h-0 flex-1">
-		<div class="min-w-0 flex-1 overflow-auto pb-28" bind:this={rows}>
+	{#snippet todoList()}
+		<div class="h-full min-w-0 overflow-auto pb-28" bind:this={rows}>
 			{#each prototypeTodoFile.items as todo, index (todo.line_number)}
 				<Button
 					variant="ghost"
@@ -192,19 +193,28 @@
 				Click an item to inspect it. ↑ ↓ browse the list.
 			</p>
 		</div>
+	{/snippet}
+	<div class="min-h-0 flex-1">
 		{#if variant === "panel" && !overlay && selected && open}
-			<aside
-				aria-label="Todo item details"
-				class="w-[400px] shrink-0 overflow-auto border-l bg-background pb-24"
-			>
-				<div class="flex h-12 items-center justify-between border-b px-6">
-					<p class="text-xs font-medium text-muted-foreground">Todo item details</p>
-					<Button variant="ghost" size="icon-sm" aria-label="Close details" onclick={close}
-						><X class="size-4" /></Button
-					>
-				</div>
-				{@render detail(selected)}
-			</aside>
+			<Resizable.PaneGroup direction="horizontal">
+				<Resizable.Pane defaultSize={58} minSize={35}>
+					{@render todoList()}
+				</Resizable.Pane>
+				<Resizable.Handle withHandle aria-label="Resize Todo item details" />
+				<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
+					<aside aria-label="Todo item details" class="h-full overflow-auto bg-background pb-24">
+						<div class="flex h-12 items-center justify-between border-b px-6">
+							<p class="text-xs font-medium text-muted-foreground">Todo item details</p>
+							<Button variant="ghost" size="icon-sm" aria-label="Close details" onclick={close}
+								><X class="size-4" /></Button
+							>
+						</div>
+						{@render detail(selected)}
+					</aside>
+				</Resizable.Pane>
+			</Resizable.PaneGroup>
+		{:else}
+			{@render todoList()}
 		{/if}
 	</div>
 	{#if overlay}
