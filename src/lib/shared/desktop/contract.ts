@@ -7,6 +7,7 @@ import {
 	todoCreationFields,
 	todoCreationIssues,
 	TodoDate,
+	TodoPriority,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
 
@@ -191,11 +192,7 @@ export const SavedViewFilters = Schema.Struct({
 	search: Schema.String,
 	project: Schema.NullOr(Schema.NonEmptyString),
 	context: Schema.NullOr(Schema.NonEmptyString),
-	priority: Schema.NullOr(
-		Schema.String.check(
-			Schema.makeFilter((value) => (/^[A-Z]$/.test(value) ? undefined : "Use a Priority letter."))
-		)
-	),
+	priority: Schema.NullOr(TodoPriority),
 	due: Schema.NullOr(Schema.Literals(["overdue", "today", "upcoming", "none", "invalid"])),
 }).check(
 	Schema.makeFilter((value) =>
