@@ -7,16 +7,20 @@
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import { dueCategory, validDueDate } from "../domain/todo-due";
 
 	type TodoItemProps = {
 		todo: TodoItem;
+		today: string;
 		disabled: boolean;
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem, trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	};
 
-	let { todo, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	let { todo, today, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	const due = $derived(validDueDate(todo.metadata.due));
+	const category = $derived(dueCategory(todo.metadata.due, today));
 	let menuTrigger = $state<HTMLButtonElement | null>(null);
 	let confirmedChecked = $derived(todo.completed);
 	const projects = $derived([...new Set(todo.projects)]);
@@ -64,6 +68,25 @@
 			>{/each}
 		{#each contexts as context (context)}<span class="truncate">@{context}</span>{/each}
 	</div>
+	{#if todo.metadata.due}
+		<span
+			class={cn(
+				"max-w-[40%] shrink-0 truncate rounded px-1.5 py-0.5 text-xs tabular-nums",
+				!todo.completed && category === "overdue"
+					? "bg-destructive/10 text-destructive"
+					: !todo.completed && category === "today"
+						? "bg-accent text-accent-foreground"
+						: "text-muted-foreground"
+			)}
+			title={due ? `Due ${due}` : `Invalid due date: ${todo.metadata.due}`}
+		>
+			{#if due}
+				<time datetime={due}
+					>{`${!todo.completed && category === "overdue" ? "Overdue · " : !todo.completed && category === "today" ? "Today · " : ""}${due}`}</time
+				>
+			{:else}Invalid due date: {todo.metadata.due}{/if}
+		</span>
+	{/if}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger>
 			{#snippet child({ props })}

@@ -43,6 +43,9 @@ The local calendar date on which an open Todo item became completed.
 **Creation date**:
 The optional calendar date recorded for a Todo item's creation.
 
+**Due date**:
+The optional valid calendar date in a Todo item's effective `due:YYYY-MM-DD` value. Overdue dates precede today, Today dates equal today, and Upcoming dates follow today in the user's local calendar; absent or malformed values belong to No due date.
+
 **Todo-file summary**:
 A read-only projection of one parsed Todo file: its items and skipped lines, counts of total, open, and completed Todo items, and a Skipped-line count. Without a loaded Todo file it is empty, and it does not filter Todo items.
 

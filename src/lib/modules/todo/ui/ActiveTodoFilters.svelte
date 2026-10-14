@@ -2,10 +2,17 @@
 	import X from "@lucide/svelte/icons/x";
 	import { Button } from "$lib/shared/ui/button";
 	import type { TodoFilterState } from "../state/todo-filter.svelte";
+	import { dueLabels } from "../domain/todo-due";
 
 	let { todoFilter, disabled }: { todoFilter: TodoFilterState; disabled: boolean } = $props();
 	const selections = $derived(
 		[
+			{
+				label: "Due",
+				value: todoFilter.selectedDue ? dueLabels[todoFilter.selectedDue] : null,
+				prefix: "",
+				clear: todoFilter.clearDue,
+			},
 			{
 				label: "Project",
 				value: todoFilter.selectedProject,

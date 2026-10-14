@@ -1,5 +1,6 @@
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
+import { dueCategory, localToday, type TodoDueCategory } from "../domain/todo-due";
 
 export type TodoFilterStatus = "all" | "open" | "completed";
 
@@ -22,12 +23,22 @@ export class TodoFilterState {
 	selectedProject = $state<string | null>(null);
 	selectedContext = $state<string | null>(null);
 	selectedPriority = $state<string | null>(null);
+	selectedDue = $state<TodoDueCategory | null>(null);
+	today = $state(localToday());
 
-	get hasFacetFilters() {
+	toggleDue = (category: TodoDueCategory) => {
+		this.selectedDue = this.selectedDue === category ? null : category;
+	};
+	clearDue = () => {
+		this.selectedDue = null;
+	};
+
+	get hasFilters() {
 		return (
 			this.selectedProject !== null ||
 			this.selectedContext !== null ||
-			this.selectedPriority !== null
+			this.selectedPriority !== null ||
+			this.selectedDue !== null
 		);
 	}
 
@@ -63,6 +74,7 @@ export class TodoFilterState {
 	};
 
 	clear = () => {
+		this.clearDue();
 		this.selectedProject = null;
 		this.selectedContext = null;
 		this.selectedPriority = null;
@@ -96,6 +108,11 @@ export class TodoFilterState {
 
 	filterItems = (items: readonly TodoItem[]) =>
 		items.filter((item) => {
+			if (
+				this.selectedDue !== null &&
+				dueCategory(item.metadata.due, this.today) !== this.selectedDue
+			)
+				return false;
 			if (this.status !== "all" && (this.status === "completed") !== item.completed) return false;
 			if (this.selectedProject !== null && !item.projects.includes(this.selectedProject))
 				return false;

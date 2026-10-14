@@ -19,6 +19,7 @@
 	import TagsInput from "./tags-input/tags-input.svelte";
 	import PriorityPicker from "./PriorityPicker.svelte";
 	import DatePicker from "./DatePicker.svelte";
+	import { validDueDate, localToday } from "../domain/todo-due";
 
 	type Props = {
 		open?: boolean;
@@ -44,9 +45,15 @@
 		onClose,
 	}: Props = $props();
 
-	function today() {
-		const date = new Date();
-		return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+	function getDueDate() {
+		return (
+			validDueDate($formData.metadata.findLast((token) => token.startsWith("due:"))?.slice(4)) ?? ""
+		);
+	}
+	function setDueDate(value: string) {
+		const metadata = $formData.metadata.filter((token) => !token.startsWith("due:"));
+		if (value) metadata.push(`due:${value}`);
+		$formData = { ...$formData, metadata };
 	}
 	const schema = todoEditorSchema(() => ({
 		editing: !!todoToEdit,
@@ -118,7 +125,7 @@
 				projects: initialProject === null ? [] : [initialProject],
 				contexts: initialContext === null ? [] : [initialContext],
 				priority: "none",
-				creationDate: today(),
+				creationDate: localToday(),
 				completionDate: "",
 				metadata: [],
 			};
@@ -291,6 +298,28 @@
 						><Form.FieldErrors />
 					</Form.Field>
 				</div>
+
+				<Form.Field {form} name="metadata">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label
+								>Due date <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
+							<DatePicker
+								{...props}
+								bind:value={getDueDate, setDueDate}
+								label="Due date"
+								disabled={controlsDisabled}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.Description
+						>Stored as due:YYYY-MM-DD in Metadata. Other due values remain in Metadata until you
+						change or clear this date.</Form.Description
+					>
+					<Form.FieldErrors />
+				</Form.Field>
 
 				{#if todoToEdit?.completed}
 					<Form.Field {form} name="completionDate">

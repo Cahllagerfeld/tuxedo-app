@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { TodoFile } from "$lib/modules/todo/domain/todo";
 import TodoEditorDialog from "./TodoEditorDialog.svelte";
@@ -72,6 +72,39 @@ function renderDialog(
 function openDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0).click();
 }
+
+test("Due date controls edit the same metadata and preserve malformed values until explicitly changed", async () => {
+	const calls: TodoItemDraft[] = [];
+	const item = {
+		...todoFile.items[0],
+		metadata: { due: "tomorrow", custom: "keep" },
+		edit: { description: "Plan release", metadata: ["due:tomorrow", "custom:keep"] },
+	};
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: item,
+		saveTodoItem: async (input) => {
+			calls.push(input);
+			return { status: "rejected", message: "Retry" };
+		},
+	});
+	await expect.element(page.getByRole("button", { name: "Due date (optional)" })).toBeVisible();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["due:tomorrow", "custom:keep"]);
+	await page.getByRole("button", { name: "Remove due:tomorrow", exact: true }).click();
+	await page.getByPlaceholder("Add key:value").fill("due:2026-10-14");
+	await userEvent.keyboard("{Enter}");
+	const picker = page.getByRole("button", { name: "Due date (optional)" });
+	await expect.element(picker).toHaveTextContent("October 14, 2026");
+	await picker.click();
+	await page.getByRole("button", { name: /Thursday, October 15, 2026/ }).click();
+	await picker.click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[1]?.metadata).toEqual(["custom:keep", "due:2026-10-15"]);
+	await page.getByRole("button", { name: "Clear Due date", exact: true }).click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[2]?.metadata).toEqual(["custom:keep"]);
+});
 
 test("editing retains the Todo item's tags instead of creation defaults", async () => {
 	let saved: TodoItemDraft | undefined;

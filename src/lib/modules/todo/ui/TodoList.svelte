@@ -9,9 +9,11 @@
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
 	import { createTodoListView } from "./todo-list-view.svelte";
+	import { localToday } from "../domain/todo-due";
 
 	type TodoListProps = {
 		todoFile: TodoFile;
+		today?: string;
 		showEmpty?: boolean;
 		workspaceId?: string;
 		fallback?: HTMLElement | null;
@@ -26,6 +28,7 @@
 
 	let {
 		todoFile,
+		today = localToday(),
 		showEmpty = true,
 		workspaceId = todoFile.path,
 		fallback = null,
@@ -140,6 +143,7 @@
 				<div class="relative z-10 min-w-0 flex-1">
 					<TodoItem
 						{todo}
+						{today}
 						disabled={disabled || list.dragging}
 						{onToggleComplete}
 						{onDelete}

@@ -1,5 +1,5 @@
 import { page } from "vitest/browser";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "$lib/shared/desktop/contract";
 import Harness from "./WorkspaceFilteringHarness.svelte";
@@ -206,6 +206,55 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 		},
 	};
 }
+
+test("date filters and row indicators refresh at local midnight and clear with other filters", async () => {
+	const datedItems = [
+		{ ...items[0], metadata: { due: "2026-10-14" } },
+		{ ...items[1], metadata: { due: "2026-10-15" } },
+	];
+	const view = await render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: datedItems },
+				},
+			}),
+		}),
+	});
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+		.toBeVisible();
+	vi.useFakeTimers({ toFake: ["Date"] });
+	try {
+		vi.setSystemTime(new Date(2026, 9, 14, 23, 59, 59));
+		window.dispatchEvent(new Event("focus"));
+		await page.getByRole("button", { name: "Today", exact: true }).click();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open personal complete", exact: true }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Today · 2026-10-14", { exact: true })).toBeVisible();
+		vi.setSystemTime(new Date(2026, 9, 15));
+		await expect.element(page.getByText("Today · 2026-10-15", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+			.not.toBeInTheDocument();
+		await page.getByRole("button", { name: "Clear Due Today", exact: true }).click();
+		await expect.element(page.getByText("Overdue · 2026-10-14", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "No due date", exact: true }).click();
+		await expect
+			.element(page.getByRole("button", { name: "Clear filters", exact: true }).last())
+			.toBeVisible();
+		await page.getByRole("button", { name: "Clear filters", exact: true }).last().click();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Open work complete", exact: true }))
+			.toBeVisible();
+	} finally {
+		view.unmount();
+		vi.useRealTimers();
+	}
+});
 
 test("creation seeds active Project and Context filters and refreshes them on reopening", async () => {
 	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;

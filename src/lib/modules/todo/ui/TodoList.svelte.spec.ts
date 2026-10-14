@@ -41,6 +41,27 @@ const todoFile: TodoFile = {
 };
 
 describe("TodoList", () => {
+	it("shows due dates with urgency only for open Todo items and identifies malformed dates", async () => {
+		const items = [
+			{ ...todoFile.items[0], metadata: { due: "2026-10-13" } },
+			{ ...todoFile.items[0], line_number: 2, metadata: { due: "2026-10-14" } },
+			{ ...todoFile.items[1], line_number: 3, metadata: { due: "2026-10-13" } },
+			{ ...todoFile.items[0], line_number: 4, metadata: { due: "2026-02-30" } },
+		];
+		render(TodoList, {
+			todoFile: { ...todoFile, items },
+			today: "2026-10-14",
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		});
+		await expect.element(page.getByText("Overdue · 2026-10-13", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("Today · 2026-10-14", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("2026-10-13", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByText("Invalid due date: 2026-02-30", { exact: true }))
+			.toBeVisible();
+	});
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});
