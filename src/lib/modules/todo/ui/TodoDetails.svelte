@@ -8,6 +8,7 @@
 	import X from "@lucide/svelte/icons/x";
 	import Copy from "@lucide/svelte/icons/copy";
 	import Check from "@lucide/svelte/icons/check";
+	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -60,9 +61,9 @@
 				<h2 class="pr-10 text-xl leading-relaxed font-medium break-words">{todo.description}</h2>
 				<div class="mt-4 flex flex-wrap items-center gap-2">
 					<Button variant="outline" size="sm" {disabled} onclick={() => onToggleComplete(todo)}
-						>{#if !todo.completed}<Check aria-hidden="true" />{/if}{todo.completed
-							? "Mark incomplete"
-							: "Mark complete"}</Button
+						>{#if todo.completed}<Undo2 aria-hidden="true" />{:else}<Check
+								aria-hidden="true"
+							/>{/if}{todo.completed ? "Mark incomplete" : "Mark complete"}</Button
 					>
 					<Button
 						variant="ghost"
@@ -165,11 +166,9 @@
 							>{/each}</code
 					>
 				</div>
-				<p role="status" class="mt-2 text-xs text-muted-foreground">
-					{copiedRaw === todo.raw
-						? "Raw line copied"
-						: "Original spacing and token order preserved."}
-				</p>
+				{#if copiedRaw === todo.raw}
+					<p role="status" class="mt-2 text-xs text-muted-foreground">Raw line copied</p>
+				{/if}
 			</section>
 		</div>
 	</ScrollArea>
