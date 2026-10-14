@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, session } from "electron";
+import {
+	app,
+	BrowserWindow,
+	clipboard,
+	dialog,
+	ipcMain,
+	nativeTheme,
+	net,
+	protocol,
+	session,
+} from "electron";
 import { dirname, resolve, sep, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -214,6 +224,15 @@ const startup = Effect.gen(function* () {
 			Effect.sync(() => registerDesktopOperation(ipcMain, getWindow, trusted, operation, handler)),
 			(release) => Effect.sync(release)
 		);
+	yield* register("writeClipboardText", ({ text }) =>
+		backend.run(
+			"writeClipboardText",
+			Effect.tryPromise(async () => {
+				await clipboard.writeText(text);
+				return null;
+			})
+		)
+	);
 	yield* register("readSession", backend.readSession);
 	yield* register("setTodoCompletion", backend.setTodoCompletion);
 	yield* register("deleteTodo", backend.deleteTodo);

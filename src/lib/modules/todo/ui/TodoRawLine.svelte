@@ -12,8 +12,9 @@
 	const metadata = $derived(new Set(todo.edit.metadata));
 	async function copyRaw() {
 		const raw = todo.raw;
+		copiedRaw = null;
 		try {
-			await navigator.clipboard.writeText(raw);
+			await window.desktop.writeClipboardText({ text: raw });
 			copiedRaw = raw;
 		} catch {
 			toast.error("Could not copy raw line");

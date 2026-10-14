@@ -756,6 +756,45 @@ try {
 	await page.keyboard.press("Enter");
 	await page.getByRole("heading", { name: "Item 1000", exact: true }).waitFor();
 	assert.equal(await page.locator("[data-todo-details] code").textContent(), "Item 1000");
+	await application.evaluate(async ({ clipboard, ClipboardItem }) => {
+		globalThis.clipboardBeforeCopyTest = await Promise.all(
+			(await clipboard.read()).map(
+				async (item) =>
+					new ClipboardItem(
+						Object.fromEntries(
+							await Promise.all(item.types.map(async (type) => [type, await item.getType(type)]))
+						)
+					)
+			)
+		);
+	});
+	try {
+		assert.equal(
+			await page.evaluate(async () => {
+				try {
+					await navigator.clipboard.writeText("browser clipboard probe");
+					return "allowed";
+				} catch (error) {
+					return error.name;
+				}
+			}),
+			"NotAllowedError"
+		);
+		await page.getByRole("button", { name: "Copy raw line", exact: true }).click();
+		await page
+			.getByRole("status")
+			.filter({ hasText: "Raw line copied" })
+			.waitFor({ timeout: 5000 });
+		assert.equal(await application.evaluate(({ clipboard }) => clipboard.readText()), "Item 1000");
+		const exactText = "  (A) Café\t+Launch  @home\u00a0due:2026-10-14  ";
+		await page.evaluate((text) => window.desktop.writeClipboardText({ text }), exactText);
+		assert.equal(await application.evaluate(({ clipboard }) => clipboard.readText()), exactText);
+	} finally {
+		await application.evaluate(async ({ clipboard }) => {
+			await clipboard.write(globalThis.clipboardBeforeCopyTest);
+			delete globalThis.clipboardBeforeCopyTest;
+		});
+	}
 	await page.keyboard.press("Escape");
 	await page.locator("[data-todo-details]").waitFor({ state: "detached" });
 	assert.equal(

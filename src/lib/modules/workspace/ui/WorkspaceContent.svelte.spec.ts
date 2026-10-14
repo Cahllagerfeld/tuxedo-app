@@ -56,6 +56,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 	return {
 		readSession: async () => initial,
 		restoreSession: async () => initial,
+		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -94,7 +95,13 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 		description: "Neighbor",
 		projects: [],
 	};
-	const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+	const clipboard = vi.fn().mockResolvedValue(null);
+	const previousDesktop = window.desktop;
+	window.desktop = {
+		...adapter({}),
+		writeClipboardText: clipboard,
+		onTodoFileChanged: () => () => {},
+	};
 	try {
 		render(Harness, {
 			desktop: adapter({
@@ -117,7 +124,17 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 		await expect.element(panel.getByText("Not a valid date", { exact: true })).toBeVisible();
 		expect(panel.element().querySelector("code")?.textContent).toBe(rich.raw);
 		await panel.getByRole("button", { name: "Copy raw line", exact: true }).click();
-		expect(clipboard).toHaveBeenCalledWith(rich.raw);
+		expect(clipboard).toHaveBeenCalledWith({ text: rich.raw });
+		await expect.element(panel.getByRole("status")).toHaveTextContent("Raw line copied");
+		clipboard.mockRejectedValueOnce(Error("Clipboard unavailable"));
+		const errorToast = vi.spyOn(toast, "error");
+		try {
+			await panel.getByRole("button", { name: "Copy raw line", exact: true }).click();
+			await expect.poll(() => errorToast.mock.calls).toEqual([["Could not copy raw line"]]);
+			await expect.element(panel.getByRole("status")).not.toBeInTheDocument();
+		} finally {
+			errorToast.mockRestore();
+		}
 		const divider = page.getByRole("separator", { name: "Resize Todo item details" });
 		const before = divider.element().getAttribute("aria-valuenow");
 		(divider.element() as HTMLElement).focus();
@@ -134,7 +151,7 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 			.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))
 			.toHaveFocus();
 	} finally {
-		clipboard.mockRestore();
+		window.desktop = previousDesktop;
 	}
 });
 

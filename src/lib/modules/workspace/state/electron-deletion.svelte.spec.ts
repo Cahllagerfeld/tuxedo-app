@@ -53,6 +53,7 @@ function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 	return {
 		readSession: async () => initial,
 		restoreSession: async () => initial,
+		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
