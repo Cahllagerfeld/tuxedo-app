@@ -53,7 +53,8 @@
 					disabled={disabled || todoFilter.status === "completed"}
 					onclick={() => todoFilter.toggleDue(category)}
 					aria-label={dueLabels[category]}
-					>{dueLabels[category]}{#if category === "invalid"}<span class="ml-auto tabular-nums"
+					>{dueLabels[category]}{#if category === "invalid"}<span
+							class="ml-auto shrink-0 text-xs text-muted-foreground"
 							>{todoFilter.invalidDueCount}</span
 						>{/if}</Button
 				>
