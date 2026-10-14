@@ -746,6 +746,12 @@ try {
 	await page.keyboard.press("Tab");
 	assert.equal(
 		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Search Todo items",
+		"Tab must reach search before the Todo-item list"
+	);
+	await page.keyboard.press("Tab");
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
 		"Todo items",
 		"Tab must reenter row navigation after scrolling away from the old row"
 	);
