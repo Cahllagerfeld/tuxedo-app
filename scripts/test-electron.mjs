@@ -693,6 +693,11 @@ try {
 	const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 	await help.waitFor();
 	assert.ok((await help.textContent()).includes(process.platform === "darwin" ? "⌘" : "Ctrl"));
+	await page.keyboard.press(`${mod}+f`);
+	assert.ok(
+		await help.evaluate((element) => element.contains(document.activeElement)),
+		"Help suspends the search shortcut"
+	);
 	await page.keyboard.press(`${mod}+b`);
 	assert.equal(
 		await page.locator('[data-slot="sidebar"]').getAttribute("data-state"),
@@ -701,6 +706,13 @@ try {
 	);
 	await page.keyboard.press("Escape");
 	await help.waitFor({ state: "detached" });
+	await page.getByRole("searchbox", { name: "Find a filter" }).focus();
+	await page.keyboard.press(`${mod}+f`);
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Search Todo items",
+		"Find shortcut focuses Todo-item search even from another input"
+	);
 	await page.keyboard.press(`${mod}+p`);
 	await page.getByRole("menu").waitFor();
 	await page.keyboard.press(`${mod}+n`);

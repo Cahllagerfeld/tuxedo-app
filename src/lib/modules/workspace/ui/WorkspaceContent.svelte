@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { createHotkey } from "@tanstack/svelte-hotkeys";
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { localToday } from "$lib/modules/todo/domain/todo-due";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
@@ -49,7 +51,18 @@
 	}
 
 	let todoViewport = $state<HTMLElement | null>(null);
-	const searchHelpId = $props.id();
+	let searchInput = $state<HTMLInputElement | null>(null);
+	const shortcutScope = getShortcutScope();
+	createHotkey(
+		"Mod+F",
+		() => searchInput?.focus(),
+		() => ({
+			enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
+			ignoreInputs: false,
+			preventDefault: true,
+			requireReset: true,
+		})
+	);
 
 	onMount(() => {
 		let timer: ReturnType<typeof setTimeout>;
@@ -139,9 +152,9 @@
 				/>
 				<Input
 					type="search"
+					bind:ref={searchInput}
 					bind:value={todoFilter.searchText}
 					aria-label="Search Todo items"
-					aria-describedby={searchHelpId}
 					placeholder="Search Todo items…"
 					disabled={workspace.isOperating}
 					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
@@ -159,9 +172,6 @@
 					</Button>
 				{/if}
 			</div>
-			<p id={searchHelpId} class="mt-1.5 text-xs text-muted-foreground">
-				Matches all words, ignoring case, in text, tags, and metadata.
-			</p>
 		</div>
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
