@@ -298,6 +298,35 @@ try {
 		(await page.evaluate(() => window.desktop.readSession({}))).session,
 		created.confirmed.session
 	);
+	const savedView = await page.evaluate((input) => window.desktop.saveView(input), {
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		name: "Open calls",
+		filters: {
+			status: "open",
+			search: "Call",
+			project: null,
+			context: null,
+			priority: null,
+			due: null,
+		},
+	});
+	assert.equal(savedView.status, "applied");
+	assert.deepEqual(await page.evaluate(() => window.desktop.readSavedViews({})), savedView);
+	await assert.rejects(
+		page.evaluate((input) => window.desktop.saveView(input), {
+			workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+			name: "Invalid",
+			filters: {
+				status: "open",
+				search: "",
+				project: null,
+				context: null,
+				priority: null,
+				due: "tomorrow",
+			},
+		})
+	);
+
 	const createdTodo = await page.evaluate((input) => window.desktop.createTodo(input), {
 		scope: created.confirmed.scope,
 		revision: created.confirmed.revision,
@@ -442,6 +471,21 @@ try {
 		restored.session.catalogue.workspaces.map((workspace) => workspace.name),
 		["Personal", "Second"]
 	);
+	assert.deepEqual(await page.evaluate(() => window.desktop.readSavedViews({})), savedView);
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Open calls", exact: true }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).waitFor();
+	assert.equal(
+		await page.getByRole("searchbox", { name: "Search Todo items" }).inputValue(),
+		"Call"
+	);
+	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	const deletedView = await page.evaluate((input) => window.desktop.deleteView(input), {
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		viewId: savedView.views[0].id,
+	});
+	assert.deepEqual(deletedView, { status: "applied", views: [] });
+
 	// Real observation signals cross preload/IPC and use the mounted controller.
 	await writeFile(
 		todoPath,

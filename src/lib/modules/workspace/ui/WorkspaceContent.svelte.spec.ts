@@ -55,6 +55,9 @@ const initial: ConfirmedSession = {
 };
 function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 	return {
+		readSavedViews: async () => ({ status: "applied", views: [] }),
+		saveView: async () => ({ status: "rejected", message: "unused" }),
+		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,
@@ -1504,3 +1507,73 @@ test.each([false, true])(
 		}
 	}
 );
+
+test("save, apply, and delete a Workspace-specific view through the desktop adapter", async () => {
+	const views: import("$lib/shared/desktop/contract").SavedView[] = [];
+	render(Harness, {
+		desktop: adapter({
+			readSavedViews: async () => ({ status: "applied", views }),
+			saveView: async (request) => {
+				views.push({
+					id: scope,
+					workspace_id: request.workspaceId,
+					name: request.name,
+					filters: request.filters,
+				});
+				return { status: "applied", views: [...views] };
+			},
+			deleteView: async (request) => {
+				expect(request).toEqual({ workspaceId, viewId: scope });
+				return { status: "applied", views: [] };
+			},
+		}),
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Saved views", exact: true }))
+		.toBeEnabled();
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("release");
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Save current view", exact: true }).click();
+	await page.getByRole("textbox", { name: "View name" }).fill("Release work");
+	await page.getByRole("button", { name: "Save view", exact: true }).click();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	expect(views[0]).toMatchObject({
+		workspace_id: workspaceId,
+		name: "Release work",
+		filters: { status: "all", search: "release" },
+	});
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Release work", exact: true }).click();
+	await expect
+		.element(page.getByRole("searchbox", { name: "Search Todo items" }))
+		.toHaveValue("release");
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Delete saved view Release work" }).click();
+	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
+});
+
+test("a failed saved-view read warns while the confirmed Todo file remains usable", async () => {
+	render(Harness, {
+		desktop: adapter({
+			readSavedViews: async () => ({
+				status: "rejected",
+				message: "Saved views file is invalid and has been preserved.",
+			}),
+		}),
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Saved views", exact: true }))
+		.toBeEnabled();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await expect
+		.element(page.getByText("Saved views file is invalid and has been preserved."))
+		.toHaveTextContent("Saved views file is invalid and has been preserved.");
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeDisabled();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("1 matching item");
+});

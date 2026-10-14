@@ -1,5 +1,7 @@
 import { Cause, Context, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect";
 import { FileSystem } from "effect/FileSystem";
+import { dirname, join } from "node:path";
+import { createSavedViewOperations } from "./saved-views";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
 import {
@@ -228,8 +230,16 @@ export function sessionLayer(
 					)
 				);
 			const todos = createTodoOperations(cataloguePath, state);
+			const views = createSavedViewOperations(
+				join(dirname(cataloguePath), "saved-views.json"),
+				state
+			);
 			return WorkspaceSession.of({
 				stopObservation: semaphore.withPermit(closeObservation),
+				readSavedViews: () => operation("readSavedViews", "", views.read()),
+				saveView: (request) => operation("saveView", "Cannot save view: ", views.save(request)),
+				deleteView: (request) =>
+					operation("deleteView", "Cannot delete view: ", views.delete(request)),
 				readSession: () => read("readSession"),
 				restoreSession: () => read("restoreSession"),
 				createWorkspace: (request) =>

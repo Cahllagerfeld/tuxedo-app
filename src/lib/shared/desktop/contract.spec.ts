@@ -317,3 +317,33 @@ test.each([{}, { text: 42 }, { text: "hello", read: true }])(
 		expect(() => desktopContract.writeClipboardText.request.parse(request)).toThrow();
 	}
 );
+
+test.each([
+	{ status: "open", search: "", project: null, context: null, priority: "AA", due: null },
+	{ status: "completed", search: "", project: null, context: null, priority: null, due: "today" },
+	{ status: "open", search: "", project: null, context: null, priority: null, due: "tomorrow" },
+	{
+		status: "open",
+		search: "",
+		project: null,
+		context: null,
+		priority: null,
+		due: null,
+		path: "/tmp/file",
+	},
+])("saved-view transport rejects invalid filters before IPC %#", async (filters) => {
+	let invoked = false;
+	const desktop = createDesktopClient(async () => {
+		invoked = true;
+		return null;
+	});
+	await expect(desktop.saveView({ workspaceId, name: "View", filters } as never)).rejects.toThrow();
+	expect(invoked).toBe(false);
+});
+test("saved-view transport validates persisted view responses", async () => {
+	const desktop = createDesktopClient(async () => ({
+		status: "applied",
+		views: [{ id: scope, workspace_id: workspaceId, name: "View", filters: {} }],
+	}));
+	await expect(desktop.readSavedViews({})).rejects.toThrow();
+});

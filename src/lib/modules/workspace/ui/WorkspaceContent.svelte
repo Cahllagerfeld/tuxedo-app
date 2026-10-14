@@ -14,6 +14,7 @@
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import SavedViews from "./SavedViews.svelte";
 	import Search from "@lucide/svelte/icons/search";
 	import X from "@lucide/svelte/icons/x";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
@@ -55,7 +56,7 @@
 		searchInput?.focus();
 	}
 	function toggleSearch() {
-		if (searchOpen) {
+		if (searchOpen || todoFilter.hasSearch) {
 			todoFilter.clearSearch();
 			searchOpen = false;
 			searchButton?.focus();
@@ -101,12 +102,13 @@
 				</p>
 			</div>
 			<div class="flex items-center gap-2">
+				<SavedViews {workspace} {todoFilter} />
 				<Button
 					bind:ref={searchButton}
 					variant="ghost"
 					size="icon"
 					aria-label="Toggle Todo-item search"
-					aria-expanded={searchOpen}
+					aria-expanded={searchOpen || todoFilter.hasSearch}
 					aria-controls={searchId}
 					disabled={workspace.isOperating}
 					onclick={toggleSearch}
@@ -124,7 +126,7 @@
 				/>
 			</div>
 		</div>
-		{#if searchOpen}
+		{#if searchOpen || todoFilter.hasSearch}
 			<div id={searchId} class="shrink-0 border-b px-5 py-3">
 				<div class="relative min-w-0">
 					<Search

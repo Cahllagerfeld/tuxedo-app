@@ -17,6 +17,9 @@ const confirmed = (revision: number, warning: string | null): ConfirmedSession =
 test("initialization restores the session explicitly with one backend request", async () => {
 	const requests: string[] = [];
 	const session = new ElectronWorkspaceSessionState({
+		readSavedViews: async () => ({ status: "applied", views: [] }),
+		saveView: async () => ({ status: "rejected", message: "unused" }),
+		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => {
 			requests.push("read");
 			return confirmed(1, "Initial");
@@ -50,6 +53,9 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 		throw Error("Unexpected desktop operation");
 	};
 	const session = new ElectronWorkspaceSessionState({
+		readSavedViews: async () => ({ status: "applied", views: [] }),
+		saveView: async () => ({ status: "rejected", message: "unused" }),
+		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: unexpected,
 		restoreSession: async () => confirmed(1, null),
 		setTodoCompletion: unexpected,
@@ -98,6 +104,9 @@ test.each(["success", "transport failure"])(
 		let finish!: () => void;
 		let restores = 0;
 		const session = new ElectronWorkspaceSessionState({
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(1, "Unused"),
 			restoreSession: () => {
 				if (restores++ > 0) return Promise.resolve(confirmed(2, "Restored"));
@@ -154,6 +163,9 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 			selectTodoFile: async () => null,
 			deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 			createWorkspace: async () => ({ status: "rejected", message: "unused" }),
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Confirmed"),
 			restoreSession: () => {
 				if (restores++ === 0) return Promise.resolve(confirmed(5, "Confirmed"));
@@ -189,6 +201,9 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => confirmed(1, null),
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -271,6 +286,9 @@ test("rejected creation preserves the current confirmed file and summary", async
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => initial,
 			restoreSession: async () => initial,
 			switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -302,6 +320,9 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, "Original"),
 			restoreSession: async () => confirmed(5, "Original"),
 			writeClipboardText: async () => null,
@@ -342,6 +363,9 @@ test("a confirmed switch opens its intended Workspace with coherent session data
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(5, null),
 			restoreSession: async () => confirmed(5, null),
 			writeClipboardText: async () => null,
@@ -382,6 +406,9 @@ test.each([
 	let initialized = false;
 	render(ElectronSessionHarness, {
 		desktop: {
+			readSavedViews: async () => ({ status: "applied", views: [] }),
+			saveView: async () => ({ status: "rejected", message: "unused" }),
+			deleteView: async () => ({ status: "rejected", message: "unused" }),
 			readSession: async () => confirmed(1, null),
 			restoreSession: async () => {
 				if (!initialized) {
