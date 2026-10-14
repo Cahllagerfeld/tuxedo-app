@@ -207,6 +207,50 @@ function confirmedTodo(itemsToConfirm: TodoFile["items"]) {
 	};
 }
 
+test("Todo-item search combines with facets and clears independently or with all filters", async () => {
+	await render(Harness, { desktop: adapter() });
+	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	await search.fill("HOME work");
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("2 matching items");
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("1 matching item");
+	await search.fill("unmatched");
+	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
+	await expect.element(search).toHaveValue("unmatched");
+	await page
+		.getByLabelText("No matching Todo items")
+		.getByRole("button", { name: "Clear search", exact: true })
+		.click();
+	await expect.element(search).toHaveValue("");
+	await expect
+		.element(page.getByRole("button", { name: "Priority A", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await search.fill("work");
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
+	await expect.element(search).toHaveValue("");
+	await search.fill("work");
+	await page
+		.getByLabelText("Active filters")
+		.getByRole("button", { name: "Clear filters", exact: true })
+		.click();
+	await expect.element(search).toHaveValue("");
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("7 matching items");
+	await search.fill("reading");
+	await page
+		.getByLabelText("Active filters")
+		.getByRole("button", { name: "Clear filters", exact: true })
+		.click();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("7 matching items");
+});
+
 test("date filters and row indicators refresh at local midnight and clear with other filters", async () => {
 	const datedItems = [
 		{ ...items[0], metadata: { due: "2026-10-14" } },
@@ -588,6 +632,7 @@ test("resets filters after a successful Workspace switch", async () => {
 		}),
 	});
 	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
@@ -599,6 +644,7 @@ test("resets filters after a successful Workspace switch", async () => {
 		.element(page.getByRole("button", { name: "Clear filters", exact: true }))
 		.not.toBeInTheDocument();
 	await expect.element(page.getByText("Review release", { exact: true })).toBeVisible();
+	await expect.element(page.getByRole("searchbox", { name: "Search Todo items" })).toHaveValue("");
 });
 
 test("preserves distinct Project spellings as separate choices", async () => {
@@ -622,6 +668,7 @@ test("preserves filters after a rejected Workspace switch", async () => {
 		}),
 	});
 	await page.getByRole("button", { name: "Show more Projects" }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
@@ -629,6 +676,9 @@ test("preserves filters after a rejected Workspace switch", async () => {
 		.element(page.getByRole("button", { name: "+Work", exact: true }))
 		.toHaveAttribute("aria-pressed", "true");
 	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("searchbox", { name: "Search Todo items" }))
+		.toHaveValue("work");
 });
 
 test("updates the filtered view only after accepted completion", async () => {

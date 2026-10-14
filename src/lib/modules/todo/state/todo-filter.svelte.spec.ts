@@ -33,6 +33,61 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
+	it("searches literal terms across description, Projects, Contexts, and metadata in file order", () => {
+		const release = {
+			...open,
+			description: "Release client [v2]",
+			metadata: { due: "2026-10-14" },
+		};
+		const other = { ...completed, description: "Client follow-up" };
+		const items = [release, other];
+		const filter = new TodoFilterState();
+		filter.sync("work", items);
+		filter.searchText = "  CLIENT\t release  ";
+		expect(filter.filterItems(items)).toEqual([release]);
+		filter.searchText = "+work @HOME due:2026-10-14 [v2]";
+		expect(filter.filterItems(items)).toEqual([release]);
+		filter.searchText = "client";
+		expect(filter.filterItems(items)).toEqual(items);
+		filter.searchText = "rel.*";
+		expect(filter.filterItems(items)).toEqual([]);
+		filter.searchText = " \n\t ";
+		expect(filter.filterItems(items)).toEqual(items);
+		expect(filter.hasFilters).toBe(false);
+	});
+	it("combines search with other filters, retains it on reload, and resets it on Workspace switch", () => {
+		const dated = { ...open, metadata: { due: "2026-10-14" } };
+		const items = [dated, completed];
+		const filter = new TodoFilterState();
+		filter.sync("work", items);
+		filter.today = "2026-10-14";
+		filter.searchText = "home";
+		filter.toggleProject("Work");
+		filter.toggleContext("Home");
+		filter.togglePriority("A");
+		filter.toggleDue("today");
+		expect(filter.filterItems(items)).toEqual([dated]);
+		filter.setStatus("completed");
+		expect(filter.filterItems(items)).toEqual([completed]);
+		filter.searchText = "open";
+		expect(filter.filterItems(items)).toEqual([]);
+		filter.setStatus("all");
+		const updated = [{ ...dated, description: "Changed", contexts: [] }, completed];
+		filter.sync("work", updated);
+		expect(filter.searchText).toBe("open");
+		expect(filter.filterItems(updated)).toEqual([]);
+		filter.clearSearch();
+		expect(filter.selectedProject).toBe("Work");
+		expect(filter.filterItems(updated)).toEqual([completed]);
+		filter.searchText = "changed";
+		filter.clear();
+		expect(filter.hasFilters).toBe(false);
+		expect(filter.searchText).toBe("");
+		expect(filter.filterItems(updated)).toEqual(updated);
+		filter.searchText = "changed";
+		filter.sync("personal", updated);
+		expect(filter.searchText).toBe("");
+	});
 	it("combines due categories with status and facets, preserving malformed dates", () => {
 		const items: TodoItem[] = [
 			{ ...open, line_number: 1, metadata: { due: "2026-10-13" } },

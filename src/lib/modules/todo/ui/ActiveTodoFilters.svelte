@@ -35,12 +35,14 @@
 	);
 </script>
 
-{#if selections.length}
+{#if selections.length || todoFilter.hasSearch}
 	<div
 		class="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2.5"
 		aria-label="Active filters"
 	>
-		<span class="text-xs text-muted-foreground">Matching all</span>
+		<span class="text-xs text-muted-foreground"
+			>{selections.length ? "Matching all" : "Search active"}</span
+		>
 		{#each selections as selection (selection.label)}
 			<Button
 				variant="secondary"

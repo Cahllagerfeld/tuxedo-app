@@ -7,11 +7,14 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import { Input } from "$lib/shared/ui/input";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import Search from "@lucide/svelte/icons/search";
+	import X from "@lucide/svelte/icons/x";
 	import { toast } from "svelte-sonner";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
@@ -46,6 +49,7 @@
 	}
 
 	let todoViewport = $state<HTMLElement | null>(null);
+	const searchHelpId = $props.id();
 
 	onMount(() => {
 		let timer: ReturnType<typeof setTimeout>;
@@ -127,6 +131,38 @@
 				/>
 			{/if}
 		{/key}
+		<div class="shrink-0 border-b px-5 py-3">
+			<div class="relative min-w-0">
+				<Search
+					class="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<Input
+					type="search"
+					bind:value={todoFilter.searchText}
+					aria-label="Search Todo items"
+					aria-describedby={searchHelpId}
+					placeholder="Search Todo items…"
+					disabled={workspace.isOperating}
+					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+				/>
+				{#if todoFilter.searchText}
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						class="absolute top-1 right-1"
+						aria-label="Clear search"
+						disabled={workspace.isOperating}
+						onclick={todoFilter.clearSearch}
+					>
+						<X class="size-4" aria-hidden="true" />
+					</Button>
+				{/if}
+			</div>
+			<p id={searchHelpId} class="mt-1.5 text-xs text-muted-foreground">
+				Matches all words, ignoring case, in text, tags, and metadata.
+			</p>
+		</div>
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	<div class="min-h-0 min-w-0 flex-1">
@@ -179,6 +215,13 @@
 								</Empty.Description>
 							</Empty.Header>
 							{#if todoFilter.hasFilters}
+								{#if todoFilter.hasSearch}
+									<Button
+										variant="outline"
+										disabled={workspace.isOperating}
+										onclick={todoFilter.clearSearch}>Clear search</Button
+									>
+								{/if}
 								<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
 									>Clear filters</Button
 								>
