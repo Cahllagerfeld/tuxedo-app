@@ -3,6 +3,7 @@
 	import { createHotkey, detectPlatform } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { rowShortcuts } from "$lib/modules/todo/ui/shortcuts";
+	import { searchShortcut } from "$lib/modules/workspace/ui/shortcuts";
 	import { bindings } from "./shortcut-bindings";
 	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
 	import * as Dialog from "$lib/shared/ui/dialog";
@@ -68,13 +69,16 @@
 				>Navigate Workspaces and Todo items with the keyboard.</Dialog.Description
 			></Dialog.Header
 		>
-		{#each Object.values(bindings) as binding}
+		{#each Object.values(bindings) as binding (binding.key)}
 			<div class="flex items-center justify-between gap-4">
 				<span>{binding.label}</span><ShortcutHint hotkey={binding.key} />
 			</div>
 		{/each}
+		<div class="flex items-center justify-between gap-4">
+			<span>{searchShortcut.label}</span><ShortcutHint hotkey={searchShortcut.key} />
+		</div>
 		<p class="text-sm font-medium">On a focused Todo-item row</p>
-		{#each Object.values(rowShortcuts) as binding}
+		{#each Object.values(rowShortcuts) as binding (binding.key)}
 			<div class="flex items-center justify-between gap-4">
 				<span>{binding.label}</span><ShortcutHint hotkey={binding.key} />
 			</div>

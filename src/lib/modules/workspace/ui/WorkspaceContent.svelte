@@ -20,6 +20,7 @@
 	import { toast } from "svelte-sonner";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import { searchShortcut } from "./shortcuts";
 
 	type Props = {
 		creationOpen?: boolean;
@@ -70,7 +71,7 @@
 		}
 	}
 	const shortcutScope = getShortcutScope();
-	createHotkey("Mod+F", toggleSearch, () => ({
+	createHotkey(searchShortcut.key, toggleSearch, () => ({
 		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
 		ignoreInputs: false,
 		preventDefault: true,
