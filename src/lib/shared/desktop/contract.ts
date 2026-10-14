@@ -8,6 +8,7 @@ import {
 	todoCreationIssues,
 	TodoDate,
 	TodoPriority,
+	TodoTag,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
 
@@ -190,8 +191,8 @@ export const SavedViewNameForm = Schema.Struct({ name: Schema.mutableKey(SavedVi
 export const SavedViewFilters = Schema.Struct({
 	status: Schema.Literals(["all", "open", "completed"]),
 	search: Schema.String,
-	project: Schema.NullOr(Schema.NonEmptyString),
-	context: Schema.NullOr(Schema.NonEmptyString),
+	project: Schema.NullOr(TodoTag),
+	context: Schema.NullOr(TodoTag),
 	priority: Schema.NullOr(TodoPriority),
 	due: Schema.NullOr(Schema.Literals(["overdue", "today", "upcoming", "none", "invalid"])),
 }).check(

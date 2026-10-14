@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { createDesktopClient, desktopContract, todoFileChangeEvent } from "./contract";
+import {
+	createDesktopClient,
+	desktopContract,
+	savedViewsFileSchema,
+	todoFileChangeEvent,
+} from "./contract";
 test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.readSession({})).rejects.toThrow();
@@ -320,6 +325,8 @@ test.each([{}, { text: 42 }, { text: "hello", read: true }])(
 
 test.each([
 	{ status: "open", search: "", project: null, context: null, priority: "AA", due: null },
+	{ status: "open", search: "", project: " work ", context: null, priority: null, due: null },
+	{ status: "open", search: "", project: null, context: " ", priority: null, due: null },
 	{ status: "completed", search: "", project: null, context: null, priority: null, due: "today" },
 	{ status: "open", search: "", project: null, context: null, priority: null, due: "tomorrow" },
 	{
@@ -339,6 +346,12 @@ test.each([
 	});
 	await expect(desktop.saveView({ workspaceId, name: "View", filters } as never)).rejects.toThrow();
 	expect(invoked).toBe(false);
+	expect(() =>
+		savedViewsFileSchema.parse({
+			version: 1,
+			views: [{ id: scope, workspace_id: workspaceId, name: "View", filters }],
+		})
+	).toThrow();
 });
 test("saved-view transport validates persisted view responses", async () => {
 	const desktop = createDesktopClient(async () => ({
