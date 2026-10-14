@@ -57,12 +57,7 @@
 	<ScrollArea class="min-h-0 flex-1" aria-label="Todo item details content" viewportTabIndex={-1}>
 		<div class="space-y-6 p-6">
 			<div>
-				<p class="mb-3 flex min-h-5 items-center gap-2 pr-8 text-xs text-muted-foreground">
-					{#if todo.completed}<Check class="size-3.5" aria-hidden="true" />{/if}{todo.completed
-						? "Completed"
-						: "Open"}
-				</p>
-				<h2 class="text-xl leading-relaxed font-medium break-words">{todo.description}</h2>
+				<h2 class="pr-10 text-xl leading-relaxed font-medium break-words">{todo.description}</h2>
 				<div class="mt-4 flex flex-wrap items-center gap-2">
 					<Button variant="outline" size="sm" {disabled} onclick={() => onToggleComplete(todo)}
 						>{#if !todo.completed}<Check aria-hidden="true" />{/if}{todo.completed
