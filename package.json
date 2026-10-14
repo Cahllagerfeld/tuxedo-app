@@ -4,7 +4,6 @@
 	"description": "",
 	"type": "module",
 	"scripts": {
-		"prototype:todo-detail": "vite --mode prototype --host 127.0.0.1 --open '/?prototype=todo-detail&variant=panel'",
 		"dev": "vite --mode electron --host 127.0.0.1",
 		"build": "vite build --mode electron",
 		"preview": "vite preview",

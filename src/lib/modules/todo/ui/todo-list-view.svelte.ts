@@ -53,7 +53,10 @@ export function createTodoListView(inputs: TodoListViewInputs) {
 	// Capture it before the library's handler so Escape discards the preview,
 	// including when focus has moved outside the list.
 	function cancelOnEscape(event: KeyboardEvent) {
-		if (preview && event.key === "Escape") cancelled = true;
+		if (preview && event.key === "Escape") {
+			cancelled = true;
+			event.preventDefault();
+		}
 	}
 
 	function start(next: DraggableTodo[]) {

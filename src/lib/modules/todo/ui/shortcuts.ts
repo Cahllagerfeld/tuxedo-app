@@ -5,5 +5,6 @@ export const rowShortcuts = {
 	first: { key: "Home", label: "First Todo item" },
 	last: { key: "End", label: "Last Todo item" },
 	complete: { key: "Space", eventKey: " ", label: "Toggle completion" },
-	edit: { key: "Enter", label: "Edit Todo item" },
+	details: { key: "Enter", label: "View Todo item details" },
+	edit: { key: "e", label: "Edit Todo item" },
 } as const;

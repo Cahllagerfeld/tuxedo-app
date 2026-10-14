@@ -59,7 +59,7 @@
 		bind:checked={confirmedChecked}
 		{disabled}
 		aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
-		class="size-4 shrink-0 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
+		class="pointer-events-auto size-4 shrink-0 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
 		onCheckedChange={requestCompletionChange}
 	/>
 	<span
@@ -94,7 +94,7 @@
 							<Tooltip.Root>
 								<Tooltip.Trigger
 									aria-label={`${group.values.length - group.limit} more ${group.label}`}
-									class={badgeVariants({ variant: "overflow" })}
+									class={cn("pointer-events-auto", badgeVariants({ variant: "overflow" }))}
 									>+{group.values.length - group.limit}</Tooltip.Trigger
 								>
 								<Tooltip.Content role="tooltip" class="flex-col items-start font-mono">
@@ -133,7 +133,7 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger
 					aria-label="Invalid due date"
-					class="shrink-0 rounded text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+					class="pointer-events-auto shrink-0 rounded text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 				>
 					<TriangleAlert class="size-3.5" aria-hidden="true" />
 				</Tooltip.Trigger>
@@ -154,7 +154,7 @@
 					size="icon-xs"
 					{disabled}
 					aria-label={`Actions for ${todo.description}`}
-					class="shrink-0 opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+					class="pointer-events-auto shrink-0 opacity-0 transition-none group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
 					><Ellipsis aria-hidden="true" /></Button
 				>
 			{/snippet}

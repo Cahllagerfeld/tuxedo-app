@@ -76,6 +76,180 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+test("details preserve the raw line, show all attributes, resize, and follow keyboard navigation", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1400, 900);
+	const rich = {
+		...todo,
+		raw: "Plan\t release  +Work +Launch @desk @home due:broken custom:first custom:last",
+		projects: ["Work", "Launch"],
+		contexts: ["desk", "home"],
+		metadata: { due: "broken", custom: "last" },
+		edit: { description: "Plan release", metadata: ["due:broken", "custom:first", "custom:last"] },
+	};
+	const neighbor = {
+		...todo,
+		line_number: 2,
+		raw: "Neighbor",
+		description: "Neighbor",
+		projects: [],
+	};
+	const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+	try {
+		render(Harness, {
+			desktop: adapter({
+				restoreSession: async () =>
+					({
+						...initial,
+						session: {
+							...initial.session,
+							todo_file: { path: "/tmp/work.todo", items: [rich, neighbor], skipped: [] },
+						},
+					}) as ConfirmedSession,
+			}),
+		});
+		const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+		await row.click();
+		const panel = page.getByRole("complementary", { name: "Todo item details" });
+		await expect.element(panel).toBeVisible();
+		await expect.element(panel.getByText("+Launch", { exact: true }).first()).toBeVisible();
+		await expect.element(panel.getByText("@home", { exact: true }).first()).toBeVisible();
+		await expect.element(panel.getByText("Not a valid date", { exact: true })).toBeVisible();
+		expect(panel.element().querySelector("code")?.textContent).toBe(rich.raw);
+		await panel.getByRole("button", { name: "Copy raw line", exact: true }).click();
+		expect(clipboard).toHaveBeenCalledWith(rich.raw);
+		const divider = page.getByRole("separator", { name: "Resize Todo item details" });
+		const before = divider.element().getAttribute("aria-valuenow");
+		(divider.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowLeft}");
+		await expect.poll(() => divider.element().getAttribute("aria-valuenow")).not.toBe(before);
+		(row.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}");
+		await expect
+			.element(panel.getByRole("heading", { name: "Neighbor", exact: true }))
+			.toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(panel).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))
+			.toHaveFocus();
+	} finally {
+		clipboard.mockRestore();
+	}
+});
+
+test("detail completion and editing use confirmed results and deletion closes the panel", async () => {
+	await page.viewport(1400, 900);
+	const completed = {
+		...todo,
+		completed: true,
+		completion_date: "2026-10-14",
+		raw: "x 2026-10-14 Plan release +Work",
+	};
+	const edited = {
+		...completed,
+		raw: "x 2026-10-14 Updated +Work",
+		description: "Updated",
+		edit: { description: "Updated", metadata: [] },
+	};
+	let revision = 1;
+	const setTodoCompletion = vi.fn(async () => ({
+		status: "applied" as const,
+		confirmed: { ...confirmedTodo([completed]), revision: ++revision },
+	}));
+	const editTodo = vi.fn(async () => ({
+		status: "applied" as const,
+		confirmed: { ...confirmedTodo([edited]), revision: ++revision },
+	}));
+	render(Harness, {
+		desktop: adapter({
+			setTodoCompletion,
+			editTodo,
+			deleteTodo: async () => ({
+				status: "applied",
+				confirmed: { ...confirmedTodo([]), revision: ++revision },
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await panel.getByRole("button", { name: "Mark complete", exact: true }).click();
+	await expect
+		.element(panel.getByRole("button", { name: "Mark incomplete", exact: true }))
+		.toBeVisible();
+	await expect.element(panel.getByText("2026-10-14", { exact: true }).first()).toBeVisible();
+	expect(setTodoCompletion).toHaveBeenCalledTimes(1);
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await page.getByRole("textbox", { name: /Description/ }).fill("Updated");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.element(panel.getByRole("heading", { name: "Updated", exact: true })).toBeVisible();
+	await expect.element(panel.getByRole("button", { name: "Edit", exact: true })).toHaveFocus();
+	expect(editTodo).toHaveBeenCalledTimes(1);
+	await panel.getByRole("button", { name: "Detail actions", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+	await expect.element(panel).not.toBeInTheDocument();
+});
+
+test("an external replacement clears details and cannot reopen a reused physical line", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1400, 900);
+	let loads = 0;
+	let notify!: (change: TodoFileChange) => void;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					revision: ++loads,
+					session: {
+						...initial.session,
+						todo_file: {
+							path: "/tmp/work.todo",
+							items: [
+								loads === 2 ? { ...todo, raw: "Replacement", description: "Replacement" } : todo,
+							],
+							skipped: [],
+						},
+					},
+				}) as ConfirmedSession,
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await expect.element(panel).toBeVisible();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("Replacement", { exact: true })).toBeVisible();
+	await expect.element(panel).not.toBeInTheDocument();
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	await expect.element(panel).not.toBeInTheDocument();
+});
+
+test("narrow details use a Sheet, allow editing, and restore the row after Escape", async () => {
+	await page.viewport(700, 800);
+	render(Harness, { desktop: adapter() });
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	await row.click();
+	const sheet = page.getByRole("dialog", { name: "Todo item details", exact: true });
+	await expect.element(sheet).toBeVisible();
+	await sheet.getByRole("button", { name: "Edit", exact: true }).click();
+	await expect
+		.element(page.getByRole("dialog", { name: "Edit Todo item", exact: true }))
+		.toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(sheet).toBeVisible();
+	await expect.element(sheet.getByRole("button", { name: "Edit", exact: true })).toHaveFocus();
+	await userEvent.keyboard("{Escape}");
+	await expect.element(sheet).not.toBeInTheDocument();
+	await expect.element(row).toHaveFocus();
+});
+
 test("idle observation updates the list, counts, facets, and skipped lines with one info notice", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const refreshed: ConfirmedSession = {
@@ -719,7 +893,7 @@ test("row navigation focus opens the existing editor and returns after Escape", 
 	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
 	await expect.element(row).toBeVisible();
 	(row.element() as HTMLElement).focus();
-	await userEvent.keyboard("{Enter}");
+	await userEvent.keyboard("e");
 	await expect.element(page.getByRole("dialog", { name: "Edit Todo item" })).toBeVisible();
 	await userEvent.keyboard("{Escape}");
 	await expect.element(row).toHaveFocus();
@@ -1048,7 +1222,7 @@ test("editing a row out of a Project filter returns focus to its visible neighbo
 	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
 	await expect.element(row).toBeVisible();
 	(row.element() as HTMLElement).focus();
-	await userEvent.keyboard("{Enter}");
+	await userEvent.keyboard("e");
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect
 		.element(page.getByRole("button", { name: "Navigate Neighbor", exact: true }))

@@ -754,6 +754,15 @@ try {
 		"Navigate Item 1000"
 	);
 	await page.keyboard.press("Enter");
+	await page.getByRole("heading", { name: "Item 1000", exact: true }).waitFor();
+	assert.equal(await page.locator("[data-todo-details] code").textContent(), "Item 1000");
+	await page.keyboard.press("Escape");
+	await page.locator("[data-todo-details]").waitFor({ state: "detached" });
+	assert.equal(
+		await page.evaluate(() => document.activeElement.getAttribute("aria-label")),
+		"Navigate Item 1000"
+	);
+	await page.keyboard.press("e");
 	await page.getByRole("dialog", { name: "Edit Todo item" }).waitFor();
 	await page.keyboard.press("Escape");
 	await page.getByRole("dialog").waitFor({ state: "detached" });
