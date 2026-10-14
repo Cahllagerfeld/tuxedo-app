@@ -50,7 +50,7 @@
 					size="sm"
 					class="h-8 w-full justify-start px-2 font-normal aria-pressed:bg-sidebar-accent"
 					aria-pressed={todoFilter.selectedDue === category}
-					{disabled}
+					disabled={disabled || todoFilter.status === "completed"}
 					onclick={() => todoFilter.toggleDue(category)}>{dueLabels[category]}</Button
 				>
 			{/each}

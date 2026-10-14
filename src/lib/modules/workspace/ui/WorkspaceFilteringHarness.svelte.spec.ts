@@ -331,9 +331,17 @@ test("defaults to All with both completion states, the total count, and existing
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
 
+	await page.getByRole("button", { name: "No due date", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Clear Due No due date", exact: true }))
+		.not.toBeInTheDocument();
+	for (const name of ["Overdue", "Today", "Upcoming", "No due date"]) {
+		await expect.element(page.getByRole("button", { name, exact: true })).toBeDisabled();
+	}
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
 	await all.click();
+	await expect.element(page.getByRole("button", { name: "Overdue", exact: true })).toBeEnabled();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("2 matching items");

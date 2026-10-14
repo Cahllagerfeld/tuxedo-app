@@ -27,6 +27,7 @@ export class TodoFilterState {
 	today = $state(localToday());
 
 	toggleDue = (category: TodoDueCategory) => {
+		if (this.status === "completed") return;
 		this.selectedDue = this.selectedDue === category ? null : category;
 	};
 	clearDue = () => {
@@ -48,6 +49,7 @@ export class TodoFilterState {
 
 	setStatus = (status: TodoFilterStatus) => {
 		this.status = status;
+		if (status === "completed") this.clearDue();
 		this.reconcile(this.availableFacets);
 	};
 
@@ -110,7 +112,7 @@ export class TodoFilterState {
 		items.filter((item) => {
 			if (
 				this.selectedDue !== null &&
-				dueCategory(item.metadata.due, this.today) !== this.selectedDue
+				(item.completed || dueCategory(item.metadata.due, this.today) !== this.selectedDue)
 			)
 				return false;
 			if (this.status !== "all" && (this.status === "completed") !== item.completed) return false;

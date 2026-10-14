@@ -46,7 +46,7 @@ describe("TodoFilterState", () => {
 		filter.sync("work", items);
 		filter.today = "2026-10-14";
 		filter.toggleDue("overdue");
-		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 6]);
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1]);
 		filter.setStatus("open");
 		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1]);
 		filter.toggleDue("today");
@@ -66,6 +66,38 @@ describe("TodoFilterState", () => {
 		filter.sync("personal", items);
 		expect(filter.selectedDue).toBeNull();
 	});
+	it.each(["overdue", "today", "upcoming", "none"] as const)(
+		"applies %s only to open items and clears it in Completed",
+		(category) => {
+			const due = {
+				overdue: "2026-10-13",
+				today: "2026-10-14",
+				upcoming: "2026-10-15",
+				none: undefined,
+			}[category];
+			const datedOpen: TodoItem = { ...open, metadata: due ? { due } : {} };
+			const datedCompleted = { ...completed, metadata: datedOpen.metadata };
+			const items = [datedOpen, datedCompleted];
+			const filter = new TodoFilterState();
+			filter.sync("work", items);
+			filter.today = "2026-10-14";
+			filter.toggleDue(category);
+			expect(filter.filterItems(items)).toEqual([datedOpen]);
+			expect(filter.filterItems([{ ...datedOpen, completed: true }, datedCompleted])).toEqual([]);
+			filter.setStatus("completed");
+			expect(filter.selectedDue).toBeNull();
+			filter.toggleDue(category);
+			expect(filter.selectedDue).toBeNull();
+			expect(filter.hasFilters).toBe(false);
+			expect(filter.filterItems(items)).toEqual([datedCompleted]);
+			filter.setStatus("all");
+			expect(filter.filterItems(items)).toEqual(items);
+			filter.toggleDue(category);
+			expect(filter.filterItems([{ ...datedCompleted, completed: false }])).toEqual([
+				{ ...datedCompleted, completed: false },
+			]);
+		}
+	);
 	it("defaults to All and filters both completion states and their combined facets", () => {
 		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
 		const items = [open, completedOnly];
