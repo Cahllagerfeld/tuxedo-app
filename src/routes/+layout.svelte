@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { dev } from "$app/environment";
+	import { page } from "$app/state";
+	import { prototypeTodoFile } from "$lib/modules/todo/ui/todo-detail-prototype-data";
+	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
 	import { setAppState } from "@/app/app-context";
 	import { AppState } from "@/app/app-state.svelte";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
@@ -13,12 +17,14 @@
 	import { toast } from "svelte-sonner";
 	import "./layout.css";
 	let { children } = $props();
+	const prototype = $derived(dev && page.url.searchParams.get("prototype") === "todo-detail");
 
 	setShortcutScope();
 	const appState = new AppState();
 	setAppState(appState);
 
 	onMount(() => {
+		if (prototype) return;
 		const stop = appState.workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
 		void appState.workspace.initialize();
 		return stop;
@@ -39,12 +45,22 @@
 	>
 		<WorkspaceSidebar
 			bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
-			workspaces={appState.workspace.catalogue?.workspaces ?? []}
-			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
-			todoSummary={appState.todos}
+			workspaces={prototype
+				? [
+						{
+							id: "prototype",
+							name: "Work",
+							color: "blue",
+							todo_path: prototypeTodoFile.path,
+							created_at: "2026-10-14T09:00:00Z",
+						},
+					]
+				: (appState.workspace.catalogue?.workspaces ?? [])}
+			activeWorkspaceId={prototype ? "prototype" : (appState.workspace.activeWorkspace?.id ?? null)}
+			todoSummary={prototype ? summarizeTodoFile(prototypeTodoFile) : appState.todos}
 			todoFilter={appState.todoFilter}
 			todoFileLoaded={appState.workspace.todoFile !== null}
-			disabled={appState.workspace.isOperating || appState.workspace.isLoading}
+			disabled={prototype || appState.workspace.isOperating || appState.workspace.isLoading}
 			pendingOperation={appState.workspace.pendingOperation}
 			selectWorkspace={appState.workspace.open}
 			deleteWorkspace={appState.workspace.deleteWorkspace}
