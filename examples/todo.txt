@@ -18,3 +18,12 @@ Really gotta call Mom (A) @phone
 (B)->Priority without space is plain text +SpecExamples
 x 2026-05-24 2026-05-23 Finish release +TuxedoApp +Release @computer @github due:2026-05-24 pri:A
 x Completed task without completion date +OptionalDateExample
+
+(A) Review a crowded row with one Project and Context visible +TuxedoApp +Release +Team @computer @review due:2026-10-13
+(B) Test the Today date slot +TuxedoApp @computer due:2026-10-14
+Test an Upcoming date with Project-only overflow +TuxedoApp +Release +Team +Planning due:2026-10-15
+Test Context-only overflow @home @computer @review @phone
+Repair an impossible Due date using the editor +Imported @computer due:2026-02-30
+Repair a non-date Due value using the editor +Imported @review due:soon
+x 2026-10-12 2026-10-01 Show Completion date instead of historical Due date +TuxedoApp +Release +Team @computer @review due:2026-10-10
+x Leave the date slot empty without a Completion date +Legacy @computer due:2026-10-10
