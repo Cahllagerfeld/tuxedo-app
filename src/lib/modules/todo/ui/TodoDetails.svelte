@@ -1,4 +1,6 @@
 <script lang="ts">
+	import TodoShowFrom from "./TodoShowFrom.svelte";
+	import { localToday } from "../domain/todo-due";
 	import type { TodoItem } from "../domain/todo";
 	import TodoRawLine from "./TodoRawLine.svelte";
 	import { validDueDate } from "../domain/todo-due";
@@ -14,6 +16,7 @@
 
 	let {
 		todo,
+		today = localToday(),
 		path,
 		disabled,
 		onClose,
@@ -22,6 +25,7 @@
 		onDelete,
 	}: {
 		todo: TodoItem;
+		today?: string;
 		path: string;
 		disabled: boolean;
 		onClose: () => void;
@@ -100,6 +104,10 @@
 								</p>{/if}
 						</dd>
 					</div>{/if}
+				{#if todo.metadata.t !== undefined}<div class="grid grid-cols-[6rem_1fr] gap-3">
+						<dt class="text-muted-foreground">Show from</dt>
+						<dd class="min-w-0"><TodoShowFrom {todo} {today} /></dd>
+					</div>{/if}
 				{#each [{ label: "Projects", values: projects, color: "text-[var(--priority-b)]" }, { label: "Contexts", values: contexts, color: "text-[var(--priority-c)]" }] as group (group.label)}
 					{#if group.values.size}<div class="grid grid-cols-[6rem_1fr] gap-3">
 							<dt class="text-muted-foreground">{group.label}</dt>
@@ -119,7 +127,7 @@
 						<dt class="text-muted-foreground">Completed</dt>
 						<dd>{todo.completion_date}</dd>
 					</div>{/if}
-				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due") as [key, value] (key)}<div
+				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t") as [key, value] (key)}<div
 						class="grid grid-cols-[6rem_1fr] gap-3"
 					>
 						<dt class="font-mono break-all text-muted-foreground">{key}</dt>

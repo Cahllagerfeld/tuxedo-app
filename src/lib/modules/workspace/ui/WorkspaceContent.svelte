@@ -53,6 +53,7 @@
 	let searchButton = $state<HTMLButtonElement | null>(null);
 	let searchOpen = $state(false);
 	const searchId = $props.id();
+	const deferredCountId = `${searchId}-deferred-count`;
 	async function openSearch() {
 		searchOpen = true;
 		await tick();
@@ -97,14 +98,31 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	{#if workspace.todoFile}
-		<div class="flex shrink-0 items-center justify-between border-b px-5 py-3">
+		<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 			<div>
 				<p class="text-sm font-medium">Todo items</p>
 				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
 					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
 				</p>
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
+				<span id={deferredCountId} class="sr-only"
+					>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
+				>
+				<Button
+					variant="outline"
+					size="sm"
+					aria-label="Show deferred"
+					aria-describedby={deferredCountId}
+					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+					aria-pressed={todoFilter.showDeferred}
+					disabled={workspace.isOperating || todoFilter.status === "completed"}
+					onclick={() =>
+						void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+							if (outcome.status !== "applied")
+								toast.error("Could not save Show deferred", { description: outcome.message });
+						})}>Show deferred ({todoFilter.deferredCount})</Button
+				>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}

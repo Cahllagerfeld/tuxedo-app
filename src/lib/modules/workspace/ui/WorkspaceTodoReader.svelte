@@ -89,6 +89,7 @@
 {#snippet details(todo: TodoItem, path: string)}
 	<TodoDetails
 		{todo}
+		today={todoFilter.today}
 		{path}
 		disabled={workspace.isOperating}
 		onClose={reader.closeDetails}
@@ -130,24 +131,45 @@
 								class="min-h-full rounded-none border-0"
 							>
 								<Empty.Media variant="icon"><FileText aria-hidden="true" /></Empty.Media>
-								<Empty.Header>
-									<Empty.Title>
-										No {todoFilter.status === "all"
-											? ""
-											: `${todoFilter.status} `}items{todoFilter.hasFilters
-											? " match these filters"
-											: ""}.
-									</Empty.Title>
-									<Empty.Description>
-										{todoFilter.hasFilters
-											? "Try clearing a filter to see more Todo items."
-											: "There are no Todo items in this completion view."}
-									</Empty.Description>
-								</Empty.Header>
-								{#if todoFilter.hasFilters}
-									<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
-										>Clear filters</Button
+								{#if !todoFilter.showDeferred && todoFilter.deferredCount > 0}
+									<Empty.Header>
+										<Empty.Title>Matching Todo items are deferred</Empty.Title>
+										<Empty.Description>
+											{todoFilter.deferredCount} matching {todoFilter.deferredCount === 1
+												? "Todo item is"
+												: "Todo items are"} deferred until a future Show from date.
+										</Empty.Description>
+									</Empty.Header>
+									<Button
+										disabled={workspace.isOperating}
+										onclick={() =>
+											void workspace.setShowDeferred(true).then((outcome) => {
+												if (outcome.status !== "applied")
+													toast.error("Could not save Show deferred", {
+														description: outcome.message,
+													});
+											})}>Show deferred</Button
 									>
+								{:else}
+									<Empty.Header>
+										<Empty.Title>
+											No {todoFilter.status === "all"
+												? ""
+												: `${todoFilter.status} `}items{todoFilter.hasFilters
+												? " match these filters"
+												: ""}.
+										</Empty.Title>
+										<Empty.Description>
+											{todoFilter.hasFilters
+												? "Try clearing a filter to see more Todo items."
+												: "There are no Todo items in this completion view."}
+										</Empty.Description>
+									</Empty.Header>
+									{#if todoFilter.hasFilters}
+										<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
+											>Clear filters</Button
+										>
+									{/if}
 								{/if}
 							</Empty.Root>
 						{/if}

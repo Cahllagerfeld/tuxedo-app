@@ -25,7 +25,8 @@ export class AppState {
 			this.todoFilter.sync(
 				this.workspace.activeWorkspace?.id ?? null,
 				this.todos.items,
-				this.workspace.activeWorkspace?.sort_order ?? "file"
+				this.workspace.activeWorkspace?.sort_order ?? "file",
+				this.workspace.activeWorkspace?.show_deferred ?? false
 			)
 		);
 	}

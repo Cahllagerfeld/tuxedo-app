@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TodoShowFrom from "./TodoShowFrom.svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import { badgeVariants } from "$lib/shared/ui/badge";
 	import { Button } from "$lib/shared/ui/button";
@@ -70,7 +71,7 @@
 	>
 		{todo.priority ? `(${todo.priority})` : "—"}
 	</span>
-	<p class={cn("min-w-0 flex-1 truncate text-sm", todo.completed && "line-through")}>
+	<p class={cn("min-w-16 flex-1 truncate text-sm", todo.completed && "line-through")}>
 		{todo.description}
 	</p>
 	<div
@@ -109,6 +110,9 @@
 			{/each}
 		</Tooltip.Provider>
 	</div>
+	{#if todo.metadata.t !== undefined}
+		<div class="max-w-[40%] min-w-8 shrink"><TodoShowFrom {todo} {today} /></div>
+	{/if}
 	{#if rowDate}
 		<span
 			class={cn(

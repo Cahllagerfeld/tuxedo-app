@@ -55,6 +55,7 @@ const WorkspaceSchema = Schema.Struct({
 	todo_path: TodoPath,
 	created_at: CreatedAt,
 	sort_order: Schema.optional(TodoSortOrder),
+	show_deferred: Schema.optional(Schema.Boolean),
 });
 const CatalogueSchema = Schema.Struct({
 	version: Schema.Literal(1),
@@ -259,7 +260,20 @@ const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.N
 export const setWorkspaceSortOrderRequestSchema = effectValidator(
 	Schema.Struct({ scope: UUID, revision: Revision, workspaceId: UUID, sortOrder: TodoSortOrder })
 );
+export const setWorkspaceShowDeferredRequestSchema = effectValidator(
+	Schema.Struct({
+		scope: UUID,
+		revision: Revision,
+		workspaceId: UUID,
+		showDeferred: Schema.Boolean,
+	})
+);
 export const desktopContract = {
+	setWorkspaceShowDeferred: {
+		channel: "tuxedo:set-workspace-show-deferred",
+		request: setWorkspaceShowDeferredRequestSchema,
+		response: sessionOutcomeSchema,
+	},
 	setWorkspaceSortOrder: {
 		channel: "tuxedo:set-workspace-sort-order",
 		request: setWorkspaceSortOrderRequestSchema,
@@ -384,6 +398,7 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		setWorkspaceShowDeferred: (request) => call("setWorkspaceShowDeferred", request),
 		setWorkspaceSortOrder: (request) => call("setWorkspaceSortOrder", request),
 		undoTodo: (request) => call("undoTodo", request),
 		readSavedViews: (request) => call("readSavedViews", request),

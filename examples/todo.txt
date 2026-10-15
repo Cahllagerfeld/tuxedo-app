@@ -27,3 +27,11 @@ Repair an impossible Due date using the editor +Imported @computer due:2026-02-3
 Repair a non-date Due value using the editor +Imported @review due:soon
 x 2026-10-12 2026-10-01 Show Completion date instead of historical Due date +TuxedoApp +Release +Team @computer @review due:2026-10-10
 x Leave the date slot empty without a Completion date +Legacy @computer due:2026-10-10
+
+(A) Reveal a deferred Todo item with the saved Workspace Show deferred setting +TuxedoApp @computer t:2099-01-01
+(B) Keep an overdue Todo item deferred until its Show from date +TuxedoApp @computer due:2026-10-13 t:2099-01-01
+Show an actionable Todo item after its Show from date +TuxedoApp @computer t:2026-10-14
+Keep an unsupported relative Show from value visible +Imported @review t:+2d
+Keep an impossible Show from date visible +Imported @review t:2026-02-30
+Use the last Show from token when values repeat +TuxedoApp @computer t:2026-10-14 t:2099-01-01
+x 2026-10-14 Keep completed Todo items visible despite a future Show from date +TuxedoApp @computer t:2099-01-01

@@ -166,6 +166,15 @@ export class ElectronWorkspaceSessionState {
 				),
 			this.todoOperationTarget()
 		);
+	setShowDeferred = (showDeferred: boolean) =>
+		this.runAction(
+			"set_workspace_show_deferred",
+			async () =>
+				this.applySessionOutcome(
+					await this.desktop.setWorkspaceShowDeferred({ ...this.todoTarget(), showDeferred })
+				),
+			this.todoOperationTarget()
+		);
 	get pendingOperation(): WorkspaceSessionOperation | null {
 		return this.pending?.operation ?? null;
 	}

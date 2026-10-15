@@ -1003,6 +1003,86 @@ try {
 		"Todo-item editing through the row menu, form, preload and backend persists across reload."
 	);
 	console.log("Metadata entered through the form persists in the Todo file and after reload.");
+	const thresholdPath = join(directory, "threshold.todo");
+	const thresholdContents = [
+		"(A) Future chore +Chores @home due:2000-01-01 t:2000-01-01 t:9999-12-31",
+		"Unsupported threshold t:9999-12-31 t:+2d",
+		"Impossible threshold t:2026-02-30",
+		"Actionable chore t:2000-01-01",
+		"x 2026-10-09 Completed chore t:9999-12-31",
+	].join("\r\n");
+	await writeFile(thresholdPath, thresholdContents);
+	const thresholdWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Thresholds",
+		color: "violet",
+		todoPath: thresholdPath,
+	});
+	assert.equal(thresholdWorkspace.status, "applied");
+	await page.reload();
+	await page.getByText("Actionable chore", { exact: true }).waitFor();
+	const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
+	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
+	assert.equal(await showDeferred.textContent(), "Show deferred (1)");
+	assert.equal(await page.getByText("Future chore", { exact: true }).count(), 0);
+	assert.ok(await page.getByText("Unsupported threshold", { exact: true }).isVisible());
+	assert.ok(await page.getByText("Impossible threshold", { exact: true }).isVisible());
+	assert.ok(await page.getByText("Completed chore", { exact: true }).isVisible());
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	const deferredEmpty = page.getByLabel("No matching Todo items", { exact: true });
+	await deferredEmpty.waitFor();
+	await deferredEmpty.getByRole("button", { name: "Show deferred", exact: true }).click();
+	await page.getByText("Future chore", { exact: true }).waitFor();
+	assert.ok(await page.getByTitle("Show from 9999-12-31 · Deferred", { exact: true }).isVisible());
+	assert.ok(await page.getByTitle("Overdue · 2000-01-01", { exact: true }).isVisible());
+	await page.reload();
+	await page.getByText("Future chore", { exact: true }).waitFor();
+	assert.equal(
+		await showDeferred.getAttribute("aria-pressed"),
+		"true",
+		"Show deferred survives renderer reload"
+	);
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	const persistedVisibility = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(
+		persistedVisibility.session.catalogue.workspaces.find(
+			(w) => w.id === thresholdWorkspace.confirmed.session.catalogue.active_workspace_id
+		).show_deferred,
+		true
+	);
+	await page.getByRole("button", { name: "Navigate Future chore", exact: true }).click();
+	await page.getByRole("heading", { name: "Future chore", exact: true }).waitFor();
+	assert.ok(
+		await page
+			.locator("[data-todo-details]")
+			.getByTitle("Show from 9999-12-31 · Deferred", { exact: true })
+			.isVisible()
+	);
+	await page.getByRole("button", { name: "Close details", exact: true }).click();
+	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	await page.getByText("Actionable chore", { exact: true }).waitFor();
+	assert.equal(
+		await showDeferred.getAttribute("aria-pressed"),
+		"true",
+		"Clear filters preserves Workspace visibility"
+	);
+	await showDeferred.click();
+	await page.waitForFunction(
+		() =>
+			document.querySelector('button[aria-label="Show deferred"]').getAttribute("aria-pressed") ===
+			"false"
+	);
+	await page.getByRole("button", { name: /^Completed/ }).click();
+	assert.ok(await showDeferred.isDisabled());
+	assert.equal(await showDeferred.textContent(), "Show deferred (0)");
+	assert.ok(await page.getByText("Completed chore", { exact: true }).isVisible());
+	assert.equal(
+		await readFile(thresholdPath, "utf8"),
+		thresholdContents,
+		"Threshold visibility must never rewrite the Todo file"
+	);
+	console.log(
+		"Threshold visibility respects effective metadata, completion views, filters, independent dates, and exact file preservation."
+	);
 	// Exercise the sandboxed preload's response and event validators with main-supplied data.
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:select-todo-file");

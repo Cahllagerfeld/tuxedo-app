@@ -284,3 +284,112 @@ it("saved views retain absent facets across reloads and resolve Today against th
 		due: null,
 	});
 });
+
+it("hides only future open thresholds and reveals them in the existing sort order", () => {
+	const items: TodoItem[] = [
+		{ ...open, line_number: 1, metadata: { t: "2026-10-15", due: "2026-10-01" } },
+		{ ...open, line_number: 2, metadata: { t: "2026-10-14" } },
+		{ ...open, line_number: 3, metadata: { t: "2026-10-13" } },
+		{ ...open, line_number: 4, metadata: { t: "2026-02-30" } },
+		{ ...open, line_number: 5, metadata: { t: "+2d" } },
+		{ ...open, line_number: 6 },
+		{ ...completed, line_number: 7, metadata: { t: "2026-10-15" } },
+	];
+	const filter = new TodoFilterState();
+	filter.sync("work", items);
+	filter.today = "2026-10-14";
+	expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([2, 3, 4, 5, 6, 7]);
+	expect(filter.deferredCount).toBe(1);
+	filter.showDeferred = true;
+	filter.sortOrder = "due";
+	expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+	filter.setStatus("completed");
+	expect(filter.deferredCount).toBe(0);
+	expect(filter.filterItems(items)).toEqual([items[6]]);
+	filter.setStatus("all");
+	expect(filter.showDeferred).toBe(true);
+	filter.clear();
+	expect(filter.showDeferred).toBe(true);
+	expect(filter.hasFilters).toBe(false);
+	filter.showDeferred = false;
+	filter.today = "2026-10-15";
+	expect(filter.filterItems(items)).toEqual(items);
+	filter.today = "2026-10-16";
+	expect(filter.deferredCount).toBe(0);
+	filter.showDeferred = true;
+	filter.sync("personal", items);
+	expect(filter.showDeferred).toBe(false);
+	filter.today = "2026-10-14";
+	const reopened = { ...items[6], completed: false };
+	filter.sync("personal", [reopened]);
+	expect(filter.filterItems([reopened])).toEqual([]);
+});
+
+it("counts deferred matches before threshold exclusion while preserving completion-view facets", () => {
+	const deferred = { ...open, metadata: { t: "2026-10-16", due: "2026-10-13" } };
+	const items = [
+		deferred,
+		{ ...open, line_number: 2, projects: ["Other"], contexts: ["Away"], priority: "B" },
+		completed,
+	];
+	const filter = new TodoFilterState();
+	filter.sync("work", items);
+	filter.today = "2026-10-14";
+	filter.setStatus("open");
+	filter.searchText = "open";
+	filter.toggleProject("Work");
+	filter.toggleContext("Home");
+	filter.togglePriority("A");
+	filter.toggleDue("overdue");
+	expect(filter.deferredCount).toBe(1);
+	expect(filter.filterItems(items)).toEqual([]);
+	expect(filter.availableFacets.counts.projects.get("Work")).toBe(1);
+	expect(filter.availableFacets.counts.contexts.get("Home")).toBe(1);
+	expect(filter.availableFacets.counts.priorities.get("A")).toBe(1);
+	filter.showDeferred = true;
+	expect(filter.filterItems(items)).toEqual([deferred]);
+	for (const change of [
+		() => {
+			filter.searchText = "missing";
+		},
+		() => {
+			filter.selectedProject = "Other";
+		},
+		() => {
+			filter.selectedContext = "Away";
+		},
+		() => {
+			filter.selectedPriority = "B";
+		},
+		() => {
+			filter.selectedDue = "today";
+		},
+	]) {
+		filter.clear();
+		change();
+		expect(filter.deferredCount).toBe(0);
+	}
+});
+
+it("syncs Workspace visibility independently of clearing filters and applying saved views", () => {
+	const filter = new TodoFilterState();
+	filter.sync("work", [open], "file", true);
+	expect(filter.showDeferred).toBe(true);
+	expect(filter.hasFilters).toBe(false);
+	filter.searchText = "open";
+	filter.clear();
+	expect(filter.showDeferred).toBe(true);
+	filter.applyView({
+		status: "open",
+		search: "",
+		project: null,
+		context: null,
+		priority: null,
+		due: null,
+	});
+	expect(filter.showDeferred).toBe(true);
+	filter.sync("personal", [open], "file", false);
+	expect(filter.showDeferred).toBe(false);
+	filter.sync("work", [open], "due", true);
+	expect(filter.showDeferred).toBe(true);
+});
