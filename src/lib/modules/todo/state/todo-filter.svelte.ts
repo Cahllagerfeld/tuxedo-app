@@ -1,7 +1,7 @@
 import type { SavedViewFilterValues } from "$lib/shared/desktop/contract";
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
-import { dueCategory, localToday, type TodoDueCategory } from "../domain/todo-due";
+import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../domain/todo-due";
 
 export type TodoFilterStatus = "all" | "open" | "completed";
 
@@ -16,6 +16,7 @@ export class TodoFilterState {
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
 	status = $state<TodoFilterStatus>("all");
+	sortOrder = $state<"file" | "due">("file");
 	availableFacets = $derived(
 		summarizeTodoFilterFacets(
 			this.items,
@@ -100,6 +101,7 @@ export class TodoFilterState {
 
 	reset = () => {
 		this.status = "all";
+		this.sortOrder = "file";
 		this.clear();
 	};
 
@@ -145,8 +147,8 @@ export class TodoFilterState {
 		this.selectedDue = filters.due;
 	};
 
-	filterItems = (items: readonly TodoItem[]) =>
-		items.filter((item) => {
+	filterItems = (items: readonly TodoItem[]) => {
+		const filtered = items.filter((item) => {
 			if (
 				this.selectedDue !== null &&
 				(item.completed || dueCategory(item.metadata.due, this.today) !== this.selectedDue)
@@ -171,4 +173,15 @@ export class TodoFilterState {
 			}
 			return true;
 		});
+		if (this.sortOrder === "due")
+			filtered.sort((left, right) => {
+				const a = validDueDate(left.metadata.due);
+				const b = validDueDate(right.metadata.due);
+				if (a === b) return left.line_number - right.line_number;
+				if (!a) return 1;
+				if (!b) return -1;
+				return a < b ? -1 : 1;
+			});
+		return filtered;
+	};
 }

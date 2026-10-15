@@ -82,6 +82,56 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+test("Due-date sorting changes only the view and restores reordering in File order", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const items = [
+		{ ...todo, metadata: { due: "2026-11-01" } },
+		{
+			...todo,
+			line_number: 2,
+			raw: "Earlier due:2026-10-14",
+			description: "Earlier",
+			metadata: { due: "2026-10-14" },
+		},
+	];
+	const reorderTodo = vi
+		.fn<DesktopAPI["reorderTodo"]>()
+		.mockResolvedValue({ status: "rejected", message: "unused" });
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				}) as ConfirmedSession,
+			reorderTodo,
+		}),
+	});
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
+	await page.getByRole("button", { name: "Sort Todo items" }).click();
+	await page.getByRole("menuitemradio", { name: "Due date", exact: true }).click();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Earlier");
+	await expect
+		.element(page.getByRole("button", { name: "Sort Todo items" }))
+		.toHaveTextContent("Due date");
+	await expect
+		.element(page.getByRole("button", { name: "Reorder Earlier", exact: true }))
+		.not.toBeInTheDocument();
+	expect(reorderTodo).not.toHaveBeenCalled();
+	await page.getByRole("button", { name: "Sort Todo items" }).click();
+	await expect
+		.element(page.getByRole("menuitemradio", { name: "Due date", exact: true }))
+		.toHaveAttribute("aria-checked", "true");
+	await page.getByRole("menuitemradio", { name: "File order", exact: true }).click();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
+	await expect
+		.element(page.getByRole("button", { name: "Reorder Earlier", exact: true }))
+		.toBeVisible();
+	expect(items.map((item) => item.line_number)).toEqual([1, 2]);
+});
 test("details preserve the raw line, show all attributes, resize, and follow keyboard navigation", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	await page.viewport(1400, 900);

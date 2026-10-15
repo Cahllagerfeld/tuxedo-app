@@ -9,6 +9,7 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import { Input } from "$lib/shared/ui/input";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
@@ -102,6 +103,34 @@
 				</p>
 			</div>
 			<div class="flex items-center gap-2">
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="outline"
+								size="sm"
+								aria-label="Sort Todo items"
+								disabled={workspace.isOperating}
+							>
+								{todoFilter.sortOrder === "file" ? "File order" : "Due date"}
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end">
+						<DropdownMenu.Label>Sort Todo items</DropdownMenu.Label>
+						<DropdownMenu.RadioGroup
+							value={todoFilter.sortOrder}
+							onValueChange={(value) => {
+								if (!workspace.isOperating && (value === "file" || value === "due"))
+									todoFilter.sortOrder = value;
+							}}
+						>
+							<DropdownMenu.RadioItem value="file">File order</DropdownMenu.RadioItem>
+							<DropdownMenu.RadioItem value="due">Due date</DropdownMenu.RadioItem>
+						</DropdownMenu.RadioGroup>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 				<SavedViews {workspace} {todoFilter} />
 				<Button
 					bind:ref={searchButton}

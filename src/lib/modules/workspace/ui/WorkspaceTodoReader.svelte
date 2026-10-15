@@ -161,6 +161,7 @@
 	}
 
 	async function reorderTodoItems(items: readonly TodoItem[]) {
+		if (todoFilter.sortOrder !== "file") return;
 		const todo = selectedTodo;
 		const index = todo
 			? items.findIndex((item) => item.line_number === todo.line_number && item.raw === todo.raw)
@@ -270,7 +271,7 @@
 							onToggleComplete={toggleTodoCompletion}
 							onDelete={deleteTodoItem}
 							onEdit={startEdit}
-							onReorder={reorderTodoItems}
+							onReorder={todoFilter.sortOrder === "file" ? reorderTodoItems : undefined}
 							{selectedTodo}
 							onSelect={selectTodo}
 							onNavigate={(todo) => {
