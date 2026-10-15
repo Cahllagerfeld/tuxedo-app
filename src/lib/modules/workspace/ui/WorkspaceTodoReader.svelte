@@ -142,7 +142,13 @@
 									</Empty.Header>
 									<Button
 										disabled={workspace.isOperating}
-										onclick={() => (todoFilter.showDeferred = true)}>Show deferred</Button
+										onclick={() =>
+											void workspace.setShowDeferred(true).then((outcome) => {
+												if (outcome.status !== "applied")
+													toast.error("Could not save Show deferred", {
+														description: outcome.message,
+													});
+											})}>Show deferred</Button
 									>
 								{:else}
 									<Empty.Header>

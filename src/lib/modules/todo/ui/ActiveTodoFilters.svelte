@@ -35,12 +35,12 @@
 	);
 </script>
 
-{#if selections.length || todoFilter.showDeferred}
+{#if selections.length}
 	<div
 		class="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b px-5 py-2.5"
 		aria-label="Active filters"
 	>
-		{#if selections.length}<span class="text-xs text-muted-foreground">Matching all</span>{/if}
+		<span class="text-xs text-muted-foreground">Matching all</span>
 		{#each selections as selection (selection.label)}
 			<Button
 				variant="secondary"

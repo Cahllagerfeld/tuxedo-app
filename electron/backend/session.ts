@@ -266,6 +266,16 @@ export function sessionLayer(
 							return { status: "applied" as const, confirmed: state.accept(loaded) };
 						})
 					),
+				setWorkspaceShowDeferred: (request) =>
+					operation(
+						"setWorkspaceShowDeferred",
+						"Cannot save Show deferred: ",
+						Effect.gen(function* () {
+							const current = yield* state.read;
+							const loaded = yield* workspace.setShowDeferred(request, current, state.todoContents);
+							return { status: "applied" as const, confirmed: state.accept(loaded) };
+						})
+					),
 				stopObservation: semaphore.withPermit(closeObservation),
 				readSavedViews: () => operation("readSavedViews", "", views.read()),
 				saveView: (request) => operation("saveView", "Cannot save view: ", views.save(request)),

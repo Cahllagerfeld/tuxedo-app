@@ -1034,6 +1034,21 @@ try {
 	await page.getByText("Future chore", { exact: true }).waitFor();
 	assert.ok(await page.getByTitle("Show from 9999-12-31 · Deferred", { exact: true }).isVisible());
 	assert.ok(await page.getByTitle("Overdue · 2000-01-01", { exact: true }).isVisible());
+	await page.reload();
+	await page.getByText("Future chore", { exact: true }).waitFor();
+	assert.equal(
+		await showDeferred.getAttribute("aria-pressed"),
+		"true",
+		"Show deferred survives renderer reload"
+	);
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	const persistedVisibility = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(
+		persistedVisibility.session.catalogue.workspaces.find(
+			(w) => w.id === thresholdWorkspace.confirmed.session.catalogue.active_workspace_id
+		).show_deferred,
+		true
+	);
 	await page.getByRole("button", { name: "Navigate Future chore", exact: true }).click();
 	await page.getByRole("heading", { name: "Future chore", exact: true }).waitFor();
 	assert.ok(
@@ -1045,7 +1060,17 @@ try {
 	await page.getByRole("button", { name: "Close details", exact: true }).click();
 	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
 	await page.getByText("Actionable chore", { exact: true }).waitFor();
-	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
+	assert.equal(
+		await showDeferred.getAttribute("aria-pressed"),
+		"true",
+		"Clear filters preserves Workspace visibility"
+	);
+	await showDeferred.click();
+	await page.waitForFunction(
+		() =>
+			document.querySelector('button[aria-label="Show deferred"]').getAttribute("aria-pressed") ===
+			"false"
+	);
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	assert.ok(await showDeferred.isDisabled());
 	assert.equal(await showDeferred.textContent(), "Show deferred (0)");

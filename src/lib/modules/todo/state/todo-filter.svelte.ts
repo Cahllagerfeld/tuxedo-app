@@ -57,7 +57,6 @@ export class TodoFilterState {
 	get hasFilters() {
 		return (
 			this.hasSearch ||
-			this.showDeferred ||
 			this.selectedProject !== null ||
 			this.selectedContext !== null ||
 			this.selectedPriority !== null ||
@@ -99,7 +98,6 @@ export class TodoFilterState {
 
 	clear = () => {
 		this.preserveSelections = false;
-		this.showDeferred = false;
 		this.clearSearch();
 		this.clearDue();
 		this.selectedProject = null;
@@ -110,16 +108,23 @@ export class TodoFilterState {
 	reset = () => {
 		this.status = "all";
 		this.sortOrder = "file";
+		this.showDeferred = false;
 		this.clear();
 	};
 
-	sync = (workspaceKey: string | null, items: readonly TodoItem[], sortOrder?: TodoSortOrder) => {
+	sync = (
+		workspaceKey: string | null,
+		items: readonly TodoItem[],
+		sortOrder?: TodoSortOrder,
+		showDeferred?: boolean
+	) => {
 		this.items = items;
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
 		if (sortOrder !== undefined) this.sortOrder = sortOrder;
+		if (showDeferred !== undefined) this.showDeferred = showDeferred;
 		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
 			this.clearDue();
 		this.reconcile(this.availableFacets);

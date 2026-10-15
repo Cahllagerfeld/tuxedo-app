@@ -175,7 +175,8 @@ const secondWorkspaceSession: ConfirmedSession = {
 };
 
 function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
-	return {
+	let current = initial;
+	const desktop: DesktopAPI = {
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
@@ -187,6 +188,25 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
+		setWorkspaceShowDeferred: async ({ showDeferred }) => {
+			const ready = readySession(current.session);
+			current = {
+				...current,
+				revision: current.revision + 1,
+				session: {
+					...ready,
+					catalogue: {
+						...ready.catalogue,
+						workspaces: ready.catalogue.workspaces.map((w) =>
+							w.id === ready.catalogue.active_workspace_id
+								? { ...w, show_deferred: showDeferred }
+								: w
+						),
+					},
+				},
+			};
+			return { status: "applied", confirmed: current };
+		},
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -195,6 +215,28 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	};
+	const restore = desktop.restoreSession;
+	desktop.restoreSession = async (request) => (current = await restore(request));
+	const switchWorkspace = desktop.switchWorkspace;
+	desktop.switchWorkspace = async (request) => {
+		const outcome = await switchWorkspace(request);
+		if (outcome.status === "applied") current = outcome.confirmed;
+		return outcome;
+	};
+	const complete = desktop.setTodoCompletion;
+	desktop.setTodoCompletion = async (request) => {
+		const outcome = await complete(request);
+		if (outcome.status === "applied" || outcome.status === "conflict") {
+			current = {
+				...current,
+				scope: outcome.confirmed.scope,
+				revision: outcome.confirmed.revision,
+				session: { ...readySession(current.session), todo_file: outcome.confirmed.todo_file },
+			};
+		}
+		return outcome;
+	};
+	return desktop;
 }
 
 function rowCount() {
@@ -860,7 +902,7 @@ test("scopes choices and counts to the tab, retaining only available selections"
 	await expect.poll(rowCount).toBe(6);
 });
 
-test("reveals matching deferred items, keeps facets and totals, and resets the toggle", async () => {
+test("reveals matching deferred items, keeps facets and totals, and restores Workspace preferences", async () => {
 	const deferredItems: TodoFile["items"] = [
 		{ ...items[0], metadata: { t: "9999-12-31", due: "2000-01-01" } },
 		{ ...items[1], metadata: { t: "+2d" } },
@@ -915,9 +957,8 @@ test("reveals matching deferred items, keeps facets and totals, and resets the t
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: /^All/ }).click();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-	await toggle.click();
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
@@ -1000,4 +1041,47 @@ test("uncompletion reapplies the threshold only after confirmation and locks the
 		.getByRole("button", { name: "Show deferred", exact: true })
 		.click();
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+});
+
+test("Show deferred is a Workspace preference outside the filter bar and Clear filters", async () => {
+	render(Harness, { desktop: adapter() });
+	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+	await toggle.click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "@Home", exact: true }).click();
+	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
+	await toggle.click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
+test("restores saved Show deferred and preserves it when a preference save fails", async () => {
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					catalogue: {
+						...initialReadySession.catalogue,
+						workspaces: initialReadySession.catalogue.workspaces.map((w) => ({
+							...w,
+							show_deferred: true,
+						})),
+					},
+				},
+			}),
+			setWorkspaceShowDeferred: async () => ({
+				status: "rejected",
+				message: "Read-only catalogue",
+			}),
+		}),
+	});
+	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await toggle.click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
 });

@@ -309,7 +309,9 @@ it("hides only future open thresholds and reveals them in the existing sort orde
 	filter.setStatus("all");
 	expect(filter.showDeferred).toBe(true);
 	filter.clear();
-	expect(filter.showDeferred).toBe(false);
+	expect(filter.showDeferred).toBe(true);
+	expect(filter.hasFilters).toBe(false);
+	filter.showDeferred = false;
 	filter.today = "2026-10-15";
 	expect(filter.filterItems(items)).toEqual(items);
 	filter.today = "2026-10-16";
@@ -367,4 +369,27 @@ it("counts deferred matches before threshold exclusion while preserving completi
 		change();
 		expect(filter.deferredCount).toBe(0);
 	}
+});
+
+it("syncs Workspace visibility independently of clearing filters and applying saved views", () => {
+	const filter = new TodoFilterState();
+	filter.sync("work", [open], "file", true);
+	expect(filter.showDeferred).toBe(true);
+	expect(filter.hasFilters).toBe(false);
+	filter.searchText = "open";
+	filter.clear();
+	expect(filter.showDeferred).toBe(true);
+	filter.applyView({
+		status: "open",
+		search: "",
+		project: null,
+		context: null,
+		priority: null,
+		due: null,
+	});
+	expect(filter.showDeferred).toBe(true);
+	filter.sync("personal", [open], "file", false);
+	expect(filter.showDeferred).toBe(false);
+	filter.sync("work", [open], "due", true);
+	expect(filter.showDeferred).toBe(true);
 });

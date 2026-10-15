@@ -117,8 +117,11 @@
 					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
 					aria-pressed={todoFilter.showDeferred}
 					disabled={workspace.isOperating || todoFilter.status === "completed"}
-					onclick={() => (todoFilter.showDeferred = !todoFilter.showDeferred)}
-					>Show deferred ({todoFilter.deferredCount})</Button
+					onclick={() =>
+						void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+							if (outcome.status !== "applied")
+								toast.error("Could not save Show deferred", { description: outcome.message });
+						})}>Show deferred ({todoFilter.deferredCount})</Button
 				>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>

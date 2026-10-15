@@ -10,6 +10,7 @@ import {
 	switchWorkspaceRequestSchema,
 	deleteWorkspaceRequestSchema,
 	setWorkspaceSortOrderRequestSchema,
+	setWorkspaceShowDeferredRequestSchema,
 	type Catalogue,
 	type ConfirmedSession,
 	type DesktopRequest,
@@ -58,42 +59,61 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		});
 	const commitCatalogue = (catalogue: Catalogue, loaded: LoadedSession) =>
 		WorkspaceCatalogue.use((store) => store.write(catalogue)).pipe(Effect.as(loaded));
+	const savePreferences = Effect.fnUntraced(function* (
+		input: Pick<DesktopRequest<"setWorkspaceSortOrder">, "scope" | "revision" | "workspaceId">,
+		preferences: Pick<Catalogue["workspaces"][number], "sort_order" | "show_deferred">,
+		current: ConfirmedSession,
+		todoContents: string | undefined
+	) {
+		if (
+			current.scope !== input.scope ||
+			current.revision !== input.revision ||
+			current.session.status !== "ready" ||
+			current.session.catalogue.active_workspace_id !== input.workspaceId
+		)
+			return yield* new OperationFailure({
+				message: "The Workspace session changed. Try again.",
+			});
+		const previous = yield* readCatalogue();
+		const active = previous.workspaces.find((w) => w.id === input.workspaceId);
+		if (
+			previous.active_workspace_id !== input.workspaceId ||
+			!active ||
+			active.todo_path !== current.session.todo_file.path
+		)
+			return yield* new OperationFailure({ message: "The Active workspace changed." });
+		const catalogue = {
+			...previous,
+			workspaces: previous.workspaces.map((w) =>
+				w.id === input.workspaceId ? { ...w, ...preferences } : w
+			),
+		};
+		return yield* commitCatalogue(catalogue, {
+			session: { ...current.session, catalogue },
+			todoContents,
+		});
+	});
 	return {
 		setSortOrder: (
 			request: DesktopRequest<"setWorkspaceSortOrder">,
 			current: ConfirmedSession,
 			todoContents: string | undefined
 		) =>
-			Effect.gen(function* () {
-				const input = yield* attempt(() => setWorkspaceSortOrderRequestSchema.parse(request));
-				if (
-					current.scope !== input.scope ||
-					current.revision !== input.revision ||
-					current.session.status !== "ready" ||
-					current.session.catalogue.active_workspace_id !== input.workspaceId
+			attempt(() => setWorkspaceSortOrderRequestSchema.parse(request)).pipe(
+				Effect.flatMap((input) =>
+					savePreferences(input, { sort_order: input.sortOrder }, current, todoContents)
 				)
-					return yield* new OperationFailure({
-						message: "The Workspace session changed. Try again.",
-					});
-				const previous = yield* readCatalogue();
-				const active = previous.workspaces.find((w) => w.id === input.workspaceId);
-				if (
-					previous.active_workspace_id !== input.workspaceId ||
-					!active ||
-					active.todo_path !== current.session.todo_file.path
+			),
+		setShowDeferred: (
+			request: DesktopRequest<"setWorkspaceShowDeferred">,
+			current: ConfirmedSession,
+			todoContents: string | undefined
+		) =>
+			attempt(() => setWorkspaceShowDeferredRequestSchema.parse(request)).pipe(
+				Effect.flatMap((input) =>
+					savePreferences(input, { show_deferred: input.showDeferred }, current, todoContents)
 				)
-					return yield* new OperationFailure({ message: "The Active workspace changed." });
-				const catalogue = {
-					...previous,
-					workspaces: previous.workspaces.map((w) =>
-						w.id === input.workspaceId ? { ...w, sort_order: input.sortOrder } : w
-					),
-				};
-				return yield* commitCatalogue(catalogue, {
-					session: { ...current.session, catalogue },
-					todoContents,
-				});
-			}),
+			),
 		load: () =>
 			readCatalogue().pipe(
 				Effect.flatMap(projectCatalogue),
