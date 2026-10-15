@@ -1,21 +1,16 @@
 import { Effect } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import { Identity } from "./identity";
+import { WorkspaceCatalogue } from "./workspace-catalogue";
 import { atomicWrite } from "./atomic-write";
 import { setTodoCompletionLine } from "./complete-todo";
 import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
 import { appendTodoLine, createTodoLine } from "./create-todo";
 import { parseTodoFile } from "./todo-file";
-import {
-	attempt,
-	readContents,
-	OperationFailure,
-	type OperationError,
-} from "./workspace-lifecycle";
+import { attempt, readContents, OperationFailure, type OperationError } from "./operation";
 import type { SessionState, UndoChange } from "./session";
 import {
-	catalogueSchema,
 	createTodoRequestSchema,
 	editTodoRequestSchema,
 	reorderTodoRequestSchema,
@@ -29,7 +24,7 @@ import {
 	type ConfirmedSession,
 } from "../../src/lib/shared/desktop/contract";
 
-export function createTodoOperations(cataloguePath: string, state: SessionState) {
+export function createTodoOperations(state: SessionState) {
 	const confirmTodo = (
 		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
 		workspaceId: string,
@@ -63,8 +58,8 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 				return yield* new OperationFailure({
 					message: "The Workspace session changed. Try again with its current Todo file.",
 				});
-			const contents = yield* readContents(cataloguePath);
-			const catalogue = yield* attempt(() => catalogueSchema.parse(JSON.parse(contents)));
+			const store = yield* WorkspaceCatalogue;
+			const catalogue = yield* store.read;
 			const workspace = catalogue.workspaces.find(
 				(workspace) => workspace.id === target.workspaceId
 			);
@@ -97,7 +92,11 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 		request: DesktopRequest<"deleteTodo">,
 		label: UndoLabel,
 		transform: (contents: string, item: TodoFile["items"][number]) => string
-	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
+	): Effect.Effect<
+		DesktopResponse<"createTodo">,
+		OperationError,
+		FileSystem | Identity | WorkspaceCatalogue
+	> =>
 		Effect.gen(function* () {
 			const input = yield* attempt(() => todoMutationRequestSchema.parse(request));
 			const { previous, workspace } = yield* todoMutationContext(input);
@@ -131,7 +130,11 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
 		label: UndoLabel,
 		transform: (contents: string, todoFile: TodoFile) => string
-	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
+	): Effect.Effect<
+		DesktopResponse<"createTodo">,
+		OperationError,
+		FileSystem | Identity | WorkspaceCatalogue
+	> =>
 		Effect.gen(function* () {
 			const { previous, workspace } = yield* todoMutationContext(input);
 			const contents = yield* readContents(workspace.todo_path);

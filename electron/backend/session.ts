@@ -4,12 +4,9 @@ import { dirname, join } from "node:path";
 import { createSavedViewOperations } from "./saved-views";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
-import {
-	createWorkspaceLifecycle,
-	readContents,
-	type OperationError,
-	type LoadedSession,
-} from "./workspace-lifecycle";
+import { createWorkspaceLifecycle, type LoadedSession } from "./workspace-lifecycle";
+import { readContents, type OperationError } from "./operation";
+import { WorkspaceCatalogue } from "./workspace-catalogue";
 import type { TodoFileObservationAdapter } from "./observation";
 import type {
 	ConfirmedSession,
@@ -22,9 +19,7 @@ import type {
 export type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
 export type SessionOperation = keyof SessionBackend;
 export type SessionEffects = {
-	[K in SessionOperation]: (
-		request: DesktopRequest<K>
-	) => Effect.Effect<DesktopResponse<K>, never, FileSystem | Identity>;
+	[K in SessionOperation]: (request: DesktopRequest<K>) => Effect.Effect<DesktopResponse<K>>;
 };
 export class WorkspaceSession extends Context.Service<
 	WorkspaceSession,
@@ -36,7 +31,7 @@ export type UndoChange = { contents: string; label: UndoLabel };
 export type SessionState = {
 	readonly todoContents: string | undefined;
 	readonly undo: UndoChange | undefined;
-	readonly read: Effect.Effect<ConfirmedSession, never, FileSystem>;
+	readonly read: Effect.Effect<ConfirmedSession, never, FileSystem | WorkspaceCatalogue>;
 	accept: (loaded: LoadedSession, undo?: UndoChange | null) => ConfirmedSession;
 };
 
@@ -50,6 +45,10 @@ export function sessionLayer(
 		WorkspaceSession,
 		Effect.gen(function* () {
 			const identity = yield* Identity;
+			const dependencies = Context.make(FileSystem, yield* FileSystem).pipe(
+				Context.add(Identity, identity),
+				Context.add(WorkspaceCatalogue, yield* WorkspaceCatalogue)
+			);
 			const workspace = createWorkspaceLifecycle(cataloguePath);
 			const semaphore = yield* Semaphore.make(1);
 			const scope = identity.uuid();
@@ -94,23 +93,25 @@ export function sessionLayer(
 				console.error(`Workspace session ${operation} failed unexpectedly`, cause);
 			const serialize = <A, E>(
 				operation: string,
-				effect: Effect.Effect<A, E, FileSystem | Identity>
-			): Effect.Effect<A, E, FileSystem | Identity> =>
-				semaphore.withPermit(
-					Effect.gen(function* () {
-						busy = true;
-						return yield* effect;
-					}).pipe(
-						Effect.ensuring(
-							Effect.gen(function* () {
-								yield* syncObservation;
-								busy = false;
-							})
-						),
-						Effect.uninterruptible,
-						Effect.withSpan(`WorkspaceSession.${operation}`)
+				effect: Effect.Effect<A, E, FileSystem | Identity | WorkspaceCatalogue>
+			): Effect.Effect<A, E> =>
+				semaphore
+					.withPermit(
+						Effect.gen(function* () {
+							busy = true;
+							return yield* effect;
+						}).pipe(
+							Effect.ensuring(
+								Effect.gen(function* () {
+									yield* syncObservation;
+									busy = false;
+								})
+							),
+							Effect.uninterruptible,
+							Effect.withSpan(`WorkspaceSession.${operation}`)
+						)
 					)
-				);
+					.pipe(Effect.provideContext(dependencies));
 			const closeObservation = Effect.gen(function* () {
 				const previous = observed;
 				observed = undefined;
@@ -204,7 +205,7 @@ export function sessionLayer(
 			const operation = <A>(
 				name: string,
 				prefix: string,
-				effect: Effect.Effect<A, OperationError, FileSystem | Identity>
+				effect: Effect.Effect<A, OperationError, FileSystem | Identity | WorkspaceCatalogue>
 			) =>
 				serialize(
 					name,
@@ -249,7 +250,7 @@ export function sessionLayer(
 						)
 					)
 				);
-			const todos = createTodoOperations(cataloguePath, state);
+			const todos = createTodoOperations(state);
 			const views = createSavedViewOperations(
 				join(dirname(cataloguePath), "saved-views.json"),
 				state

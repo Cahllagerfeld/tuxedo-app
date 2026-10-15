@@ -3,6 +3,7 @@ import { createApplicationRuntime } from "./application-runtime";
 import { FileSystem } from "effect/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Identity, identityLayer } from "./identity";
+import { workspaceCatalogueLayer } from "./workspace-catalogue";
 import {
 	WorkspaceSession,
 	sessionLayer,
@@ -35,8 +36,8 @@ export function createSessionRuntime(
 		observation,
 		onTodoFileChanged,
 		() => shuttingDown
-	).pipe(Layer.provideMerge(capabilities));
-	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession | FileSystem | Identity, never> =
+	).pipe(Layer.provide(workspaceCatalogueLayer(cataloguePath)), Layer.provide(capabilities));
+	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession, never> =
 		ManagedRuntime.make(layer);
 	return Object.assign(runtime, {
 		stopAdmission: () => {
@@ -46,7 +47,7 @@ export function createSessionRuntime(
 }
 
 export function desktopSessionBackend(runtime: ReturnType<typeof createSessionRuntime>) {
-	const application = createApplicationRuntime<WorkspaceSession | FileSystem | Identity>(
+	const application = createApplicationRuntime<WorkspaceSession>(
 		runtime,
 		WorkspaceSession.use((session) => session.stopObservation),
 		runtime.stopAdmission

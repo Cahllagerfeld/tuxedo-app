@@ -297,6 +297,24 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 		})
 	);
 
+	it.effect.each(["missing", "invalid"])(
+		"Todo-item deletion rejects a %s catalogue without changing the Todo file or confirmed session",
+		(failure) =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem;
+				const { todoPath, cataloguePath, backend, target, confirmed } = yield* setup("First\n", fs);
+				if (failure === "missing") yield* fs.remove(cataloguePath);
+				else yield* fs.writeFileString(cataloguePath, "invalid");
+				expect(yield* Effect.promise(() => backend.deleteTodo(target))).toMatchObject({
+					status: "rejected",
+				});
+				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
+				expect(yield* Effect.promise(() => backend.readSession({}))).toEqual(confirmed);
+				if (failure === "missing") expect(yield* fs.exists(cataloguePath)).toBe(false);
+				else expect(yield* fs.readFileString(cataloguePath)).toBe("invalid");
+			})
+	);
+
 	it.effect.each(cases)(
 		"$operation confirms its commit despite interruption and rejects a queued stale mutation",
 		(row) =>
