@@ -222,3 +222,41 @@ describe("TodoFilterState", () => {
 		expect(filter.selectedPriority).toBeNull();
 	});
 });
+
+it("saved views retain absent facets across reloads and resolve Today against the current calendar", () => {
+	const filter = new TodoFilterState();
+	filter.sync("work", [open]);
+	filter.applyView({
+		status: "open",
+		search: "Open",
+		project: "Work",
+		context: "Home",
+		priority: "A",
+		due: "today",
+	});
+	const dueItem = { ...open, metadata: { due: "2026-10-14" } };
+	filter.today = "2026-10-14";
+	filter.sync("work", [dueItem]);
+	expect(filter.filterItems([dueItem])).toEqual([dueItem]);
+	filter.today = "2026-10-15";
+	expect(filter.filterItems([dueItem])).toEqual([]);
+	filter.sync("work", [{ ...dueItem, projects: ["Other"], contexts: ["Elsewhere"] }]);
+	expect(filter.snapshot()).toEqual({
+		status: "open",
+		search: "Open",
+		project: "Work",
+		context: "Home",
+		priority: "A",
+		due: "today",
+	});
+	expect(filter.filterItems([dueItem])).toEqual([]);
+	filter.sync("another", [dueItem]);
+	expect(filter.snapshot()).toEqual({
+		status: "all",
+		search: "",
+		project: null,
+		context: null,
+		priority: null,
+		due: null,
+	});
+});

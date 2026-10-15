@@ -7,6 +7,8 @@ import {
 	todoCreationFields,
 	todoCreationIssues,
 	TodoDate,
+	TodoPriority,
+	TodoTag,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
 
@@ -184,8 +186,75 @@ export const reorderTodoRequestSchema = effectValidator(
 		),
 	})
 );
+export const SavedViewName = Schema.NonEmptyString.check(Schema.isTrimmed());
+export const SavedViewNameForm = Schema.Struct({ name: Schema.mutableKey(SavedViewName) });
+export const SavedViewFilters = Schema.Struct({
+	status: Schema.Literals(["all", "open", "completed"]),
+	search: Schema.String,
+	project: Schema.NullOr(TodoTag),
+	context: Schema.NullOr(TodoTag),
+	priority: Schema.NullOr(TodoPriority),
+	due: Schema.NullOr(Schema.Literals(["overdue", "today", "upcoming", "none", "invalid"])),
+}).check(
+	Schema.makeFilter((value) =>
+		value.status === "completed" && (value.due !== null || value.priority !== null)
+			? "Completed views cannot filter by Due date or Priority."
+			: undefined
+	)
+);
+const SavedViewSchema = Schema.Struct({
+	id: UUID,
+	workspace_id: UUID,
+	name: SavedViewName,
+	filters: SavedViewFilters,
+});
+export type SavedView = typeof SavedViewSchema.Type;
+export type SavedViewFilterValues = typeof SavedViewFilters.Type;
+export const savedViewsFileSchema = effectValidator(
+	Schema.Struct({
+		version: Schema.Literal(1),
+		views: Schema.Array(SavedViewSchema),
+	}).check(
+		Schema.makeFilter((file) => {
+			const ids = file.views.map((view) => view.id);
+			const names = file.views.map((view) =>
+				JSON.stringify([view.workspace_id, view.name.toLowerCase()])
+			);
+			return new Set(ids).size !== ids.length || new Set(names).size !== names.length
+				? "Duplicate saved view."
+				: undefined;
+		})
+	)
+);
+const savedViewsOutcomeSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({ status: Schema.Literal("applied"), views: Schema.Array(SavedViewSchema) }),
+		Rejected,
+	])
+);
+export const saveViewRequestSchema = effectValidator(
+	Schema.Struct({ workspaceId: UUID, name: SavedViewName, filters: SavedViewFilters })
+);
+export const deleteViewRequestSchema = effectValidator(
+	Schema.Struct({ workspaceId: UUID, viewId: UUID })
+);
 const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
 export const desktopContract = {
+	readSavedViews: {
+		channel: "tuxedo:read-saved-views",
+		request: emptyRequestSchema,
+		response: savedViewsOutcomeSchema,
+	},
+	saveView: {
+		channel: "tuxedo:save-view",
+		request: saveViewRequestSchema,
+		response: savedViewsOutcomeSchema,
+	},
+	deleteView: {
+		channel: "tuxedo:delete-view",
+		request: deleteViewRequestSchema,
+		response: savedViewsOutcomeSchema,
+	},
 	writeClipboardText: {
 		channel: "tuxedo:write-clipboard-text",
 		request: effectValidator(Schema.Struct({ text: Schema.String })),
@@ -285,6 +354,9 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		readSavedViews: (request) => call("readSavedViews", request),
+		saveView: (request) => call("saveView", request),
+		deleteView: (request) => call("deleteView", request),
 		writeClipboardText: (request) => call("writeClipboardText", request),
 		editTodo: (request) => call("editTodo", request),
 		reorderTodo: (request) => call("reorderTodo", request),

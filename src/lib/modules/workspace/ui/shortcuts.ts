@@ -4,3 +4,5 @@ export const workspaceShortcuts = {
 } as const;
 
 export const searchShortcut = { key: "Mod+F", label: "Toggle Todo-item search" } as const;
+
+export const saveViewShortcut = { key: "Mod+Shift+S", label: "Save current view" } as const;

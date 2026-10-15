@@ -51,6 +51,9 @@ const initial: ConfirmedSession = {
 };
 function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 	return {
+		readSavedViews: async () => ({ status: "applied", views: [] }),
+		saveView: async () => ({ status: "rejected", message: "unused" }),
+		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,

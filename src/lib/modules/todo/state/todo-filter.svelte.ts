@@ -1,3 +1,4 @@
+import type { SavedViewFilterValues } from "$lib/shared/desktop/contract";
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 import { dueCategory, localToday, type TodoDueCategory } from "../domain/todo-due";
@@ -11,6 +12,7 @@ export type TodoFilterFacets = Readonly<{
 }>;
 
 export class TodoFilterState {
+	private preserveSelections = false;
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
 	status = $state<TodoFilterStatus>("all");
@@ -88,6 +90,7 @@ export class TodoFilterState {
 	};
 
 	clear = () => {
+		this.preserveSelections = false;
 		this.clearSearch();
 		this.clearDue();
 		this.selectedProject = null;
@@ -106,11 +109,13 @@ export class TodoFilterState {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
-		if (this.selectedDue === "invalid" && this.invalidDueCount === 0) this.clearDue();
+		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
+			this.clearDue();
 		this.reconcile(this.availableFacets);
 	};
 
 	reconcile = (facets: TodoFilterFacets) => {
+		if (this.preserveSelections) return;
 		if (this.selectedProject !== null && !facets.projects.includes(this.selectedProject)) {
 			this.selectedProject = null;
 		}
@@ -120,6 +125,24 @@ export class TodoFilterState {
 		if (this.selectedPriority !== null && !facets.priorities.includes(this.selectedPriority)) {
 			this.selectedPriority = null;
 		}
+	};
+
+	snapshot = (): SavedViewFilterValues => ({
+		status: this.status,
+		search: this.searchText,
+		project: this.selectedProject,
+		context: this.selectedContext,
+		priority: this.activePriority,
+		due: this.selectedDue,
+	});
+	applyView = (filters: SavedViewFilterValues) => {
+		this.preserveSelections = true;
+		this.status = filters.status;
+		this.searchText = filters.search;
+		this.selectedProject = filters.project;
+		this.selectedContext = filters.context;
+		this.selectedPriority = filters.priority;
+		this.selectedDue = filters.due;
 	};
 
 	filterItems = (items: readonly TodoItem[]) =>

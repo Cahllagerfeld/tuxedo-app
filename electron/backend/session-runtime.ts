@@ -60,6 +60,9 @@ export function desktopSessionBackend(runtime: ReturnType<typeof createSessionRu
 			})
 		);
 	const backend: SessionBackend = {
+		readSavedViews: (request) => run("readSavedViews", request),
+		saveView: (request) => run("saveView", request),
+		deleteView: (request) => run("deleteView", request),
 		readSession: (request) => run("readSession", request),
 		restoreSession: (request) => run("restoreSession", request),
 		createWorkspace: (request) => run("createWorkspace", request),

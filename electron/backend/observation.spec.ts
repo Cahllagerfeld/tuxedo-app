@@ -476,34 +476,41 @@ test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
 	}
 );
 
-test("renaming the containing directory refreshes the missing Active Todo-file path into Empty", async () => {
-	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
-	directories.push(directory);
-	const containingDirectory = join(directory, "work");
-	await mkdir(containingDirectory);
-	const path = join(containingDirectory, "todo.txt");
-	await writeFile(path, "Original");
-	const observation = createTodoFileObservation();
-	let changes = 0;
-	const backend = createSessionBackend(
-		join(directory, "workspaces.json"),
-		observation,
-		() => changes++
-	);
-	try {
-		await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
-		await rename(containingDirectory, join(directory, "moved"));
-		await expect.poll(() => changes, { timeout: 3000 }).toBe(1);
-		const refreshed = await backend.restoreSession({});
-		expect(refreshed.session).toMatchObject({
-			status: "empty",
-			warning: expect.stringContaining(path),
-			catalogue: { workspaces: [expect.objectContaining({ todo_path: path })] },
-		});
-	} finally {
-		await backend.dispose();
+test.each([1, 10])(
+	"renaming the containing directory refreshes the missing Active Todo-file path into Empty with %i observers",
+	async (observers) => {
+		await Promise.all(
+			Array.from({ length: observers }, async () => {
+				const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
+				directories.push(directory);
+				const containingDirectory = join(directory, "work");
+				await mkdir(containingDirectory);
+				const path = join(containingDirectory, "todo.txt");
+				await writeFile(path, "Original");
+				const observation = createTodoFileObservation();
+				let changes = 0;
+				const backend = createSessionBackend(
+					join(directory, "workspaces.json"),
+					observation,
+					() => changes++
+				);
+				try {
+					await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+					await rename(containingDirectory, join(directory, "moved"));
+					await expect.poll(() => changes > 0, { timeout: 3000 }).toBe(true);
+					const refreshed = await backend.restoreSession({});
+					expect(refreshed.session).toMatchObject({
+						status: "empty",
+						warning: expect.stringContaining(path),
+						catalogue: { workspaces: [expect.objectContaining({ todo_path: path })] },
+					});
+				} finally {
+					await backend.dispose();
+				}
+			})
+		);
 	}
-});
+);
 
 test("observation ignores delayed signals for confirmed contents after own writes", async () => {
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));

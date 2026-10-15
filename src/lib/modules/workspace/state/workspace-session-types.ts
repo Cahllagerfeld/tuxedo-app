@@ -1,5 +1,7 @@
 export type WorkspaceSessionOperation =
 	| "restore"
+	| "save_view"
+	| "delete_view"
 	| "create_workspace"
 	| "open_workspace"
 	| "delete_workspace"

@@ -40,6 +40,9 @@ const changed: ConfirmedSession = {
 function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 	return {
 		restoreSession: restore,
+		readSavedViews: async () => ({ status: "applied", views: [] }),
+		saveView: async () => ({ status: "rejected", message: "unused" }),
+		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,

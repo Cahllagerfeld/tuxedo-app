@@ -105,3 +105,6 @@ The sidebar-header control for viewing saved Workspaces, in creation order, choo
 
 **Workspace catalogue**:
 The saved collection of Workspaces and the Active workspace reference. If it cannot be read, it is preserved and the app shows an error instead of replacing it.
+
+**Saved view**:
+A named, Workspace-specific copy of the Todo-item text search, completion view, and Project, Context, Priority, and Due-date filters. Applying it replaces the current filters, keeps date categories relative to the current local date, and retains absent selections so that they produce zero matches.
