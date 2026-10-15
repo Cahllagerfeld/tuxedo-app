@@ -22,6 +22,7 @@ export function createTodoListFocus(inputs: Inputs) {
 	let navigationIndex = $state(-1);
 	let recovering = false;
 	let ownedFocus = false;
+	let destroyed = false;
 	const pending = new Set<() => void>();
 	onMount(() => {
 		const track = () => {
@@ -32,6 +33,7 @@ export function createTodoListFocus(inputs: Inputs) {
 		return () => document.removeEventListener("focusin", track);
 	});
 	onDestroy(() => {
+		destroyed = true;
 		for (const stop of pending) stop();
 	});
 	let lastFile: TodoFile | undefined;
@@ -50,7 +52,7 @@ export function createTodoListFocus(inputs: Inputs) {
 		focusedTodo = todo;
 		inputs.reveal(todo);
 		await tick();
-		if (workspace !== inputs.workspaceId) return;
+		if (destroyed || workspace !== inputs.workspaceId) return;
 		inputs.root?.querySelector<HTMLButtonElement>(`[data-row-navigation="${index}"]`)?.focus();
 	}
 	function remember(todo: TodoItem) {
@@ -101,16 +103,22 @@ export function createTodoListFocus(inputs: Inputs) {
 				cancelled = true;
 		};
 		document.addEventListener("focusin", moved);
-		const stop = () => document.removeEventListener("focusin", moved);
+		const stop = () => {
+			cancelled = true;
+			recovering = false;
+			document.removeEventListener("focusin", moved);
+			pending.delete(stop);
+		};
 		pending.add(stop);
 		recovering = owned;
 		return {
+			cancel: stop,
 			async restore(uncertain = false, deleted = false) {
 				await tick();
 				recovering = false;
-				stop();
+				document.removeEventListener("focusin", moved);
 				pending.delete(stop);
-				if (!owned || workspace !== inputs.workspaceId) return;
+				if (destroyed || !owned || workspace !== inputs.workspaceId) return;
 				if (cancelled) return;
 				if (uncertain) {
 					navigationIndex = -1;
