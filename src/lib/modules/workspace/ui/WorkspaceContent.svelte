@@ -17,7 +17,8 @@
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import SavedViews from "./SavedViews.svelte";
 	import Search from "@lucide/svelte/icons/search";
-	import ArrowDownWideNarrow from "@lucide/svelte/icons/arrow-down-wide-narrow";
+	import ListFilter from "@lucide/svelte/icons/list-filter";
+	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
@@ -115,7 +116,7 @@
 								title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
 								disabled={workspace.isOperating}
 							>
-								<ArrowDownWideNarrow class="size-4" aria-hidden="true" />
+								<ListFilter class="size-4" aria-hidden="true" />
 							</Button>
 						{/snippet}
 					</DropdownMenu.Trigger>
@@ -124,8 +125,15 @@
 						<DropdownMenu.RadioGroup
 							value={todoFilter.sortOrder}
 							onValueChange={(value) => {
-								if (!workspace.isOperating && (value === "file" || value === "due"))
-									todoFilter.sortOrder = value;
+								if (
+									!workspace.isOperating &&
+									(value === "file" || value === "due") &&
+									value !== todoFilter.sortOrder
+								)
+									void workspace.setSortOrder(value).then((outcome) => {
+										if (outcome.status !== "applied")
+											toast.error("Could not save sort order", { description: outcome.message });
+									});
 							}}
 						>
 							<DropdownMenu.RadioItem value="file">File order</DropdownMenu.RadioItem>

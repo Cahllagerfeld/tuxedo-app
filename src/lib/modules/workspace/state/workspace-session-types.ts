@@ -1,4 +1,5 @@
 export type WorkspaceSessionOperation =
+	| "set_workspace_sort_order"
 	| "undo_todo_change"
 	| "restore"
 	| "save_view"

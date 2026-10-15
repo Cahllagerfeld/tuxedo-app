@@ -1,4 +1,4 @@
-import type { SavedViewFilterValues } from "$lib/shared/desktop/contract";
+import type { SavedViewFilterValues, TodoSortOrder } from "$lib/shared/desktop/contract";
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../domain/todo-due";
@@ -16,7 +16,7 @@ export class TodoFilterState {
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
 	status = $state<TodoFilterStatus>("all");
-	sortOrder = $state<"file" | "due">("file");
+	sortOrder = $state<TodoSortOrder>("file");
 	availableFacets = $derived(
 		summarizeTodoFilterFacets(
 			this.items,
@@ -105,12 +105,13 @@ export class TodoFilterState {
 		this.clear();
 	};
 
-	sync = (workspaceKey: string | null, items: readonly TodoItem[]) => {
+	sync = (workspaceKey: string | null, items: readonly TodoItem[], sortOrder?: TodoSortOrder) => {
 		this.items = items;
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
+		if (sortOrder !== undefined) this.sortOrder = sortOrder;
 		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
 			this.clearDue();
 		this.reconcile(this.availableFacets);

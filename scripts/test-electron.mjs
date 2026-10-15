@@ -299,6 +299,32 @@ try {
 		created.confirmed.session
 	);
 	const beforeUndo = await readFile(todoPath, "utf8");
+	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		sortOrder: "due",
+	});
+	assert.equal(sorted.status, "applied");
+	assert.equal(sorted.confirmed.session.catalogue.workspaces[0].sort_order, "due");
+	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
+	await page.reload();
+	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
+	assert.equal(
+		await page.getByRole("button", { name: "Sort Todo items", exact: true }).getAttribute("title"),
+		"Sort: Due date"
+	);
+	const unsorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
+		scope: sorted.confirmed.scope,
+		revision: sorted.confirmed.revision,
+		workspaceId: sorted.confirmed.session.catalogue.active_workspace_id,
+		sortOrder: "file",
+	});
+	assert.equal(unsorted.status, "applied");
+	created = unsorted;
+	console.log(
+		"Workspace sort order persists through preload/IPC and renderer reload without changing the Todo file."
+	);
 	await page.evaluate((input) => window.desktop.createTodo(input), {
 		scope: created.confirmed.scope,
 		revision: created.confirmed.revision,

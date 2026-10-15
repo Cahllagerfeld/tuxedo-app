@@ -9,6 +9,57 @@ test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.readSession({})).rejects.toThrow();
 });
+test("sort-order transport validates requests and confirmed Workspace preferences", async () => {
+	let forwarded: unknown;
+	const desktop = createDesktopClient(async (channel, request) => {
+		forwarded = { channel, request };
+		return { status: "rejected", message: "Read-only catalogue" };
+	});
+	const request = { scope, revision: 1, workspaceId, sortOrder: "due" as const };
+	expect(await desktop.setWorkspaceSortOrder(request)).toEqual({
+		status: "rejected",
+		message: "Read-only catalogue",
+	});
+	expect(forwarded).toEqual({ channel: "tuxedo:set-workspace-sort-order", request });
+	for (const invalid of [
+		{ ...request, sortOrder: "priority" },
+		{ ...request, revision: -1 },
+		{ ...request, path: "/tmp/file" },
+	]) {
+		expect(() => desktopContract.setWorkspaceSortOrder.request.parse(invalid)).toThrow();
+	}
+	const response = {
+		status: "applied",
+		confirmed: {
+			scope,
+			revision: 2,
+			session: {
+				status: "empty",
+				catalogue: {
+					...catalogue,
+					workspaces: catalogue.workspaces.map((w) => ({ ...w, sort_order: "due" })),
+				},
+				warning: null,
+			},
+		},
+	};
+	expect(await createDesktopClient(async () => response).setWorkspaceSortOrder(request)).toEqual(
+		response
+	);
+	const invalid = {
+		...catalogue,
+		workspaces: catalogue.workspaces.map((w) => ({ ...w, sort_order: "priority" })),
+	};
+	await expect(
+		createDesktopClient(async () => ({
+			...response,
+			confirmed: {
+				...response.confirmed,
+				session: { ...response.confirmed.session, catalogue: invalid },
+			},
+		})).setWorkspaceSortOrder(request)
+	).rejects.toThrow();
+});
 test("desktop transport rejects unsupported request fields before invoking IPC", async () => {
 	let invoked = false;
 	const desktop = createDesktopClient(async () => {
