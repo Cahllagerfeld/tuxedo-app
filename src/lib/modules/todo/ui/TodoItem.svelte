@@ -71,7 +71,7 @@
 	>
 		{todo.priority ? `(${todo.priority})` : "—"}
 	</span>
-	<p class={cn("min-w-0 flex-1 truncate text-sm", todo.completed && "line-through")}>
+	<p class={cn("min-w-16 flex-1 truncate text-sm", todo.completed && "line-through")}>
 		{todo.description}
 	</p>
 	<div
@@ -111,7 +111,7 @@
 		</Tooltip.Provider>
 	</div>
 	{#if todo.metadata.t !== undefined}
-		<div class="max-w-[40%] min-w-0 shrink"><TodoShowFrom {todo} {today} /></div>
+		<div class="max-w-[40%] min-w-8 shrink"><TodoShowFrom {todo} {today} /></div>
 	{/if}
 	{#if rowDate}
 		<span

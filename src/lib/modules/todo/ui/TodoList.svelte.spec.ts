@@ -558,50 +558,56 @@ it("row navigation crosses the virtualization window and keeps native controls s
 });
 
 it("distinguishes only deferred rows and keeps Show from metadata compact on wide lists", async () => {
-	await page.viewport(1800, 700);
-	const items: TodoFile["items"] = [
-		{ ...todoFile.items[0], description: "Future", metadata: { t: "2026-10-16" } },
-		{
-			...todoFile.items[0],
-			line_number: 2,
-			description: "Actionable",
-			metadata: { t: "2026-10-14" },
-		},
-		{ ...todoFile.items[0], line_number: 3, description: "Invalid", metadata: { t: "+2d" } },
-		{ ...todoFile.items[1], line_number: 4, metadata: { t: "2026-10-16" } },
-	];
-	const props = {
-		todoFile: { ...todoFile, items },
-		today: "2026-10-15",
-		disabled: false,
-		onToggleComplete: vi.fn(),
-		onDelete: vi.fn(),
-	};
-	const view = await render(TodoList, props);
-	await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
-	const futureRow = page
-		.getByRole("button", { name: "Navigate Future", exact: true })
-		.element()
-		.closest("li")!;
-	const actionableRow = page
-		.getByRole("button", { name: "Navigate Actionable", exact: true })
-		.element()
-		.closest("li")!;
-	expect(getComputedStyle(futureRow).backgroundColor).not.toBe(
-		getComputedStyle(actionableRow).backgroundColor
-	);
-	const label = page.getByTitle("Show from 2026-10-16 · Deferred", { exact: true }).element();
-	expect(label.getBoundingClientRect().width).toBeLessThan(300);
-	const menu = page.getByRole("button", { name: "Actions for Future", exact: true }).element();
-	expect(menu.getBoundingClientRect().left - label.getBoundingClientRect().right).toBeLessThan(40);
-	await page.viewport(600, 700);
-	await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
-	await expect
-		.element(page.getByRole("checkbox", { name: "Mark Future complete", exact: true }))
-		.toBeVisible();
-	await view.rerender({ ...props, today: "2026-10-16" });
-	await expect.element(page.getByText("Deferred", { exact: true })).not.toBeInTheDocument();
-	await expect
-		.poll(() => getComputedStyle(futureRow).backgroundColor)
-		.toBe(getComputedStyle(actionableRow).backgroundColor);
+	try {
+		await page.viewport(1800, 700);
+		const items: TodoFile["items"] = [
+			{ ...todoFile.items[0], description: "Future", metadata: { t: "2026-10-16" } },
+			{
+				...todoFile.items[0],
+				line_number: 2,
+				description: "Actionable",
+				metadata: { t: "2026-10-14" },
+			},
+			{ ...todoFile.items[0], line_number: 3, description: "Invalid", metadata: { t: "+2d" } },
+			{ ...todoFile.items[1], line_number: 4, metadata: { t: "2026-10-16" } },
+		];
+		const props = {
+			todoFile: { ...todoFile, items },
+			today: "2026-10-15",
+			disabled: false,
+			onToggleComplete: vi.fn(),
+			onDelete: vi.fn(),
+		};
+		const view = await render(TodoList, props);
+		await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
+		const futureRow = page
+			.getByRole("button", { name: "Navigate Future", exact: true })
+			.element()
+			.closest("li")!;
+		const actionableRow = page
+			.getByRole("button", { name: "Navigate Actionable", exact: true })
+			.element()
+			.closest("li")!;
+		expect(getComputedStyle(futureRow).backgroundColor).not.toBe(
+			getComputedStyle(actionableRow).backgroundColor
+		);
+		const label = page.getByTitle("Show from 2026-10-16 · Deferred", { exact: true }).element();
+		expect(label.getBoundingClientRect().width).toBeLessThan(300);
+		const menu = page.getByRole("button", { name: "Actions for Future", exact: true }).element();
+		expect(menu.getBoundingClientRect().left - label.getBoundingClientRect().right).toBeLessThan(
+			40
+		);
+		await page.viewport(320, 700);
+		await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Future complete", exact: true }))
+			.toBeVisible();
+		await view.rerender({ ...props, today: "2026-10-16" });
+		await expect.element(page.getByText("Deferred", { exact: true })).not.toBeInTheDocument();
+		await expect
+			.poll(() => getComputedStyle(futureRow).backgroundColor)
+			.toBe(getComputedStyle(actionableRow).backgroundColor);
+	} finally {
+		await page.viewport(800, 600);
+	}
 });
