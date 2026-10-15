@@ -859,3 +859,145 @@ test("scopes choices and counts to the tab, retaining only available selections"
 		.not.toBeInTheDocument();
 	await expect.poll(rowCount).toBe(6);
 });
+
+test("reveals matching deferred items, keeps facets and totals, and resets the toggle", async () => {
+	const deferredItems: TodoFile["items"] = [
+		{ ...items[0], metadata: { t: "9999-12-31", due: "2000-01-01" } },
+		{ ...items[1], metadata: { t: "+2d" } },
+		{ ...items[6], metadata: { t: "9999-12-31" } },
+	];
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: deferredItems },
+				},
+			}),
+			switchWorkspace: async () => ({ status: "applied", confirmed: secondWorkspaceSession }),
+		}),
+	});
+	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("2 matching items");
+	await expect
+		.element(page.getByText("Invalid or unsupported Show from: +2d", { exact: true }))
+		.toBeVisible();
+	await page.getByRole("button", { name: /^Open/ }).click();
+	await expect
+		.element(page.getByRole("button", { name: "+Work", exact: true }))
+		.toHaveTextContent("+Work 1");
+	await page.getByRole("button", { name: "Priority A", exact: true }).click();
+	await expect
+		.element(
+			page.getByText("1 matching Todo item is deferred until a future Show from date.", {
+				exact: true,
+			})
+		)
+		.toBeVisible();
+	await page
+		.getByLabelText("No matching Todo items")
+		.getByRole("button", { name: "Show deferred", exact: true })
+		.click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByTitle("Show from 9999-12-31 · Deferred", { exact: true }))
+		.toBeVisible();
+	await expect.element(page.getByTitle("Overdue · 2000-01-01", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: /^Completed/ }).click();
+	await expect.element(toggle).toBeDisabled();
+	await expect.element(toggle).toHaveTextContent("Show deferred (0)");
+	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: /^All/ }).click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+	await toggle.click();
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	await page.getByRole("menuitem", { name: "Review" }).click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
+test("threshold visibility refreshes at midnight and on return from inactivity without mutations", async () => {
+	const datedItems: TodoFile["items"] = [
+		{ ...items[0], metadata: { t: "2026-10-15" } },
+		{ ...items[1], metadata: { t: "2026-10-16" } },
+	];
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date(2026, 9, 14, 23, 59, 58));
+	const desktop = adapter({
+		restoreSession: async () => ({
+			...initial,
+			session: {
+				...initialReadySession,
+				todo_file: { ...initialReadySession.todo_file, items: datedItems },
+			},
+		}),
+	});
+	const create = vi.spyOn(desktop, "createTodo");
+	const edit = vi.spyOn(desktop, "editTodo");
+	const complete = vi.spyOn(desktop, "setTodoCompletion");
+	const view = await render(Harness, { desktop });
+	try {
+		const toggle = page.getByRole("button", { name: "Show deferred", exact: true }).first();
+		await expect.element(toggle).toHaveTextContent("Show deferred (2)");
+		await expect
+			.element(page.getByLabelText("Filtered result count"))
+			.toHaveTextContent("0 matching items");
+		vi.setSystemTime(new Date(2026, 9, 15));
+		await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
+		await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+		vi.setSystemTime(new Date(2026, 9, 16, 12));
+		document.dispatchEvent(new Event("visibilitychange"));
+		await expect.element(page.getByText("Open personal", { exact: true })).toBeVisible();
+		await expect.element(toggle).toHaveTextContent("Show deferred (0)");
+		vi.setSystemTime(new Date(2026, 9, 14, 12));
+		window.dispatchEvent(new Event("focus"));
+		await expect.element(toggle).toHaveTextContent("Show deferred (2)");
+		await expect
+			.element(page.getByLabelText("Filtered result count"))
+			.toHaveTextContent("0 matching items");
+		expect(create).not.toHaveBeenCalled();
+		expect(edit).not.toHaveBeenCalled();
+		expect(complete).not.toHaveBeenCalled();
+	} finally {
+		view.unmount();
+		vi.useRealTimers();
+	}
+});
+
+test("uncompletion reapplies the threshold only after confirmation and locks the toggle while pending", async () => {
+	const completedItem = { ...items[6], metadata: { t: "9999-12-31" } };
+	let finish!: (result: ReturnType<typeof confirmedTodo>) => void;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initialReadySession,
+					todo_file: { ...initialReadySession.todo_file, items: [completedItem] },
+				},
+			}),
+			setTodoCompletion: () => new Promise((resolve) => (finish = resolve)),
+		}),
+	});
+	await page.getByRole("checkbox", { name: "Mark Completed work incomplete" }).click();
+	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+	await expect.element(toggle).toBeDisabled();
+	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+	finish(confirmedTodo([{ ...completedItem, completed: false, completion_date: null }]));
+	await expect.element(page.getByText("Completed work", { exact: true })).not.toBeInTheDocument();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("0 matching items");
+	await page
+		.getByLabelText("No matching Todo items")
+		.getByRole("button", { name: "Show deferred", exact: true })
+		.click();
+	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
+});

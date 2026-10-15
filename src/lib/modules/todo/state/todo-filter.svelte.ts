@@ -3,6 +3,8 @@ import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../domain/todo-due";
 
+import { isDeferred } from "../domain/todo-threshold";
+
 export type TodoFilterStatus = "all" | "open" | "completed";
 
 export type TodoFilterFacets = Readonly<{
@@ -17,6 +19,10 @@ export class TodoFilterState {
 	private items = $state.raw<readonly TodoItem[]>([]);
 	status = $state<TodoFilterStatus>("all");
 	sortOrder = $state<TodoSortOrder>("file");
+	showDeferred = $state(false);
+	deferredCount = $derived(
+		this.items.filter((item) => this.matchesFilters(item) && isDeferred(item, this.today)).length
+	);
 	availableFacets = $derived(
 		summarizeTodoFilterFacets(
 			this.items,
@@ -51,6 +57,7 @@ export class TodoFilterState {
 	get hasFilters() {
 		return (
 			this.hasSearch ||
+			this.showDeferred ||
 			this.selectedProject !== null ||
 			this.selectedContext !== null ||
 			this.selectedPriority !== null ||
@@ -92,6 +99,7 @@ export class TodoFilterState {
 
 	clear = () => {
 		this.preserveSelections = false;
+		this.showDeferred = false;
 		this.clearSearch();
 		this.clearDue();
 		this.selectedProject = null;
@@ -148,32 +156,36 @@ export class TodoFilterState {
 		this.selectedDue = filters.due;
 	};
 
+	private matchesFilters = (item: TodoItem) => {
+		if (
+			this.selectedDue !== null &&
+			(item.completed || dueCategory(item.metadata.due, this.today) !== this.selectedDue)
+		)
+			return false;
+		if (this.status !== "all" && (this.status === "completed") !== item.completed) return false;
+		if (this.selectedProject !== null && !item.projects.includes(this.selectedProject))
+			return false;
+		if (this.selectedContext !== null && !item.contexts.includes(this.selectedContext))
+			return false;
+		if (this.activePriority !== null && item.priority !== this.activePriority) return false;
+		if (this.hasSearch) {
+			const text = [
+				item.description,
+				...item.projects.map((project) => `+${project}`),
+				...item.contexts.map((context) => `@${context}`),
+				...Object.entries(item.metadata).map(([key, value]) => `${key}:${value}`),
+			]
+				.join(" ")
+				.toLowerCase();
+			if (!this.searchTerms.every((term) => text.includes(term))) return false;
+		}
+		return true;
+	};
+
 	filterItems = (items: readonly TodoItem[]) => {
-		const filtered = items.filter((item) => {
-			if (
-				this.selectedDue !== null &&
-				(item.completed || dueCategory(item.metadata.due, this.today) !== this.selectedDue)
-			)
-				return false;
-			if (this.status !== "all" && (this.status === "completed") !== item.completed) return false;
-			if (this.selectedProject !== null && !item.projects.includes(this.selectedProject))
-				return false;
-			if (this.selectedContext !== null && !item.contexts.includes(this.selectedContext))
-				return false;
-			if (this.activePriority !== null && item.priority !== this.activePriority) return false;
-			if (this.hasSearch) {
-				const text = [
-					item.description,
-					...item.projects.map((project) => `+${project}`),
-					...item.contexts.map((context) => `@${context}`),
-					...Object.entries(item.metadata).map(([key, value]) => `${key}:${value}`),
-				]
-					.join(" ")
-					.toLowerCase();
-				if (!this.searchTerms.every((term) => text.includes(term))) return false;
-			}
-			return true;
-		});
+		const filtered = items.filter(
+			(item) => this.matchesFilters(item) && (this.showDeferred || !isDeferred(item, this.today))
+		);
 		if (this.sortOrder === "due")
 			filtered.sort((left, right) => {
 				const a = validDueDate(left.metadata.due);

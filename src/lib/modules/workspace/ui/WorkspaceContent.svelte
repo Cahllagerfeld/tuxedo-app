@@ -97,14 +97,23 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	{#if workspace.todoFile}
-		<div class="flex shrink-0 items-center justify-between border-b px-5 py-3">
+		<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 			<div>
 				<p class="text-sm font-medium">Todo items</p>
 				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
 					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
 				</p>
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					aria-label="Show deferred"
+					aria-pressed={todoFilter.showDeferred}
+					disabled={workspace.isOperating || todoFilter.status === "completed"}
+					onclick={() => (todoFilter.showDeferred = !todoFilter.showDeferred)}
+					>Show deferred ({todoFilter.deferredCount})</Button
+				>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
