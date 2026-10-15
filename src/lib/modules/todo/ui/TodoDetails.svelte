@@ -106,13 +106,6 @@
 								</p>{/if}
 						</dd>
 					</div>{/if}
-				{#if todo.metadata.rec !== undefined}<div class="grid grid-cols-[6rem_1fr] gap-3">
-						<dt class="text-muted-foreground">Recurrence</dt>
-						<dd class={recurrence ? "" : "text-destructive"}>
-							{recurrence ?? todo.metadata.rec}
-							{#if !recurrence}<p class="mt-1 text-xs">Unsupported recurrence</p>{/if}
-						</dd>
-					</div>{/if}
 				{#if todo.metadata.t !== undefined}<div class="grid grid-cols-[6rem_1fr] gap-3">
 						<dt class="text-muted-foreground">Show from</dt>
 						<dd class="min-w-0"><TodoShowFrom {todo} {today} /></dd>
@@ -135,6 +128,13 @@
 				{#if todo.completion_date}<div class="grid grid-cols-[6rem_1fr] gap-3">
 						<dt class="text-muted-foreground">Completed</dt>
 						<dd>{todo.completion_date}</dd>
+					</div>{/if}
+				{#if todo.metadata.rec !== undefined}<div class="grid grid-cols-[6rem_1fr] gap-3">
+						<dt class="text-muted-foreground">Recurrence</dt>
+						<dd class={recurrence ? "" : "text-destructive"}>
+							{recurrence ?? todo.metadata.rec}
+							{#if !recurrence}<p class="mt-1 text-xs">Unsupported recurrence</p>{/if}
+						</dd>
 					</div>{/if}
 				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t" && key !== "rec") as [key, value] (key)}<div
 						class="grid grid-cols-[6rem_1fr] gap-3"
