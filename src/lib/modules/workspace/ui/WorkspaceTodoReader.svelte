@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { tick } from "svelte";
 	import { linear } from "svelte/easing";
 	import { prefersReducedMotion } from "svelte/motion";
 	import { MediaQuery } from "svelte/reactivity";
@@ -8,7 +7,7 @@
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 	import TodoDetails from "$lib/modules/todo/ui/TodoDetails.svelte";
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
-	import type { TodoItemDraft, SaveTodoItemResult } from "$lib/modules/todo/ui/todo-editor-types";
+	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import * as Resizable from "$lib/shared/ui/resizable";
@@ -28,26 +27,31 @@
 		filteredTodoItems: readonly TodoItem[];
 	} = $props();
 	const shortcutScope = getShortcutScope();
-	let editingTodo = $state<TodoItem | null>(null);
-	let todoList = $state<ReturnType<typeof TodoList>>();
-	let editRecovery: ReturnType<ReturnType<typeof TodoList>["captureFocus"]> | undefined;
-	let editingWorkspaceId = $state<string>();
-	let detailEditTrigger: HTMLButtonElement | null = null;
-	let selected = $state.raw<TodoItem | null>(null);
-	let selectedWorkspaceId = $state<string>();
-	let selectedPath = $state<string>();
-	let detailUpdating = $state(false);
 	const wide = new MediaQuery("(min-width: 1100px)");
-	let previousWide: boolean | undefined;
+	let todoList = $state<ReturnType<typeof TodoList>>();
+	let todoViewport = $state<HTMLElement | null>(null);
 	let desktopDetails = $state<HTMLElement | null>(null);
-	const selectedTodo = $derived(
-		selectedWorkspaceId === workspace.activeWorkspace?.id &&
-			selectedPath === workspace.todoFile?.path
-			? (workspace.todoFile?.items.find(
-					(item) => item.line_number === selected?.line_number && item.raw === selected?.raw
-				) ?? (detailUpdating ? selected : null))
-			: null
-	);
+	const reader = createTodoReaderInteraction({
+		get workspace() {
+			return workspace;
+		},
+		get fileOrder() {
+			return todoFilter.sortOrder === "file";
+		},
+		get wide() {
+			return wide.current;
+		},
+		get list() {
+			return todoList;
+		},
+		get viewport() {
+			return todoViewport;
+		},
+		get details() {
+			return desktopDetails;
+		},
+		shortcutScope,
+	});
 	function revealDetails(node: HTMLElement) {
 		return () => {
 			const grow = Number(getComputedStyle(node).flexGrow);
@@ -60,146 +64,35 @@
 			};
 		};
 	}
-	function selectTodo(todo: TodoItem) {
-		selected = todo;
-		selectedWorkspaceId = workspace.activeWorkspace?.id;
-		selectedPath = workspace.todoFile?.path;
-	}
-	function closeDetails() {
-		const todo = selectedTodo;
-		selected = null;
-		if (todo) void todoList?.focusTodo(todo);
-	}
-	// External file/lifecycle changes can invalidate a physical-line selection. Restore DOM focus before removing its surface.
-	$effect.pre(() => {
-		const isWide = wide.current;
-		if (previousWide !== isWide) {
-			const ownedFocus = document.activeElement?.closest("[data-todo-details]");
-			previousWide = isWide;
-			if (isWide && ownedFocus)
-				void tick().then(() => desktopDetails?.querySelector<HTMLButtonElement>("button")?.focus());
-		}
-		if (selected && !selectedTodo && !detailUpdating) {
-			if (document.activeElement?.closest("[data-todo-details]")) todoViewport?.focus();
-			selected = null;
-		}
-	});
-	function retargetDetails(todo: TodoItem, result: SaveTodoItemResult, line = todo.line_number) {
-		if (
-			selected?.line_number !== todo.line_number ||
-			selected?.raw !== todo.raw ||
-			selectedWorkspaceId !== workspace.activeWorkspace?.id
-		)
-			return;
-		if (result.status === "applied")
-			selected = workspace.todoFile?.items.find((item) => item.line_number === line) ?? null;
-		else if (result.status === "conflict") selected = null;
-	}
-	async function saveEditedTodo(draft: TodoItemDraft) {
-		const todo = editingTodo!;
-		detailUpdating = true;
-		try {
-			const result = await workspace.editTodo(todo, draft);
-			retargetDetails(todo, result);
-			return result;
-		} finally {
-			detailUpdating = false;
-		}
-	}
-	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
-		detailEditTrigger = trigger?.closest("[data-todo-details]") ? trigger : null;
-		editRecovery = detailEditTrigger ? undefined : todoList?.captureFocus(todo, true, trigger);
-		editingWorkspaceId = workspace.activeWorkspace?.id;
-		editingTodo = todo;
-	}
-	function closeEdit(uncertain = false) {
-		editingTodo = null;
-		if (detailEditTrigger) {
-			const trigger = detailEditTrigger;
-			detailEditTrigger = null;
-			void tick().then(() => {
-				if (!uncertain && trigger.isConnected) trigger.focus();
-				else todoViewport?.focus();
-			});
-		} else void editRecovery?.restore(uncertain);
-	}
-
-	let todoViewport = $state<HTMLElement | null>(null);
 	async function toggleTodoCompletion(todo: TodoItem) {
-		const recovery = todoList?.captureFocus(todo);
-		detailUpdating = true;
-		const result = await workspace.setCompletion(todo);
-		retargetDetails(todo, result);
-		detailUpdating = false;
-		void recovery?.restore(result.status === "conflict");
-		if (result.status === "conflict") {
-			toast.error("Todo file reloaded");
-		} else if (result.status === "rejected") {
-			toast.error("Could not update Todo item", { description: result.message });
-		}
-	}
-
-	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
-		const recovery = todoList?.captureFocus(todo, false, trigger);
-		detailUpdating = true;
-		const result = await workspace.deleteTodo(todo);
-		if (
-			result.status === "applied" &&
-			selected?.line_number === todo.line_number &&
-			selected?.raw === todo.raw
-		) {
-			selected = null;
-			if (trigger?.closest("[data-todo-details]")) todoViewport?.focus();
-		} else retargetDetails(todo, result);
-		detailUpdating = false;
-		void recovery?.restore(result.status === "conflict", result.status === "applied");
-		if (result.status === "conflict") {
-			toast.error("Todo file reloaded");
-		} else if (result.status === "rejected") {
-			toast.error("Could not delete Todo item", { description: result.message });
-		}
-	}
-
-	async function reorderTodoItems(items: readonly TodoItem[]) {
-		if (todoFilter.sortOrder !== "file") return;
-		const todo = selectedTodo;
-		const index = todo
-			? items.findIndex((item) => item.line_number === todo.line_number && item.raw === todo.raw)
-			: -1;
-		const lines = items.map((item) => item.line_number).sort((a, b) => a - b);
-		detailUpdating = true;
-		const result = await workspace.reorderTodo(items);
-		if (todo) retargetDetails(todo, result, index < 0 ? todo.line_number : lines[index]);
-		detailUpdating = false;
+		const result = await reader.toggleCompletion(todo);
 		if (result.status === "conflict") toast.error("Todo file reloaded");
 		else if (result.status === "rejected")
+			toast.error("Could not update Todo item", { description: result.message });
+	}
+	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
+		const result = await reader.deleteTodo(todo, trigger);
+		if (result.status === "conflict") toast.error("Todo file reloaded");
+		else if (result.status === "rejected")
+			toast.error("Could not delete Todo item", { description: result.message });
+	}
+	async function reorderTodoItems(items: readonly TodoItem[]) {
+		const result = await reader.reorder(items);
+		if (result?.status === "conflict") toast.error("Todo file reloaded");
+		else if (result?.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
 	}
 </script>
 
-<svelte:window
-	onkeydown={(event) => {
-		if (
-			event.key === "Escape" &&
-			wide.current &&
-			selectedTodo &&
-			!editingTodo &&
-			(shortcutScope?.available ?? true) &&
-			!event.defaultPrevented
-		) {
-			event.preventDefault();
-			closeDetails();
-		}
-	}}
-/>
+<svelte:window onkeydown={reader.keydown} />
 
 {#snippet details(todo: TodoItem, path: string)}
 	<TodoDetails
 		{todo}
 		{path}
 		disabled={workspace.isOperating}
-		onClose={closeDetails}
-		onEdit={startEdit}
+		onClose={reader.closeDetails}
+		onEdit={reader.startEdit}
 		onToggleComplete={toggleTodoCompletion}
 		onDelete={deleteTodoItem}
 	/>
@@ -207,14 +100,14 @@
 
 {#if workspace.todoFile}
 	{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
-		{#if editingTodo && editingWorkspaceId === workspace.activeWorkspace?.id}
+		{#if reader.editingTodo}
 			<TodoEditorDialog
 				todoFile={workspace.todoFile}
-				todoToEdit={editingTodo}
-				saveTodoItem={saveEditedTodo}
+				todoToEdit={reader.editingTodo}
+				saveTodoItem={reader.saveEdit}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
 				disabled={workspace.isOperating}
-				onClose={closeEdit}
+				onClose={reader.closeEdit}
 			/>
 		{/if}
 	{/key}
@@ -270,20 +163,18 @@
 							disabled={workspace.isOperating}
 							onToggleComplete={toggleTodoCompletion}
 							onDelete={deleteTodoItem}
-							onEdit={startEdit}
+							onEdit={reader.startEdit}
 							onReorder={todoFilter.sortOrder === "file" ? reorderTodoItems : undefined}
-							{selectedTodo}
-							onSelect={selectTodo}
-							onNavigate={(todo) => {
-								if (selectedTodo && wide.current) selectTodo(todo);
-							}}
+							selectedTodo={reader.selectedTodo}
+							onSelect={reader.select}
+							onNavigate={reader.navigate}
 						/>
 					{/if}
 				</ScrollArea>
 			</div>
 		</Resizable.Pane>
-		{#if selectedTodo && wide.current && workspace.todoFile}
-			{@const todo = selectedTodo}
+		{#if reader.selectedTodo && wide.current && workspace.todoFile}
+			{@const todo = reader.selectedTodo}
 			{@const path = workspace.todoFile.path}
 			<Resizable.Handle aria-label="Resize Todo item details" />
 			<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
@@ -304,9 +195,9 @@
 </div>
 {#if !wide.current}
 	<Sheet.Root
-		open={!!selectedTodo}
+		open={!!reader.selectedTodo}
 		onOpenChange={(open) => {
-			if (!open) closeDetails();
+			if (!open) reader.closeDetails();
 		}}
 	>
 		<Sheet.Content
@@ -318,8 +209,8 @@
 			<Sheet.Description class="sr-only"
 				>Full description, attributes, and raw line.</Sheet.Description
 			>
-			{#if selectedTodo && workspace.todoFile}
-				{@render details(selectedTodo, workspace.todoFile.path)}
+			{#if reader.selectedTodo && workspace.todoFile}
+				{@render details(reader.selectedTodo, workspace.todoFile.path)}
 			{/if}
 		</Sheet.Content>
 	</Sheet.Root>

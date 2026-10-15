@@ -836,7 +836,8 @@ test.each(["conflict", "rejected"] as const)(
 	}
 );
 
-test("a keyboard drop uses the confirmed session and keeps confirmed order while saving", async () => {
+test("a keyboard drop keeps confirmed order while saving and follows selected details", async () => {
+	await page.viewport(1400, 900);
 	const second = { ...todo, line_number: 3, raw: "Ship", description: "Ship" };
 	const hidden = {
 		...todo,
@@ -866,6 +867,11 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 			},
 		}),
 	});
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await expect
+		.element(panel.getByRole("heading", { name: "Plan release", exact: true }))
+		.toBeVisible();
 	const handle = page.getByRole("button", { name: "Reorder Plan release", exact: true });
 	await expect.element(handle).toBeVisible();
 	(handle.element() as HTMLElement).focus();
@@ -874,6 +880,9 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 		.poll(() => input)
 		.toEqual({ scope, revision: 1, workspaceId, lineNumbers: [2, 1, 3] });
 	await expect.element(handle).toBeDisabled();
+	await expect
+		.element(panel.getByRole("heading", { name: "Plan release", exact: true }))
+		.toBeVisible();
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
 	finish({
 		status: "applied",
@@ -881,6 +890,13 @@ test("a keyboard drop uses the confirmed session and keeps confirmed order while
 	});
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Hidden");
 	await expect.element(handle).not.toBeDisabled();
+	await expect
+		.element(panel.getByRole("heading", { name: "Plan release", exact: true }))
+		.toBeVisible();
+	await panel.getByRole("button", { name: "Close details", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Plan release", exact: true }))
+		.toHaveFocus();
 });
 
 test("editing a Todo item updates search results while preserving the query", async () => {
