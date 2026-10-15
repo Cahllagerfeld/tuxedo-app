@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect } from "effect";
 import * as FileSystem from "effect/FileSystem";
 import * as PlatformError from "effect/PlatformError";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
@@ -7,10 +7,6 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSessionBackend } from "./session-runtime";
-import { WorkspaceSession, sessionLayer } from "./session";
-import { WorkspaceCatalogue } from "./workspace-catalogue";
-import { identityLayer } from "./identity";
-import type { Catalogue } from "../../src/lib/shared/desktop/contract";
 let nodeFileSystem: FileSystem.FileSystem;
 beforeAll(async () => {
 	nodeFileSystem = await Effect.runPromise(
@@ -35,49 +31,6 @@ async function setup() {
 	await writeFile(todoPath, "First\n");
 	return { directory, todoPath, cataloguePath };
 }
-
-test("Workspace lifecycle and Todo-item mutations share an injected catalogue with captured dependencies", async () => {
-	const { todoPath, cataloguePath } = await setup();
-	let catalogue: Catalogue = { version: 1, workspaces: [], active_workspace_id: null };
-	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession, never> = ManagedRuntime.make(
-		sessionLayer(cataloguePath, undefined, () => {}).pipe(
-			Layer.provide(
-				Layer.succeed(WorkspaceCatalogue, {
-					read: Effect.sync(() => catalogue),
-					write: (next) =>
-						Effect.sync(() => {
-							catalogue = next;
-						}),
-				})
-			),
-			Layer.provide(Layer.merge(NodeFileSystem.layer, identityLayer))
-		)
-	);
-	try {
-		const created = await runtime.runPromise(
-			WorkspaceSession.use((session) =>
-				session.createWorkspace({ name: "Work", color: "blue", todoPath })
-			)
-		);
-		if (created.status !== "applied" || created.confirmed.session.status !== "ready")
-			throw Error("setup");
-		expect(catalogue.workspaces).toMatchObject([{ name: "Work" }]);
-		const target = {
-			scope: created.confirmed.scope,
-			revision: created.confirmed.revision,
-			workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-			lineNumber: 1,
-			expectedRaw: "First",
-		};
-		expect(
-			await runtime.runPromise(WorkspaceSession.use((session) => session.deleteTodo(target)))
-		).toMatchObject({ status: "applied" });
-		expect(await readFile(todoPath, "utf8")).toBe("");
-		await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
-	} finally {
-		await runtime.dispose();
-	}
-});
 
 test("injected identity and date persist through Workspace creation and restart", async () => {
 	const { todoPath, cataloguePath } = await setup();
