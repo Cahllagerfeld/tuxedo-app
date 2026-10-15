@@ -314,10 +314,11 @@ try {
 		await page.getByRole("button", { name: "Sort Todo items", exact: true }).getAttribute("title"),
 		"Sort: Due date"
 	);
+	const restoredSort = await page.evaluate(() => window.desktop.readSession({}));
 	const unsorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
-		scope: sorted.confirmed.scope,
-		revision: sorted.confirmed.revision,
-		workspaceId: sorted.confirmed.session.catalogue.active_workspace_id,
+		scope: restoredSort.scope,
+		revision: restoredSort.revision,
+		workspaceId: restoredSort.session.catalogue.active_workspace_id,
 		sortOrder: "file",
 	});
 	assert.equal(unsorted.status, "applied");
