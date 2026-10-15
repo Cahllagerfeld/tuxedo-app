@@ -53,6 +53,7 @@
 	let searchButton = $state<HTMLButtonElement | null>(null);
 	let searchOpen = $state(false);
 	const searchId = $props.id();
+	const deferredCountId = `${searchId}-deferred-count`;
 	async function openSearch() {
 		searchOpen = true;
 		await tick();
@@ -105,11 +106,14 @@
 				</p>
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
+				<span id={deferredCountId} class="sr-only"
+					>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
+				>
 				<Button
 					variant="outline"
 					size="sm"
 					aria-label="Show deferred"
-					aria-description={`${todoFilter.deferredCount} deferred Todo items match the current search and filters.`}
+					aria-describedby={deferredCountId}
 					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
 					aria-pressed={todoFilter.showDeferred}
 					disabled={workspace.isOperating || todoFilter.status === "completed"}
