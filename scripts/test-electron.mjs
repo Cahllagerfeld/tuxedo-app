@@ -1123,6 +1123,7 @@ try {
 	assert.equal(recurrenceState.session.todo_file.items[0].metadata["tuxedo-generated"], "1");
 	assert.equal(recurrenceState.session.todo_file.items[1].priority, "A");
 	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();
 	assert.equal(await readFile(recurringPath, "utf8"), recurringBytes);
 	await page.getByRole("button", { name: "Actions for Clean", exact: true }).click();
@@ -1135,6 +1136,7 @@ try {
 	assert.equal(recurrenceState.session.todo_file.items.length, 3);
 	assert.equal(recurrenceState.session.todo_file.items[1].description, "Edited chore");
 	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();
 	assert.equal(await readFile(recurringPath, "utf8"), recurringBytes);
 	console.log(
