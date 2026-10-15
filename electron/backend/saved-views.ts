@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { Identity } from "./identity";
 import { atomicWrite } from "./atomic-write";
-import { attempt, OperationFailure, readContents } from "./workspace-lifecycle";
+import { attempt, OperationFailure, readContents } from "./operation";
 import {
 	savedViewsFileSchema,
 	saveViewRequestSchema,

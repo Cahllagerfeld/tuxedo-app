@@ -1,9 +1,9 @@
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 import { FileSystem } from "effect/FileSystem";
-import { badArgument, type PlatformError } from "effect/PlatformError";
 import { Identity } from "./identity";
-import { atomicWrite } from "./atomic-write";
-import { decodeTodoContents, parseTodoFile } from "./todo-file";
+import { WorkspaceCatalogue } from "./workspace-catalogue";
+import { attempt, OperationFailure, readContents } from "./operation";
+import { parseTodoFile } from "./todo-file";
 import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
@@ -15,29 +15,6 @@ import {
 } from "../../src/lib/shared/desktop/contract";
 
 export type LoadedSession = { session: ConfirmedSession["session"]; todoContents?: string };
-export class OperationFailure extends Data.TaggedError("OperationFailure")<{ message: string }> {}
-export type OperationError = PlatformError | OperationFailure;
-export const attempt = <A>(parse: () => A) =>
-	Effect.try({
-		try: parse,
-		catch: (error) =>
-			new OperationFailure({ message: error instanceof Error ? error.message : String(error) }),
-	});
-export const readContents = (path: string) =>
-	Effect.gen(function* () {
-		const fs = yield* FileSystem;
-		const bytes = yield* fs.readFile(path);
-		return yield* Effect.try({
-			try: () => decodeTodoContents(bytes),
-			catch: (cause) =>
-				badArgument({
-					module: "FileSystem",
-					method: "readFile",
-					description: "Invalid UTF-8 file contents",
-					cause,
-				}),
-		});
-	});
 
 export function createWorkspaceLifecycle(cataloguePath: string) {
 	const unavailable = () => ({
@@ -45,10 +22,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		error: `Cannot read Workspace catalogue at ${cataloguePath}. Check its permissions or restore a valid version-1 backup. The file has been preserved.`,
 	});
 	const readCatalogue = () =>
-		Effect.gen(function* () {
-			const contents = yield* readContents(cataloguePath);
-			return yield* attempt(() => catalogueSchema.parse(JSON.parse(contents)));
-		}).pipe(
+		WorkspaceCatalogue.use((catalogue) => catalogue.read).pipe(
 			Effect.catch((error) =>
 				error._tag === "PlatformError" && error.reason._tag === "NotFound"
 					? Effect.succeed({ version: 1 as const, workspaces: [], active_workspace_id: null })
@@ -82,7 +56,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 			);
 		});
 	const commitCatalogue = (catalogue: Catalogue, loaded: LoadedSession) =>
-		atomicWrite(cataloguePath, JSON.stringify(catalogue, null, 2) + "\n").pipe(Effect.as(loaded));
+		WorkspaceCatalogue.use((store) => store.write(catalogue)).pipe(Effect.as(loaded));
 	return {
 		load: () =>
 			readCatalogue().pipe(
