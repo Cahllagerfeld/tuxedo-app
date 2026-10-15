@@ -117,3 +117,9 @@ The saved collection of Workspaces and the Active workspace reference. If it can
 
 **Saved view**:
 A named, Workspace-specific copy of the Todo-item text search, completion view, and Project, Context, Priority, and Due-date filters. Applying it replaces the current filters, keeps date categories relative to the current local date, and retains absent selections so that they produce zero matches.
+
+**Recurring Todo item**:
+An open Todo item whose effective last `rec:` token is a positive whole-number interval followed by lowercase `d`, `w`, `m`, or `y`. Completing it generates one open successor immediately after the original, with a Due date relative to its recorded Completion date and a Creation date of local today. Month/year intervals clamp to the last valid day. Unsupported rules complete normally with a notice.
+
+**Successor-generated marker**:
+The app-owned `tuxedo-generated:1` metadata on an original that has generated a successor. Tuxedo preserves it through reopening and editing and excludes it from successors. Any existing value of this key prevents another generation, including after restart or successor deletion. External tools must retain the marker for duplicate protection. One Undo last change reverses the completion, marker, and successor together.

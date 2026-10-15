@@ -15,7 +15,7 @@ export type WorkspaceSessionOperation =
 	| "reorder_todo_items";
 
 export type WorkspaceSessionActionResult =
-	| { status: "applied" }
+	| { status: "applied"; notice?: string }
 	| { status: "conflict"; message: string }
 	| { status: "rejected"; message: string };
 

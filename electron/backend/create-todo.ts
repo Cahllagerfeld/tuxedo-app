@@ -9,7 +9,10 @@ function localDate(date: Date): string {
 	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function createTodoLine(request: CreateTodoRequest, date = new Date()): string {
+export function createTodoLine(
+	request: Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">,
+	date = new Date()
+): string {
 	const metadata = [...(request.metadata ?? [])];
 	if (request.completed && request.priority) metadata.push(`pri:${request.priority}`);
 	const line = [

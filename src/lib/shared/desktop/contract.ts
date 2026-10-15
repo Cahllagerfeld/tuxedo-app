@@ -164,7 +164,11 @@ export const undoTodoRequestSchema = effectValidator(
 export type ConfirmedTodo = typeof ConfirmedTodoSchema.Type;
 export const todoOutcomeSchema = effectValidator(
 	Schema.Union([
-		Schema.Struct({ status: Schema.Literal("applied"), confirmed: ConfirmedTodoSchema }),
+		Schema.Struct({
+			status: Schema.Literal("applied"),
+			confirmed: ConfirmedTodoSchema,
+			notice: Schema.optional(Schema.NonEmptyString),
+		}),
 		Schema.Struct({
 			status: Schema.Literal("conflict"),
 			confirmed: ConfirmedTodoSchema,

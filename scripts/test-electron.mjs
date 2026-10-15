@@ -1105,6 +1105,41 @@ try {
 		workspaceId: "550e8400-e29b-41d4-a716-446655440000",
 		todoPath: "/tmp/validation.todo",
 	};
+
+	const recurringPath = join(directory, "recurring.txt");
+	const recurringBytes = "(A) Clean rec:1m\r\nLast";
+	await writeFile(recurringPath, recurringBytes);
+	const recurringWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Recurring",
+		color: "blue",
+		todoPath: recurringPath,
+	});
+	assert.equal(recurringWorkspace.status, "applied");
+	await page.reload();
+	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).click();
+	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
+	let recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(recurrenceState.session.todo_file.items.length, 3);
+	assert.equal(recurrenceState.session.todo_file.items[0].metadata["tuxedo-generated"], "1");
+	assert.equal(recurrenceState.session.todo_file.items[1].priority, "A");
+	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();
+	assert.equal(await readFile(recurringPath, "utf8"), recurringBytes);
+	await page.getByRole("button", { name: "Actions for Clean", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	await page.getByRole("textbox", { name: /Description/ }).fill("Edited chore");
+	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await page.getByRole("dialog").waitFor({ state: "hidden" });
+	recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(recurrenceState.session.todo_file.items.length, 3);
+	assert.equal(recurrenceState.session.todo_file.items[1].description, "Edited chore");
+	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();
+	assert.equal(await readFile(recurringPath, "utf8"), recurringBytes);
+	console.log(
+		"Checkbox and editor recurrence generate one successor through preload/IPC; Undo restores exact CRLF/EOF bytes."
+	);
 	await page.evaluate(() => {
 		window.validationSignals = [];
 		window.validationSignalReceived = new Promise((resolve) => {
