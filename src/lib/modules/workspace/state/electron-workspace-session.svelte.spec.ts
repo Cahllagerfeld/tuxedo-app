@@ -3,7 +3,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import ElectronSessionHarness from "./ElectronSessionHarness.svelte";
 import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
-import type { ConfirmedSession } from "$lib/shared/desktop/contract";
+import { createDesktopClient, type ConfirmedSession } from "$lib/shared/desktop/contract";
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const confirmed = (revision: number, warning: string | null): ConfirmedSession => ({
 	scope,
@@ -13,6 +13,60 @@ const confirmed = (revision: number, warning: string | null): ConfirmedSession =
 		catalogue: { version: 1, workspaces: [], active_workspace_id: null },
 		warning,
 	},
+});
+test("sort persistence holds confirmed preferences until success and serializes session actions", async () => {
+	const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
+	const ready = (sort_order: "file" | "due", revision: number): ConfirmedSession => ({
+		scope,
+		revision,
+		session: {
+			status: "ready",
+			catalogue: {
+				version: 1,
+				active_workspace_id: workspaceId,
+				workspaces: [
+					{
+						id: workspaceId,
+						name: "Work",
+						color: "blue",
+						todo_path: "/tmp/work.todo",
+						created_at: "2026-10-15T10:00:00Z",
+						sort_order,
+					},
+				],
+			},
+			todo_file: { path: "/tmp/work.todo", items: [], skipped: [] },
+		},
+	});
+	let finish!: (result: unknown) => void;
+	let forwarded: unknown;
+	const session = new ElectronWorkspaceSessionState(
+		createDesktopClient(async (channel, request) => {
+			if (channel === "tuxedo:restore-session") return ready("file", 1);
+			if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
+			if (channel === "tuxedo:set-workspace-sort-order") {
+				forwarded = request;
+				return new Promise((resolve) => {
+					finish = resolve;
+				});
+			}
+			throw Error("Unexpected operation");
+		})
+	);
+	await session.initialize();
+	const saving = session.setSortOrder("due");
+	expect(session.isOperating).toBe(true);
+	expect(session.activeWorkspace?.sort_order).toBe("file");
+	expect(await session.open(workspaceId)).toMatchObject({ status: "rejected" });
+	finish({ status: "rejected", message: "Read-only catalogue" });
+	expect(await saving).toMatchObject({ status: "rejected" });
+	expect(session.activeWorkspace?.sort_order).toBe("file");
+	const retry = session.setSortOrder("due");
+	finish({ status: "applied", confirmed: ready("due", 2) });
+	expect(await retry).toEqual({ status: "applied" });
+	expect(forwarded).toEqual({ scope, revision: 1, workspaceId, sortOrder: "due" });
+	expect(session.activeWorkspace?.sort_order).toBe("due");
+	expect(session.isOperating).toBe(false);
 });
 test("initialization restores the session explicitly with one backend request", async () => {
 	const requests: string[] = [];
@@ -28,6 +82,7 @@ test("initialization restores the session explicitly with one backend request", 
 			requests.push("restore");
 			return requests.length === 1 ? confirmed(1, "Initial") : confirmed(2, "Refreshed");
 		},
+		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -59,6 +114,7 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: unexpected,
 		restoreSession: async () => confirmed(1, null),
+		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: unexpected,
 		editTodo: unexpected,
@@ -119,6 +175,7 @@ test.each(["success", "transport failure"])(
 							: reject(Error("Could not load session"));
 				});
 			},
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -156,6 +213,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	let restores = 0;
 	render(ElectronSessionHarness, {
 		desktop: {
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -200,6 +258,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 	};
 	render(ElectronSessionHarness, {
 		desktop: {
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -286,6 +345,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 	};
 	render(ElectronSessionHarness, {
 		desktop: {
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -321,6 +381,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 	) => void;
 	render(ElectronSessionHarness, {
 		desktop: {
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -365,6 +426,7 @@ test("a confirmed switch opens its intended Workspace with coherent session data
 	let requestedId: string | undefined;
 	render(ElectronSessionHarness, {
 		desktop: {
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -446,6 +508,7 @@ test.each([
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			writeClipboardText: async () => null,

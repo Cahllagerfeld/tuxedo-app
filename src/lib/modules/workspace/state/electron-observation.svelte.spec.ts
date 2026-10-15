@@ -49,6 +49,7 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -167,6 +168,7 @@ test.each([
 					},
 				};
 			}),
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: pending,
 			deleteTodo: pending,

@@ -9,6 +9,7 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import { Input } from "$lib/shared/ui/input";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
@@ -16,6 +17,8 @@
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import SavedViews from "./SavedViews.svelte";
 	import Search from "@lucide/svelte/icons/search";
+	import ListFilter from "@lucide/svelte/icons/list-filter";
+	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
@@ -102,6 +105,42 @@
 				</p>
 			</div>
 			<div class="flex items-center gap-2">
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon"
+								aria-label="Sort Todo items"
+								title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
+								disabled={workspace.isOperating}
+							>
+								<ListFilter class="size-4" aria-hidden="true" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end">
+						<DropdownMenu.Label>Sort Todo items</DropdownMenu.Label>
+						<DropdownMenu.RadioGroup
+							value={todoFilter.sortOrder}
+							onValueChange={(value) => {
+								if (
+									!workspace.isOperating &&
+									(value === "file" || value === "due") &&
+									value !== todoFilter.sortOrder
+								)
+									void workspace.setSortOrder(value).then((outcome) => {
+										if (outcome.status !== "applied")
+											toast.error("Could not save sort order", { description: outcome.message });
+									});
+							}}
+						>
+							<DropdownMenu.RadioItem value="file">File order</DropdownMenu.RadioItem>
+							<DropdownMenu.RadioItem value="due">Due date</DropdownMenu.RadioItem>
+						</DropdownMenu.RadioGroup>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 				<SavedViews {workspace} {todoFilter} />
 				<Button
 					bind:ref={searchButton}

@@ -33,6 +33,30 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
+	it("sorts Due dates without changing the source, leaving ties and undated items in file order", () => {
+		const items: TodoItem[] = [
+			{ ...open, line_number: 1, metadata: {} },
+			{ ...open, line_number: 2, metadata: { due: "2026-11-01" } },
+			{ ...completed, line_number: 3, metadata: { due: "2026-10-14" } },
+			{ ...open, line_number: 4, metadata: { due: "2026-02-30" } },
+			{ ...open, line_number: 5, metadata: { due: "2026-10-14" } },
+		];
+		const filter = new TodoFilterState();
+		filter.sync("work", items);
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5]);
+		filter.sortOrder = "due";
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([3, 5, 2, 1, 4]);
+		expect(items.map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5]);
+		filter.setStatus("open");
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([5, 2, 1, 4]);
+		filter.sync("work", items);
+		expect(filter.sortOrder).toBe("due");
+		filter.sortOrder = "file";
+		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 4, 5]);
+		filter.sortOrder = "due";
+		filter.sync("personal", items);
+		expect(filter.sortOrder).toBe("file");
+	});
 	it("searches literal terms across description, Projects, Contexts, and metadata in file order", () => {
 		const release = {
 			...open,

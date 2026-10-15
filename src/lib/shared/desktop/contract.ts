@@ -46,12 +46,15 @@ const CreatedAt = Schema.String.check(
 			: "Use an ISO datetime with a timezone."
 	)
 );
+const TodoSortOrder = Schema.Literals(["file", "due"]);
+export type TodoSortOrder = typeof TodoSortOrder.Type;
 const WorkspaceSchema = Schema.Struct({
 	id: UUID,
 	name: Schema.NonEmptyString.check(Schema.isTrimmed()),
 	color: WorkspaceColor,
 	todo_path: TodoPath,
 	created_at: CreatedAt,
+	sort_order: Schema.optional(TodoSortOrder),
 });
 const CatalogueSchema = Schema.Struct({
 	version: Schema.Literal(1),
@@ -253,7 +256,15 @@ export const deleteViewRequestSchema = effectValidator(
 	Schema.Struct({ workspaceId: UUID, viewId: UUID })
 );
 const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
+export const setWorkspaceSortOrderRequestSchema = effectValidator(
+	Schema.Struct({ scope: UUID, revision: Revision, workspaceId: UUID, sortOrder: TodoSortOrder })
+);
 export const desktopContract = {
+	setWorkspaceSortOrder: {
+		channel: "tuxedo:set-workspace-sort-order",
+		request: setWorkspaceSortOrderRequestSchema,
+		response: sessionOutcomeSchema,
+	},
 	undoTodo: {
 		channel: "tuxedo:undo-todo",
 		request: undoTodoRequestSchema,
@@ -373,6 +384,7 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		setWorkspaceSortOrder: (request) => call("setWorkspaceSortOrder", request),
 		undoTodo: (request) => call("undoTodo", request),
 		readSavedViews: (request) => call("readSavedViews", request),
 		saveView: (request) => call("saveView", request),

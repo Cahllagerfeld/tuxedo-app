@@ -256,6 +256,16 @@ export function sessionLayer(
 				state
 			);
 			return WorkspaceSession.of({
+				setWorkspaceSortOrder: (request) =>
+					operation(
+						"setWorkspaceSortOrder",
+						"Cannot save sort order: ",
+						Effect.gen(function* () {
+							const current = yield* state.read;
+							const loaded = yield* workspace.setSortOrder(request, current, state.todoContents);
+							return { status: "applied" as const, confirmed: state.accept(loaded) };
+						})
+					),
 				stopObservation: semaphore.withPermit(closeObservation),
 				readSavedViews: () => operation("readSavedViews", "", views.read()),
 				saveView: (request) => operation("saveView", "Cannot save view: ", views.save(request)),

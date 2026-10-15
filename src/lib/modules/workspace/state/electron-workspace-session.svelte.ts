@@ -2,6 +2,7 @@ import {
 	confirmedSessionSchema,
 	confirmedTodoSchema,
 	type SavedView,
+	type TodoSortOrder,
 	type SavedViewFilterValues,
 	type ConfirmedTodo,
 	type ConfirmedSession,
@@ -154,6 +155,15 @@ export class ElectronWorkspaceSessionState {
 		this.runAction(
 			"undo_todo_change",
 			async () => this.applyTodoOutcome(await this.desktop.undoTodo(this.todoTarget())),
+			this.todoOperationTarget()
+		);
+	setSortOrder = (sortOrder: TodoSortOrder) =>
+		this.runAction(
+			"set_workspace_sort_order",
+			async () =>
+				this.applySessionOutcome(
+					await this.desktop.setWorkspaceSortOrder({ ...this.todoTarget(), sortOrder })
+				),
 			this.todoOperationTarget()
 		);
 	get pendingOperation(): WorkspaceSessionOperation | null {

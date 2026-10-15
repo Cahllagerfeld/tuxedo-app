@@ -65,6 +65,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
+		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -82,6 +83,104 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+test("Due-date sorting changes only the view and restores reordering in File order", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	const items = [
+		{ ...todo, metadata: { due: "2026-11-01" } },
+		{
+			...todo,
+			line_number: 2,
+			raw: "Earlier due:2026-10-14",
+			description: "Earlier",
+			metadata: { due: "2026-10-14" },
+		},
+	];
+	const reorderTodo = vi
+		.fn<DesktopAPI["reorderTodo"]>()
+		.mockResolvedValue({ status: "rejected", message: "unused" });
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () =>
+				({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				}) as ConfirmedSession,
+			reorderTodo,
+			setWorkspaceSortOrder: async (request) => ({
+				status: "applied",
+				confirmed: {
+					...initial,
+					revision: request.revision + 1,
+					session: {
+						...initial.session,
+						status: "ready",
+						catalogue: {
+							...ready.catalogue,
+							workspaces: ready.catalogue.workspaces.map((w) => ({
+								...w,
+								sort_order: request.sortOrder,
+							})),
+						},
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				} as ConfirmedSession,
+			}),
+		}),
+	});
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
+	await page.getByRole("button", { name: "Sort Todo items" }).click();
+	await page.getByRole("menuitemradio", { name: "Due date", exact: true }).click();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Earlier");
+	await expect
+		.element(page.getByRole("button", { name: "Sort Todo items" }))
+		.toHaveAttribute("title", "Sort: Due date");
+	await expect
+		.element(page.getByRole("button", { name: "Reorder Earlier", exact: true }))
+		.not.toBeInTheDocument();
+	expect(reorderTodo).not.toHaveBeenCalled();
+	await page.getByRole("button", { name: "Sort Todo items" }).click();
+	await expect
+		.element(page.getByRole("menuitemradio", { name: "Due date", exact: true }))
+		.toHaveAttribute("aria-checked", "true");
+	await page.getByRole("menuitemradio", { name: "File order", exact: true }).click();
+	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Plan release");
+	await expect
+		.element(page.getByRole("button", { name: "Reorder Earlier", exact: true }))
+		.toBeVisible();
+	expect(items.map((item) => item.line_number)).toEqual([1, 2]);
+});
+test("restores the Workspace sort choice and retains it when saving fails", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...ready,
+					catalogue: {
+						...ready.catalogue,
+						workspaces: ready.catalogue.workspaces.map((w) => ({ ...w, sort_order: "due" })),
+					},
+				},
+			}),
+			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "Disk is read-only" }),
+		}),
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Sort Todo items" }))
+		.toHaveAttribute("title", "Sort: Due date");
+	await page.getByRole("button", { name: "Sort Todo items" }).click();
+	await page.getByRole("menuitemradio", { name: "File order", exact: true }).click();
+	await expect.element(page.getByText("Could not save sort order", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Sort Todo items" }))
+		.toHaveAttribute("title", "Sort: Due date");
+});
 test("details preserve the raw line, show all attributes, resize, and follow keyboard navigation", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	await page.viewport(1400, 900);
