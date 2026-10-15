@@ -1,4 +1,5 @@
 export const createTodoShortcut = { key: "Mod+N", label: "Add Todo item" } as const;
+export const undoTodoShortcut = { key: "Mod+Z", label: "Undo last Todo-file change" } as const;
 export const rowShortcuts = {
 	up: { key: "ArrowUp", label: "Previous Todo item" },
 	down: { key: "ArrowDown", label: "Next Todo item" },

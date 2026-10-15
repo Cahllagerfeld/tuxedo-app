@@ -13,7 +13,7 @@ import {
 	OperationFailure,
 	type OperationError,
 } from "./workspace-lifecycle";
-import type { SessionState } from "./session";
+import type { SessionState, UndoChange } from "./session";
 import {
 	catalogueSchema,
 	createTodoRequestSchema,
@@ -21,6 +21,8 @@ import {
 	reorderTodoRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
+	undoTodoRequestSchema,
+	type UndoLabel,
 	type DesktopRequest,
 	type DesktopResponse,
 	type TodoFile,
@@ -32,10 +34,20 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
 		workspaceId: string,
 		todo_file: TodoFile,
-		contents: string
+		contents: string,
+		undo?: UndoChange | null
 	) => {
-		const next = state.accept({ session: { ...previous, todo_file }, todoContents: contents });
-		return { scope: next.scope, revision: next.revision, workspaceId, todo_file };
+		const next = state.accept(
+			{ session: { ...previous, todo_file }, todoContents: contents },
+			undo
+		);
+		return {
+			scope: next.scope,
+			revision: next.revision,
+			workspaceId,
+			todo_file,
+			...(next.undoLabel ? { undoLabel: next.undoLabel } : {}),
+		};
 	};
 	const todoMutationContext = (
 		target: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
@@ -68,7 +80,8 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 		previous: Extract<ConfirmedSession["session"], { status: "ready" }>,
 		workspaceId: string,
 		path: string,
-		contents: string
+		contents: string,
+		undo: UndoChange | null
 	) =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
@@ -77,11 +90,12 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 			yield* atomicWrite(path, contents, mode);
 			return {
 				status: "applied" as const,
-				confirmed: confirmTodo(previous, workspaceId, todo_file, contents),
+				confirmed: confirmTodo(previous, workspaceId, todo_file, contents, undo),
 			};
 		}).pipe(Effect.uninterruptible);
 	const mutateTodo = (
 		request: DesktopRequest<"deleteTodo">,
+		label: UndoLabel,
 		transform: (contents: string, item: TodoFile["items"][number]) => string
 	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
 		Effect.gen(function* () {
@@ -100,10 +114,22 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
 			const rewritten = yield* attempt(() => transform(contents, item));
-			return yield* commitTodo(previous.session, input.workspaceId, workspace.todo_path, rewritten);
+			if (rewritten === contents)
+				return {
+					status: "applied",
+					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
+				};
+			return yield* commitTodo(
+				previous.session,
+				input.workspaceId,
+				workspace.todo_path,
+				rewritten,
+				{ contents, label }
+			);
 		});
 	const mutateTodoFile = (
 		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
+		label: UndoLabel,
 		transform: (contents: string, todoFile: TodoFile) => string
 	): Effect.Effect<DesktopResponse<"createTodo">, OperationError, FileSystem | Identity> =>
 		Effect.gen(function* () {
@@ -124,16 +150,50 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 						scope: previous.scope,
 						revision: previous.revision,
 						workspaceId: input.workspaceId,
+						...(previous.undoLabel ? { undoLabel: previous.undoLabel } : {}),
 						todo_file: current,
 					},
 				};
-			return yield* commitTodo(previous.session, input.workspaceId, workspace.todo_path, rewritten);
+			return yield* commitTodo(
+				previous.session,
+				input.workspaceId,
+				workspace.todo_path,
+				rewritten,
+				{ contents, label }
+			);
 		});
 	return {
+		undoTodo: (request: DesktopRequest<"undoTodo">) =>
+			Effect.gen(function* () {
+				const input = yield* attempt(() => undoTodoRequestSchema.parse(request));
+				const { previous, workspace } = yield* todoMutationContext(input);
+				const undo = state.undo;
+				if (!undo) return { status: "rejected" as const, message: "There is no change to undo." };
+				const contents = yield* readContents(workspace.todo_path);
+				if (contents !== state.todoContents)
+					return {
+						status: "conflict" as const,
+						message: "The Todo file changed on disk. Undo is no longer available.",
+						confirmed: confirmTodo(
+							previous.session,
+							input.workspaceId,
+							parseTodoFile(workspace.todo_path, contents),
+							contents,
+							null
+						),
+					};
+				return yield* commitTodo(
+					previous.session,
+					input.workspaceId,
+					workspace.todo_path,
+					undo.contents,
+					null
+				);
+			}),
 		reorderTodo: (request: DesktopRequest<"reorderTodo">) =>
 			Effect.gen(function* () {
 				const input = yield* attempt(() => reorderTodoRequestSchema.parse(request));
-				return yield* mutateTodoFile(input, (contents, todoFile) => {
+				return yield* mutateTodoFile(input, "Undo reordering", (contents, todoFile) => {
 					const byLine = new Map(todoFile.items.map((item) => [item.line_number, item.raw]));
 					if (input.lineNumbers.some((line) => !byLine.has(line)))
 						throw Error("Invalid Todo item position.");
@@ -152,7 +212,7 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 			Effect.gen(function* () {
 				const input = yield* attempt(() => createTodoRequestSchema.parse(request));
 				const identity = yield* Identity;
-				return yield* mutateTodoFile(input, (contents) =>
+				return yield* mutateTodoFile(input, "Undo creation", (contents) =>
 					appendTodoLine(contents, createTodoLine(input, new Date(identity.now())))
 				);
 			}),
@@ -165,6 +225,7 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 				const { scope, revision, workspaceId, lineNumber, expectedRaw } = input;
 				return yield* mutateTodo(
 					{ scope, revision, workspaceId, lineNumber, expectedRaw },
+					"Undo edit",
 					(contents, item) => {
 						if (input.completed && item.completion_date && !input.completionDate)
 							throw Error("Choose a Completion date for a completed Todo item.");
@@ -183,7 +244,9 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 				);
 			}),
 		deleteTodo: (request: DesktopRequest<"deleteTodo">) =>
-			mutateTodo(request, (contents) => deleteTodoLine(contents, request.lineNumber)),
+			mutateTodo(request, "Undo deletion", (contents) =>
+				deleteTodoLine(contents, request.lineNumber)
+			),
 		setTodoCompletion: (request: DesktopRequest<"setTodoCompletion">) =>
 			Effect.gen(function* () {
 				const parsed = setTodoCompletionRequestSchema.safeParse(request);
@@ -191,13 +254,16 @@ export function createTodoOperations(cataloguePath: string, state: SessionState)
 					return { status: "rejected" as const, message: "Invalid completion request." };
 				const { completed, ...target } = parsed.data;
 				const identity = yield* Identity;
-				return yield* mutateTodo(target, (contents, item) =>
-					replaceTodoLines(contents, [
-						{
-							lineNumber: item.line_number,
-							raw: setTodoCompletionLine(item, completed, new Date(identity.now())),
-						},
-					])
+				return yield* mutateTodo(
+					target,
+					completed ? "Undo completion" : "Undo uncompletion",
+					(contents, item) =>
+						replaceTodoLines(contents, [
+							{
+								lineNumber: item.line_number,
+								raw: setTodoCompletionLine(item, completed, new Date(identity.now())),
+							},
+						])
 				);
 			}),
 	};

@@ -61,6 +61,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
+		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: completion,
 	};
 }

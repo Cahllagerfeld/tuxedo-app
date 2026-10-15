@@ -47,6 +47,7 @@ export function reconcileConfirmedTodo(
 	return {
 		...previous,
 		revision: parsed.revision,
+		undoLabel: parsed.undoLabel,
 		session: { ...previous.session, todo_file: parsed.todo_file },
 	};
 }
@@ -146,6 +147,15 @@ export class ElectronWorkspaceSessionState {
 	get isLoading() {
 		return this.session.status === "loading";
 	}
+	get undoLabel() {
+		return this.session.status === "ready" ? this.confirmed?.undoLabel : undefined;
+	}
+	undoTodo = () =>
+		this.runAction(
+			"undo_todo_change",
+			async () => this.applyTodoOutcome(await this.desktop.undoTodo(this.todoTarget())),
+			this.todoOperationTarget()
+		);
 	get pendingOperation(): WorkspaceSessionOperation | null {
 		return this.pending?.operation ?? null;
 	}

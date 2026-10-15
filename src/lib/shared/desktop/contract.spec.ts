@@ -95,6 +95,23 @@ const confirmedTodo = {
 	workspaceId,
 	todo_file,
 };
+test("desktop transport forwards scoped Undo and validates its availability label", async () => {
+	const request = { scope, revision: 2, workspaceId };
+	const calls: unknown[] = [];
+	const desktop = createDesktopClient(async (channel, input) => {
+		calls.push({ channel, input });
+		return { status: "applied", confirmed: confirmedTodo };
+	});
+	expect(await desktop.undoTodo(request)).toEqual({ status: "applied", confirmed: confirmedTodo });
+	expect(calls).toEqual([{ channel: "tuxedo:undo-todo", input: request }]);
+	await expect(desktop.undoTodo({ ...request, revision: -1 })).rejects.toThrow();
+	expect(calls).toHaveLength(1);
+	const malformed = createDesktopClient(async () => ({
+		status: "applied",
+		confirmed: { ...confirmedTodo, undoLabel: "Undo everything" },
+	}));
+	await expect(malformed.undoTodo(request)).rejects.toThrow();
+});
 test("desktop transport validates and forwards a create Todo mutation", async () => {
 	let invoked: { channel: string; request: unknown } | undefined;
 	const response = { status: "applied" as const, confirmed: confirmedTodo };

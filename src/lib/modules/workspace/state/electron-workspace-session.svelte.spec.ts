@@ -28,6 +28,7 @@ test("initialization restores the session explicitly with one backend request", 
 			requests.push("restore");
 			return requests.length === 1 ? confirmed(1, "Initial") : confirmed(2, "Refreshed");
 		},
+		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -58,6 +59,7 @@ test("Todo operations without a loaded file reject before IPC and release admiss
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: unexpected,
 		restoreSession: async () => confirmed(1, null),
+		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: unexpected,
 		editTodo: unexpected,
 		deleteTodo: unexpected,
@@ -117,6 +119,7 @@ test.each(["success", "transport failure"])(
 							: reject(Error("Could not load session"));
 				});
 			},
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -153,6 +156,7 @@ test("confirmed restoration rejects older results and exposes pending lifecycle 
 	let restores = 0;
 	render(ElectronSessionHarness, {
 		desktop: {
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -196,6 +200,7 @@ test("creation keeps the confirmed summary while pending and applies a coherent 
 	};
 	render(ElectronSessionHarness, {
 		desktop: {
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -281,6 +286,7 @@ test("rejected creation preserves the current confirmed file and summary", async
 	};
 	render(ElectronSessionHarness, {
 		desktop: {
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -315,6 +321,7 @@ test("switching preserves a confirmed session on rejection and exposes pending c
 	) => void;
 	render(ElectronSessionHarness, {
 		desktop: {
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -358,6 +365,7 @@ test("a confirmed switch opens its intended Workspace with coherent session data
 	let requestedId: string | undefined;
 	render(ElectronSessionHarness, {
 		desktop: {
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			editTodo: async () => ({ status: "rejected", message: "unused" }),
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -438,6 +446,7 @@ test.each([
 			deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 			reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 			createTodo: async () => ({ status: "rejected", message: "unused" }),
+			undoTodo: async () => ({ status: "rejected", message: "unused" }),
 			setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 			writeClipboardText: async () => null,
 			selectTodoFile: async () => null,

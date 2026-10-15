@@ -109,9 +109,19 @@ const SessionSchema = Schema.Union([
 	})
 );
 export const sessionSchema = effectValidator(SessionSchema);
+const UndoLabel = Schema.Literals([
+	"Undo creation",
+	"Undo edit",
+	"Undo completion",
+	"Undo uncompletion",
+	"Undo deletion",
+	"Undo reordering",
+]);
+export type UndoLabel = typeof UndoLabel.Type;
 const ConfirmedSessionSchema = Schema.Struct({
 	scope: UUID,
 	revision: Revision,
+	undoLabel: Schema.optional(UndoLabel),
 	session: SessionSchema,
 });
 export const confirmedSessionSchema = effectValidator(ConfirmedSessionSchema);
@@ -140,9 +150,13 @@ const ConfirmedTodoSchema = Schema.Struct({
 	scope: Schema.mutableKey(UUID),
 	revision: Schema.mutableKey(Revision),
 	workspaceId: Schema.mutableKey(UUID),
+	undoLabel: Schema.optional(UndoLabel),
 	todo_file: TodoFileSchema,
 });
 export const confirmedTodoSchema = effectValidator(ConfirmedTodoSchema);
+export const undoTodoRequestSchema = effectValidator(
+	Schema.Struct({ scope: UUID, revision: Revision, workspaceId: UUID })
+);
 export type ConfirmedTodo = typeof ConfirmedTodoSchema.Type;
 export const todoOutcomeSchema = effectValidator(
 	Schema.Union([
@@ -240,6 +254,11 @@ export const deleteViewRequestSchema = effectValidator(
 );
 const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
 export const desktopContract = {
+	undoTodo: {
+		channel: "tuxedo:undo-todo",
+		request: undoTodoRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	readSavedViews: {
 		channel: "tuxedo:read-saved-views",
 		request: emptyRequestSchema,
@@ -354,6 +373,7 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		undoTodo: (request) => call("undoTodo", request),
 		readSavedViews: (request) => call("readSavedViews", request),
 		saveView: (request) => call("saveView", request),
 		deleteView: (request) => call("deleteView", request),

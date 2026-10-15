@@ -2,7 +2,7 @@
 	import { tick } from "svelte";
 	import { createHotkey, detectPlatform } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import { rowShortcuts } from "$lib/modules/todo/ui/shortcuts";
+	import { rowShortcuts, undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
 	import { searchShortcut, saveViewShortcut } from "$lib/modules/workspace/ui/shortcuts";
 	import { bindings } from "./shortcut-bindings";
 	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
@@ -74,7 +74,7 @@
 				<span>{binding.label}</span><ShortcutHint hotkey={binding.key} />
 			</div>
 		{/each}
-		{#each [searchShortcut, saveViewShortcut] as binding (binding.key)}
+		{#each [searchShortcut, saveViewShortcut, undoTodoShortcut] as binding (binding.key)}
 			<div class="flex items-center justify-between gap-4">
 				<span>{binding.label}</span><ShortcutHint hotkey={binding.key} />
 			</div>

@@ -1,4 +1,5 @@
 export type WorkspaceSessionOperation =
+	| "undo_todo_change"
 	| "restore"
 	| "save_view"
 	| "delete_view"

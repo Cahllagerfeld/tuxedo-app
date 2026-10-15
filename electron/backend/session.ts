@@ -17,6 +17,7 @@ import type {
 	DesktopRequest,
 	DesktopResponse,
 	TodoFileChange,
+	UndoLabel,
 } from "../../src/lib/shared/desktop/contract";
 export type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
 export type SessionOperation = keyof SessionBackend;
@@ -31,10 +32,12 @@ export class WorkspaceSession extends Context.Service<
 		stopObservation: Effect.Effect<void>;
 	}
 >()("tuxedo/backend/WorkspaceSession") {}
+export type UndoChange = { contents: string; label: UndoLabel };
 export type SessionState = {
 	readonly todoContents: string | undefined;
+	readonly undo: UndoChange | undefined;
 	readonly read: Effect.Effect<ConfirmedSession, never, FileSystem>;
-	accept: (loaded: LoadedSession) => ConfirmedSession;
+	accept: (loaded: LoadedSession, undo?: UndoChange | null) => ConfirmedSession;
 };
 
 export function sessionLayer(
@@ -55,8 +58,12 @@ export function sessionLayer(
 			let revision = 0;
 			let confirmed: ConfirmedSession | undefined;
 			let todoContents: string | undefined;
+			let undo: UndoChange | undefined;
 			let busy = false;
 			const state: SessionState = {
+				get undo() {
+					return undo;
+				},
 				get todoContents() {
 					return todoContents;
 				},
@@ -64,8 +71,21 @@ export function sessionLayer(
 					if (!confirmed) state.accept(yield* workspace.load());
 					return confirmed!;
 				}),
-				accept(loaded) {
-					confirmed = { scope, revision: revision++, session: loaded.session };
+				accept(loaded, nextUndo) {
+					const sameFile =
+						confirmed?.session.status === "ready" &&
+						loaded.session.status === "ready" &&
+						confirmed.session.catalogue.active_workspace_id ===
+							loaded.session.catalogue.active_workspace_id &&
+						confirmed.session.todo_file.path === loaded.session.todo_file.path &&
+						todoContents === loaded.todoContents;
+					undo = nextUndo === undefined ? (sameFile ? undo : undefined) : (nextUndo ?? undefined);
+					confirmed = {
+						scope,
+						revision: revision++,
+						session: loaded.session,
+						...(undo ? { undoLabel: undo.label } : {}),
+					};
 					todoContents = loaded.todoContents;
 					return confirmed;
 				},
@@ -205,7 +225,7 @@ export function sessionLayer(
 				);
 			const applied = (loaded: LoadedSession) => ({
 				status: "applied" as const,
-				confirmed: state.accept(loaded),
+				confirmed: state.accept(loaded, null),
 			});
 			const read = (operation: "readSession" | "restoreSession") =>
 				serialize(
@@ -262,6 +282,7 @@ export function sessionLayer(
 					),
 				createTodo: (request) =>
 					operation("createTodo", "Cannot create Todo item: ", todos.createTodo(request)),
+				undoTodo: (request) => operation("undoTodo", "Cannot undo: ", todos.undoTodo(request)),
 				editTodo: (request) =>
 					operation("editTodo", "Cannot edit Todo item: ", todos.editTodo(request)),
 				deleteTodo: (request) =>
