@@ -109,6 +109,8 @@
 					variant="outline"
 					size="sm"
 					aria-label="Show deferred"
+					aria-description={`${todoFilter.deferredCount} deferred Todo items match the current search and filters.`}
+					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
 					aria-pressed={todoFilter.showDeferred}
 					disabled={workspace.isOperating || todoFilter.status === "completed"}
 					onclick={() => (todoFilter.showDeferred = !todoFilter.showDeferred)}

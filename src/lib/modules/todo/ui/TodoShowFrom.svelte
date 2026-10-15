@@ -9,7 +9,7 @@
 
 {#if date}
 	<span
-		class="block truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground tabular-nums"
+		class={`block truncate rounded px-1.5 py-0.5 text-xs tabular-nums ${deferred ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}
 		title={`Show from ${date}${deferred ? " · Deferred" : ""}`}
 	>
 		Show from <time datetime={date}>{date}</time>{deferred ? " · Deferred" : ""}
