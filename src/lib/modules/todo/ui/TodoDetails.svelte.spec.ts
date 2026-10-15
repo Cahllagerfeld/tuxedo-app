@@ -28,7 +28,12 @@ it.each([
 	["1y", "1 year"],
 ])("shows %s as a dedicated Recurrence field", async (rec, label) => {
 	render(TodoDetails, {
-		todo: { ...todo, metadata: { rec, due: "2026-10-20", custom: "value" } },
+		todo: {
+			...todo,
+			raw: `Clean rec:${rec} tuxedo-generated:1`,
+			metadata: { rec, due: "2026-10-20", custom: "value", "tuxedo-generated": "1" },
+			edit: { description: "Clean", metadata: [`rec:${rec}`, "tuxedo-generated:1"] },
+		},
 		path: "/tmp/todo.txt",
 		disabled: false,
 		onClose: vi.fn(),
@@ -41,6 +46,8 @@ it.each([
 	await expect.element(page.getByText("rec", { exact: true })).not.toBeInTheDocument();
 	await expect.element(page.getByText("Due", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("custom", { exact: true })).toBeVisible();
+	await expect.element(page.getByText("tuxedo-generated", { exact: true })).not.toBeInTheDocument();
+	await expect.element(page.getByText("tuxedo-generated:1", { exact: true })).toBeVisible();
 });
 
 it.each([false, true])("labels recurring rows when completed is %s", async (completed) => {
