@@ -40,5 +40,5 @@ x 2026-10-14 Keep completed Todo items visible despite a future Show from date +
 Show Recurrence as 2 weeks in details and a Recurring badge in the list +Home rec:2w
 Use the last recurrence token +Home rec:1d rec:1y due:2026-12-31
 Complete unsupported recurrence normally with a notice +Imported rec:+1w
-x 2026-10-14 Keep the generated-original marker when reopening or editing +Home rec:1w tuxedo-generated:1
+x 2026-10-14 Show the generated-original marker only in the raw line of details +Home rec:1w tuxedo-generated:1
 2026-10-14 The open successor has its own Due date and no generated-original marker +Home rec:1w due:2026-10-21

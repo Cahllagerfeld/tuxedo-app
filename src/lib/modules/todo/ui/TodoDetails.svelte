@@ -136,7 +136,7 @@
 							{#if !recurrence}<p class="mt-1 text-xs">Unsupported recurrence</p>{/if}
 						</dd>
 					</div>{/if}
-				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t" && key !== "rec") as [key, value] (key)}<div
+				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t" && key !== "rec" && key !== "tuxedo-generated") as [key, value] (key)}<div
 						class="grid grid-cols-[6rem_1fr] gap-3"
 					>
 						<dt class="font-mono break-all text-muted-foreground">{key}</dt>
