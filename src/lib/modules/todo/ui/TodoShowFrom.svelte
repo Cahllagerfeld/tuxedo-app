@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Badge } from "$lib/shared/ui/badge";
+	import Clock from "@lucide/svelte/icons/clock";
 	import type { TodoItem } from "../domain/todo";
 	import { isDeferred, showFromDate } from "../domain/todo-threshold";
 
@@ -9,10 +11,17 @@
 
 {#if date}
 	<span
-		class={`block truncate rounded px-1.5 py-0.5 text-xs tabular-nums ${deferred ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}
+		class="inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
 		title={`Show from ${date}${deferred ? " · Deferred" : ""}`}
 	>
-		Show from <time datetime={date}>{date}</time>{deferred ? " · Deferred" : ""}
+		{#if deferred}
+			<Badge
+				variant="outline"
+				class="border-amber-600/25 bg-amber-500/10 text-amber-800 dark:border-amber-400/25 dark:text-amber-300"
+				><Clock aria-hidden="true" /><span>Deferred</span></Badge
+			>
+		{/if}
+		<span class="min-w-0 truncate">Show from <time datetime={date}>{date}</time></span>
 	</span>
 {:else if todo.metadata.t !== undefined}
 	<span

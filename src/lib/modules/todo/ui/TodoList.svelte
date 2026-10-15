@@ -9,6 +9,8 @@
 	import FileText from "@lucide/svelte/icons/file-text";
 	import TodoItem from "./TodoItem.svelte";
 	import { createTodoListView } from "./todo-list-view.svelte";
+	import { cn } from "cn";
+	import { isDeferred } from "../domain/todo-threshold";
 	import { localToday } from "../domain/todo-due";
 
 	type TodoListProps = {
@@ -115,10 +117,15 @@
 		style:height={`${list.totalSize}px`}
 	>
 		{#each list.rows as { todo, index, start, size, key } (key)}
+			{@const deferred = isDeferred(todo, today)}
 			<li
-				class="group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent"
-				class:bg-accent={selectedTodo?.line_number === todo.line_number &&
-					selectedTodo?.raw === todo.raw}
+				class={cn(
+					"group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent",
+					deferred && "bg-amber-500/5 inset-shadow-[3px_0_0_var(--color-amber-500)]",
+					selectedTodo?.line_number === todo.line_number &&
+						selectedTodo?.raw === todo.raw &&
+						"bg-accent"
+				)}
 				style:height={`${size}px`}
 				style:top={`${start}px`}
 				aria-posinset={index + 1}

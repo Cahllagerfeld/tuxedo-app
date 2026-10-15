@@ -111,7 +111,7 @@
 		</Tooltip.Provider>
 	</div>
 	{#if todo.metadata.t !== undefined}
-		<div class="max-w-[40%] min-w-0 flex-1"><TodoShowFrom {todo} {today} /></div>
+		<div class="max-w-[40%] min-w-0 shrink"><TodoShowFrom {todo} {today} /></div>
 	{/if}
 	{#if rowDate}
 		<span
