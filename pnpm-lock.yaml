@@ -233,7 +233,7 @@ importers:
         specifier: 1.1.0
         version: 1.1.0(svelte@5.57.2)
       paneforge:
-        specifier: ^1.0.2
+        specifier: 1.0.2
         version: 1.0.2(svelte@5.57.2)
       playwright:
         specifier: 1.64.0
