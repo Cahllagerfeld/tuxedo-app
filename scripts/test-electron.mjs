@@ -285,7 +285,7 @@ try {
 	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
 	const todoPath = join(directory, "todo.txt");
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
-	const created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
 		color: "green",
 		todoPath,
@@ -297,6 +297,40 @@ try {
 	assert.deepEqual(
 		(await page.evaluate(() => window.desktop.readSession({}))).session,
 		created.confirmed.session
+	);
+	const beforeUndo = await readFile(todoPath, "utf8");
+	await page.evaluate((input) => window.desktop.createTodo(input), {
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		description: "Undo bridge test",
+		projects: [],
+		contexts: [],
+	});
+	await page.reload();
+	const undoButton = page.getByRole("button", { name: "Undo creation", exact: true });
+	await undoButton.waitFor();
+	assert.equal(await undoButton.isEnabled(), true);
+	await undoButton.click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
+	assert.equal(
+		await page.getByRole("button", { name: "Undo last change", exact: true }).isDisabled(),
+		true
+	);
+	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
+	created = {
+		status: "applied",
+		confirmed: await page.evaluate(() => window.desktop.readSession({})),
+	};
+	await assert.rejects(
+		page.evaluate((input) => window.desktop.undoTodo({ ...input, contents: "overwrite" }), {
+			scope: created.confirmed.scope,
+			revision: created.confirmed.revision,
+			workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		})
+	);
+	console.log(
+		"Topbar Undo restores exact contents through preload/IPC and consumes its single slot."
 	);
 	const savedView = await page.evaluate((input) => window.desktop.saveView(input), {
 		workspaceId: created.confirmed.session.catalogue.active_workspace_id,

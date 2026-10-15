@@ -37,6 +37,9 @@ Replacing one Todo item's content through the shared Todo-item editor while reta
 **Todo-item reordering**:
 Moving the displayed Todo items among their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place.
 
+**Undo last change**:
+Restoring the Active workspace's Todo file to its state before the most recent successful Todo-item creation, edit, completion, uncompletion, deletion, or reordering. Only one change can be undone; switching Workspaces, closing the app, or discovering an external Todo-file change clears that opportunity.
+
 **Completion date**:
 The local calendar date on which an open Todo item became completed.
 
