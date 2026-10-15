@@ -17,6 +17,7 @@
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import SavedViews from "./SavedViews.svelte";
 	import Search from "@lucide/svelte/icons/search";
+	import ArrowDownWideNarrow from "@lucide/svelte/icons/arrow-down-wide-narrow";
 	import X from "@lucide/svelte/icons/x";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
@@ -108,12 +109,13 @@
 						{#snippet child({ props })}
 							<Button
 								{...props}
-								variant="outline"
-								size="sm"
+								variant="ghost"
+								size="icon"
 								aria-label="Sort Todo items"
+								title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
 								disabled={workspace.isOperating}
 							>
-								{todoFilter.sortOrder === "file" ? "File order" : "Due date"}
+								<ArrowDownWideNarrow class="size-4" aria-hidden="true" />
 							</Button>
 						{/snippet}
 					</DropdownMenu.Trigger>

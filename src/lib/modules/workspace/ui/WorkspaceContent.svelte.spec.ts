@@ -116,7 +116,7 @@ test("Due-date sorting changes only the view and restores reordering in File ord
 	await expect.element(page.getByRole("listitem").nth(0)).toMatchTextContent("Earlier");
 	await expect
 		.element(page.getByRole("button", { name: "Sort Todo items" }))
-		.toHaveTextContent("Due date");
+		.toHaveAttribute("title", "Sort: Due date");
 	await expect
 		.element(page.getByRole("button", { name: "Reorder Earlier", exact: true }))
 		.not.toBeInTheDocument();
