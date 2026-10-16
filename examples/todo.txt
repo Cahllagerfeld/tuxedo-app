@@ -35,3 +35,10 @@ Keep an unsupported relative Show from value visible +Imported @review t:+2d
 Keep an impossible Show from date visible +Imported @review t:2026-02-30
 Use the last Show from token when values repeat +TuxedoApp @computer t:2026-10-14 t:2099-01-01
 x 2026-10-14 Keep completed Todo items visible despite a future Show from date +TuxedoApp @computer t:2099-01-01
+
+(A) 2026-10-01 Repeat a chore one month after recorded completion +Home @desk rec:1m
+Repeat two weeks after completion even without an original Due date +Home rec:2w
+Use the last recurrence token +Home rec:1d rec:1y due:2026-12-31
+Complete unsupported recurrence normally with a notice +Imported rec:+1w
+x 2026-10-14 Show the generated-original marker only in the raw line of details +Home rec:1w tuxedo-generated:1
+2026-10-14 The open successor has its own Due date and no generated-original marker +Home rec:1w due:2026-10-21

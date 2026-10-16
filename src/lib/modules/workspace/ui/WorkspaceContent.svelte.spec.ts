@@ -1720,3 +1720,61 @@ test("saving a view by shortcut opens the naming dialog and respects dialog scop
 		.element(page.getByRole("dialog", { name: "Save current view" }))
 		.not.toBeInTheDocument();
 });
+
+test.each([
+	"Next occurrence due 2028-02-29.",
+	"Unsupported Repeat rule; no next occurrence generated.",
+])("checkbox completion shows backend feedback: %s", async (notice) => {
+	const completed = {
+		...todo,
+		completed: true,
+		raw: "x 2028-01-31 Plan release +Work rec:1m tuxedo-generated:1",
+	};
+	const next = {
+		...todo,
+		line_number: 2,
+		raw: "2028-01-31 Plan release +Work rec:1m due:2028-02-29",
+		creation_date: "2028-01-31",
+		metadata: { rec: "1m", due: "2028-02-29" },
+	};
+	render(Harness, {
+		desktop: adapter({
+			setTodoCompletion: async () => ({
+				status: "applied",
+				confirmed: confirmedTodo([completed, next]),
+				notice,
+			}),
+		}),
+	});
+	await page.getByRole("checkbox", { name: "Mark Plan release complete", exact: true }).click();
+	await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
+	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/1");
+});
+
+test("editor submits completion and saved recurrence together and shows successor feedback", async () => {
+	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
+	render(Harness, {
+		desktop: adapter({
+			editTodo: async (input) => {
+				request = input;
+				return {
+					status: "applied",
+					confirmed: confirmedTodo([{ ...todo, completed: true }]),
+					notice: "Next occurrence due 2028-02-29.",
+				};
+			},
+		}),
+	});
+	await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	await page.getByPlaceholder("Add key:value").fill("rec:1m");
+	await userEvent.keyboard("{Enter}");
+	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => request).toMatchObject({ completed: true, metadata: ["rec:1m"] });
+	expect(request?.completionDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+	await expect
+		.element(page.getByText("Next occurrence due 2028-02-29.", { exact: true }))
+		.toBeVisible();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+});

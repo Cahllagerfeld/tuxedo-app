@@ -479,3 +479,21 @@ test("saved-view transport validates persisted view responses", async () => {
 	}));
 	await expect(desktop.readSavedViews({})).rejects.toThrow();
 });
+
+test("completion transport carries validated recurrence feedback for checkbox and editor", async () => {
+	const response = {
+		status: "applied",
+		notice: "Next occurrence due 2028-02-29.",
+		confirmed: {
+			scope,
+			revision: 2,
+			workspaceId,
+			todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
+		},
+	};
+	for (const operation of ["setTodoCompletion", "editTodo"] as const) {
+		expect(desktopContract[operation].response.parse(response)).toEqual(response);
+		for (const notice of ["", 123, { due: "2028-02-29" }])
+			expect(() => desktopContract[operation].response.parse({ ...response, notice })).toThrow();
+	}
+});

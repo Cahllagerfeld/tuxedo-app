@@ -13,6 +13,7 @@
 	import { Button } from "$lib/shared/ui/button";
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import * as Form from "$lib/shared/ui/form";
+	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { SaveTodoItem } from "./todo-editor-types";
@@ -60,7 +61,7 @@
 		completed: todoToEdit?.completed ?? false,
 	}));
 	function draft(data: TodoEditorData) {
-		return todoEditorDraft(data, todoToEdit?.completed ?? false);
+		return todoEditorDraft(data, data.completed ?? todoToEdit?.completed ?? false);
 	}
 	const form = superForm(
 		defaults(initialValues(), standard(schema, { defaults: initialValues() })),
@@ -122,6 +123,7 @@
 		if (!todoToEdit)
 			return {
 				description: "",
+				completed: false,
 				projects: initialProject === null ? [] : [initialProject],
 				contexts: initialContext === null ? [] : [initialContext],
 				priority: "none",
@@ -131,6 +133,7 @@
 			};
 		return {
 			description: todoToEdit.edit.description,
+			completed: todoToEdit.completed,
 			projects: [...new Set(todoToEdit.projects)],
 			contexts: [...new Set(todoToEdit.contexts)],
 			priority: todoToEdit.priority ?? "none",
@@ -183,6 +186,7 @@
 			if (!result.valid) return;
 			const outcome = await saveTodoItem(draft(result.data));
 			if (outcome.status === "applied") {
+				if (outcome.notice) toast.info(outcome.notice);
 				isSubmitting = false;
 				open = false;
 				resetForm();
@@ -321,7 +325,32 @@
 					<Form.FieldErrors />
 				</Form.Field>
 
-				{#if todoToEdit?.completed}
+				{#if todoToEdit}
+					<Form.Field {form} name="completed">
+						<Form.Control>
+							{#snippet children({ props })}
+								<div class="flex items-center gap-2">
+									<Checkbox
+										{...props}
+										checked={$formData.completed}
+										disabled={controlsDisabled}
+										onCheckedChange={(value) => {
+											$formData = {
+												...$formData,
+												completed: value === true,
+												completionDate:
+													value === true ? $formData.completionDate || localToday() : "",
+											};
+										}}
+									/>
+									<Form.Label>Completed</Form.Label>
+								</div>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				{/if}
+				{#if $formData.completed}
 					<Form.Field {form} name="completionDate">
 						<Form.Control>
 							{#snippet children({ props })}

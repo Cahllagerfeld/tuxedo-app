@@ -117,3 +117,9 @@ The saved collection of Workspaces and the Active workspace reference. If it can
 
 **Saved view**:
 A named, Workspace-specific copy of the Todo-item text search, completion view, and Project, Context, Priority, and Due-date filters. Applying it replaces the current filters, keeps date categories relative to the current local date, and retains absent selections so that they produce zero matches.
+
+**Recurring Todo item**:
+A Todo item configured to generate one open successor when completed, with its next Due date relative to the recorded Completion date.
+
+**Successor-generated marker**:
+A persistent indication that a Todo item has already generated its successor. It prevents another generation when the original is reopened and completed again.

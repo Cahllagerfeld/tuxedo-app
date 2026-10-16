@@ -6,7 +6,7 @@ export type TodoItemDraft = Omit<
 >;
 
 export type SaveTodoItemResult =
-	| { status: "applied" }
+	| { status: "applied"; notice?: string }
 	| { status: "conflict"; message: string }
 	| { status: "rejected"; message: string };
 

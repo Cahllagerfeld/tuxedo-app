@@ -215,7 +215,7 @@ export class ElectronWorkspaceSessionState {
 		try {
 			const outcome = await action();
 			return outcome.status === "applied"
-				? { status: "applied" }
+				? { status: "applied", ...(outcome.notice ? { notice: outcome.notice } : {}) }
 				: { status: outcome.status, message: outcome.message };
 		} catch (error) {
 			return {
@@ -317,7 +317,7 @@ export class ElectronWorkspaceSessionState {
 						...draft,
 						...target,
 						creationDate: draft.creationDate ?? null,
-						completed: todo.completed,
+						completed: draft.completed ?? todo.completed,
 					})
 				);
 			},

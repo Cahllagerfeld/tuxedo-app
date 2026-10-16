@@ -131,6 +131,7 @@ export const todoDateSchema = effectValidator(TodoDate);
 export const todoMetadataSchema = effectValidator(TodoMetadata);
 
 const TodoEditorFields = Schema.Struct({
+	completed: Schema.optional(Schema.Boolean),
 	description: TodoDescription,
 	projects: TodoTags,
 	contexts: TodoTags,
@@ -160,7 +161,10 @@ export function todoEditorSchema(state: () => { editing: boolean; completed: boo
 	return Schema.toStandardSchemaV1(
 		TodoEditorFields.check(
 			Schema.makeFilter((data) =>
-				todoCreationIssues(todoEditorDraft(data, state().completed), state().editing)
+				todoCreationIssues(
+					todoEditorDraft(data, data.completed ?? state().completed),
+					state().editing
+				)
 			)
 		),
 		{ parseOptions: { onExcessProperty: "error", errors: "all" } }

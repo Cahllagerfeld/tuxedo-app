@@ -66,6 +66,7 @@
 	}
 	async function toggleTodoCompletion(todo: TodoItem) {
 		const result = await reader.toggleCompletion(todo);
+		if (result.status === "applied" && result.notice) toast.info(result.notice);
 		if (result.status === "conflict") toast.error("Todo file reloaded");
 		else if (result.status === "rejected")
 			toast.error("Could not update Todo item", { description: result.message });
