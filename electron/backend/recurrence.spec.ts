@@ -282,6 +282,180 @@ test.each(["target conflict", "write failure"])(
 	}
 );
 
+test("completion carries Show from lead time onto the successor and undoes both lines", async () => {
+	const initial = "Mow rec:1m due:2028-02-01 t:2028-01-29";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("failed");
+	expect(result.notice).toBe("Next occurrence due 2028-02-29. Show from 2028-02-26.");
+	expect(result.confirmed.todo_file.items[0].metadata.t).toBe("2028-01-29");
+	expect(result.confirmed.todo_file.items[1].metadata).toMatchObject({
+		rec: "1m",
+		due: "2028-02-29",
+		t: "2028-02-26",
+	});
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Mow rec:1m due:2028-02-01 t:2028-01-29 tuxedo-generated:1\n2028-01-31 Mow rec:1m t:2028-02-26 due:2028-02-29"
+	);
+	expect(
+		(
+			await backend.undoTodo({
+				scope: target.scope,
+				workspaceId: target.workspaceId,
+				revision: result.confirmed.revision,
+			})
+		).status
+	).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(initial);
+});
+
+test("a valid Show from without a valid Due date is omitted from the successor", async () => {
+	const initial = "Mow rec:1d t:+2d t:2099-01-01";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("failed");
+	expect(result.notice).toBe("Next occurrence due 2028-02-01.");
+	expect(result.confirmed.todo_file.items[0].metadata.t).toBe("2099-01-01");
+	expect(result.confirmed.todo_file.items[1].metadata).toEqual({
+		rec: "1d",
+		due: "2028-02-01",
+		t: "+2d",
+	});
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Mow rec:1d t:+2d t:2099-01-01 tuxedo-generated:1\n2028-01-31 Mow rec:1d t:+2d due:2028-02-01"
+	);
+});
+
+test("completion keeps a Show from that falls after the Due date", async () => {
+	const initial = "Mow rec:1d due:2028-01-28 t:2028-01-31";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result.status).toBe("applied");
+	expect(result).toMatchObject({
+		notice: "Next occurrence due 2028-02-01. Show from 2028-02-04.",
+	});
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Mow rec:1d due:2028-01-28 t:2028-01-31 tuxedo-generated:1\n2028-01-31 Mow rec:1d t:2028-02-04 due:2028-02-01"
+	);
+});
+
+test("the last valid Show from is the one carried forward", async () => {
+	const initial = "Mow rec:1m due:2028-02-01 t:2028-01-01 t:2028-01-29";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Mow rec:1m due:2028-02-01 t:2028-01-01 t:2028-01-29 tuxedo-generated:1\n2028-01-31 Mow rec:1m t:2028-01-01 t:2028-02-26 due:2028-02-29"
+	);
+});
+
+test("a successor Show from on the completion date is kept and omitted from feedback", async () => {
+	const initial = "Trim rec:1d due:2028-02-10 t:2028-02-09";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result).toMatchObject({ notice: "Next occurrence due 2028-02-01." });
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Trim rec:1d due:2028-02-10 t:2028-02-09 tuxedo-generated:1\n2028-01-31 Trim rec:1d t:2028-01-31 due:2028-02-01"
+	);
+});
+
+test("an unsupported effective Show from is copied unchanged", async () => {
+	const initial = "Mow rec:1d due:2028-02-01 t:2099-01-01 t:+2d";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result).toMatchObject({ notice: "Next occurrence due 2028-02-01." });
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Mow rec:1d due:2028-02-01 t:2099-01-01 t:+2d tuxedo-generated:1\n2028-01-31 Mow rec:1d t:2099-01-01 t:+2d due:2028-02-01"
+	);
+});
+
+test.each(["due:soon", "due:2026-02-30"])(
+	"invalid %s omits the absolute Show from and keeps malformed threshold metadata",
+	async (due) => {
+		const initial = `Mow rec:1d ${due} t:2026-02-30 t:2099-01-01`;
+		const { backend, path, target } = await setup(initial);
+		const result = await backend.setTodoCompletion({ ...target, completed: true });
+		expect(result).toMatchObject({ notice: "Next occurrence due 2028-02-01." });
+		expect(await readFile(path, "utf8")).toBe(
+			`x 2028-01-31 Mow rec:1d ${due} t:2026-02-30 t:2099-01-01 tuxedo-generated:1\n2028-01-31 Mow rec:1d t:2026-02-30 due:2028-02-01`
+		);
+	}
+);
+
+test("editor completion anchors Show from lead time to the recorded Completion date", async () => {
+	const { backend, target } = await setup("Mow rec:1y due:2024-03-01 t:2024-02-27");
+	const result = await backend.editTodo({
+		...target,
+		description: "Mow",
+		projects: [],
+		contexts: [],
+		priority: null,
+		creationDate: null,
+		completed: true,
+		completionDate: "2024-02-29",
+		metadata: ["rec:1y", "due:2024-03-01", "t:2024-02-27"],
+	});
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("failed");
+	expect(result.notice).toBe("Next occurrence due 2025-02-28.");
+	expect(result.confirmed.todo_file.items[0].metadata.t).toBe("2024-02-27");
+	expect(result.confirmed.todo_file.items[1].metadata).toMatchObject({
+		due: "2025-02-28",
+		t: "2025-02-25",
+	});
+});
+
+test.each(["Mow rec:1d due:2028-01-31 t:9999-12-31", "Mow rec:1d due:9999-12-31 t:0001-01-01"])(
+	"Show from outside the supported range rejects %s with no write",
+	async (initial) => {
+		const { backend, path, target } = await setup(initial);
+		const before = await backend.readSession({});
+		const result = await backend.setTodoCompletion({ ...target, completed: true });
+		expect(result).toMatchObject({
+			status: "rejected",
+			message: "The next Show from date is outside the supported date range.",
+		});
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(before);
+	}
+);
+
+test("editor completion rejects an out-of-range Show from with no write", async () => {
+	const initial = "Mow rec:1d due:2028-01-31 t:9999-12-31";
+	const { backend, path, target } = await setup(initial);
+	const before = await backend.readSession({});
+	const result = await backend.editTodo({
+		...target,
+		description: "Mow",
+		projects: [],
+		contexts: [],
+		priority: null,
+		creationDate: null,
+		completed: true,
+		completionDate: "2028-01-31",
+		metadata: ["rec:1d", "due:2028-01-31", "t:9999-12-31"],
+	});
+	expect(result).toMatchObject({
+		status: "rejected",
+		message: "Cannot edit Todo item: The next Show from date is outside the supported date range.",
+	});
+	expect(await readFile(path, "utf8")).toBe(initial);
+	expect(await backend.readSession({})).toEqual(before);
+});
+
+test("unsupported recurrence keeps Show from metadata and generates nothing", async () => {
+	const initial = "Mow rec:+1w t:2099-01-01";
+	const { backend, path, target } = await setup(initial);
+	const result = await backend.setTodoCompletion({ ...target, completed: true });
+	expect(result).toMatchObject({
+		status: "applied",
+		notice: "Unsupported Repeat rule; no next occurrence generated.",
+	});
+	expect(await readFile(path, "utf8")).toBe("x 2028-01-31 Mow rec:+1w t:2099-01-01");
+});
+
 test("Undo permits generation again, while deleting a successor and reopening does not", async () => {
 	const { backend, path, target } = await setup("Clean rec:1d");
 	const first = await backend.setTodoCompletion({ ...target, completed: true });
