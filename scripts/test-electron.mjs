@@ -1142,6 +1142,43 @@ try {
 	console.log(
 		"Checkbox and editor recurrence generate one successor through preload/IPC; Undo restores exact CRLF/EOF bytes."
 	);
+	const leadPath = join(directory, "lead.txt");
+	const leadBytes = "Mow rec:1m due:2020-01-10 t:2020-01-07\n";
+	await writeFile(leadPath, leadBytes);
+	const leadWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Lead time",
+		color: "green",
+		todoPath: leadPath,
+	});
+	assert.equal(leadWorkspace.status, "applied");
+	await page.reload();
+	await page.getByRole("checkbox", { name: "Mark Mow complete", exact: true }).click();
+	await page
+		.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\. Show from \d{4}-\d{2}-\d{2}\.$/)
+		.waitFor();
+	const leadState = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(leadState.session.todo_file.items[0].metadata.t, "2020-01-07");
+	const leadSuccessor = leadState.session.todo_file.items[1];
+	const day = 24 * 60 * 60 * 1000;
+	assert.equal(
+		(Date.parse(`${leadSuccessor.metadata.due}T00:00:00Z`) -
+			Date.parse(`${leadSuccessor.metadata.t}T00:00:00Z`)) /
+			day,
+		3
+	);
+	const showDeferredLead = page.getByRole("button", { name: "Show deferred", exact: true });
+	assert.equal(await showDeferredLead.getAttribute("aria-pressed"), "false");
+	assert.equal(await showDeferredLead.textContent(), "Show deferred (1)");
+	assert.equal(await page.getByText("Mow", { exact: true }).count(), 1);
+	await showDeferredLead.click();
+	await page.getByTitle(/^Show from \d{4}-\d{2}-\d{2} · Deferred$/).waitFor();
+	assert.equal(await page.getByText("Mow", { exact: true }).count(), 2);
+	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
+	assert.equal(await readFile(leadPath, "utf8"), leadBytes);
+	console.log(
+		"Recurring completion preserves Show from lead time, hides the future successor, and undoes the whole change."
+	);
 	await page.evaluate(() => {
 		window.validationSignals = [];
 		window.validationSignalReceived = new Promise((resolve) => {

@@ -29,6 +29,34 @@ function nextDueDate(completion: string | null, rule: RegExpExecArray): string {
 	return todoDateSchema.parse(due);
 }
 
+function validDate(value: string | undefined): string | null {
+	return value !== undefined && todoDateSchema.safeParse(value).success ? value : null;
+}
+
+/** Keep the source Show-from-minus-Due offset. Positive addition past 9999 clamps, so reject first. */
+function nextShowFrom(show: string, sourceDue: string, due: string): string {
+	const from = parseDate(show);
+	const origin = parseDate(sourceDue);
+	const target = parseDate(due);
+	const offset = from.calendar.toJulianDay(from) - origin.calendar.toJulianDay(origin);
+	const minimum = new CalendarDate(1, 1, 1);
+	const maximum = new CalendarDate(9999, 12, 31);
+	const julian = target.calendar.toJulianDay(target) + offset;
+	if (
+		from.toString() !== show ||
+		origin.toString() !== sourceDue ||
+		target.toString() !== due ||
+		!Number.isSafeInteger(offset) ||
+		julian < minimum.calendar.toJulianDay(minimum) ||
+		julian > maximum.calendar.toJulianDay(maximum)
+	)
+		throw Error("The next Show from date is outside the supported date range.");
+	const shifted = target.add({ days: offset }).toString();
+	if (!todoDateSchema.safeParse(shifted).success)
+		throw Error("The next Show from date is outside the supported date range.");
+	return shifted;
+}
+
 /** Complete and insert against the original physical positions before one atomic commit. */
 export function recurringCompletion(
 	contents: string,
@@ -59,20 +87,31 @@ export function recurringCompletion(
 		completed.edit.metadata.some((token) => token.startsWith("pri:") && token !== `pri:${priority}`)
 	)
 		throw Error("Conflicting priority metadata; edit the Todo file before completing this item.");
+	const show = validDate(completed.metadata.t);
+	const sourceDue = validDate(completed.metadata.due);
+	const showFrom = show && sourceDue ? nextShowFrom(show, sourceDue, due) : null;
+	const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+	const absoluteThreshold = (token: string) =>
+		token.startsWith("t:") && validDate(token.slice(2)) !== null;
+	const metadata = completed.edit.metadata.filter(
+		(token) =>
+			!token.startsWith("due:") &&
+			!token.startsWith(`${generationMarker}:`) &&
+			!(priority && token === `pri:${priority}`) &&
+			!(show && !showFrom && absoluteThreshold(token))
+	);
+	if (showFrom) {
+		const last = metadata.findLastIndex(absoluteThreshold);
+		if (last >= 0) metadata[last] = `t:${showFrom}`;
+	}
+	metadata.push(`due:${due}`);
 	const successor = createTodoLine(
 		{
 			description: completed.edit.description,
 			projects: [...completed.projects],
 			contexts: [...completed.contexts],
 			priority,
-			metadata: completed.edit.metadata
-				.filter(
-					(token) =>
-						!token.startsWith("due:") &&
-						!token.startsWith(`${generationMarker}:`) &&
-						!(priority && token === `pri:${priority}`)
-				)
-				.concat(`due:${due}`),
+			metadata,
 		},
 		today
 	);
@@ -81,5 +120,11 @@ export function recurringCompletion(
 	const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
 	const separator = ending || contents.match(/\r\n|\n/u)?.[0] || "\n";
 	lines[source.line_number - 1] = `${raw} ${generationMarker}:1${separator}${successor}${ending}`;
-	return { contents: lines.join(""), notice: `Next occurrence due ${due}.` };
+	return {
+		contents: lines.join(""),
+		notice:
+			showFrom && showFrom > todayText
+				? `Next occurrence due ${due}. Show from ${showFrom}.`
+				: `Next occurrence due ${due}.`,
+	};
 }

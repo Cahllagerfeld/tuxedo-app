@@ -9,6 +9,7 @@ import type {
 	TodoFile,
 	TodoFileChange,
 } from "$lib/shared/desktop/contract";
+import { localToday } from "$lib/modules/todo/domain/todo-due";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
 afterEach(async () => {
@@ -1777,4 +1778,138 @@ test("editor submits completion and saved recurrence together and shows successo
 		.element(page.getByText("Next occurrence due 2028-02-29.", { exact: true }))
 		.toBeVisible();
 	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("a future Show from successor stays hidden until Show deferred", async () => {
+	const source: TodoFile["items"][number] = {
+		...todo,
+		raw: "Mow lawn rec:1m",
+		description: "Mow lawn",
+		projects: [],
+		metadata: { rec: "1m" },
+		edit: { description: "Mow lawn", metadata: ["rec:1m"] },
+	};
+	const completed: TodoFile["items"][number] = {
+		...source,
+		completed: true,
+		completion_date: "2026-10-16",
+		raw: "x 2026-10-16 Mow lawn rec:1m tuxedo-generated:1",
+		metadata: { rec: "1m", "tuxedo-generated": "1" },
+	};
+	const successor: TodoFile["items"][number] = {
+		...source,
+		line_number: 2,
+		raw: "2026-10-16 Next mow rec:1m due:2026-11-16 t:2099-01-01",
+		description: "Next mow",
+		creation_date: "2026-10-16",
+		metadata: { rec: "1m", due: "2026-11-16", t: "2099-01-01" },
+		edit: { description: "Next mow", metadata: ["rec:1m", "due:2026-11-16", "t:2099-01-01"] },
+	};
+	const notice = "Next occurrence due 2026-11-16. Show from 2099-01-01.";
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	let current: ConfirmedSession = {
+		...initial,
+		session: {
+			...ready,
+			todo_file: { path: "/tmp/work.todo", items: [source], skipped: [] },
+		},
+	};
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => current,
+			setTodoCompletion: async () => {
+				if (current.session.status !== "ready") throw Error("not ready");
+				current = {
+					...current,
+					revision: 2,
+					session: {
+						...current.session,
+						todo_file: { path: "/tmp/work.todo", items: [completed, successor], skipped: [] },
+					},
+				};
+				return { status: "applied", confirmed: confirmedTodo([completed, successor]), notice };
+			},
+			setWorkspaceShowDeferred: async ({ showDeferred }) => {
+				if (current.session.status !== "ready") throw Error("not ready");
+				current = {
+					...current,
+					revision: current.revision + 1,
+					session: {
+						...current.session,
+						catalogue: {
+							...current.session.catalogue,
+							workspaces: current.session.catalogue.workspaces.map((workspace) =>
+								workspace.id === workspaceId
+									? { ...workspace, show_deferred: showDeferred }
+									: workspace
+							),
+						},
+					},
+				};
+				return { status: "applied", confirmed: current };
+			},
+		}),
+	});
+	await page.getByRole("checkbox", { name: "Mark Mow lawn complete", exact: true }).click();
+	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+	await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+	await expect.element(page.getByText("Next mow", { exact: true })).not.toBeInTheDocument();
+	await expect
+		.element(page.getByLabelText("Filtered result count"))
+		.toHaveTextContent("1 matching item");
+	await toggle.click();
+	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect.element(page.getByText("Next mow", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByTitle("Show from 2099-01-01 · Deferred", { exact: true }))
+		.toBeVisible();
+});
+
+test("a successor is shown on its Show from date", async () => {
+	const today = localToday();
+	const source: TodoFile["items"][number] = {
+		...todo,
+		raw: "Mow lawn rec:1d",
+		description: "Mow lawn",
+		projects: [],
+		metadata: { rec: "1d" },
+		edit: { description: "Mow lawn", metadata: ["rec:1d"] },
+	};
+	const successor: TodoFile["items"][number] = {
+		...source,
+		line_number: 2,
+		raw: `Next mow due:${today} t:${today}`,
+		description: "Next mow",
+		metadata: { rec: "1d", due: today, t: today },
+		edit: { description: "Next mow", metadata: ["rec:1d", `due:${today}`, `t:${today}`] },
+	};
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	render(Harness, {
+		desktop: adapter({
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...ready,
+					todo_file: { path: "/tmp/work.todo", items: [source], skipped: [] },
+				},
+			}),
+			setTodoCompletion: async () => ({
+				status: "applied",
+				confirmed: confirmedTodo([{ ...source, completed: true, raw: "x Mow lawn" }, successor]),
+				notice: `Next occurrence due ${today}.`,
+			}),
+		}),
+	});
+	await page.getByRole("checkbox", { name: "Mark Mow lawn complete", exact: true }).click();
+	await expect.element(page.getByText("Next mow", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Show deferred", exact: true }))
+		.toHaveTextContent("Show deferred (0)");
+	await expect
+		.element(page.getByText(`Next occurrence due ${today}.`, { exact: true }))
+		.toBeVisible();
 });

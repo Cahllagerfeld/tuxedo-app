@@ -42,3 +42,7 @@ Use the last recurrence token +Home rec:1d rec:1y due:2026-12-31
 Complete unsupported recurrence normally with a notice +Imported rec:+1w
 x 2026-10-14 Show the generated-original marker only in the raw line of details +Home rec:1w tuxedo-generated:1
 2026-10-14 The open successor has its own Due date and no generated-original marker +Home rec:1w due:2026-10-21
+Carry a Show from lead time onto the next occurrence +Home rec:1w due:2026-10-17 t:2026-10-14
+Keep a Show from after its Due date on a recurring chore +Home rec:1w due:2026-10-14 t:2026-10-17
+Omit an absolute Show from when a recurring chore has no Due date +Home rec:1w t:2099-01-01
+Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
