@@ -4,6 +4,7 @@ import { Identity } from "./identity";
 import { WorkspaceCatalogue } from "./workspace-catalogue";
 import { atomicWrite } from "./atomic-write";
 import { setTodoCompletionLine } from "./complete-todo";
+import { recurringCompletion, generationMarker } from "./recurrence";
 import { replaceTodoLines } from "./replace-todo-lines";
 import { deleteTodoLine } from "./delete-todo";
 import { appendTodoLine, createTodoLine } from "./create-todo";
@@ -91,7 +92,10 @@ export function createTodoOperations(state: SessionState) {
 	const mutateTodo = (
 		request: DesktopRequest<"deleteTodo">,
 		label: UndoLabel,
-		transform: (contents: string, item: TodoFile["items"][number]) => string
+		transform: (
+			contents: string,
+			item: TodoFile["items"][number]
+		) => string | { contents: string; notice?: string }
 	): Effect.Effect<
 		DesktopResponse<"createTodo">,
 		OperationError,
@@ -112,19 +116,22 @@ export function createTodoOperations(state: SessionState) {
 					message: "The Todo item changed on disk. Review its current contents.",
 					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
-			const rewritten = yield* attempt(() => transform(contents, item));
+			const transformed = yield* attempt(() => transform(contents, item));
+			const rewritten = typeof transformed === "string" ? transformed : transformed.contents;
+			const notice = typeof transformed === "string" ? undefined : transformed.notice;
 			if (rewritten === contents)
 				return {
 					status: "applied",
 					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
-			return yield* commitTodo(
+			const result = yield* commitTodo(
 				previous.session,
 				input.workspaceId,
 				workspace.todo_path,
 				rewritten,
 				{ contents, label }
 			);
+			return { ...result, ...(notice ? { notice } : {}) };
 		});
 	const mutateTodoFile = (
 		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
@@ -226,23 +233,35 @@ export function createTodoOperations(state: SessionState) {
 					return { status: "rejected" as const, message: "Invalid Todo-item edit." };
 				const input = parsed.data;
 				const { scope, revision, workspaceId, lineNumber, expectedRaw } = input;
+				const identity = yield* Identity;
+				const today = new Date(identity.now());
 				return yield* mutateTodo(
 					{ scope, revision, workspaceId, lineNumber, expectedRaw },
 					"Undo edit",
 					(contents, item) => {
 						if (input.completed && item.completion_date && !input.completionDate)
 							throw Error("Choose a Completion date for a completed Todo item.");
+						const metadata = (input.metadata ?? []).filter(
+							(token) => !token.startsWith(`${generationMarker}:`)
+						);
+						if (Object.hasOwn(item.metadata, generationMarker))
+							metadata.push(
+								...item.edit.metadata.filter((token) => token.startsWith(`${generationMarker}:`))
+							);
+						const saved = { ...input, metadata };
 						const raw =
 							input.completed && input.priority
 								? [
 										"x",
 										input.completionDate,
-										createTodoLine({ ...input, completed: false, completionDate: null }),
+										createTodoLine({ ...saved, completed: false, completionDate: null }, today),
 									]
 										.filter(Boolean)
 										.join(" ")
-								: createTodoLine(input);
-						return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
+								: createTodoLine(saved, today);
+						return input.completed && !item.completed
+							? recurringCompletion(contents, item, raw, today, input.priority ?? null)
+							: replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
 					}
 				);
 			}),
@@ -260,13 +279,13 @@ export function createTodoOperations(state: SessionState) {
 				return yield* mutateTodo(
 					target,
 					completed ? "Undo completion" : "Undo uncompletion",
-					(contents, item) =>
-						replaceTodoLines(contents, [
-							{
-								lineNumber: item.line_number,
-								raw: setTodoCompletionLine(item, completed, new Date(identity.now())),
-							},
-						])
+					(contents, item) => {
+						const today = new Date(identity.now());
+						const raw = setTodoCompletionLine(item, completed, today);
+						return completed
+							? recurringCompletion(contents, item, raw, today)
+							: replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
+					}
 				);
 			}),
 	};

@@ -4,6 +4,7 @@
 	import type { TodoItem } from "../domain/todo";
 	import TodoRawLine from "./TodoRawLine.svelte";
 	import { validDueDate } from "../domain/todo-due";
+	import { recurrenceLabel } from "../domain/todo-recurrence";
 	import { Button } from "$lib/shared/ui/button";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
@@ -36,6 +37,7 @@
 	let menuTrigger = $state<HTMLButtonElement | null>(null);
 	const projects = $derived(new Set(todo.projects.map((value) => `+${value}`)));
 	const contexts = $derived(new Set(todo.contexts.map((value) => `@${value}`)));
+	const recurrence = $derived(recurrenceLabel(todo.metadata.rec));
 </script>
 
 <div data-todo-details class="relative flex h-full min-h-0 flex-col">
@@ -127,7 +129,14 @@
 						<dt class="text-muted-foreground">Completed</dt>
 						<dd>{todo.completion_date}</dd>
 					</div>{/if}
-				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t") as [key, value] (key)}<div
+				{#if todo.metadata.rec !== undefined}<div class="grid grid-cols-[6rem_1fr] gap-3">
+						<dt class="text-muted-foreground">Recurrence</dt>
+						<dd class={recurrence ? "" : "text-destructive"}>
+							{recurrence ?? todo.metadata.rec}
+							{#if !recurrence}<p class="mt-1 text-xs">Unsupported recurrence</p>{/if}
+						</dd>
+					</div>{/if}
+				{#each Object.entries(todo.metadata).filter(([key]) => key !== "due" && key !== "t" && key !== "rec" && key !== "tuxedo-generated") as [key, value] (key)}<div
 						class="grid grid-cols-[6rem_1fr] gap-3"
 					>
 						<dt class="font-mono break-all text-muted-foreground">{key}</dt>

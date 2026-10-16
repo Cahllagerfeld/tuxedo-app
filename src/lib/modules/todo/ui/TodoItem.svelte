@@ -1,7 +1,9 @@
 <script lang="ts">
 	import TodoShowFrom from "./TodoShowFrom.svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
-	import { badgeVariants } from "$lib/shared/ui/badge";
+	import { Badge, badgeVariants } from "$lib/shared/ui/badge";
+	import Repeat from "@lucide/svelte/icons/repeat";
+	import { recurrenceLabel } from "../domain/todo-recurrence";
 	import { Button } from "$lib/shared/ui/button";
 	import { Checkbox } from "$lib/shared/ui/checkbox";
 	import { cn } from "cn";
@@ -26,6 +28,7 @@
 
 	let { todo, today, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
 	const due = $derived(validDueDate(todo.metadata.due));
+	const recurrence = $derived(recurrenceLabel(todo.metadata.rec));
 	const category = $derived(dueCategory(todo.metadata.due, today));
 	let menuTrigger = $state<HTMLButtonElement | null>(null);
 	let confirmedChecked = $derived(todo.completed);
@@ -110,6 +113,11 @@
 			{/each}
 		</Tooltip.Provider>
 	</div>
+	{#if recurrence}
+		<Badge variant="outline" class="text-muted-foreground" title={`Recurrence: ${recurrence}`}>
+			<Repeat aria-hidden="true" /><span class="sr-only @min-[20rem]:not-sr-only">Recurring</span>
+		</Badge>
+	{/if}
 	{#if todo.metadata.t !== undefined}
 		<div class="max-w-[40%] min-w-8 shrink"><TodoShowFrom {todo} {today} /></div>
 	{/if}
