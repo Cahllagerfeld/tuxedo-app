@@ -14,6 +14,80 @@ const confirmed = (revision: number, warning: string | null): ConfirmedSession =
 		warning,
 	},
 });
+test.each(["applied", "rejected", "thrown"] as const)(
+	"operation replies remain paired with their callers after an %s result",
+	async (status) => {
+		let finish!: () => void;
+		let switches = 0;
+		const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
+		const session = new ElectronWorkspaceSessionState(
+			createDesktopClient(async (channel) => {
+				if (channel === "tuxedo:restore-session") return confirmed(1, "Initial");
+				if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
+				if (channel === "tuxedo:switch-workspace") {
+					switches++;
+					return new Promise((resolve, reject) => {
+						finish = () => {
+							if (status === "thrown") reject(Error("Transport failed"));
+							else if (status === "rejected") resolve({ status, message: "Cannot switch" });
+							else resolve({ status, confirmed: confirmed(2, "Switched") });
+						};
+					});
+				}
+				throw Error(`Unexpected operation: ${channel}`);
+			})
+		);
+		await session.initialize();
+		const opening = session.open(workspaceId);
+		expect(session.pendingOperation).toBe("open_workspace");
+		expect(session.pendingTarget).toEqual({ workspaceId });
+		expect(await session.deleteWorkspace(workspaceId)).toEqual({
+			status: "rejected",
+			message: "A Workspace session operation is already running.",
+		});
+		expect(session.pendingOperation).toBe("open_workspace");
+		expect(session.pendingTarget).toEqual({ workspaceId });
+		expect(switches).toBe(1);
+		finish();
+		expect(await opening).toEqual(
+			status === "applied"
+				? { status: "applied" }
+				: {
+						status: "rejected",
+						message: status === "thrown" ? "Transport failed" : "Cannot switch",
+					}
+		);
+		expect(session.isOperating).toBe(false);
+		expect(session.pendingTarget).toBeNull();
+		expect(session.warning).toBe(status === "applied" ? "Switched" : "Initial");
+		expect(await session.restore()).toEqual({ status: "applied" });
+	}
+);
+
+test("restored data is visible while Saved views load and their failure does not fail initialization", async () => {
+	let finish!: () => void;
+	const session = new ElectronWorkspaceSessionState(
+		createDesktopClient(async (channel) => {
+			if (channel === "tuxedo:restore-session") return confirmed(1, "Restored");
+			if (channel === "tuxedo:read-saved-views")
+				return new Promise((_, reject) => {
+					finish = () => reject(Error("Cannot read Saved views"));
+				});
+			throw Error(`Unexpected operation: ${channel}`);
+		})
+	);
+	const initialization = session.initialize();
+	await expect.poll(() => session.warning).toBe("Restored");
+	// Confirmed session and operation lifecycle are independent.
+	expect(session.isLoading).toBe(false);
+	expect(session.pendingOperation).toBe("restore");
+	finish();
+	expect(await initialization).toEqual({ status: "applied" });
+	expect(session.savedViewsError).toBe("Cannot read Saved views");
+	expect(session.error).toBe("");
+	expect(session.isOperating).toBe(false);
+});
+
 test("sort persistence holds confirmed preferences until success and serializes session actions", async () => {
 	const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 	const ready = (sort_order: "file" | "due", revision: number): ConfirmedSession => ({

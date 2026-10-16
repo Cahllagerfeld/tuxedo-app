@@ -289,6 +289,9 @@ importers:
       vitest-browser-svelte:
         specifier: 3.1.0
         version: 3.1.0(svelte@5.57.2)(vitest@5.0.4)
+      xstate:
+        specifier: 5.33.2
+        version: 5.33.2
 
 packages:
 
@@ -2120,6 +2123,9 @@ packages:
     resolution: {integrity: sha512-yMqGBqtXyeN1e3TGYvgNgDVZ3j84W4cwkOXQswghol6APgZWaff9lnbvN7MHYJOiXsvGPXtjTYJEiC9J2wv9Eg==}
     engines: {node: '>=8.0'}
 
+  xstate@5.33.2:
+    resolution: {integrity: sha512-8tC7yXgeCvpT8gKEeEje6ikJJG1wpnoLiXe+HfECW8m10ubMd3QxKOwWA8KxPJVBcLwfdRoMKYxIBGYKmo37/A==}
+
   yallist@5.0.0:
     resolution: {integrity: sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==}
     engines: {node: '>=18'}
@@ -3800,6 +3806,8 @@ snapshots:
   ws@8.22.0: {}
 
   xmlbuilder@15.1.1: {}
+
+  xstate@5.33.2: {}
 
   yallist@5.0.0: {}
 

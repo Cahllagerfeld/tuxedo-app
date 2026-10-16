@@ -1,0 +1,7 @@
+# Use XState behind the Workspace session controller
+
+Use a plain TypeScript XState machine to own confirmed renderer data, Saved views, and Workspace session operation admission and execution. Keep the Svelte controller as the reactive adapter with its existing Promise methods and getters, so UI callers do not need to change. This supersedes the controller's internal state ownership in ADR-0005; backend ownership and the desktop contract in ADR-0004 and ADR-0006 remain in force.
+
+The machine transitions between idle and running independently of the confirmed session's Loading, Empty, Ready, or unavailable state. Requests carry a reply callback: busy requests receive a rejection, and admitted requests receive their outcome after confirmed results are accepted. Callbacks and desktop capabilities are in-memory execution details; machine snapshots are not persisted or rehydrated. Construction starts an idle actor without I/O, and the controller retains shared initialization and the existing observation subscription lifecycle. The actor has no timers or external subscriptions and lives with the controller; no cancellation or retries are introduced for desktop writes.
+
+This makes transitions explicit at the cost of command definitions and a Promise bridge. Existing controller and Svelte harness tests remain the behavior seam, including synchronous admission, stale-result reconciliation, contextual errors, and confirmed data remaining visible during operations and the separate Saved-view read.
