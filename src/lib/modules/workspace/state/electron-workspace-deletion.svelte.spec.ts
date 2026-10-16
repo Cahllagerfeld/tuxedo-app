@@ -44,9 +44,10 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 }
 async function confirm() {
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Delete Work", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Options for Work", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
 	await expect.element(page.getByRole("alertdialog")).toBeVisible();
-	await page.getByRole("button", { name: "Delete workspace", exact: true }).click();
+	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
 }
 test("cancellation preserves the confirmed Workspace and confirmed deletion publishes Empty with pending controls", async () => {
 	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["deleteWorkspace"]>>) => void;
@@ -61,7 +62,8 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 		}),
 	});
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Delete Work", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Options for Work", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
 	await page.getByRole("button", { name: "Cancel" }).click();
 	expect(calls).toBe(0);
 	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
@@ -121,3 +123,108 @@ test.each(["rejected", "old", "wrong-scope"])(
 		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
 	}
 );
+
+const unavailable = {
+	...workspace,
+	id: "550e8400-e29b-41d4-a716-446655440001",
+	name: "Missing",
+	todo_path: "/tmp/missing.todo",
+};
+test.each(["ready", "empty"] as const)(
+	"removes an unavailable inactive Workspace from %s without switching",
+	async (status) => {
+		const confirmed: ConfirmedSession = {
+			...initial,
+			session:
+				status === "ready"
+					? {
+							status: "ready",
+							todo_file: { path: workspace.todo_path, items: [], skipped: [] },
+							catalogue: {
+								version: 1,
+								active_workspace_id: workspace.id,
+								workspaces: [workspace, unavailable],
+							},
+						}
+					: {
+							status: "empty",
+							warning: "Todo file unavailable",
+							catalogue: {
+								version: 1,
+								active_workspace_id: workspace.id,
+								workspaces: [workspace, unavailable],
+							},
+						},
+		};
+		let calls = 0;
+		const desktop = adapter(async (input) => {
+			expect(input.workspaceId).toBe(unavailable.id);
+			calls++;
+			return {
+				status: "applied",
+				confirmed: {
+					...confirmed,
+					revision: 6,
+					session: {
+						...confirmed.session,
+						catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+					},
+				},
+			};
+		});
+		desktop.readSession = async () => confirmed;
+		desktop.restoreSession = async () => confirmed;
+		desktop.switchWorkspace = async () => {
+			throw Error("Options must not switch Workspace");
+		};
+		render(ElectronDeletionHarness, { desktop });
+		async function openRemoval() {
+			await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+			await page.getByRole("menuitem", { name: "Options for Missing" }).click();
+			await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+		}
+		await openRemoval();
+		await page.getByRole("button", { name: "Cancel" }).click();
+		expect(calls).toBe(0);
+		await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("2");
+		await openRemoval();
+		await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
+		await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
+		await expect.element(page.getByLabelText("Session status")).toHaveTextContent(status);
+		await expect
+			.element(page.getByRole("button", { name: /Select workspace: Work/ }))
+			.toBeEnabled();
+		expect(calls).toBe(1);
+	}
+);
+
+test("removes the last unavailable Active workspace from Empty", async () => {
+	const empty: ConfirmedSession = {
+		...initial,
+		session: {
+			status: "empty",
+			warning: "Todo file unavailable",
+			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+		},
+	};
+	const desktop = adapter(async () => ({
+		status: "applied",
+		confirmed: {
+			...empty,
+			revision: 6,
+			session: {
+				status: "empty",
+				warning: null,
+				catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+			},
+		},
+	}));
+	desktop.readSession = async () => empty;
+	desktop.restoreSession = async () => empty;
+	render(ElectronDeletionHarness, { desktop });
+	await confirm();
+	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("0");
+	await expect
+		.element(page.getByRole("button", { name: /Select workspace: No workspace selected/ }))
+		.toBeEnabled();
+});

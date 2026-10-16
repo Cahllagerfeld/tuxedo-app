@@ -127,3 +127,37 @@ test.each(["unknown", "invalid", "write-failure"])(
 		expect(await readFile(f.path, "utf8")).toBe(before);
 	}
 );
+
+test("removes an unavailable inactive Workspace after a failed switch and persists the remaining selection", async () => {
+	const f = await setup();
+	await rm(f.firstPath);
+	expect(await f.backend.switchWorkspace({ workspaceId: f.firstId })).toMatchObject({
+		status: "rejected",
+	});
+	expect(await f.backend.readSession({})).toEqual(f.confirmed);
+	expect(await f.backend.deleteWorkspace({ workspaceId: f.firstId })).toMatchObject({
+		status: "applied",
+		confirmed: {
+			session: {
+				status: "ready",
+				catalogue: { active_workspace_id: f.secondId, workspaces: [{ id: f.secondId }] },
+			},
+		},
+	});
+	expect(
+		JSON.parse(await readFile(f.path, "utf8")).workspaces.map((w: { id: string }) => w.id)
+	).toEqual([f.secondId]);
+	expect(await readFile(f.secondPath, "utf8")).toBe("Second\n");
+	const restarted = createSessionBackend(f.path);
+	try {
+		expect(await restarted.restoreSession({})).toMatchObject({
+			session: {
+				status: "ready",
+				catalogue: { active_workspace_id: f.secondId, workspaces: [{ id: f.secondId }] },
+			},
+		});
+	} finally {
+		await restarted.dispose();
+		await f.backend.dispose();
+	}
+});
