@@ -15,46 +15,46 @@ type Inputs = {
 	readonly shortcutScope: ShortcutScope | undefined;
 };
 
+// A selection or edit belongs to the Workspace and Todo file it was made in; it is stale elsewhere.
+type Scope = { workspaceId: string | undefined; path: string | undefined };
+type Tracked = { todo: TodoItem; scope: Scope };
+const sameScope = (a: Scope, b: Scope) => a.workspaceId === b.workspaceId && a.path === b.path;
+const sameTodo = (a: TodoItem | null | undefined, b: TodoItem | null | undefined) =>
+	!!a && !!b && a.line_number === b.line_number && a.raw === b.raw;
+
 // Created during reader initialization; inputs are reactive getters over the session and DOM.
 export function createTodoReaderInteraction(inputs: Inputs) {
-	let selected = $state.raw<TodoItem | null>(null);
-	let selectedWorkspaceId = $state<string>();
-	let selectedPath = $state<string>();
-	let editing = $state.raw<TodoItem | null>(null);
-	let editingWorkspaceId = $state<string>();
-	let editingPath = $state<string>();
+	let selection = $state.raw<Tracked | null>(null);
+	let editing = $state.raw<Tracked | null>(null);
 	let editRecovery: ReturnType<NonNullable<Inputs["list"]>["captureFocus"]> | undefined;
 	let detailEditTrigger: HTMLButtonElement | null = null;
-	let reconciling = $state(false);
+	let writing = $state(false);
 	let previousWide: boolean | undefined;
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
 		editRecovery?.cancel();
 	});
+	const currentScope = (): Scope => ({
+		workspaceId: inputs.workspace.activeWorkspace?.id,
+		path: inputs.workspace.todoFile?.path,
+	});
 	const selectedTodo = $derived(
-		selectedWorkspaceId === inputs.workspace.activeWorkspace?.id &&
-			selectedPath === inputs.workspace.todoFile?.path
-			? (inputs.workspace.todoFile?.items.find(
-					(item) => item.line_number === selected?.line_number && item.raw === selected?.raw
-				) ?? (reconciling ? selected : null))
+		selection && sameScope(selection.scope, currentScope())
+			? (inputs.workspace.todoFile?.items.find((item) => sameTodo(item, selection?.todo)) ??
+					(writing ? selection.todo : null))
 			: null
 	);
 	const editingTodo = $derived(
-		editingWorkspaceId === inputs.workspace.activeWorkspace?.id &&
-			editingPath === inputs.workspace.todoFile?.path
-			? editing
-			: null
+		editing && sameScope(editing.scope, currentScope()) ? editing.todo : null
 	);
 
 	function select(todo: TodoItem) {
-		selected = todo;
-		selectedWorkspaceId = inputs.workspace.activeWorkspace?.id;
-		selectedPath = inputs.workspace.todoFile?.path;
+		selection = { todo, scope: currentScope() };
 	}
 	function closeDetails() {
 		const todo = selectedTodo;
-		selected = null;
+		selection = null;
 		if (todo) void inputs.list?.focusTodo(todo);
 	}
 	// DOM focus must leave an invalid details surface before it is removed or changes presentation.
@@ -68,9 +68,9 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 					if (!destroyed) inputs.details?.querySelector<HTMLButtonElement>("button")?.focus();
 				});
 		}
-		if (selected && !selectedTodo && !reconciling) {
+		if (selection && !selectedTodo && !writing) {
 			if (document.activeElement?.closest("[data-todo-details]")) inputs.viewport?.focus();
-			selected = null;
+			selection = null;
 		}
 	});
 
@@ -81,28 +81,27 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 		recovery?: ReturnType<NonNullable<Inputs["list"]>["captureFocus"]>,
 		trigger?: HTMLButtonElement | null
 	) {
-		const workspaceId = inputs.workspace.activeWorkspace?.id;
-		const path = inputs.workspace.todoFile?.path;
-		reconciling = true;
+		const startScope = currentScope();
+		writing = true;
 		try {
 			const result = await mutate();
+			// A write only moves the selection when it targeted this selection in this same scope.
 			if (
 				!destroyed &&
-				workspaceId === inputs.workspace.activeWorkspace?.id &&
-				path === inputs.workspace.todoFile?.path &&
-				selectedWorkspaceId === workspaceId &&
-				selectedPath === path &&
-				selected?.line_number === todo.line_number &&
-				selected.raw === todo.raw
+				selection &&
+				sameScope(startScope, currentScope()) &&
+				sameScope(selection.scope, startScope) &&
+				sameTodo(selection.todo, todo)
 			) {
 				if (result.status === "applied") {
-					selected =
+					const moved =
 						line === null
 							? null
 							: (inputs.workspace.todoFile?.items.find((item) => item.line_number === line) ??
 								null);
+					selection = moved && { todo: moved, scope: selection.scope };
 					if (line === null && trigger?.closest("[data-todo-details]")) inputs.viewport?.focus();
-				} else if (result.status === "conflict") selected = null;
+				} else if (result.status === "conflict") selection = null;
 			}
 			if (!destroyed)
 				void recovery?.restore(
@@ -114,31 +113,23 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 			recovery?.cancel();
 			throw error;
 		} finally {
-			reconciling = false;
+			writing = false;
 		}
 	}
 	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {
 		editRecovery?.cancel();
 		detailEditTrigger = trigger?.closest("[data-todo-details]") ? trigger : null;
 		editRecovery = detailEditTrigger ? undefined : inputs.list?.captureFocus(todo, true, trigger);
-		editingWorkspaceId = inputs.workspace.activeWorkspace?.id;
-		editingPath = inputs.workspace.todoFile?.path;
-		editing = todo;
+		editing = { todo, scope: currentScope() };
 	}
 	function closeEdit(uncertain = false) {
+		const scope = editing?.scope;
 		editing = null;
 		if (detailEditTrigger) {
 			const trigger = detailEditTrigger;
 			detailEditTrigger = null;
-			const workspaceId = editingWorkspaceId;
-			const path = editingPath;
 			void tick().then(() => {
-				if (
-					destroyed ||
-					workspaceId !== inputs.workspace.activeWorkspace?.id ||
-					path !== inputs.workspace.todoFile?.path
-				)
-					return;
+				if (destroyed || !scope || !sameScope(scope, currentScope())) return;
 				if (!uncertain && trigger.isConnected) trigger.focus();
 				else inputs.viewport?.focus();
 			});
