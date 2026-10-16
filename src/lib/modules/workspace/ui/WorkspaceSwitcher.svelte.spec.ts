@@ -180,11 +180,15 @@ it("reaches each Workspace's options and cancels or confirms using the keyboard"
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await userEvent.keyboard("{Home}{ArrowDown}");
 		await expect.element(page.getByRole("menuitem", { name: "Options for Work" })).toHaveFocus();
-		await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+		await userEvent.keyboard("{End}{ArrowUp}");
 		await expect
 			.element(page.getByRole("menuitem", { name: "Options for Personal" }))
 			.toHaveFocus();
-		await userEvent.keyboard("{ArrowRight}{Enter}");
+		await userEvent.keyboard("{Enter}");
+		await expect
+			.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+			.toHaveFocus();
+		await userEvent.keyboard("{Enter}");
 		await expect.element(page.getByRole("alertdialog")).toBeVisible();
 		await userEvent.keyboard("{Tab}");
 		await expect.element(page.getByRole("button", { name: "Cancel" })).toHaveFocus();
@@ -216,5 +220,7 @@ it("opens Workspace options on activation, never on hover", async () => {
 	await expect
 		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
 		.toBeVisible();
+	await options.click();
+	await expect.element(options).toHaveAttribute("aria-expanded", "false");
 	expect(selectWorkspace).not.toHaveBeenCalled();
 });

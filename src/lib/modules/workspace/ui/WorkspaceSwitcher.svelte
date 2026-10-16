@@ -133,20 +133,26 @@
 								class="ml-auto text-xs text-muted-foreground">Active</span
 							>{/if}
 					</DropdownMenu.Item>
-					<DropdownMenu.Sub>
-						<DropdownMenu.SubTrigger
-							{disabled}
-							aria-label={`Options for ${workspace.name}`}
-							onpointermove={(event) => event.preventDefault()}
-							class="shrink-0 [&>svg:last-child]:hidden"
-						>
-							<Ellipsis aria-hidden="true" />
-						</DropdownMenu.SubTrigger>
-						<DropdownMenu.SubContent>
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger {disabled}>
+							{#snippet child({ props })}
+								<DropdownMenu.Item
+									{...props}
+									{disabled}
+									closeOnSelect={false}
+									aria-label={`Options for ${workspace.name}`}
+									class="shrink-0 hover:bg-accent hover:text-accent-foreground"
+								>
+									<Ellipsis aria-hidden="true" />
+								</DropdownMenu.Item>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content side="bottom" align="end" class="w-auto">
 							<DropdownMenu.Item
 								variant="destructive"
 								{disabled}
 								onclick={() => {
+									open = false;
 									workspaceToDelete = workspace;
 									isDeleteDialogOpen = true;
 								}}
@@ -154,8 +160,8 @@
 								<Trash2 aria-hidden="true" />
 								Remove workspace
 							</DropdownMenu.Item>
-						</DropdownMenu.SubContent>
-					</DropdownMenu.Sub>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
 				</div>
 			{/each}
 		{:else}
