@@ -29,6 +29,7 @@
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
+			bulkSelection={app.bulkSelection}
 			workspace={app.workspace}
 			todoFilter={app.todoFilter}
 			filteredTodoItems={app.filteredTodoItems}

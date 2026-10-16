@@ -43,7 +43,8 @@
 					(scope?.available ?? true) &&
 					(id === "help" ||
 						id === "sidebar" ||
-						(idle && (id !== "createTodo" || !!app.workspace.todoFile))),
+						(idle &&
+							(id !== "createTodo" || (!!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

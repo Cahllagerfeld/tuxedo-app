@@ -3,93 +3,55 @@ import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-
 
 const todoKey = (todo: TodoItem) => `${todo.line_number}\0${todo.raw}`;
 
+function cell<T>(initial: T) {
+	let value = $state.raw(initial);
+	return {
+		get value() {
+			return value;
+		},
+		set value(next: T) {
+			value = next;
+		},
+	};
+}
+
 type Inputs = {
 	readonly getWorkspace: () => ElectronWorkspaceSessionState;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
-	readonly getWorkspaceKey: () => string;
-	readonly onCleared?: (reason: "external" | "filter") => void;
 };
 
 export function createTodoBulkSelection(inputs: Inputs) {
-	let active = $state(false);
-	let keys = $state.raw<Set<string>>(new Set());
-	let lastFilterSignature = "";
-	let lastWorkspaceKey = "";
-	let lastFileSignature = "";
-
-	function clear(notify = false, reason: "external" | "filter" = "filter") {
-		if (notify && keys.size) inputs.onCleared?.(reason);
-		keys = new Set();
-	}
-
-	function enter() {
-		active = true;
-		clear();
-	}
-
-	function exit() {
-		active = false;
-		clear();
-	}
-
-	function toggle(todo: TodoItem) {
-		const key = todoKey(todo);
-		const next = new Set(keys);
-		if (next.has(key)) next.delete(key);
-		else next.add(key);
-		keys = next;
-	}
-
-	function selectAll() {
-		keys = new Set(inputs.getMatchingItems().map(todoKey));
-	}
-
-	const selectedItems = $derived.by(() => {
-		if (!active) return [];
-		const selected = keys;
-		return inputs.getMatchingItems().filter((todo) => selected.has(todoKey(todo)));
+	const workspaceKey = $derived(
+		`${inputs.getWorkspace().activeWorkspace?.id ?? ""}:${inputs.getWorkspace().todoFile?.path ?? ""}`
+	);
+	const fileSignature = $derived(JSON.stringify(inputs.getWorkspace().todoFile));
+	const filterSignature = $derived(inputs.getFilterSignature());
+	const mode = $derived.by(() => {
+		workspaceKey;
+		return cell(false);
 	});
-
+	const selection = $derived.by(() => {
+		workspaceKey;
+		fileSignature;
+		filterSignature;
+		return cell(new Set<string>());
+	});
+	const selectedItems = $derived(
+		mode.value ? inputs.getMatchingItems().filter((todo) => selection.value.has(todoKey(todo))) : []
+	);
 	const selectedOpenCount = $derived(selectedItems.filter((todo) => !todo.completed).length);
-
-	$effect(() => {
-		const signature = inputs.getFilterSignature();
-		const workspaceKey = inputs.getWorkspaceKey();
-		if (!active) {
-			lastFilterSignature = signature;
-			lastWorkspaceKey = workspaceKey;
-			return;
-		}
-		if (workspaceKey !== lastWorkspaceKey) {
-			exit();
-			return;
-		}
-		if (signature !== lastFilterSignature) clear(true);
-		lastFilterSignature = signature;
-		lastWorkspaceKey = workspaceKey;
-	});
-
-	$effect(() => {
-		const workspace = inputs.getWorkspace();
-		const file = workspace.todoFile;
-		const signature = file
-			? JSON.stringify(file.items.map((item) => [item.line_number, item.raw]))
-			: "";
-		if (
-			active &&
-			!workspace.isOperating &&
-			lastFileSignature &&
-			signature !== lastFileSignature &&
-			keys.size
-		)
-			clear(true, "external");
-		lastFileSignature = signature;
-	});
-
+	function clear() {
+		selection.value = new Set();
+	}
+	function exit() {
+		if (inputs.getWorkspace().isOperating) return;
+		mode.value = false;
+		clear();
+	}
 	return {
 		get active() {
-			return active;
+			return mode.value;
 		},
 		get count() {
 			return selectedItems.length;
@@ -100,13 +62,31 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		get selectedOpenCount() {
 			return selectedOpenCount;
 		},
-		enter,
+		// The UI uses these identities only to announce invalidation to the user.
+		get context() {
+			return { workspaceKey, fileSignature, filterSignature, selection };
+		},
+		enter() {
+			if (inputs.getWorkspace().isOperating) return;
+			mode.value = true;
+			clear();
+		},
 		exit,
-		toggle,
-		selectAll,
-		clear: () => clear(),
+		toggle(todo: TodoItem) {
+			if (inputs.getWorkspace().isOperating) return;
+			const next = new Set(selection.value);
+			const key = todoKey(todo);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			selection.value = next;
+		},
+		selectAll() {
+			if (!inputs.getWorkspace().isOperating)
+				selection.value = new Set(inputs.getMatchingItems().map(todoKey));
+		},
+		clear,
 		isSelected(todo: TodoItem) {
-			return keys.has(todoKey(todo));
+			return selection.value.has(todoKey(todo));
 		},
 	};
 }

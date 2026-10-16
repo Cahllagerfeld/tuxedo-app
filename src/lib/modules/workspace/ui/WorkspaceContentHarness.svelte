@@ -60,6 +60,7 @@
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
 			<WorkspaceContent
+				bulkSelection={app.bulkSelection}
 				bind:creationOpen={app.isTodoCreationOpen}
 				workspace={app.workspace}
 				todoFilter={app.todoFilter}

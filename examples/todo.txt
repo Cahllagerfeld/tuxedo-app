@@ -46,3 +46,8 @@ Carry a Show from lead time onto the next occurrence +Home rec:1w due:2026-10-17
 Keep a Show from after its Due date on a recurring chore +Home rec:1w due:2026-10-14 t:2026-10-17
 Omit an absolute Show from when a recurring chore has no Due date +Home rec:1w t:2099-01-01
 Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
+
+(A) Complete this with another selected open item +BulkReview @computer
+Keep this unselected line unchanged during bulk completion +BulkReview @desk
+x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
+Generate one successor when bulk completing this recurring item +BulkReview rec:1w

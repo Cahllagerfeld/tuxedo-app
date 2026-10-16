@@ -477,6 +477,47 @@ try {
 	assert.equal(switched.status, "applied");
 	assert.equal(switched.confirmed.session.todo_file.items[0].description, "Call Mom");
 
+	const beforeBulk = await readFile(todoPath, "utf8");
+	const bulkSource = `${beforeBulk}Another open item\r\n`;
+	await writeFile(todoPath, bulkSource);
+	const bulkSession = await page.evaluate(() => window.desktop.restoreSession({}));
+	const bulkTarget = {
+		scope: bulkSession.scope,
+		revision: bulkSession.revision,
+		workspaceId: bulkSession.session.catalogue.active_workspace_id,
+		targets: bulkSession.session.todo_file.items.map((item) => ({
+			lineNumber: item.line_number,
+			expectedRaw: item.raw,
+		})),
+	};
+	assert.equal(
+		await page.evaluate(async (input) => {
+			try {
+				await window.desktop.bulkSetTodoCompletion({ ...input, targets: [] });
+				return false;
+			} catch {
+				return true;
+			}
+		}, bulkTarget),
+		true
+	);
+	const bulkCompleted = await page.evaluate(
+		(input) => window.desktop.bulkSetTodoCompletion(input),
+		bulkTarget
+	);
+	assert.equal(bulkCompleted.status, "applied");
+	assert.equal(bulkCompleted.confirmed.todo_file.items.filter((item) => !item.completed).length, 0);
+	assert.equal(bulkCompleted.confirmed.undoLabel, "Undo completion");
+	const bulkUndone = await page.evaluate((input) => window.desktop.undoTodo(input), {
+		scope: bulkCompleted.confirmed.scope,
+		revision: bulkCompleted.confirmed.revision,
+		workspaceId: bulkCompleted.confirmed.workspaceId,
+	});
+	assert.equal(bulkUndone.status, "applied");
+	assert.equal(await readFile(todoPath, "utf8"), bulkSource);
+	await writeFile(todoPath, beforeBulk);
+	switched.confirmed = await page.evaluate(() => window.desktop.restoreSession({}));
+
 	const completionTarget = {
 		scope: switched.confirmed.scope,
 		revision: switched.confirmed.revision,

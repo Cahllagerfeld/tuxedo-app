@@ -8,7 +8,7 @@
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceContent
 		bind:creationOpen={appState.isTodoCreationOpen}
-		bind:todoBulkSelectionActive={appState.todoBulkSelectionActive}
+		bulkSelection={appState.bulkSelection}
 		workspace={appState.workspace}
 		todoFilter={appState.todoFilter}
 		filteredTodoItems={appState.filteredTodoItems}

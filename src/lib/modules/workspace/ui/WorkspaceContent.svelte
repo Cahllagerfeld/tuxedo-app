@@ -27,7 +27,7 @@
 
 	type Props = {
 		creationOpen?: boolean;
-		todoBulkSelectionActive?: boolean;
+		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
@@ -36,7 +36,7 @@
 
 	let {
 		creationOpen = $bindable(false),
-		todoBulkSelectionActive = $bindable(false),
+		bulkSelection,
 		workspace,
 		todoFilter,
 		filteredTodoItems,
@@ -72,33 +72,32 @@
 		}
 	}
 	const shortcutScope = getShortcutScope();
-	const bulkSelection = createTodoBulkSelection({
-		getWorkspace: () => workspace,
-		getMatchingItems: () => filteredTodoItems,
-		getFilterSignature: () =>
-			JSON.stringify([
-				todoFilter.status,
-				todoFilter.showDeferred,
-				todoFilter.selectedProject,
-				todoFilter.selectedContext,
-				todoFilter.selectedPriority,
-				todoFilter.selectedDue,
-				todoFilter.searchText,
-			]),
-		getWorkspaceKey: () =>
-			`${workspace.activeWorkspace?.id ?? ""}:${workspace.todoFile?.path ?? ""}`,
-		onCleared: (reason) => {
-			if (reason === "external") toast.info("Selection cleared because the Todo file changed.");
-			else toast.info("Selection cleared because filters changed.");
-		},
-	});
+	let previousSelection: typeof bulkSelection.context | undefined;
+	// Report invalidation to the external toast system; selection itself is derived.
 	$effect(() => {
-		todoBulkSelectionActive = bulkSelection.active;
+		if (workspace.isOperating) return;
+		const current = bulkSelection.context;
+		if (
+			previousSelection &&
+			previousSelection.workspaceKey === current.workspaceKey &&
+			previousSelection.selection !== current.selection &&
+			previousSelection.selection.value.size &&
+			bulkSelection.active &&
+			!workspace.isOperating
+		) {
+			toast.info(
+				previousSelection.fileSignature !== current.fileSignature
+					? "Selection cleared because the Todo file changed."
+					: "Selection cleared because filters changed."
+			);
+		}
+		previousSelection = current;
 	});
-	let closeReaderDetails = () => {};
+	let reader = $state<ReturnType<typeof WorkspaceTodoReader>>();
 	async function completeSelected() {
 		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
 		if (!items.length) return;
+		previousSelection = undefined;
 		const result = await workspace.bulkSetCompletion(items);
 		if (result.status === "applied") {
 			const count = items.length;
@@ -111,14 +110,14 @@
 		} else toast.error("Could not complete Todo items", { description: result.message });
 	}
 	function enterSelectionMode() {
-		closeReaderDetails();
+		reader?.closeDetails();
 		bulkSelection.enter();
 	}
 	createHotkey(
 		"Escape",
 		() => bulkSelection.exit(),
 		() => ({
-			enabled: bulkSelection.active && (shortcutScope?.available ?? true),
+			enabled: bulkSelection.active && !workspace.isOperating && (shortcutScope?.available ?? true),
 			ignoreInputs: true,
 			preventDefault: true,
 		})
@@ -308,17 +307,15 @@
 				</div>
 			</div>
 		{/if}
-		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating || bulkSelection.active} />
+		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	{#if workspace.todoFile}
 		<WorkspaceTodoReader
+			bind:this={reader}
 			{workspace}
 			{todoFilter}
 			{filteredTodoItems}
 			{bulkSelection}
-			registerCloseDetails={(close) => {
-				closeReaderDetails = close;
-			}}
 		/>
 	{:else}
 		<div class="min-h-0 min-w-0 flex-1">

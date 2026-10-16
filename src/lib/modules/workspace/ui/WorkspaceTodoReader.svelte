@@ -23,13 +23,11 @@
 		todoFilter,
 		filteredTodoItems,
 		bulkSelection,
-		registerCloseDetails,
 	}: {
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		registerCloseDetails?: (close: () => void) => void;
 	} = $props();
 	const shortcutScope = getShortcutScope();
 	const wide = new MediaQuery("(min-width: 1100px)");
@@ -58,9 +56,7 @@
 		},
 		shortcutScope,
 	});
-	$effect(() => {
-		registerCloseDetails?.(reader.closeDetails);
-	});
+	export const closeDetails = () => reader.closeDetails();
 	function revealDetails(node: HTMLElement) {
 		return () => {
 			const grow = Number(getComputedStyle(node).flexGrow);

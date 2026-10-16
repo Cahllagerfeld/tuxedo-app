@@ -136,7 +136,9 @@ export function createTodoOperations(state: SessionState) {
 			return { ...result, ...(notice ? { notice } : {}) };
 		});
 	const mutateTodoFile = (
-		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
+		input:
+			| Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
+			| DesktopRequest<"bulkSetTodoCompletion">,
 		label: UndoLabel,
 		transform: (
 			contents: string,
@@ -151,7 +153,15 @@ export function createTodoOperations(state: SessionState) {
 			const { previous, workspace } = yield* todoMutationContext(input);
 			const contents = yield* readContents(workspace.todo_path);
 			const current = parseTodoFile(workspace.todo_path, contents);
-			if (contents !== state.todoContents)
+			const conflicts =
+				"targets" in input
+					? input.targets.some(
+							(target) =>
+								current.items.find((item) => item.line_number === target.lineNumber)?.raw !==
+								target.expectedRaw
+						)
+					: contents !== state.todoContents;
+			if (conflicts)
 				return {
 					status: "conflict",
 					message: "The Todo file changed on disk. Review its current contents.",
@@ -305,46 +315,9 @@ export function createTodoOperations(state: SessionState) {
 				const input = parsed.data;
 				const identity = yield* Identity;
 				const today = new Date(identity.now());
-				const { previous, workspace } = yield* todoMutationContext(input);
-				const contents = yield* readContents(workspace.todo_path);
-				const current = parseTodoFile(workspace.todo_path, contents);
-				if (contents !== state.todoContents)
-					return {
-						status: "conflict" as const,
-						message: "The Todo file changed on disk. Review its current contents.",
-						confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
-					};
-				for (const target of input.targets) {
-					const item = current.items.find((item) => item.line_number === target.lineNumber);
-					if (!item || item.raw !== target.expectedRaw)
-						return {
-							status: "conflict" as const,
-							message: "The Todo item changed on disk. Review its current contents.",
-							confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
-						};
-				}
-				const transformed = bulkCompleteTodos(contents, current, input.targets, today);
-				if (transformed.contents === contents)
-					return {
-						status: "applied" as const,
-						confirmed: {
-							scope: previous.scope,
-							revision: previous.revision,
-							workspaceId: input.workspaceId,
-							...(previous.undoLabel ? { undoLabel: previous.undoLabel } : {}),
-							todo_file: current,
-						},
-						...(transformed.notice ? { notice: transformed.notice } : {}),
-					};
-				const result = yield* commitTodo(
-					previous.session,
-					input.workspaceId,
-					workspace.todo_path,
-					transformed.contents,
-					{ contents, label: "Undo completion" }
+				return yield* mutateTodoFile(input, "Undo completion", (contents, current) =>
+					bulkCompleteTodos(contents, current, input.targets, today)
 				);
-				if (result.status !== "applied" || !transformed.notice) return result;
-				return { ...result, notice: transformed.notice };
 			}),
 	};
 }
