@@ -52,4 +52,4 @@ Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w
 
-Remove an unavailable saved Workspace through its options without opening its Todo file +TuxedoApp @review
+Click Workspace options to remove an unavailable saved reference without opening its Todo file +TuxedoApp @review

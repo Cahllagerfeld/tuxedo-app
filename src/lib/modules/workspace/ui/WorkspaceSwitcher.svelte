@@ -137,6 +137,7 @@
 						<DropdownMenu.SubTrigger
 							{disabled}
 							aria-label={`Options for ${workspace.name}`}
+							onpointermove={(event) => event.preventDefault()}
 							class="shrink-0 [&>svg:last-child]:hidden"
 						>
 							<Ellipsis aria-hidden="true" />
@@ -151,7 +152,7 @@
 								}}
 							>
 								<Trash2 aria-hidden="true" />
-								Remove workspace…
+								Remove workspace
 							</DropdownMenu.Item>
 						</DropdownMenu.SubContent>
 					</DropdownMenu.Sub>

@@ -83,7 +83,7 @@ describe("WorkspaceSwitcher", () => {
 		const view = await render(WorkspaceSwitcher, props);
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Options for Work" }).click();
-		await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 
 		await view.rerender({ ...props, disabled: true });
 
@@ -102,7 +102,7 @@ describe("WorkspaceSwitcher", () => {
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Options for Work" }).click();
-		await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 		await expect.element(page.getByRole("alertdialog")).toBeVisible();
 		await expect.element(page.getByText("Remove workspace?", { exact: true })).toBeVisible();
 		expect(deleteWorkspace).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe("WorkspaceSwitcher", () => {
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Options for Work" }).click();
-		await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 		await page.getByRole("button", { name: "Remove workspace" }).click();
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
@@ -134,7 +134,7 @@ describe("WorkspaceSwitcher", () => {
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 		await page.getByRole("menuitem", { name: "Options for Work" }).click();
-		await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 		await page.getByRole("button", { name: "Remove workspace" }).click();
 
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
@@ -155,7 +155,7 @@ it("opens inactive Workspace options without selecting and confirms the named ta
 	});
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Options for Personal" }).click();
-	await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 	await expect
 		.element(page.getByRole("alertdialog"))
 		.toMatchTextContent(
@@ -196,5 +196,25 @@ it("reaches each Workspace's options and cancels or confirms using the keyboard"
 	await openWithKeyboard();
 	await userEvent.keyboard("{Tab}{Enter}");
 	expect(deleteWorkspace).toHaveBeenCalledWith(personal.id);
+	expect(selectWorkspace).not.toHaveBeenCalled();
+});
+
+it("opens Workspace options on activation, never on hover", async () => {
+	const selectWorkspace = vi.fn();
+	render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace: vi.fn(),
+		openCreationDialog: vi.fn(),
+	});
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	const options = page.getByRole("menuitem", { name: "Options for Personal" });
+	await options.hover();
+	await expect.element(options).toHaveAttribute("aria-expanded", "false");
+	await options.click();
+	await expect
+		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+		.toBeVisible();
 	expect(selectWorkspace).not.toHaveBeenCalled();
 });

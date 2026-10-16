@@ -45,7 +45,7 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 async function confirm() {
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Options for Work", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 	await expect.element(page.getByRole("alertdialog")).toBeVisible();
 	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
 }
@@ -63,7 +63,7 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 	});
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Options for Work", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 	await page.getByRole("button", { name: "Cancel" }).click();
 	expect(calls).toBe(0);
 	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
@@ -181,7 +181,7 @@ test.each(["ready", "empty"] as const)(
 		async function openRemoval() {
 			await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 			await page.getByRole("menuitem", { name: "Options for Missing" }).click();
-			await page.getByRole("menuitem", { name: "Remove workspace…" }).click();
+			await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 		}
 		await openRemoval();
 		await page.getByRole("button", { name: "Cancel" }).click();
