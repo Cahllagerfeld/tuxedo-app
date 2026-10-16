@@ -135,13 +135,13 @@
 			{@const deferred = isDeferred(todo, today)}
 			<li
 				class={cn(
-					"group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent",
+					"group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-muted",
 					deferred && "bg-amber-500/5 inset-shadow-[3px_0_0_var(--color-amber-500)]",
 					!selectionMode &&
 						selectedTodo?.line_number === todo.line_number &&
 						selectedTodo?.raw === todo.raw &&
-						"bg-accent",
-					selectionMode && isSelected?.(todo) && "bg-accent"
+						"bg-muted hover:bg-muted",
+					selectionMode && isSelected?.(todo) && "bg-muted hover:bg-muted"
 				)}
 				style:height={`${size}px`}
 				style:top={`${start}px`}

@@ -928,7 +928,7 @@ test("reveals matching deferred items, keeps facets and totals, and restores Wor
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("2 matching items");
 	await expect
-		.element(page.getByText("Invalid or unsupported Show from: +2d", { exact: true }))
+		.element(page.getByRole("button", { name: "Invalid or unsupported Show from", exact: true }))
 		.toBeVisible();
 	await page.getByRole("button", { name: /^Open/ }).click();
 	await expect

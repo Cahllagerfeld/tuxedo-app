@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Badge } from "$lib/shared/ui/badge";
 	import Clock from "@lucide/svelte/icons/clock";
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
 	import type { TodoItem } from "../domain/todo";
 	import { isDeferred, showFromDate } from "../domain/todo-threshold";
 
@@ -24,10 +26,17 @@
 		<span class="min-w-0 truncate">Show from <time datetime={date}>{date}</time></span>
 	</span>
 {:else if todo.metadata.t !== undefined}
-	<span
-		class="block truncate text-xs text-destructive"
-		title={`Invalid or unsupported Show from: ${todo.metadata.t}`}
-	>
-		Invalid or unsupported Show from: {todo.metadata.t}
-	</span>
+	<Tooltip.Provider>
+		<Tooltip.Root>
+			<Tooltip.Trigger
+				aria-label="Invalid or unsupported Show from"
+				class="pointer-events-auto shrink-0 rounded text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			>
+				<TriangleAlert class="size-3.5" aria-hidden="true" />
+			</Tooltip.Trigger>
+			<Tooltip.Content role="tooltip">
+				Invalid or unsupported Show from: {todo.metadata.t} — edit this Todo item to repair it.
+			</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
 {/if}
