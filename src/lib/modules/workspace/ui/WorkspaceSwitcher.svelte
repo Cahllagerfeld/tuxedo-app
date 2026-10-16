@@ -147,7 +147,7 @@
 								</DropdownMenu.Item>
 							{/snippet}
 						</DropdownMenu.Trigger>
-						<DropdownMenu.Content side="bottom" align="end" class="w-auto">
+						<DropdownMenu.Content side="right" align="start" class="w-auto">
 							<DropdownMenu.Item
 								variant="destructive"
 								{disabled}
