@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Plus from "@lucide/svelte/icons/plus";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
@@ -61,9 +62,9 @@
 		try {
 			const result = await deleteWorkspace(workspace.id);
 			if (result.status === "rejected")
-				toast.error("Could not delete workspace", { description: result.message });
+				toast.error("Could not remove workspace", { description: result.message });
 		} catch (error) {
-			toast.error("Could not delete workspace", { description: errorMessage(error) });
+			toast.error("Could not remove workspace", { description: errorMessage(error) });
 		}
 	}
 
@@ -112,42 +113,59 @@
 	<DropdownMenu.Content class="w-64 max-w-[calc(100vw-2rem)]">
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}
-			{#each sortedWorkspaces as workspace}
-				<DropdownMenu.Item
-					aria-label={workspace.id === activeWorkspaceId
-						? `${workspace.name}, active`
-						: workspace.name}
-					aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
-					{disabled}
-					onclick={() => void chooseWorkspace(workspace.id)}
-				>
-					<span
-						class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
-						aria-hidden="true"
-					></span>
-					<span class="truncate">{workspace.name}</span>
-					{#if workspace.id === activeWorkspaceId}<span
-							class="ml-auto text-xs text-muted-foreground">Active</span
-						>{/if}
-				</DropdownMenu.Item>
+			{#each sortedWorkspaces as workspace (workspace.id)}
+				<div class="flex items-center gap-1">
+					<DropdownMenu.Item
+						class="min-w-0 flex-1"
+						aria-label={workspace.id === activeWorkspaceId
+							? `${workspace.name}, active`
+							: workspace.name}
+						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
+						{disabled}
+						onclick={() => void chooseWorkspace(workspace.id)}
+					>
+						<span
+							class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
+							aria-hidden="true"
+						></span>
+						<span class="truncate">{workspace.name}</span>
+						{#if workspace.id === activeWorkspaceId}<span
+								class="ml-auto text-xs text-muted-foreground">Active</span
+							>{/if}
+					</DropdownMenu.Item>
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger {disabled}>
+							{#snippet child({ props })}
+								<DropdownMenu.Item
+									{...props}
+									{disabled}
+									closeOnSelect={false}
+									aria-label={`Options for ${workspace.name}`}
+									class="shrink-0 hover:bg-accent hover:text-accent-foreground"
+								>
+									<Ellipsis aria-hidden="true" />
+								</DropdownMenu.Item>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content side="right" align="start" class="w-auto">
+							<DropdownMenu.Item
+								variant="destructive"
+								{disabled}
+								onclick={() => {
+									open = false;
+									workspaceToDelete = workspace;
+									isDeleteDialogOpen = true;
+								}}
+							>
+								<Trash2 aria-hidden="true" />
+								Remove workspace
+							</DropdownMenu.Item>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</div>
 			{/each}
 		{:else}
 			<p class="px-2 py-1.5 text-sm text-muted-foreground">No saved workspaces yet.</p>
-		{/if}
-		{#if activeWorkspace}
-			<DropdownMenu.Separator />
-			<DropdownMenu.Item
-				variant="destructive"
-				{disabled}
-				aria-label={`Delete ${activeWorkspace.name}`}
-				onclick={() => {
-					workspaceToDelete = activeWorkspace;
-					isDeleteDialogOpen = true;
-				}}
-			>
-				<Trash2 class="shrink-0" aria-hidden="true" />
-				<span class="min-w-0 flex-1 truncate">Delete {activeWorkspace.name}</span>
-			</DropdownMenu.Item>
 		{/if}
 		<DropdownMenu.Separator />
 		<DropdownMenu.Item {disabled} onclick={openCreationDialog}>
@@ -160,16 +178,16 @@
 <AlertDialog.Root bind:open={isDeleteDialogOpen}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
-			<AlertDialog.Title>Delete Workspace?</AlertDialog.Title>
+			<AlertDialog.Title>Remove workspace?</AlertDialog.Title>
 			<AlertDialog.Description>
-				Delete {workspaceToDelete?.name ?? "this Workspace"} from saved Workspaces? Its Todo file will
+				Remove {workspaceToDelete?.name ?? "this Workspace"} from saved Workspaces? Its Todo file will
 				not be deleted.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action variant="destructive" {disabled} onclick={confirmDeletion}
-				>Delete workspace</AlertDialog.Action
+				>Remove workspace</AlertDialog.Action
 			>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

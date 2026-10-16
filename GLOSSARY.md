@@ -110,7 +110,7 @@ The act of saving a new Workspace after its chosen Todo file has been successful
 A fixed-palette color token that distinguishes a Workspace and has appropriate light- and dark-theme representations. The initial palette is blue, green, amber, red, violet, pink, cyan, and orange.
 
 **Workspace switcher**:
-The sidebar-header control for viewing saved Workspaces, in creation order, choosing the Active workspace, and starting Workspace creation.
+The sidebar-header control for viewing saved Workspaces, in creation order, choosing the Active workspace, starting Workspace creation, and removing any saved Workspace through its own options menu without opening its Todo file.
 
 **Workspace catalogue**:
 The saved collection of Workspaces and the Active workspace reference. If it cannot be read, it is preserved and the app shows an error instead of replacing it.

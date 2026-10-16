@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
@@ -33,7 +33,7 @@ describe("WorkspaceSwitcher", () => {
 		await page.getByRole("button", { name: /Select workspace: Personal/ }).click();
 		const entries = page.getByRole("menuitem");
 		await expect.element(entries.nth(0)).toMatchTextContent("Work");
-		await expect.element(entries.nth(1)).toMatchTextContent("Personal");
+		await expect.element(entries.nth(2)).toMatchTextContent("Personal");
 		await expect.element(page.getByRole("menuitem", { name: "Personal, active" })).toBeVisible();
 
 		await page.getByRole("menuitem", { name: "Work", exact: true }).click();
@@ -82,11 +82,12 @@ describe("WorkspaceSwitcher", () => {
 		};
 		const view = await render(WorkspaceSwitcher, props);
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+		await page.getByRole("menuitem", { name: "Options for Work" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 
 		await view.rerender({ ...props, disabled: true });
 
-		await expect.element(page.getByRole("button", { name: "Delete workspace" })).toBeDisabled();
+		await expect.element(page.getByRole("button", { name: "Remove workspace" })).toBeDisabled();
 	});
 
 	it("requires confirmation before deleting the active workspace", async () => {
@@ -100,17 +101,19 @@ describe("WorkspaceSwitcher", () => {
 		});
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-		await page.getByRole("menuitem", { name: "Delete Work" }).click();
+		await page.getByRole("menuitem", { name: "Options for Work" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
 		await expect.element(page.getByRole("alertdialog")).toBeVisible();
-		await expect.element(page.getByText("Delete Workspace?", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("Remove workspace?", { exact: true })).toBeVisible();
 		expect(deleteWorkspace).not.toHaveBeenCalled();
 
 		await page.getByRole("button", { name: "Cancel" }).click();
 		expect(deleteWorkspace).not.toHaveBeenCalled();
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-		await page.getByRole("menuitem", { name: "Delete Work" }).click();
-		await page.getByRole("button", { name: "Delete workspace" }).click();
+		await page.getByRole("menuitem", { name: "Options for Work" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
+		await page.getByRole("button", { name: "Remove workspace" }).click();
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 	});
@@ -130,11 +133,94 @@ describe("WorkspaceSwitcher", () => {
 		});
 
 		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-		await page.getByRole("menuitem", { name: "Delete Work" }).click();
-		await page.getByRole("button", { name: "Delete workspace" }).click();
+		await page.getByRole("menuitem", { name: "Options for Work" }).click();
+		await page.getByRole("menuitem", { name: "Remove workspace" }).click();
+		await page.getByRole("button", { name: "Remove workspace" }).click();
 
 		expect(deleteWorkspace).toHaveBeenCalledWith(work.id);
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 		releaseDeletion();
 	});
+});
+
+it("opens inactive Workspace options without selecting and confirms the named target", async () => {
+	const selectWorkspace = vi.fn();
+	const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
+	render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace,
+		openCreationDialog: vi.fn(),
+	});
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	await page.getByRole("menuitem", { name: "Options for Personal" }).click();
+	await page.getByRole("menuitem", { name: "Remove workspace" }).click();
+	await expect
+		.element(page.getByRole("alertdialog"))
+		.toMatchTextContent(
+			"Remove Personal from saved Workspaces? Its Todo file will not be deleted."
+		);
+	expect(selectWorkspace).not.toHaveBeenCalled();
+	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
+	expect(deleteWorkspace).toHaveBeenCalledWith(personal.id);
+});
+
+it("reaches each Workspace's options and cancels or confirms using the keyboard", async () => {
+	const selectWorkspace = vi.fn();
+	const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
+	render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace,
+		openCreationDialog: vi.fn(),
+	});
+	async function openWithKeyboard() {
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+		await userEvent.keyboard("{Home}{ArrowDown}");
+		await expect.element(page.getByRole("menuitem", { name: "Options for Work" })).toHaveFocus();
+		await userEvent.keyboard("{End}{ArrowUp}");
+		await expect
+			.element(page.getByRole("menuitem", { name: "Options for Personal" }))
+			.toHaveFocus();
+		await userEvent.keyboard("{Enter}");
+		await expect
+			.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+			.toHaveFocus();
+		await userEvent.keyboard("{Enter}");
+		await expect.element(page.getByRole("alertdialog")).toBeVisible();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(page.getByRole("button", { name: "Cancel" })).toHaveFocus();
+	}
+	await openWithKeyboard();
+	await userEvent.keyboard("{Enter}");
+	await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+	expect(deleteWorkspace).not.toHaveBeenCalled();
+	await openWithKeyboard();
+	await userEvent.keyboard("{Tab}{Enter}");
+	expect(deleteWorkspace).toHaveBeenCalledWith(personal.id);
+	expect(selectWorkspace).not.toHaveBeenCalled();
+});
+
+it("opens Workspace options on activation, never on hover", async () => {
+	const selectWorkspace = vi.fn();
+	render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace: vi.fn(),
+		openCreationDialog: vi.fn(),
+	});
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	const options = page.getByRole("menuitem", { name: "Options for Personal" });
+	await options.hover();
+	await expect.element(options).toHaveAttribute("aria-expanded", "false");
+	await options.click();
+	await expect
+		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+		.toBeVisible();
+	await options.click();
+	await expect.element(options).toHaveAttribute("aria-expanded", "false");
+	expect(selectWorkspace).not.toHaveBeenCalled();
 });
