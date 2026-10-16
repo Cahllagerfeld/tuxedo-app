@@ -186,6 +186,7 @@ it("reaches each Workspace's options and cancels or confirms using the keyboard"
 			.toHaveFocus();
 		await userEvent.keyboard("{ArrowRight}{Enter}");
 		await expect.element(page.getByRole("alertdialog")).toBeVisible();
+		await userEvent.keyboard("{Tab}");
 		await expect.element(page.getByRole("button", { name: "Cancel" })).toHaveFocus();
 	}
 	await openWithKeyboard();
