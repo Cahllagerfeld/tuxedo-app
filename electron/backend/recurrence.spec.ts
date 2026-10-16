@@ -422,6 +422,29 @@ test.each(["Mow rec:1d due:2028-01-31 t:9999-12-31", "Mow rec:1d due:9999-12-31 
 	}
 );
 
+test("editor completion rejects an out-of-range Show from with no write", async () => {
+	const initial = "Mow rec:1d due:2028-01-31 t:9999-12-31";
+	const { backend, path, target } = await setup(initial);
+	const before = await backend.readSession({});
+	const result = await backend.editTodo({
+		...target,
+		description: "Mow",
+		projects: [],
+		contexts: [],
+		priority: null,
+		creationDate: null,
+		completed: true,
+		completionDate: "2028-01-31",
+		metadata: ["rec:1d", "due:2028-01-31", "t:9999-12-31"],
+	});
+	expect(result).toMatchObject({
+		status: "rejected",
+		message: "Cannot edit Todo item: The next Show from date is outside the supported date range.",
+	});
+	expect(await readFile(path, "utf8")).toBe(initial);
+	expect(await backend.readSession({})).toEqual(before);
+});
+
 test("unsupported recurrence keeps Show from metadata and generates nothing", async () => {
 	const initial = "Mow rec:+1w t:2099-01-01";
 	const { backend, path, target } = await setup(initial);

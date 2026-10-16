@@ -7,13 +7,16 @@ import { replaceTodoLines } from "./replace-todo-lines";
 
 export const generationMarker = "tuxedo-generated";
 
+const minimumCalendarDate = new CalendarDate(1, 1, 1);
+const maximumCalendarDate = new CalendarDate(9999, 12, 31);
+
 function nextDueDate(completion: string | null, rule: RegExpExecArray): string {
 	if (!completion || !todoDateSchema.safeParse(completion).success)
 		throw Error("Recurring completion requires a valid Completion date.");
 	const anchor = parseDate(completion);
 	const interval = Number(rule[1]);
 	const unit = rule[2];
-	const maximum = new CalendarDate(9999, 12, 31);
+	const maximum = maximumCalendarDate;
 	const limit =
 		unit === "y"
 			? 9999 - anchor.year
@@ -39,16 +42,14 @@ function nextShowFrom(show: string, sourceDue: string, due: string): string {
 	const origin = parseDate(sourceDue);
 	const target = parseDate(due);
 	const offset = from.calendar.toJulianDay(from) - origin.calendar.toJulianDay(origin);
-	const minimum = new CalendarDate(1, 1, 1);
-	const maximum = new CalendarDate(9999, 12, 31);
 	const julian = target.calendar.toJulianDay(target) + offset;
 	if (
 		from.toString() !== show ||
 		origin.toString() !== sourceDue ||
 		target.toString() !== due ||
 		!Number.isSafeInteger(offset) ||
-		julian < minimum.calendar.toJulianDay(minimum) ||
-		julian > maximum.calendar.toJulianDay(maximum)
+		julian < minimumCalendarDate.calendar.toJulianDay(minimumCalendarDate) ||
+		julian > maximumCalendarDate.calendar.toJulianDay(maximumCalendarDate)
 	)
 		throw Error("The next Show from date is outside the supported date range.");
 	const shifted = target.add({ days: offset }).toString();
