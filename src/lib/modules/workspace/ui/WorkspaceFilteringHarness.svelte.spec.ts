@@ -923,7 +923,7 @@ test("reveals matching deferred items, keeps facets and totals, and restores Wor
 	});
 	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-	await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+	await expect.element(toggle).toHaveTextContent("1");
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("2 matching items");
@@ -954,7 +954,7 @@ test("reveals matching deferred items, keeps facets and totals, and restores Wor
 	await expect.element(page.getByTitle("Overdue · 2000-01-01", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	await expect.element(toggle).toBeDisabled();
-	await expect.element(toggle).toHaveTextContent("Show deferred (0)");
+	await expect.element(toggle).toHaveTextContent("");
 	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: /^All/ }).click();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
@@ -987,20 +987,20 @@ test("threshold visibility refreshes at midnight and on return from inactivity w
 	const view = await render(Harness, { desktop });
 	try {
 		const toggle = page.getByRole("button", { name: "Show deferred", exact: true }).first();
-		await expect.element(toggle).toHaveTextContent("Show deferred (2)");
+		await expect.element(toggle).toHaveTextContent("2");
 		await expect
 			.element(page.getByLabelText("Filtered result count"))
 			.toHaveTextContent("0 matching items");
 		vi.setSystemTime(new Date(2026, 9, 15));
 		await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
-		await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+		await expect.element(toggle).toHaveTextContent("1");
 		vi.setSystemTime(new Date(2026, 9, 16, 12));
 		document.dispatchEvent(new Event("visibilitychange"));
 		await expect.element(page.getByText("Open personal", { exact: true })).toBeVisible();
-		await expect.element(toggle).toHaveTextContent("Show deferred (0)");
+		await expect.element(toggle).toHaveTextContent("");
 		vi.setSystemTime(new Date(2026, 9, 14, 12));
 		window.dispatchEvent(new Event("focus"));
-		await expect.element(toggle).toHaveTextContent("Show deferred (2)");
+		await expect.element(toggle).toHaveTextContent("2");
 		await expect
 			.element(page.getByLabelText("Filtered result count"))
 			.toHaveTextContent("0 matching items");

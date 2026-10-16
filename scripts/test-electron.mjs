@@ -1063,7 +1063,7 @@ try {
 	await page.getByText("Actionable chore", { exact: true }).waitFor();
 	const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
-	assert.equal(await showDeferred.textContent(), "Show deferred (1)");
+	assert.equal((await showDeferred.innerText()).trim(), "1");
 	assert.equal(await page.getByText("Future chore", { exact: true }).count(), 0);
 	assert.ok(await page.getByText("Unsupported threshold", { exact: true }).isVisible());
 	assert.ok(await page.getByText("Impossible threshold", { exact: true }).isVisible());
@@ -1114,7 +1114,7 @@ try {
 	);
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	assert.ok(await showDeferred.isDisabled());
-	assert.equal(await showDeferred.textContent(), "Show deferred (0)");
+	assert.equal((await showDeferred.innerText()).trim(), "");
 	assert.ok(await page.getByText("Completed chore", { exact: true }).isVisible());
 	assert.equal(
 		await readFile(thresholdPath, "utf8"),
@@ -1209,7 +1209,7 @@ try {
 	);
 	const showDeferredLead = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferredLead.getAttribute("aria-pressed"), "false");
-	assert.equal(await showDeferredLead.textContent(), "Show deferred (1)");
+	assert.equal((await showDeferredLead.innerText()).trim(), "1");
 	assert.equal(await page.getByText("Mow", { exact: true }).count(), 1);
 	await showDeferredLead.click();
 	await page.getByTitle(/^Show from \d{4}-\d{2}-\d{2} · Deferred$/).waitFor();

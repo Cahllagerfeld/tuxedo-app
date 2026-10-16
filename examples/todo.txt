@@ -28,7 +28,7 @@ Repair a non-date Due value using the editor +Imported @review due:soon
 x 2026-10-12 2026-10-01 Show Completion date instead of historical Due date +TuxedoApp +Release +Team @computer @review due:2026-10-10
 x Leave the date slot empty without a Completion date +Legacy @computer due:2026-10-10
 
-(A) Reveal a deferred Todo item with the saved Workspace Show deferred setting +TuxedoApp @computer t:2099-01-01
+(A) Reveal a deferred Todo item with the clock toggle and its deferred count +TuxedoApp @computer t:2099-01-01
 (B) Keep an overdue Todo item deferred until its Show from date +TuxedoApp @computer due:2026-10-13 t:2099-01-01
 Show an actionable Todo item after its Show from date +TuxedoApp @computer t:2026-10-14
 Keep an unsupported relative Show from value visible +Imported @review t:+2d
@@ -47,7 +47,7 @@ Keep a Show from after its Due date on a recurring chore +Home rec:1w due:2026-1
 Omit an absolute Show from when a recurring chore has no Due date +Home rec:1w t:2099-01-01
 Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
 
-(A) Complete this with another selected open item +BulkReview @computer
+(A) Use the checklist icon to select and complete this with another open item +BulkReview @computer
 Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w

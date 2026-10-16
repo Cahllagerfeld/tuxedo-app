@@ -1856,7 +1856,7 @@ test("a future Show from successor stays hidden until Show deferred", async () =
 	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
 	await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-	await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+	await expect.element(toggle).toHaveTextContent("1");
 	await expect.element(page.getByText("Next mow", { exact: true })).not.toBeInTheDocument();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
@@ -1909,7 +1909,7 @@ test("a successor is shown on its Show from date", async () => {
 	await expect.element(page.getByText("Next mow", { exact: true })).toBeVisible();
 	await expect
 		.element(page.getByRole("button", { name: "Show deferred", exact: true }))
-		.toHaveTextContent("Show deferred (0)");
+		.toHaveTextContent("");
 	await expect
 		.element(page.getByText(`Next occurrence due ${today}.`, { exact: true }))
 		.toBeVisible();
@@ -1965,7 +1965,7 @@ test("selection mode completes selected open Todo items through one bulk operati
 	await page.getByRole("button", { name: "Complete" }).click();
 	expect(bulkSetTodoCompletion).toHaveBeenCalledTimes(1);
 	await expect.element(page.getByText("Completed 2 Todo items", { exact: true })).toBeVisible();
-	await expect.element(page.getByRole("button", { name: "Done" })).toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Exit selection mode" })).toBeVisible();
 });
 
 test.each(["rejected", "conflict"] as const)(
@@ -1998,13 +1998,17 @@ test.each(["rejected", "conflict"] as const)(
 		expect(undoTodo).not.toHaveBeenCalled();
 		await page.getByRole("button", { name: "Complete", exact: true }).click();
 		await userEvent.keyboard("{Escape}");
-		await expect.element(page.getByRole("button", { name: "Done", exact: true })).toBeDisabled();
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toBeDisabled();
 		await expect
 			.element(page.getByRole("checkbox", { name: "Select Plan release", exact: true }))
 			.toBeChecked();
 		if (status === "rejected") finish({ status, message: "Permission denied" });
 		else finish({ status, message: "Changed externally", confirmed: confirmedTodo([todo]) });
-		await expect.element(page.getByRole("button", { name: "Done", exact: true })).toBeEnabled();
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toBeEnabled();
 		await expect
 			.element(page.getByText(`${status === "rejected" ? 1 : 0} selected`, { exact: true }))
 			.toBeVisible();
@@ -2071,7 +2075,9 @@ test("idle selection allows clearing active filters and clears the selection", a
 	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
 	await page.getByRole("button", { name: "Clear Project Work", exact: true }).click();
 	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
-	await expect.element(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+		.toBeVisible();
 });
 
 test("unchanged refresh retains selection and a skipped-line edit clears it with a notice", async () => {

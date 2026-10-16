@@ -9,6 +9,11 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import * as ButtonGroup from "$lib/shared/ui/button-group";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import Clock from "@lucide/svelte/icons/clock";
+	import Check from "@lucide/svelte/icons/check";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import { Input } from "$lib/shared/ui/input";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -166,54 +171,101 @@
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
 				{#if bulkSelection.active}
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={workspace.isOperating || filteredTodoItems.length === 0}
-						onclick={bulkSelection.selectAll}>Select all</Button
-					>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={workspace.isOperating || bulkSelection.count === 0}
-						onclick={bulkSelection.clear}>Clear selection</Button
-					>
+					<ButtonGroup.Root aria-label="Selection controls">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={workspace.isOperating || filteredTodoItems.length === 0}
+							onclick={bulkSelection.selectAll}>Select all</Button
+						>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={workspace.isOperating || bulkSelection.count === 0}
+							onclick={bulkSelection.clear}>Clear selection</Button
+						>
+					</ButtonGroup.Root>
 					<Button
 						size="sm"
 						disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
-						onclick={() => void completeSelected()}>Complete</Button
+						onclick={() => void completeSelected()}><Check aria-hidden="true" />Complete</Button
 					>
-					<Button
-						variant="secondary"
-						size="sm"
-						disabled={workspace.isOperating}
-						onclick={bulkSelection.exit}>Done</Button
-					>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Exit selection mode"
+										disabled={workspace.isOperating}
+										onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Exit selection mode (Esc)</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
 				{:else}
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={workspace.isOperating}
-						onclick={enterSelectionMode}>Select items</Button
-					>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Select items"
+										disabled={workspace.isOperating}
+										onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Select items</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
 				{/if}
 				<span id={deferredCountId} class="sr-only"
 					>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
 				>
-				<Button
-					variant="outline"
-					size="sm"
-					aria-label="Show deferred"
-					aria-describedby={deferredCountId}
-					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
-					aria-pressed={todoFilter.showDeferred}
-					disabled={workspace.isOperating || todoFilter.status === "completed"}
-					onclick={() =>
-						void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
-							if (outcome.status !== "applied")
-								toast.error("Could not save Show deferred", { description: outcome.message });
-						})}>Show deferred ({todoFilter.deferredCount})</Button
-				>
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Show deferred"
+									aria-describedby={deferredCountId}
+									class="relative aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+									aria-pressed={todoFilter.showDeferred}
+									disabled={workspace.isOperating || todoFilter.status === "completed"}
+									onclick={() =>
+										void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+											if (outcome.status !== "applied")
+												toast.error("Could not save Show deferred", {
+													description: outcome.message,
+												});
+										})}
+								>
+									<Clock aria-hidden="true" />
+									{#if todoFilter.deferredCount > 0}
+										<span
+											aria-hidden="true"
+											class="absolute -top-1 -right-1 rounded-full bg-muted px-1 text-[10px] leading-4 text-muted-foreground tabular-nums"
+											>{todoFilter.deferredCount}</span
+										>
+									{/if}
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content
+							>{todoFilter.showDeferred ? "Hide deferred" : "Show deferred"} ({todoFilter.deferredCount})</Tooltip.Content
+						>
+					</Tooltip.Root>
+				</Tooltip.Provider>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
