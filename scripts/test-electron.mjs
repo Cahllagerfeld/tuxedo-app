@@ -477,6 +477,47 @@ try {
 	assert.equal(switched.status, "applied");
 	assert.equal(switched.confirmed.session.todo_file.items[0].description, "Call Mom");
 
+	const beforeBulk = await readFile(todoPath, "utf8");
+	const bulkSource = `${beforeBulk}Another open item\r\n`;
+	await writeFile(todoPath, bulkSource);
+	const bulkSession = await page.evaluate(() => window.desktop.restoreSession({}));
+	const bulkTarget = {
+		scope: bulkSession.scope,
+		revision: bulkSession.revision,
+		workspaceId: bulkSession.session.catalogue.active_workspace_id,
+		targets: bulkSession.session.todo_file.items.map((item) => ({
+			lineNumber: item.line_number,
+			expectedRaw: item.raw,
+		})),
+	};
+	assert.equal(
+		await page.evaluate(async (input) => {
+			try {
+				await window.desktop.bulkSetTodoCompletion({ ...input, targets: [] });
+				return false;
+			} catch {
+				return true;
+			}
+		}, bulkTarget),
+		true
+	);
+	const bulkCompleted = await page.evaluate(
+		(input) => window.desktop.bulkSetTodoCompletion(input),
+		bulkTarget
+	);
+	assert.equal(bulkCompleted.status, "applied");
+	assert.equal(bulkCompleted.confirmed.todo_file.items.filter((item) => !item.completed).length, 0);
+	assert.equal(bulkCompleted.confirmed.undoLabel, "Undo completion");
+	const bulkUndone = await page.evaluate((input) => window.desktop.undoTodo(input), {
+		scope: bulkCompleted.confirmed.scope,
+		revision: bulkCompleted.confirmed.revision,
+		workspaceId: bulkCompleted.confirmed.workspaceId,
+	});
+	assert.equal(bulkUndone.status, "applied");
+	assert.equal(await readFile(todoPath, "utf8"), bulkSource);
+	await writeFile(todoPath, beforeBulk);
+	switched.confirmed = await page.evaluate(() => window.desktop.restoreSession({}));
+
 	const completionTarget = {
 		scope: switched.confirmed.scope,
 		revision: switched.confirmed.revision,
@@ -1022,7 +1063,7 @@ try {
 	await page.getByText("Actionable chore", { exact: true }).waitFor();
 	const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
-	assert.equal(await showDeferred.textContent(), "Show deferred (1)");
+	assert.equal((await showDeferred.innerText()).trim(), "1");
 	assert.equal(await page.getByText("Future chore", { exact: true }).count(), 0);
 	assert.ok(await page.getByText("Unsupported threshold", { exact: true }).isVisible());
 	assert.ok(await page.getByText("Impossible threshold", { exact: true }).isVisible());
@@ -1073,7 +1114,7 @@ try {
 	);
 	await page.getByRole("button", { name: /^Completed/ }).click();
 	assert.ok(await showDeferred.isDisabled());
-	assert.equal(await showDeferred.textContent(), "Show deferred (0)");
+	assert.equal((await showDeferred.innerText()).trim(), "");
 	assert.ok(await page.getByText("Completed chore", { exact: true }).isVisible());
 	assert.equal(
 		await readFile(thresholdPath, "utf8"),
@@ -1168,7 +1209,7 @@ try {
 	);
 	const showDeferredLead = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferredLead.getAttribute("aria-pressed"), "false");
-	assert.equal(await showDeferredLead.textContent(), "Show deferred (1)");
+	assert.equal((await showDeferredLead.innerText()).trim(), "1");
 	assert.equal(await page.getByText("Mow", { exact: true }).count(), 1);
 	await showDeferredLead.click();
 	await page.getByTitle(/^Show from \d{4}-\d{2}-\d{2} · Deferred$/).waitFor();

@@ -29,6 +29,10 @@
 		onSelect?: (todo: TodoFile["items"][number]) => void;
 		onNavigate?: (todo: TodoFile["items"][number]) => void;
 		selectedTodo?: TodoFile["items"][number] | null;
+		selectionMode?: boolean;
+		isSelected?: (todo: TodoFile["items"][number]) => boolean;
+		onToggleSelect?: (todo: TodoFile["items"][number]) => void;
+		onSelectAll?: () => void;
 	};
 
 	let {
@@ -47,6 +51,10 @@
 		onSelect,
 		onNavigate,
 		selectedTodo = null,
+		selectionMode = false,
+		isSelected,
+		onToggleSelect,
+		onSelectAll,
 	}: TodoListProps = $props();
 
 	const list = createTodoListView({
@@ -96,6 +104,13 @@
 		onToggle: (todo) => onToggleComplete(todo),
 		onEdit: (todo, trigger) => onEdit?.(todo, trigger),
 		onSelect: (todo) => onSelect?.(todo),
+		get selectionMode() {
+			return selectionMode;
+		},
+		onToggleSelection: (todo) => onToggleSelect?.(todo),
+		get onSelectAll() {
+			return onSelectAll;
+		},
 	});
 	export const captureFocus = focus.capture;
 	export const focusTodo = focus.focusTodo;
@@ -120,11 +135,13 @@
 			{@const deferred = isDeferred(todo, today)}
 			<li
 				class={cn(
-					"group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-accent",
+					"group absolute left-0 flex w-full items-center border-b border-border/50 transition-colors hover:bg-muted/50 has-[[data-row-navigation]:focus-visible]:bg-muted",
 					deferred && "bg-amber-500/5 inset-shadow-[3px_0_0_var(--color-amber-500)]",
-					selectedTodo?.line_number === todo.line_number &&
+					!selectionMode &&
+						selectedTodo?.line_number === todo.line_number &&
 						selectedTodo?.raw === todo.raw &&
-						"bg-accent"
+						"bg-muted hover:bg-muted",
+					selectionMode && isSelected?.(todo) && "bg-muted hover:bg-muted"
 				)}
 				style:height={`${size}px`}
 				style:top={`${start}px`}
@@ -153,7 +170,9 @@
 					class="absolute inset-0 h-full w-full rounded-none p-0 focus-visible:border-transparent focus-visible:ring-0 focus-visible:inset-ring-1 focus-visible:inset-ring-ring focus-visible:outline-none"
 					onkeydown={(event) => focus.keydown(event, todo)}
 					onclick={() => {
-						if (!disabled && !list.dragging) onSelect?.(todo);
+						if (disabled || list.dragging) return;
+						if (selectionMode) onToggleSelect?.(todo);
+						else onSelect?.(todo);
 					}}
 				></Button>
 				{#if onReorder}
@@ -176,6 +195,9 @@
 						{onToggleComplete}
 						{onDelete}
 						{onEdit}
+						{selectionMode}
+						selected={isSelected?.(todo)}
+						{onToggleSelect}
 					/>
 				</div>
 			</li>

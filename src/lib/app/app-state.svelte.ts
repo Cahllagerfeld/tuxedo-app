@@ -5,6 +5,7 @@ import {
 import { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 import { ElectronWorkspaceSessionState } from "$lib/modules/workspace/state/electron-workspace-session.svelte";
+import { createTodoBulkSelection } from "$lib/modules/workspace/ui/todo-bulk-selection.svelte";
 
 export class AppState {
 	workspace: ElectronWorkspaceSessionState;
@@ -14,6 +15,10 @@ export class AppState {
 	isWorkspaceCreationDialogOpen = $state(false);
 	isWorkspaceSwitcherOpen = $state(false);
 	isTodoCreationOpen = $state(false);
+	bulkSelection: ReturnType<typeof createTodoBulkSelection>;
+	get todoBulkSelectionActive() {
+		return this.bulkSelection.active;
+	}
 
 	constructor(
 		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)
@@ -21,6 +26,12 @@ export class AppState {
 		this.workspace = workspace;
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
+		this.bulkSelection = createTodoBulkSelection({
+			getWorkspace: () => this.workspace,
+			getMatchingItems: () => this.filteredTodoItems,
+			getFilterSignature: () =>
+				JSON.stringify([this.todoFilter.snapshot(), this.todoFilter.showDeferred]),
+		});
 		$effect(() =>
 			this.todoFilter.sync(
 				this.workspace.activeWorkspace?.id ?? null,

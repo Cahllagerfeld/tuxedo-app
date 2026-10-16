@@ -65,6 +65,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: completion,
+		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 	};
 }
 function updated(): ConfirmedTodo {

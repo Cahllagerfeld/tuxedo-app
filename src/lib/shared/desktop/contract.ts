@@ -180,6 +180,26 @@ export const todoOutcomeSchema = effectValidator(
 export const setTodoCompletionRequestSchema = effectValidator(
 	Schema.Struct({ ...TodoMutationRequest.fields, completed: Schema.Boolean })
 );
+const TodoMutationTarget = Schema.Struct({
+	lineNumber: TodoMutationRequest.fields.lineNumber,
+	expectedRaw: TodoMutationRequest.fields.expectedRaw,
+});
+export const bulkSetTodoCompletionRequestSchema = effectValidator(
+	Schema.Struct({
+		scope: UUID,
+		revision: Revision,
+		workspaceId: UUID,
+		targets: Schema.mutable(Schema.Array(TodoMutationTarget)).check(
+			Schema.isMinLength(1),
+			Schema.makeFilter((targets) => {
+				const lines = targets.map((target) => target.lineNumber);
+				return new Set(lines).size !== lines.length
+					? "Todo item positions must be unique"
+					: undefined;
+			})
+		),
+	})
+);
 export {
 	createTodoRequestSchema,
 	normalizeTodoDescription,
@@ -328,6 +348,11 @@ export const desktopContract = {
 		request: setTodoCompletionRequestSchema,
 		response: todoOutcomeSchema,
 	},
+	bulkSetTodoCompletion: {
+		channel: "tuxedo:bulk-set-todo-completion",
+		request: bulkSetTodoCompletionRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	deleteTodo: {
 		channel: "tuxedo:delete-todo",
 		request: todoMutationRequestSchema,
@@ -413,6 +438,7 @@ export function createDesktopClient(
 		reorderTodo: (request) => call("reorderTodo", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
+		bulkSetTodoCompletion: (request) => call("bulkSetTodoCompletion", request),
 		deleteTodo: (request) => call("deleteTodo", request),
 		createTodo: (request) => call("createTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),

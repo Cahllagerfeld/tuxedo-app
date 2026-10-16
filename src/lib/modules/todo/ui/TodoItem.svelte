@@ -24,9 +24,22 @@
 		onToggleComplete: (todo: TodoItem) => void;
 		onDelete: (todo: TodoItem, trigger?: HTMLButtonElement | null) => void;
 		onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
+		selectionMode?: boolean;
+		selected?: boolean;
+		onToggleSelect?: (todo: TodoItem) => void;
 	};
 
-	let { todo, today, disabled, onToggleComplete, onDelete, onEdit }: TodoItemProps = $props();
+	let {
+		todo,
+		today,
+		disabled,
+		onToggleComplete,
+		onDelete,
+		onEdit,
+		selectionMode = false,
+		selected = false,
+		onToggleSelect,
+	}: TodoItemProps = $props();
 	const due = $derived(validDueDate(todo.metadata.due));
 	const recurrence = $derived(recurrenceLabel(todo.metadata.rec));
 	const category = $derived(dueCategory(todo.metadata.due, today));
@@ -59,13 +72,23 @@
 		todo.completed && "text-muted-foreground"
 	)}
 >
-	<Checkbox
-		bind:checked={confirmedChecked}
-		{disabled}
-		aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
-		class="pointer-events-auto size-4 shrink-0 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
-		onCheckedChange={requestCompletionChange}
-	/>
+	{#if selectionMode}
+		<Checkbox
+			checked={selected}
+			{disabled}
+			aria-label={`Select ${todo.description}`}
+			class="pointer-events-auto size-4 shrink-0"
+			onCheckedChange={() => onToggleSelect?.(todo)}
+		/>
+	{:else}
+		<Checkbox
+			bind:checked={confirmedChecked}
+			{disabled}
+			aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
+			class="pointer-events-auto size-4 shrink-0 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
+			onCheckedChange={requestCompletionChange}
+		/>
+	{/if}
 	<span
 		class={cn(
 			"w-6 shrink-0 text-center font-mono text-xs",

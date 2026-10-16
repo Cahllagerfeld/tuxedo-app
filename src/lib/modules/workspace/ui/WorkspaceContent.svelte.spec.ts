@@ -70,6 +70,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -1855,7 +1856,7 @@ test("a future Show from successor stays hidden until Show deferred", async () =
 	const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
 	await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-	await expect.element(toggle).toHaveTextContent("Show deferred (1)");
+	await expect.element(toggle).toHaveTextContent("1");
 	await expect.element(page.getByText("Next mow", { exact: true })).not.toBeInTheDocument();
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
@@ -1908,8 +1909,210 @@ test("a successor is shown on its Show from date", async () => {
 	await expect.element(page.getByText("Next mow", { exact: true })).toBeVisible();
 	await expect
 		.element(page.getByRole("button", { name: "Show deferred", exact: true }))
-		.toHaveTextContent("Show deferred (0)");
+		.toHaveTextContent("");
 	await expect
 		.element(page.getByText(`Next occurrence due ${today}.`, { exact: true }))
+		.toBeVisible();
+});
+test("selection mode completes selected open Todo items through one bulk operation", async () => {
+	const second: TodoFile["items"][number] = {
+		...todo,
+		line_number: 2,
+		raw: "Write tests +Work",
+		description: "Write tests",
+		projects: ["Work"],
+		edit: { description: "Write tests", metadata: [] },
+	};
+	const bulkSetTodoCompletion = vi.fn(async () => ({
+		status: "applied" as const,
+		confirmed: confirmedTodo([
+			{
+				...todo,
+				completed: true,
+				raw: "x 2026-07-18 Plan release +Work",
+				completion_date: "2026-07-18",
+			},
+			{
+				...second,
+				completed: true,
+				raw: "x 2026-07-18 Write tests +Work",
+				completion_date: "2026-07-18",
+			},
+		]),
+	}));
+	render(Harness, {
+		desktop: adapter({
+			bulkSetTodoCompletion,
+			readSession: async () => ({
+				...initial,
+				session: {
+					...initial.session,
+					todo_file: { path: "/tmp/work.todo", items: [todo, second], skipped: [] },
+				},
+			}),
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initial.session,
+					todo_file: { path: "/tmp/work.todo", items: [todo, second], skipped: [] },
+				},
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "Select items" }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release" }).click();
+	await page.getByRole("checkbox", { name: "Select Write tests" }).click();
+	await page.getByRole("button", { name: "Complete" }).click();
+	expect(bulkSetTodoCompletion).toHaveBeenCalledTimes(1);
+	await expect.element(page.getByText("Completed 2 Todo items", { exact: true })).toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Exit selection mode" })).toBeVisible();
+});
+
+test.each(["rejected", "conflict"] as const)(
+	"pending bulk completion locks Escape and retains selection only on %s",
+	async (status) => {
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["bulkSetTodoCompletion"]>>) => void;
+		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				})
+		);
+		const createTodo = vi.fn<DesktopAPI["createTodo"]>();
+		const undoTodo = vi.fn<DesktopAPI["undoTodo"]>();
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				restoreSession: async () => ({ ...initial, undoLabel: "Undo edit" }),
+				bulkSetTodoCompletion: bulk,
+				createTodo,
+				undoTodo,
+			}),
+		});
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+		const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+		await userEvent.keyboard(`{${mod}>}n{/${mod}}{${mod}>}z{/${mod}}`);
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		expect(createTodo).not.toHaveBeenCalled();
+		expect(undoTodo).not.toHaveBeenCalled();
+		await page.getByRole("button", { name: "Complete", exact: true }).click();
+		await userEvent.keyboard("{Escape}");
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toBeDisabled();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Plan release", exact: true }))
+			.toBeChecked();
+		if (status === "rejected") finish({ status, message: "Permission denied" });
+		else finish({ status, message: "Changed externally", confirmed: confirmedTodo([todo]) });
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toBeEnabled();
+		await expect
+			.element(page.getByText(`${status === "rejected" ? 1 : 0} selected`, { exact: true }))
+			.toBeVisible();
+		expect(bulk).toHaveBeenCalledTimes(1);
+		await userEvent.keyboard("{Escape}");
+		await expect
+			.element(page.getByRole("button", { name: "Select items", exact: true }))
+			.toBeVisible();
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	}
+);
+
+test("selection keyboard selects off-screen matches, suppresses editing, and preserves text input shortcuts", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const items = Array.from({ length: 200 }, (_, index) => ({
+		...todo,
+		line_number: index + 1,
+		raw: `Batch ${index}`,
+		description: `Batch ${index}`,
+	}));
+	const hidden = { ...todo, line_number: 201, raw: "Hidden", description: "Hidden" };
+	const session: ConfirmedSession = {
+		...initial,
+		session: {
+			...initial.session,
+			todo_file: { path: "/tmp/work.todo", items: [...items, hidden], skipped: [] },
+		},
+	};
+	const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () => ({
+		status: "rejected",
+		message: "Test rejection",
+	}));
+	render(Harness, {
+		desktop: adapter({ restoreSession: async () => session, bulkSetTodoCompletion: bulk }),
+	});
+	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+	const search = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
+	await search.fill("Batch");
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	const row = page.getByRole("button", { name: "Navigate Batch 0", exact: true });
+	(row.element() as HTMLElement).focus();
+	await userEvent.keyboard("{ArrowDown}{Space}{Enter}e");
+	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+	await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
+	await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
+	expect(document.querySelectorAll("[data-row-navigation]").length).toBeLessThan(200);
+	await search.click();
+	await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
+	expect((search.element() as HTMLInputElement).selectionEnd).toBe(5);
+	await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Complete", exact: true }).click();
+	await expect.poll(() => bulk.mock.calls.length).toBe(1);
+	expect(bulk.mock.calls[0][0].targets).toHaveLength(200);
+	expect(bulk.mock.calls[0][0].targets.some((target) => target.lineNumber === 201)).toBe(false);
+});
+
+test("idle selection allows clearing active filters and clears the selection", async () => {
+	await page.viewport(1200, 800);
+	render(Harness, { shell: true, desktop: adapter() });
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	await page.getByRole("button", { name: "Clear Project Work", exact: true }).click();
+	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+		.toBeVisible();
+});
+
+test("unchanged refresh retains selection and a skipped-line edit clears it with a notice", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	let notify!: (change: TodoFileChange) => void;
+	let loads = 0;
+	const restoreSession = vi.fn<DesktopAPI["restoreSession"]>(async () => ({
+		...initial,
+		revision: ++loads,
+		session: {
+			...ready,
+			todo_file: {
+				...ready.todo_file,
+				skipped: [{ line_number: 2, raw: loads < 3 ? "x" : "x ", reason: "Invalid Todo item" }],
+			},
+		},
+	}));
+	render(Harness, {
+		desktop: adapter({ restoreSession }),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => loads).toBe(2);
+	await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByText("Selection cleared because the Todo file changed.", { exact: true }))
 		.toBeVisible();
 });

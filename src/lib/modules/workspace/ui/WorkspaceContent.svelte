@@ -9,6 +9,11 @@
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
+	import * as ButtonGroup from "$lib/shared/ui/button-group";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import Clock from "@lucide/svelte/icons/clock";
+	import Check from "@lucide/svelte/icons/check";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import { Input } from "$lib/shared/ui/input";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -23,9 +28,11 @@
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
+	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 
 	type Props = {
 		creationOpen?: boolean;
+		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
@@ -34,6 +41,7 @@
 
 	let {
 		creationOpen = $bindable(false),
+		bulkSelection,
 		workspace,
 		todoFilter,
 		filteredTodoItems,
@@ -69,6 +77,56 @@
 		}
 	}
 	const shortcutScope = getShortcutScope();
+	let previousSelection: typeof bulkSelection.context | undefined;
+	// Report invalidation to the external toast system; selection itself is derived.
+	$effect(() => {
+		if (workspace.isOperating) return;
+		const current = bulkSelection.context;
+		if (
+			previousSelection &&
+			previousSelection.workspaceKey === current.workspaceKey &&
+			previousSelection.selection !== current.selection &&
+			previousSelection.selection.value.size &&
+			bulkSelection.active &&
+			!workspace.isOperating
+		) {
+			toast.info(
+				previousSelection.fileSignature !== current.fileSignature
+					? "Selection cleared because the Todo file changed."
+					: "Selection cleared because filters changed."
+			);
+		}
+		previousSelection = current;
+	});
+	let reader = $state<ReturnType<typeof WorkspaceTodoReader>>();
+	async function completeSelected() {
+		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
+		if (!items.length) return;
+		previousSelection = undefined;
+		const result = await workspace.bulkSetCompletion(items);
+		if (result.status === "applied") {
+			const count = items.length;
+			toast.success(`Completed ${count} ${count === 1 ? "Todo item" : "Todo items"}`);
+			if (result.notice) toast.info(result.notice);
+			bulkSelection.clear();
+		} else if (result.status === "conflict") {
+			toast.error("Todo file reloaded");
+			bulkSelection.clear();
+		} else toast.error("Could not complete Todo items", { description: result.message });
+	}
+	function enterSelectionMode() {
+		reader?.closeDetails();
+		bulkSelection.enter();
+	}
+	createHotkey(
+		"Escape",
+		() => bulkSelection.exit(),
+		() => ({
+			enabled: bulkSelection.active && !workspace.isOperating && (shortcutScope?.available ?? true),
+			ignoreInputs: true,
+			preventDefault: true,
+		})
+	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
 		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
 		ignoreInputs: false,
@@ -100,29 +158,114 @@
 	{#if workspace.todoFile}
 		<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 			<div>
-				<p class="text-sm font-medium">Todo items</p>
-				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
-					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
-				</p>
+				{#if bulkSelection.active}
+					<p class="text-sm font-medium" aria-live="polite">
+						{bulkSelection.count} selected
+					</p>
+				{:else}
+					<p class="text-sm font-medium">Todo items</p>
+					<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
+						{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
+					</p>
+				{/if}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
+				{#if bulkSelection.active}
+					<ButtonGroup.Root aria-label="Selection controls">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={workspace.isOperating || filteredTodoItems.length === 0}
+							onclick={bulkSelection.selectAll}>Select all</Button
+						>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={workspace.isOperating || bulkSelection.count === 0}
+							onclick={bulkSelection.clear}>Clear selection</Button
+						>
+					</ButtonGroup.Root>
+					<Button
+						size="sm"
+						disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
+						onclick={() => void completeSelected()}><Check aria-hidden="true" />Complete</Button
+					>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Exit selection mode"
+										disabled={workspace.isOperating}
+										onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Exit selection mode (Esc)</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+				{:else}
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Select items"
+										disabled={workspace.isOperating}
+										onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Select items</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+				{/if}
 				<span id={deferredCountId} class="sr-only"
 					>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
 				>
-				<Button
-					variant="outline"
-					size="sm"
-					aria-label="Show deferred"
-					aria-describedby={deferredCountId}
-					class="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
-					aria-pressed={todoFilter.showDeferred}
-					disabled={workspace.isOperating || todoFilter.status === "completed"}
-					onclick={() =>
-						void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
-							if (outcome.status !== "applied")
-								toast.error("Could not save Show deferred", { description: outcome.message });
-						})}>Show deferred ({todoFilter.deferredCount})</Button
-				>
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Show deferred"
+									aria-describedby={deferredCountId}
+									class="relative aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+									aria-pressed={todoFilter.showDeferred}
+									disabled={workspace.isOperating || todoFilter.status === "completed"}
+									onclick={() =>
+										void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+											if (outcome.status !== "applied")
+												toast.error("Could not save Show deferred", {
+													description: outcome.message,
+												});
+										})}
+								>
+									<Clock aria-hidden="true" />
+									{#if todoFilter.deferredCount > 0}
+										<span
+											aria-hidden="true"
+											class="absolute -top-1 -right-1 rounded-full bg-muted px-1 text-[10px] leading-4 text-muted-foreground tabular-nums"
+											>{todoFilter.deferredCount}</span
+										>
+									{/if}
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content
+							>{todoFilter.showDeferred ? "Hide deferred" : "Show deferred"} ({todoFilter.deferredCount})</Tooltip.Content
+						>
+					</Tooltip.Root>
+				</Tooltip.Provider>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
@@ -172,15 +315,17 @@
 				>
 					<Search class="size-4" aria-hidden="true" />
 				</Button>
-				<TodoEditorDialog
-					bind:open={creationOpen}
-					todoFile={workspace.todoFile}
-					saveTodoItem={workspace.createTodo}
-					workspaceName={workspace.activeWorkspace?.name ?? ""}
-					initialProject={todoFilter.selectedProject}
-					initialContext={todoFilter.selectedContext}
-					disabled={workspace.isOperating}
-				/>
+				{#if !bulkSelection.active}
+					<TodoEditorDialog
+						bind:open={creationOpen}
+						todoFile={workspace.todoFile}
+						saveTodoItem={workspace.createTodo}
+						workspaceName={workspace.activeWorkspace?.name ?? ""}
+						initialProject={todoFilter.selectedProject}
+						initialContext={todoFilter.selectedContext}
+						disabled={workspace.isOperating}
+					/>
+				{/if}
 			</div>
 		</div>
 		{#if searchOpen || todoFilter.hasSearch}
@@ -217,7 +362,13 @@
 		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
 	{/if}
 	{#if workspace.todoFile}
-		<WorkspaceTodoReader {workspace} {todoFilter} {filteredTodoItems} />
+		<WorkspaceTodoReader
+			bind:this={reader}
+			{workspace}
+			{todoFilter}
+			{filteredTodoItems}
+			{bulkSelection}
+		/>
 	{:else}
 		<div class="min-h-0 min-w-0 flex-1">
 			<ScrollArea

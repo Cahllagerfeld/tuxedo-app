@@ -300,6 +300,29 @@ export class ElectronWorkspaceSessionState {
 			},
 			this.todoOperationTarget(todo)
 		);
+	bulkSetCompletion = (items: readonly TodoItem[]) =>
+		this.runAction(
+			"bulk_set_todo_item_completion",
+			async () => {
+				const target = this.todoTarget();
+				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+				if (items.some((item) => current.get(item.line_number) !== item.raw))
+					return {
+						status: "rejected",
+						message: "The Todo file changed. Try again with its current Todo items.",
+					};
+				return this.applyTodoOutcome(
+					await this.desktop.bulkSetTodoCompletion({
+						...target,
+						targets: items.map((item) => ({
+							lineNumber: item.line_number,
+							expectedRaw: item.raw,
+						})),
+					})
+				);
+			},
+			this.todoOperationTarget()
+		);
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
 		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
 	}

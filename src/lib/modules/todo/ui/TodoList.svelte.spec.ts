@@ -85,6 +85,37 @@ describe("TodoList", () => {
 		await expect.element(warning).toHaveFocus();
 		await expect.element(page.getByRole("tooltip")).toBeVisible();
 	});
+	it.each(["+2d", "2026-02-30"])(
+		"shows invalid Show from %s only in a warning tooltip",
+		async (value) => {
+			await render(TodoList, {
+				todoFile: { ...todoFile, items: [{ ...todoFile.items[0], metadata: { t: value } }] },
+				disabled: false,
+				onToggleComplete: vi.fn(),
+				onDelete: vi.fn(),
+			});
+			const warning = page.getByRole("button", {
+				name: "Invalid or unsupported Show from",
+				exact: true,
+			});
+			await expect.element(warning).toBeVisible();
+			await expect
+				.element(page.getByText(`Invalid or unsupported Show from: ${value}`, { exact: true }))
+				.not.toBeInTheDocument();
+			await warning.hover();
+			await expect
+				.element(page.getByRole("tooltip"))
+				.toHaveTextContent(
+					`Invalid or unsupported Show from: ${value} — edit this Todo item to repair it.`
+				);
+			await userEvent.keyboard("{Escape}");
+			await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
+			await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
+			await userEvent.keyboard("{Tab}");
+			await expect.element(warning).toHaveFocus();
+			await expect.element(page.getByRole("tooltip")).toBeVisible();
+		}
+	);
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});

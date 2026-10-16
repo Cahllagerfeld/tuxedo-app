@@ -17,20 +17,24 @@
 	import { Button } from "$lib/shared/ui/button";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import { toast } from "svelte-sonner";
+	import type { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	let {
 		workspace,
 		todoFilter,
 		filteredTodoItems,
+		bulkSelection,
 	}: {
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
+		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 	} = $props();
 	const shortcutScope = getShortcutScope();
 	const wide = new MediaQuery("(min-width: 1100px)");
 	let todoList = $state<ReturnType<typeof TodoList>>();
 	let todoViewport = $state<HTMLElement | null>(null);
 	let desktopDetails = $state<HTMLElement | null>(null);
+	const selectionMode = $derived(bulkSelection.active);
 	const reader = createTodoReaderInteraction({
 		get workspace() {
 			return workspace;
@@ -52,6 +56,7 @@
 		},
 		shortcutScope,
 	});
+	export const closeDetails = () => reader.closeDetails();
 	function revealDetails(node: HTMLElement) {
 		return () => {
 			const grow = Number(getComputedStyle(node).flexGrow);
@@ -102,7 +107,7 @@
 
 {#if workspace.todoFile}
 	{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
-		{#if reader.editingTodo}
+		{#if reader.editingTodo && !selectionMode}
 			<TodoEditorDialog
 				todoFile={workspace.todoFile}
 				todoToEdit={reader.editingTodo}
@@ -184,19 +189,25 @@
 							todoFile={workspace.todoFile}
 							items={filteredTodoItems}
 							disabled={workspace.isOperating}
-							onToggleComplete={toggleTodoCompletion}
-							onDelete={deleteTodoItem}
-							onEdit={reader.startEdit}
-							onReorder={todoFilter.sortOrder === "file" ? reorderTodoItems : undefined}
-							selectedTodo={reader.selectedTodo}
-							onSelect={reader.select}
-							onNavigate={reader.navigate}
+							onToggleComplete={selectionMode ? () => {} : toggleTodoCompletion}
+							onDelete={selectionMode ? () => {} : deleteTodoItem}
+							onEdit={selectionMode ? undefined : reader.startEdit}
+							onReorder={selectionMode || todoFilter.sortOrder !== "file"
+								? undefined
+								: reorderTodoItems}
+							selectedTodo={selectionMode ? null : reader.selectedTodo}
+							onSelect={selectionMode ? undefined : reader.select}
+							onNavigate={selectionMode ? undefined : reader.navigate}
+							{selectionMode}
+							isSelected={bulkSelection.isSelected}
+							onToggleSelect={bulkSelection.toggle}
+							onSelectAll={bulkSelection.selectAll}
 						/>
 					{/if}
 				</ScrollArea>
 			</div>
 		</Resizable.Pane>
-		{#if reader.selectedTodo && wide.current && workspace.todoFile}
+		{#if !selectionMode && reader.selectedTodo && wide.current && workspace.todoFile}
 			{@const todo = reader.selectedTodo}
 			{@const path = workspace.todoFile.path}
 			<Resizable.Handle aria-label="Resize Todo item details" />
@@ -218,7 +229,7 @@
 </div>
 {#if !wide.current}
 	<Sheet.Root
-		open={!!reader.selectedTodo}
+		open={!selectionMode && !!reader.selectedTodo}
 		onOpenChange={(open) => {
 			if (!open) reader.closeDetails();
 		}}
