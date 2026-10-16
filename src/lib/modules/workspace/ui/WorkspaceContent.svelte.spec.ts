@@ -70,6 +70,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -1912,4 +1913,57 @@ test("a successor is shown on its Show from date", async () => {
 	await expect
 		.element(page.getByText(`Next occurrence due ${today}.`, { exact: true }))
 		.toBeVisible();
+});
+test("selection mode completes selected open Todo items through one bulk operation", async () => {
+	const second: TodoFile["items"][number] = {
+		...todo,
+		line_number: 2,
+		raw: "Write tests +Work",
+		description: "Write tests",
+		projects: ["Work"],
+		edit: { description: "Write tests", metadata: [] },
+	};
+	const bulkSetTodoCompletion = vi.fn(async () => ({
+		status: "applied" as const,
+		confirmed: confirmedTodo([
+			{
+				...todo,
+				completed: true,
+				raw: "x 2026-07-18 Plan release +Work",
+				completion_date: "2026-07-18",
+			},
+			{
+				...second,
+				completed: true,
+				raw: "x 2026-07-18 Write tests +Work",
+				completion_date: "2026-07-18",
+			},
+		]),
+	}));
+	render(Harness, {
+		desktop: adapter({
+			bulkSetTodoCompletion,
+			readSession: async () => ({
+				...initial,
+				session: {
+					...initial.session,
+					todo_file: { path: "/tmp/work.todo", items: [todo, second], skipped: [] },
+				},
+			}),
+			restoreSession: async () => ({
+				...initial,
+				session: {
+					...initial.session,
+					todo_file: { path: "/tmp/work.todo", items: [todo, second], skipped: [] },
+				},
+			}),
+		}),
+	});
+	await page.getByRole("button", { name: "Select items" }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release" }).click();
+	await page.getByRole("checkbox", { name: "Select Write tests" }).click();
+	await page.getByRole("button", { name: "Complete" }).click();
+	expect(bulkSetTodoCompletion).toHaveBeenCalledTimes(1);
+	await expect.element(page.getByText("Completed 2 Todo items", { exact: true })).toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Done" })).toBeVisible();
 });

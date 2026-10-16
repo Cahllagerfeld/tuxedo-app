@@ -23,9 +23,11 @@
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
+	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 
 	type Props = {
 		creationOpen?: boolean;
+		todoBulkSelectionActive?: boolean;
 		workspace: ElectronWorkspaceSessionState;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
@@ -34,6 +36,7 @@
 
 	let {
 		creationOpen = $bindable(false),
+		todoBulkSelectionActive = $bindable(false),
 		workspace,
 		todoFilter,
 		filteredTodoItems,
@@ -69,6 +72,57 @@
 		}
 	}
 	const shortcutScope = getShortcutScope();
+	const bulkSelection = createTodoBulkSelection({
+		getWorkspace: () => workspace,
+		getMatchingItems: () => filteredTodoItems,
+		getFilterSignature: () =>
+			JSON.stringify([
+				todoFilter.status,
+				todoFilter.showDeferred,
+				todoFilter.selectedProject,
+				todoFilter.selectedContext,
+				todoFilter.selectedPriority,
+				todoFilter.selectedDue,
+				todoFilter.searchText,
+			]),
+		getWorkspaceKey: () =>
+			`${workspace.activeWorkspace?.id ?? ""}:${workspace.todoFile?.path ?? ""}`,
+		onCleared: (reason) => {
+			if (reason === "external") toast.info("Selection cleared because the Todo file changed.");
+			else toast.info("Selection cleared because filters changed.");
+		},
+	});
+	$effect(() => {
+		todoBulkSelectionActive = bulkSelection.active;
+	});
+	let closeReaderDetails = () => {};
+	async function completeSelected() {
+		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
+		if (!items.length) return;
+		const result = await workspace.bulkSetCompletion(items);
+		if (result.status === "applied") {
+			const count = items.length;
+			toast.success(`Completed ${count} ${count === 1 ? "Todo item" : "Todo items"}`);
+			if (result.notice) toast.info(result.notice);
+			bulkSelection.clear();
+		} else if (result.status === "conflict") {
+			toast.error("Todo file reloaded");
+			bulkSelection.clear();
+		} else toast.error("Could not complete Todo items", { description: result.message });
+	}
+	function enterSelectionMode() {
+		closeReaderDetails();
+		bulkSelection.enter();
+	}
+	createHotkey(
+		"Escape",
+		() => bulkSelection.exit(),
+		() => ({
+			enabled: bulkSelection.active && (shortcutScope?.available ?? true),
+			ignoreInputs: true,
+			preventDefault: true,
+		})
+	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
 		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
 		ignoreInputs: false,
@@ -100,12 +154,50 @@
 	{#if workspace.todoFile}
 		<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 			<div>
-				<p class="text-sm font-medium">Todo items</p>
-				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
-					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
-				</p>
+				{#if bulkSelection.active}
+					<p class="text-sm font-medium" aria-live="polite">
+						{bulkSelection.count} selected
+					</p>
+				{:else}
+					<p class="text-sm font-medium">Todo items</p>
+					<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
+						{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
+					</p>
+				{/if}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
+				{#if bulkSelection.active}
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={workspace.isOperating || filteredTodoItems.length === 0}
+						onclick={bulkSelection.selectAll}>Select all</Button
+					>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={workspace.isOperating || bulkSelection.count === 0}
+						onclick={bulkSelection.clear}>Clear selection</Button
+					>
+					<Button
+						size="sm"
+						disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
+						onclick={() => void completeSelected()}>Complete</Button
+					>
+					<Button
+						variant="secondary"
+						size="sm"
+						disabled={workspace.isOperating}
+						onclick={bulkSelection.exit}>Done</Button
+					>
+				{:else}
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={workspace.isOperating}
+						onclick={enterSelectionMode}>Select items</Button
+					>
+				{/if}
 				<span id={deferredCountId} class="sr-only"
 					>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
 				>
@@ -172,15 +264,17 @@
 				>
 					<Search class="size-4" aria-hidden="true" />
 				</Button>
-				<TodoEditorDialog
-					bind:open={creationOpen}
-					todoFile={workspace.todoFile}
-					saveTodoItem={workspace.createTodo}
-					workspaceName={workspace.activeWorkspace?.name ?? ""}
-					initialProject={todoFilter.selectedProject}
-					initialContext={todoFilter.selectedContext}
-					disabled={workspace.isOperating}
-				/>
+				{#if !bulkSelection.active}
+					<TodoEditorDialog
+						bind:open={creationOpen}
+						todoFile={workspace.todoFile}
+						saveTodoItem={workspace.createTodo}
+						workspaceName={workspace.activeWorkspace?.name ?? ""}
+						initialProject={todoFilter.selectedProject}
+						initialContext={todoFilter.selectedContext}
+						disabled={workspace.isOperating}
+					/>
+				{/if}
 			</div>
 		</div>
 		{#if searchOpen || todoFilter.hasSearch}
@@ -214,10 +308,18 @@
 				</div>
 			</div>
 		{/if}
-		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
+		<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating || bulkSelection.active} />
 	{/if}
 	{#if workspace.todoFile}
-		<WorkspaceTodoReader {workspace} {todoFilter} {filteredTodoItems} />
+		<WorkspaceTodoReader
+			{workspace}
+			{todoFilter}
+			{filteredTodoItems}
+			{bulkSelection}
+			registerCloseDetails={(close) => {
+				closeReaderDetails = close;
+			}}
+		/>
 	{:else}
 		<div class="min-h-0 min-w-0 flex-1">
 			<ScrollArea

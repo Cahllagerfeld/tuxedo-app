@@ -11,12 +11,14 @@ import { appendTodoLine, createTodoLine } from "./create-todo";
 import { parseTodoFile } from "./todo-file";
 import { attempt, readContents, OperationFailure, type OperationError } from "./operation";
 import type { SessionState, UndoChange } from "./session";
+import { bulkCompleteTodos } from "./bulk-complete-todos";
 import {
 	createTodoRequestSchema,
 	editTodoRequestSchema,
 	reorderTodoRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
+	bulkSetTodoCompletionRequestSchema,
 	undoTodoRequestSchema,
 	type UndoLabel,
 	type DesktopRequest,
@@ -136,7 +138,10 @@ export function createTodoOperations(state: SessionState) {
 	const mutateTodoFile = (
 		input: Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">,
 		label: UndoLabel,
-		transform: (contents: string, todoFile: TodoFile) => string
+		transform: (
+			contents: string,
+			todoFile: TodoFile
+		) => string | { contents: string; notice?: string }
 	): Effect.Effect<
 		DesktopResponse<"createTodo">,
 		OperationError,
@@ -152,7 +157,9 @@ export function createTodoOperations(state: SessionState) {
 					message: "The Todo file changed on disk. Review its current contents.",
 					confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
 				};
-			const rewritten = yield* attempt(() => transform(contents, current));
+			const transformed = yield* attempt(() => transform(contents, current));
+			const rewritten = typeof transformed === "string" ? transformed : transformed.contents;
+			const notice = typeof transformed === "string" ? undefined : transformed.notice;
 			if (rewritten === contents)
 				return {
 					status: "applied",
@@ -163,14 +170,16 @@ export function createTodoOperations(state: SessionState) {
 						...(previous.undoLabel ? { undoLabel: previous.undoLabel } : {}),
 						todo_file: current,
 					},
+					...(notice ? { notice } : {}),
 				};
-			return yield* commitTodo(
+			const result = yield* commitTodo(
 				previous.session,
 				input.workspaceId,
 				workspace.todo_path,
 				rewritten,
 				{ contents, label }
 			);
+			return { ...result, ...(notice ? { notice } : {}) };
 		});
 	return {
 		undoTodo: (request: DesktopRequest<"undoTodo">) =>
@@ -287,6 +296,55 @@ export function createTodoOperations(state: SessionState) {
 							: replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
 					}
 				);
+			}),
+		bulkSetTodoCompletion: (request: DesktopRequest<"bulkSetTodoCompletion">) =>
+			Effect.gen(function* () {
+				const parsed = bulkSetTodoCompletionRequestSchema.safeParse(request);
+				if (!parsed.success)
+					return { status: "rejected" as const, message: "Invalid bulk completion request." };
+				const input = parsed.data;
+				const identity = yield* Identity;
+				const today = new Date(identity.now());
+				const { previous, workspace } = yield* todoMutationContext(input);
+				const contents = yield* readContents(workspace.todo_path);
+				const current = parseTodoFile(workspace.todo_path, contents);
+				if (contents !== state.todoContents)
+					return {
+						status: "conflict" as const,
+						message: "The Todo file changed on disk. Review its current contents.",
+						confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
+					};
+				for (const target of input.targets) {
+					const item = current.items.find((item) => item.line_number === target.lineNumber);
+					if (!item || item.raw !== target.expectedRaw)
+						return {
+							status: "conflict" as const,
+							message: "The Todo item changed on disk. Review its current contents.",
+							confirmed: confirmTodo(previous.session, input.workspaceId, current, contents),
+						};
+				}
+				const transformed = bulkCompleteTodos(contents, current, input.targets, today);
+				if (transformed.contents === contents)
+					return {
+						status: "applied" as const,
+						confirmed: {
+							scope: previous.scope,
+							revision: previous.revision,
+							workspaceId: input.workspaceId,
+							...(previous.undoLabel ? { undoLabel: previous.undoLabel } : {}),
+							todo_file: current,
+						},
+						...(transformed.notice ? { notice: transformed.notice } : {}),
+					};
+				const result = yield* commitTodo(
+					previous.session,
+					input.workspaceId,
+					workspace.todo_path,
+					transformed.contents,
+					{ contents, label: "Undo completion" }
+				);
+				if (result.status !== "applied" || !transformed.notice) return result;
+				return { ...result, notice: transformed.notice };
 			}),
 	};
 }

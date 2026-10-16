@@ -10,7 +10,9 @@
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
 	let { app }: { app: AppState } = $props();
 	const shortcutScope = getShortcutScope();
-	const canUndo = $derived(!!app.workspace.undoLabel && !app.workspace.isOperating);
+	const canUndo = $derived(
+		!!app.workspace.undoLabel && !app.workspace.isOperating && !app.todoBulkSelectionActive
+	);
 	async function undo() {
 		if (!canUndo) return;
 		const outcome = await app.workspace.undoTodo();

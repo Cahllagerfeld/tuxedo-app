@@ -14,6 +14,7 @@ export class AppState {
 	isWorkspaceCreationDialogOpen = $state(false);
 	isWorkspaceSwitcherOpen = $state(false);
 	isTodoCreationOpen = $state(false);
+	todoBulkSelectionActive = $state(false);
 
 	constructor(
 		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)

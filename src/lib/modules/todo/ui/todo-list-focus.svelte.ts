@@ -16,6 +16,9 @@ type Inputs = {
 	onToggle: (todo: TodoItem) => void;
 	onEdit?: (todo: TodoItem, trigger: HTMLButtonElement | null) => void;
 	onSelect?: (todo: TodoItem) => void;
+	readonly selectionMode?: boolean;
+	onToggleSelection?: (todo: TodoItem) => void;
+	onSelectAll?: () => void;
 };
 
 export function createTodoListFocus(inputs: Inputs) {
@@ -143,13 +146,21 @@ export function createTodoListFocus(inputs: Inputs) {
 			inputs.disabled ||
 			inputs.dragging ||
 			inputs.scope?.available === false ||
-			event.altKey ||
-			event.ctrlKey ||
-			event.metaKey ||
-			event.shiftKey ||
 			event.isComposing
 		)
 			return;
+		if (
+			inputs.selectionMode &&
+			(event.metaKey || event.ctrlKey) &&
+			!event.altKey &&
+			!event.shiftKey &&
+			event.key.toLowerCase() === "a"
+		) {
+			event.preventDefault();
+			inputs.onSelectAll?.();
+			return;
+		}
+		if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 		const index = todo ? inputs.items.indexOf(todo) : -1;
 		let next: number;
 		switch (event.key) {
@@ -168,7 +179,8 @@ export function createTodoListFocus(inputs: Inputs) {
 			case rowShortcuts.complete.eventKey:
 				if (!todo) return;
 				event.preventDefault();
-				if (!event.repeat) inputs.onToggle(todo);
+				if (!event.repeat)
+					inputs.selectionMode ? inputs.onToggleSelection?.(todo) : inputs.onToggle(todo);
 				return;
 			case rowShortcuts.edit.key:
 				if (!todo) return;
@@ -178,7 +190,8 @@ export function createTodoListFocus(inputs: Inputs) {
 			case rowShortcuts.details.key:
 				if (!todo) return;
 				event.preventDefault();
-				if (!event.repeat) inputs.onSelect?.(todo);
+				if (!event.repeat)
+					inputs.selectionMode ? inputs.onToggleSelection?.(todo) : inputs.onSelect?.(todo);
 				return;
 			default:
 				return;

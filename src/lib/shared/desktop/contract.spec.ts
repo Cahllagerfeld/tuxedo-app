@@ -480,6 +480,20 @@ test("saved-view transport validates persisted view responses", async () => {
 	await expect(desktop.readSavedViews({})).rejects.toThrow();
 });
 
+test("bulk completion transport validates unique physical-line targets", () => {
+	expect(() =>
+		desktopContract.bulkSetTodoCompletion.request.parse({
+			scope,
+			revision: 1,
+			workspaceId,
+			targets: [
+				{ lineNumber: 1, expectedRaw: "One" },
+				{ lineNumber: 1, expectedRaw: "Two" },
+			],
+		})
+	).toThrow();
+});
+
 test("completion transport carries validated recurrence feedback for checkbox and editor", async () => {
 	const response = {
 		status: "applied",
