@@ -242,6 +242,7 @@ const startup = Effect.gen(function* () {
 	yield* register("deleteView", backend.deleteView);
 	yield* register("setTodoCompletion", backend.setTodoCompletion);
 	yield* register("bulkSetTodoCompletion", backend.bulkSetTodoCompletion);
+	yield* register("bulkDeleteTodos", backend.bulkDeleteTodos);
 	yield* register("deleteTodo", backend.deleteTodo);
 	yield* register("editTodo", backend.editTodo);
 	yield* register("reorderTodo", backend.reorderTodo);

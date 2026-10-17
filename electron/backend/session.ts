@@ -310,6 +310,12 @@ export function sessionLayer(
 					operation("deleteTodo", "Cannot delete Todo item: ", todos.deleteTodo(request)),
 				setTodoCompletion: (request) =>
 					operation("setTodoCompletion", "", todos.setTodoCompletion(request)),
+				bulkDeleteTodos: (request) =>
+					operation(
+						"bulkDeleteTodos",
+						"Cannot delete Todo items: ",
+						todos.bulkDeleteTodos(request)
+					),
 				bulkSetTodoCompletion: (request) =>
 					operation("bulkSetTodoCompletion", "", todos.bulkSetTodoCompletion(request)),
 				reorderTodo: (request) =>

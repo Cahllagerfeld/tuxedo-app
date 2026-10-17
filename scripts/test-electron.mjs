@@ -788,6 +788,76 @@ try {
 	assert.equal(deletionConflict.confirmed.todo_file.items[0].description, "Changed externally");
 	assert.equal(await readFile(deletionPath, "utf8"), "Changed externally\r\n");
 
+	const bulkDeletionSource =
+		"Before +Hidden\r\n(A) 2026-10-01 Batch one +Batch @desk custom:keep\n\n2026-13-01 Invalid\r\nx 2026-10-12 2026-10-02 Batch two +Batch\tcustom:value\r\nAfter +Hidden";
+	await writeFile(deletionPath, bulkDeletionSource);
+	const bulkDeletionSession = await page.evaluate(() => window.desktop.restoreSession({}));
+	const bulkDeletionTarget = {
+		scope: bulkDeletionSession.scope,
+		revision: bulkDeletionSession.revision,
+		workspaceId: bulkDeletionSession.session.catalogue.active_workspace_id,
+		targets: bulkDeletionSession.session.todo_file.items
+			.filter((item) => item.projects.includes("Batch"))
+			.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	};
+	for (const targets of [[], [bulkDeletionTarget.targets[0], bulkDeletionTarget.targets[0]]]) {
+		assert.equal(
+			await page.evaluate(
+				async (input) => {
+					try {
+						await window.desktop.bulkDeleteTodos(input);
+						return false;
+					} catch {
+						return true;
+					}
+				},
+				{ ...bulkDeletionTarget, targets }
+			),
+			true
+		);
+		assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
+	}
+	await page.reload();
+	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).fill("Batch");
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("button", { name: "Select all", exact: true }).click();
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	const bulkDeleteDialog = page.getByRole("alertdialog", { name: "Delete 2 Todo items?" });
+	await bulkDeleteDialog.waitFor();
+	assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
+	await bulkDeleteDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+	await bulkDeleteDialog.waitFor({ state: "detached" });
+	assert.equal(await page.getByText("2 selected", { exact: true }).count(), 1);
+	assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	await bulkDeleteDialog.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+	await bulkDeleteDialog.waitFor({ state: "detached" });
+	await page.getByText("Deleted 2 Todo items", { exact: true }).waitFor();
+	assert.equal(
+		await readFile(deletionPath, "utf8"),
+		"Before +Hidden\r\n\n2026-13-01 Invalid\r\nAfter +Hidden"
+	);
+	await page.waitForFunction(
+		() => document.activeElement?.getAttribute("aria-label") === "Exit selection mode"
+	);
+	const afterBulkDeletion = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(afterBulkDeletion.undoLabel, "Undo deletion");
+	assert.equal(await page.getByText("0 selected", { exact: true }).count(), 1);
+	assert.equal(
+		await page.getByRole("button", { name: "Undo deletion", exact: true }).isDisabled(),
+		true
+	);
+	await page.getByRole("button", { name: "Exit selection mode", exact: true }).click();
+	await page.getByRole("button", { name: "Undo deletion", exact: true }).click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
+	await page.getByText("Batch one", { exact: true }).waitFor();
+	await page.getByText("Batch two", { exact: true }).waitFor();
+	assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
+	console.log(
+		"Bulk deletion confirms once, preserves hidden/skipped content, and undoes the entire batch exactly through the UI and preload/IPC."
+	);
+
 	// Exercise appearance with enough real Todo items to overflow the reader.
 	await writeFile(
 		deletionPath,

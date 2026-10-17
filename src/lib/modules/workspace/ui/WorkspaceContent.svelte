@@ -8,6 +8,7 @@
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
 	import * as Alert from "$lib/shared/ui/alert";
+	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
 	import { Button } from "$lib/shared/ui/button";
 	import * as ButtonGroup from "$lib/shared/ui/button-group";
 	import * as Tooltip from "$lib/shared/ui/tooltip";
@@ -99,6 +100,71 @@
 		previousSelection = current;
 	});
 	let reader = $state<ReturnType<typeof WorkspaceTodoReader>>();
+	let deleteButton = $state<HTMLButtonElement | null>(null);
+	let doneButton = $state<HTMLButtonElement | null>(null);
+	let confirmation = $state.raw<{
+		context: typeof bulkSelection.context;
+		items: readonly TodoItem[];
+	} | null>(null);
+	let deleting = $state(false);
+	const deleteOpen = $derived(
+		!!confirmation &&
+			bulkSelection.active &&
+			(deleting ||
+				workspace.isOperating ||
+				confirmation.context.selection === bulkSelection.context.selection)
+	);
+	let deletionError = $state<string | null>(null);
+	let deletionFocus: { workspaceKey: string; index: number } | null = null;
+	let deleteWorkspaceKey = "";
+	function openDeleteConfirmation() {
+		if (workspace.isOperating || !bulkSelection.count) return;
+		deletionError = null;
+		deleteWorkspaceKey = bulkSelection.context.workspaceKey;
+		confirmation = { context: bulkSelection.context, items: [...bulkSelection.selectedItems] };
+	}
+	async function deleteSelected() {
+		if (deleting || workspace.isOperating || !deleteOpen || !confirmation) return;
+		const { context, items } = confirmation;
+		const position = filteredTodoItems.findIndex(
+			(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
+		);
+		deletionError = null;
+		previousSelection = undefined;
+		// Keep the modal through confirmed-data acceptance so its close hook can recover focus.
+		deleting = true;
+		const result = await workspace.bulkDeleteTodos(items);
+		if (result.status === "applied") {
+			toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
+			deletionFocus = { workspaceKey: context.workspaceKey, index: position };
+			bulkSelection.clear();
+			confirmation = null;
+		} else if (result.status === "conflict") {
+			toast.error("Todo file reloaded");
+			bulkSelection.clear();
+			confirmation = null;
+		} else {
+			deletionError = result.message;
+			toast.error("Could not delete Todo items", { description: result.message });
+		}
+		deleting = false;
+	}
+	function restoreDeleteFocus(event: Event) {
+		event.preventDefault();
+		const target = deletionFocus;
+		deletionFocus = null;
+		confirmation = null;
+		const workspaceKey = target?.workspaceKey ?? deleteWorkspaceKey;
+		void tick().then(() => {
+			if (workspaceKey !== bulkSelection.context.workspaceKey || !bulkSelection.active) return;
+			if (!target) (deleteButton?.disabled ? doneButton : deleteButton)?.focus();
+			else {
+				const todo = filteredTodoItems[Math.min(target.index, filteredTodoItems.length - 1)];
+				if (todo) void reader?.focusTodo(todo);
+				else doneButton?.focus();
+			}
+		});
+	}
 	async function completeSelected() {
 		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
 		if (!items.length) return;
@@ -122,7 +188,11 @@
 		"Escape",
 		() => bulkSelection.exit(),
 		() => ({
-			enabled: bulkSelection.active && !workspace.isOperating && (shortcutScope?.available ?? true),
+			enabled:
+				bulkSelection.active &&
+				!deleteOpen &&
+				!workspace.isOperating &&
+				(shortcutScope?.available ?? true),
 			ignoreInputs: true,
 			preventDefault: true,
 		})
@@ -153,6 +223,47 @@
 		};
 	});
 </script>
+
+<AlertDialog.Root
+	open={deleteOpen}
+	onOpenChange={(open) => {
+		if (!open && !workspace.isOperating && !deleting) confirmation = null;
+	}}
+>
+	<AlertDialog.Content
+		onEscapeKeydown={(event) => {
+			if (workspace.isOperating || deleting) event.preventDefault();
+		}}
+		onCloseAutoFocus={restoreDeleteFocus}
+	>
+		<AlertDialog.Header>
+			<AlertDialog.Title>
+				Delete {confirmation?.items.length ?? 0}
+				{confirmation?.items.length === 1 ? "Todo item" : "Todo items"}?
+			</AlertDialog.Title>
+			<AlertDialog.Description>
+				The selected Todo items will be deleted from the Todo file. After leaving selection mode,
+				you can undo this deletion with Undo last change.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		{#if deletionError}
+			<p role="alert" class="text-sm text-destructive">{deletionError}</p>
+		{/if}
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={workspace.isOperating || deleting}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				variant="destructive"
+				disabled={workspace.isOperating || deleting}
+				onclick={deleteSelected}
+			>
+				{deleting ? "Deleting…" : "Delete Todo items"}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+		{#if deleting}
+			<p role="status" class="text-sm text-muted-foreground">Deleting selected Todo items…</p>
+		{/if}
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	{#if workspace.todoFile}
@@ -190,6 +301,13 @@
 						disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
 						onclick={() => void completeSelected()}><Check aria-hidden="true" />Complete</Button
 					>
+					<Button
+						bind:ref={deleteButton}
+						variant="destructive"
+						size="sm"
+						disabled={workspace.isOperating || bulkSelection.count === 0}
+						onclick={openDeleteConfirmation}>Delete</Button
+					>
 					<Tooltip.Provider>
 						<Tooltip.Root>
 							<Tooltip.Trigger>
@@ -198,6 +316,7 @@
 										{...props}
 										variant="ghost"
 										size="icon-sm"
+										bind:ref={doneButton}
 										aria-label="Exit selection mode"
 										disabled={workspace.isOperating}
 										onclick={bulkSelection.exit}><X aria-hidden="true" /></Button

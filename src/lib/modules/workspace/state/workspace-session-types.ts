@@ -10,6 +10,7 @@ export type WorkspaceSessionOperation =
 	| "delete_workspace"
 	| "set_todo_item_completion"
 	| "bulk_set_todo_item_completion"
+	| "bulk_delete_todo_items"
 	| "delete_todo_item"
 	| "create_todo_item"
 	| "edit_todo_item"

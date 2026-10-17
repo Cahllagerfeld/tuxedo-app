@@ -71,6 +71,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
 		setTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
 		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
+		bulkDeleteTodos: async () => ({ status: "rejected", message: "unused" }),
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -2065,6 +2066,312 @@ test("selection keyboard selects off-screen matches, suppresses editing, and pre
 	await expect.poll(() => bulk.mock.calls.length).toBe(1);
 	expect(bulk.mock.calls[0][0].targets).toHaveLength(200);
 	expect(bulk.mock.calls[0][0].targets.some((target) => target.lineNumber === 201)).toBe(false);
+});
+
+test.each(["Cancel", "Escape"])(
+	"bulk deletion %s writes nothing, preserves selection, and returns focus before Escape exits",
+	async (dismiss) => {
+		const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>();
+		render(Harness, { desktop: adapter({ bulkDeleteTodos }) });
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		const trigger = page.getByRole("button", { name: "Delete", exact: true });
+		await expect.element(trigger).toBeDisabled();
+		await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+		await trigger.click();
+		const dialog = page.getByRole("alertdialog", { name: "Delete 1 Todo item?" });
+		await expect.element(dialog).toBeVisible();
+		await expect.element(dialog).toHaveFocus();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+		await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+		await expect.element(dialog.getByRole("button", { name: "Delete Todo items" })).toHaveFocus();
+		await userEvent.keyboard("{Tab}");
+		await expect.element(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+		expect(bulkDeleteTodos).not.toHaveBeenCalled();
+		if (dismiss === "Escape") await userEvent.keyboard("{Escape}");
+		else await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+		await expect.element(dialog).not.toBeInTheDocument();
+		await expect.element(trigger).toHaveFocus();
+		// The closing animation retains the dialog's shortcut scope until its DOM is removed.
+		await expect.poll(() => document.querySelector("[data-alert-dialog-content]")).toBeNull();
+		await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+		expect(bulkDeleteTodos).not.toHaveBeenCalled();
+		await userEvent.keyboard("{Escape}");
+		await expect
+			.element(page.getByRole("button", { name: "Select items", exact: true }))
+			.toBeVisible();
+	}
+);
+
+test.each(["middle", "last", "all"] as const)(
+	"bulk deletion focuses the nearest displayed row or Done after deleting %s",
+	async (selection) => {
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const items = [
+			todo,
+			{
+				...todo,
+				line_number: 2,
+				raw: "x 2026-10-16 Second",
+				description: "Second",
+				completed: true,
+				completion_date: "2026-10-16",
+			},
+			{ ...todo, line_number: 3, raw: "Third", description: "Third" },
+		];
+		const selected = selection === "all" ? items : [items[selection === "middle" ? 1 : 2]];
+		const remaining = items
+			.filter((item) => !selected.includes(item))
+			.map((item, index) => ({ ...item, line_number: index + 1 }));
+		const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>(async () => ({
+			status: "applied",
+			confirmed: { ...confirmedTodo(remaining), undoLabel: "Undo deletion" },
+		}));
+		const deleteTodo = vi.fn<DesktopAPI["deleteTodo"]>();
+		render(Harness, {
+			desktop: adapter({
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				}),
+				bulkDeleteTodos,
+				deleteTodo,
+			}),
+		});
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		if (selection === "all")
+			await page.getByRole("button", { name: "Select all", exact: true }).click();
+		else
+			await page
+				.getByRole("checkbox", { name: `Select ${selected[0].description}`, exact: true })
+				.click();
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect
+			.element(page.getByRole("alertdialog"))
+			.toHaveAccessibleName(
+				`Delete ${selected.length} ${selected.length === 1 ? "Todo item" : "Todo items"}?`
+			);
+		await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText(
+					`Deleted ${selected.length} ${selected.length === 1 ? "Todo item" : "Todo items"}`,
+					{ exact: true }
+				)
+			)
+			.toBeVisible();
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect
+			.element(
+				page.getByRole("button", {
+					name:
+						selection === "all"
+							? "Exit selection mode"
+							: `Navigate ${selection === "middle" ? "Third" : "Second"}`,
+					exact: true,
+				})
+			)
+			.toHaveFocus();
+		expect(bulkDeleteTodos).toHaveBeenCalledExactlyOnceWith({
+			scope,
+			revision: 1,
+			workspaceId,
+			targets: selected.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		expect(deleteTodo).not.toHaveBeenCalled();
+	}
+);
+
+test.each(["rejected", "conflict"] as const)(
+	"pending bulk deletion locks controls and duplicate submission; handles %s",
+	async (status) => {
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["bulkDeleteTodos"]>>) => void;
+		const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				})
+		);
+		render(Harness, { shell: true, desktop: adapter({ bulkDeleteTodos }) });
+		await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		const submit = page.getByRole("button", { name: "Delete Todo items", exact: true }).element();
+		await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+		submit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await expect
+			.element(page.getByRole("button", { name: "Deleting…", exact: true }))
+			.toBeDisabled();
+		await expect.element(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+		for (const name of [
+			"Select all",
+			"Clear selection",
+			"Complete",
+			"Delete",
+			"Exit selection mode",
+			"Sort Todo items",
+			"Show deferred",
+			"Saved views",
+			"Toggle Todo-item search",
+		]) {
+			await expect
+				.element(page.getByRole("button", { name, exact: true, includeHidden: true }))
+				.toBeDisabled();
+		}
+		await expect
+			.element(page.getByRole("searchbox", { name: "Search Todo items", includeHidden: true }))
+			.toBeDisabled();
+		await expect
+			.element(
+				page.getByRole("checkbox", {
+					name: "Select Plan release",
+					exact: true,
+					includeHidden: true,
+				})
+			)
+			.toBeDisabled();
+		await expect
+			.element(page.getByRole("status").filter({ hasText: "Deleting selected Todo items…" }))
+			.toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByRole("alertdialog")).toBeVisible();
+		expect(bulkDeleteTodos).toHaveBeenCalledTimes(1);
+		if (status === "rejected") {
+			finish({ status, message: "Permission denied" });
+			await expect
+				.element(page.getByRole("alertdialog").getByRole("alert"))
+				.toHaveTextContent("Permission denied");
+			await expect
+				.element(page.getByRole("button", { name: "Delete Todo items", exact: true }))
+				.toBeEnabled();
+			await page.getByRole("button", { name: "Cancel", exact: true }).click();
+			await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+			await page.getByRole("button", { name: "Delete", exact: true }).click();
+			await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+			expect(bulkDeleteTodos).toHaveBeenCalledTimes(2);
+			finish({ status: "applied", confirmed: confirmedTodo([]) });
+			await expect.element(page.getByText("Deleted 1 Todo item", { exact: true })).toBeVisible();
+		} else {
+			finish({ status, message: "Changed externally", confirmed: confirmedTodo([todo]) });
+			await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+			await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+			await expect.element(page.getByText("Todo file reloaded", { exact: true })).toBeVisible();
+			await expect
+				.element(page.getByRole("button", { name: "Delete", exact: true }))
+				.toBeDisabled();
+			await expect
+				.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+				.toHaveFocus();
+		}
+	}
+);
+
+test("unchanged refresh preserves deletion confirmation; changed contents dismiss it and require fresh selection", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	let notify!: (change: TodoFileChange) => void;
+	let loads = 0;
+	const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>();
+	render(Harness, {
+		desktop: adapter({
+			bulkDeleteTodos,
+			restoreSession: async () => ({
+				...initial,
+				revision: ++loads,
+				session: {
+					...ready,
+					todo_file: {
+						...ready.todo_file,
+						skipped: loads < 3 ? [] : [{ line_number: 2, raw: "x", reason: "Invalid Todo item" }],
+					},
+				},
+			}),
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => loads).toBe(2);
+	await expect
+		.element(page.getByRole("alertdialog", { name: "Delete 1 Todo item?" }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Delete Todo items", exact: true }))
+		.toBeEnabled();
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByText("Selection cleared because the Todo file changed.", { exact: true }))
+		.toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+	await expect
+		.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+		.toHaveFocus();
+	expect(bulkDeleteTodos).not.toHaveBeenCalled();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	await expect
+		.element(page.getByRole("alertdialog", { name: "Delete 1 Todo item?" }))
+		.toBeVisible();
+});
+
+test("an unchanged refresh allows the same confirmation to delete using the current revision", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const ready = initial.session;
+	const second = { ...todo, line_number: 2, raw: "Second", description: "Second" };
+	let notify!: (change: TodoFileChange) => void;
+	let revision = 0;
+	const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>(async () => ({
+		status: "applied",
+		confirmed: { ...confirmedTodo([todo]), revision: 3 },
+	}));
+	render(Harness, {
+		desktop: adapter({
+			bulkDeleteTodos,
+			restoreSession: async () => ({
+				...initial,
+				revision: ++revision,
+				session: { ...ready, todo_file: { ...ready.todo_file, items: [todo, second] } },
+			}),
+		}),
+		observation: {
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
+			},
+		},
+	});
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Second", exact: true }).click();
+	await page.getByRole("button", { name: "Delete", exact: true }).click();
+	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	await expect.poll(() => revision).toBe(2);
+	await expect
+		.element(page.getByRole("button", { name: "Delete Todo items", exact: true }))
+		.toBeEnabled();
+	await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Plan release", exact: true }))
+		.toHaveFocus();
+	expect(bulkDeleteTodos).toHaveBeenCalledExactlyOnceWith({
+		scope,
+		revision: 2,
+		workspaceId,
+		targets: [{ lineNumber: 2, expectedRaw: "Second" }],
+	});
 });
 
 test("idle selection allows clearing active filters and clears the selection", async () => {

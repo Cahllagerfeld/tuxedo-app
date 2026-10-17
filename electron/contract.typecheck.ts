@@ -52,6 +52,10 @@ registerDesktopOperation(
 	api.readSession
 );
 
+registerDesktopOperation(ipc, getWindow, () => true, "bulkDeleteTodos", api.bulkDeleteTodos);
+// @ts-expect-error Batch deletion requires scoped expected-content targets, not bare positions.
+api.bulkDeleteTodos({ lineNumbers: [1, 2] });
+
 registerDesktopOperation(ipc, getWindow, () => true, "reorderTodo", api.reorderTodo);
 // @ts-expect-error Reordering requires a scoped session and a list of positions.
 api.reorderTodo({ lineNumbers: [2, 1] });

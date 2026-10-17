@@ -184,21 +184,32 @@ const TodoMutationTarget = Schema.Struct({
 	lineNumber: TodoMutationRequest.fields.lineNumber,
 	expectedRaw: TodoMutationRequest.fields.expectedRaw,
 });
-export const bulkSetTodoCompletionRequestSchema = effectValidator(
-	Schema.Struct({
-		scope: UUID,
-		revision: Revision,
-		workspaceId: UUID,
-		targets: Schema.mutable(Schema.Array(TodoMutationTarget)).check(
-			Schema.isMinLength(1),
-			Schema.makeFilter((targets) => {
-				const lines = targets.map((target) => target.lineNumber);
-				return new Set(lines).size !== lines.length
-					? "Todo item positions must be unique"
-					: undefined;
-			})
-		),
-	})
+const BulkTodoMutationRequest = Schema.Struct({
+	scope: UUID,
+	revision: Revision,
+	workspaceId: UUID,
+	targets: Schema.mutable(Schema.Array(TodoMutationTarget)).check(
+		Schema.isMinLength(1),
+		Schema.makeFilter((targets) => {
+			const lines = targets.map((target) => target.lineNumber);
+			return new Set(lines).size !== lines.length
+				? "Todo item positions must be unique"
+				: undefined;
+		})
+	),
+});
+export const bulkSetTodoCompletionRequestSchema = effectValidator(BulkTodoMutationRequest);
+export const bulkDeleteTodosRequestSchema = effectValidator(
+	BulkTodoMutationRequest.check(
+		Schema.makeFilter((input) =>
+			input.targets.some(
+				(target) =>
+					/^\p{White_Space}*$/u.test(target.expectedRaw) || target.expectedRaw.includes("\n")
+			)
+				? "Expected Todo-item content must be one nonempty line"
+				: undefined
+		)
+	)
 );
 export {
 	createTodoRequestSchema,
@@ -353,6 +364,11 @@ export const desktopContract = {
 		request: bulkSetTodoCompletionRequestSchema,
 		response: todoOutcomeSchema,
 	},
+	bulkDeleteTodos: {
+		channel: "tuxedo:bulk-delete-todos",
+		request: bulkDeleteTodosRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	deleteTodo: {
 		channel: "tuxedo:delete-todo",
 		request: todoMutationRequestSchema,
@@ -439,6 +455,7 @@ export function createDesktopClient(
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		bulkSetTodoCompletion: (request) => call("bulkSetTodoCompletion", request),
+		bulkDeleteTodos: (request) => call("bulkDeleteTodos", request),
 		deleteTodo: (request) => call("deleteTodo", request),
 		createTodo: (request) => call("createTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
