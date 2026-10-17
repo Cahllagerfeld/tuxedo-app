@@ -23,7 +23,13 @@
 			<Alert.Description>{message}</Alert.Description>
 		</Alert.Root>
 		<div class="flex gap-2">
-			<Button onclick={retry}>Retry</Button>
+			<Button
+				onclick={retry}
+				{@attach (button: HTMLElement) => {
+					// The removed reader leaves focus on the body; keep keyboard users in place.
+					if (document.activeElement === document.body) button.focus();
+				}}>Retry</Button
+			>
 			<Button variant="outline" href={resolve("/")}>Home</Button>
 		</div>
 	</Empty.Root>

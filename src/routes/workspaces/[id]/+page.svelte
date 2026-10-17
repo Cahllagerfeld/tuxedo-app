@@ -10,7 +10,7 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-	{#if appState.shows(params.id)}
+	{#if appState.showsDestination(params.id)}
 		<WorkspaceContent
 			bind:creationOpen={appState.isTodoCreationOpen}
 			bulkSelection={appState.bulkSelection}

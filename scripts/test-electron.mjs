@@ -1449,6 +1449,13 @@ try {
 
 	await page.getByRole("link", { name: "Route A", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
+	await rm(join(directory, "Route-A.txt"));
+	await unavailable.waitFor();
+	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
+	await page.getByRole("button", { name: "Retry", exact: true }).click();
+	await expectRoute("Route A", "Alpha item");
+	console.log("A Todo file that becomes unreadable shows the unavailable destination until Retry.");
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:switch-workspace");
 		ipcMain.handle(

@@ -47,8 +47,11 @@ export class AppState {
 	};
 
 	destinationError = $state("");
-	shows = (workspaceId: string | undefined) =>
-		!!workspaceId && !this.destinationError && this.workspace.activeWorkspace?.id === workspaceId;
+	showsDestination = (workspaceId: string | undefined) =>
+		!!workspaceId &&
+		!this.destinationError &&
+		!!this.workspace.todoFile &&
+		this.workspace.activeWorkspace?.id === workspaceId;
 	visitWorkspace = (workspaceId: string) => {
 		this.destinationError = "";
 		if (this.workspace.activeWorkspace?.id === workspaceId && this.workspace.todoFile) return;

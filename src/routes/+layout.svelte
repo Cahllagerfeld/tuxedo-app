@@ -11,7 +11,7 @@
 	import { ModeWatcher } from "mode-watcher";
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
-	import { beforeNavigate, goto, onNavigate } from "$app/navigation";
+	import { beforeNavigate, goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page } from "$app/state";
 	import type { DesktopRequest } from "$lib/shared/desktop/contract";
@@ -22,16 +22,15 @@
 	const appState = new AppState();
 	setAppState(appState);
 	const busy = $derived(appState.workspace.isOperating || appState.workspace.isLoading);
-	const showsActiveWorkspace = $derived(appState.shows(page.params.id));
+	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const openWorkspace = (id: string, replaceState = false) =>
 		goto(resolve("/workspaces/[id]", { id }), { replaceState });
 
 	// Routing must not race an admitted operation; closing or reloading the window stays allowed.
+	// The switch is admitted here, synchronously, so nothing can start before the route commits.
 	beforeNavigate((navigation) => {
 		if (busy && navigation.type !== "leave") navigation.cancel();
-	});
-	onNavigate(({ to }) => {
-		if (to?.params?.id) appState.visitWorkspace(to.params.id);
+		else if (navigation.to?.params?.id) appState.visitWorkspace(navigation.to.params.id);
 	});
 
 	async function createWorkspace(input: DesktopRequest<"createWorkspace">) {
