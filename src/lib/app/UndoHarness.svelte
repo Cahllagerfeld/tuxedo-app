@@ -8,7 +8,8 @@
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { Toaster } from "$lib/shared/ui/sonner";
 	import "../../routes/layout.css";
-	let { desktop }: { desktop: DesktopAPI } = $props();
+	let { desktop, readerAvailable = true }: { desktop: DesktopAPI; readerAvailable?: boolean } =
+		$props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
@@ -18,7 +19,7 @@
 </script>
 
 <Sidebar.Provider>
-	<AppNavbar {app} />
+	<AppNavbar {app} {readerAvailable} />
 </Sidebar.Provider>
 <button onclick={() => app.workspace.createTodo({ description: "New", projects: [], contexts: [] })}
 	>Create item</button
@@ -26,4 +27,5 @@
 <button onclick={() => app.workspace.restore()}>Refresh</button>
 <p aria-label="Item count">{app.workspace.todoFile?.items.length ?? 0}</p>
 <input aria-label="Draft" />
+<p aria-label="Creation open">{String(app.isTodoCreationOpen)}</p>
 <Toaster />

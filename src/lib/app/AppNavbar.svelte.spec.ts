@@ -71,6 +71,27 @@ function adapter(undo: DesktopAPI["undoTodo"]): DesktopAPI {
 	});
 }
 
+test("Home/recovery cannot undo or open Todo-item creation despite a retained ready session", async () => {
+	let calls = 0;
+	render(Harness, {
+		readerAvailable: false,
+		desktop: adapter(async () => {
+			calls++;
+			return { status: "applied", confirmed: { scope, revision: 3, workspaceId, todo_file } };
+		}),
+	});
+	await page.getByRole("button", { name: "Create item" }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Undo creation", exact: true }))
+		.toBeDisabled();
+	await page.getByRole("textbox", { name: "Draft" }).element().blur();
+	const modifier = detectPlatform() === "mac" ? "Meta" : "Control";
+	await userEvent.keyboard(`{${modifier}>}z{/${modifier}}`);
+	await userEvent.keyboard(`{${modifier}>}n{/${modifier}}`);
+	expect(calls).toBe(0);
+	await expect.element(page.getByLabelText("Creation open")).toHaveTextContent("false");
+});
+
 test("topbar Undo follows confirmed data, blocks overlapping actions, and consumes its slot", async () => {
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["undoTodo"]>>) => void;
 	let request: DesktopRequest<"undoTodo"> | undefined;

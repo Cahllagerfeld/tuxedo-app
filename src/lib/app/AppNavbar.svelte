@@ -8,10 +8,24 @@
 	import { createHotkey, formatForDisplay } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
-	let { app }: { app: AppState } = $props();
+	let {
+		app,
+		readerAvailable = true,
+		navigationBusy = false,
+		goHome,
+	}: {
+		app: AppState;
+		readerAvailable?: boolean;
+		navigationBusy?: boolean;
+		goHome?: () => Promise<void>;
+	} = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		!!app.workspace.undoLabel && !app.workspace.isOperating && !app.todoBulkSelectionActive
+		readerAvailable &&
+			!navigationBusy &&
+			!!app.workspace.undoLabel &&
+			!app.workspace.isOperating &&
+			!app.todoBulkSelectionActive
 	);
 	async function undo() {
 		if (!canUndo) return;
@@ -44,5 +58,11 @@
 		disabled={!canUndo}
 		onclick={undo}><Undo2 aria-hidden="true" /></Button
 	>
-	<AppShortcuts {app} />
+	{#if goHome}<Button
+			variant="ghost"
+			class="[app-region:no-drag]"
+			disabled={navigationBusy}
+			onclick={goHome}>Home</Button
+		>{/if}
+	<AppShortcuts {app} {readerAvailable} {navigationBusy} />
 </header>

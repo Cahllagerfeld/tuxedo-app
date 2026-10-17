@@ -1,17 +1,14 @@
-<script>
-	import { getAppState } from "$lib/app/app-context";
-	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
-
-	const appState = getAppState();
+<script lang="ts">
+	import { getAppContext } from "$lib/app/app-context";
+	import WorkspaceHome from "$lib/modules/workspace/ui/WorkspaceHome.svelte";
+	const { app, navigation } = getAppContext();
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-	<WorkspaceContent
-		bind:creationOpen={appState.isTodoCreationOpen}
-		bulkSelection={appState.bulkSelection}
-		workspace={appState.workspace}
-		todoFilter={appState.todoFilter}
-		filteredTodoItems={appState.filteredTodoItems}
-		openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
-	/>
-</div>
+<WorkspaceHome
+	workspace={app.workspace}
+	loading={navigation.busy}
+	disabled={navigation.busy}
+	openWorkspace={navigation.openWorkspace}
+	openCreationDialog={app.openWorkspaceCreationDialog}
+	retry={navigation.retry}
+/>

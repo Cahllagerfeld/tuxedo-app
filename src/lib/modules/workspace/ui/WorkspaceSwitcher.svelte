@@ -1,17 +1,17 @@
 <script lang="ts">
-	import ChevronDown from "@lucide/svelte/icons/chevron-down";
-	import Ellipsis from "@lucide/svelte/icons/ellipsis";
-	import Plus from "@lucide/svelte/icons/plus";
-	import Trash2 from "@lucide/svelte/icons/trash-2";
-	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
-	import { Button } from "$lib/shared/ui/button";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-types";
+	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
+	import { Button } from "$lib/shared/ui/button";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import Ellipsis from "@lucide/svelte/icons/ellipsis";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import Plus from "@lucide/svelte/icons/plus";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import { toast } from "svelte-sonner";
 
 	type Props = {
@@ -25,16 +25,7 @@
 		pendingOperation?: WorkspaceSessionOperation | null;
 	};
 
-	const colorClasses: Record<Workspace["color"], string> = {
-		blue: "bg-blue-600 dark:bg-blue-400",
-		green: "bg-green-600 dark:bg-green-400",
-		amber: "bg-amber-600 dark:bg-amber-400",
-		red: "bg-red-600 dark:bg-red-400",
-		violet: "bg-violet-600 dark:bg-violet-400",
-		pink: "bg-pink-600 dark:bg-pink-400",
-		cyan: "bg-cyan-600 dark:bg-cyan-400",
-		orange: "bg-orange-600 dark:bg-orange-400",
-	};
+	import { workspaceColorClasses as colorClasses } from "./workspace-colors";
 
 	let {
 		open = $bindable(false),

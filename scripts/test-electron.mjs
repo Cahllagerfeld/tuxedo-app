@@ -1,11 +1,176 @@
 import { _electron as electron } from "playwright";
 import electronPath from "electron";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+// Shared by production Electron and the copied-package workflow below.
+async function testWorkspaceNavigation(launchApplication, directory) {
+	await mkdir(directory);
+	const firstPath = join(directory, "first.todo");
+	const secondPath = join(directory, "second.todo");
+	const thirdPath = join(directory, "third.todo");
+	await writeFile(firstPath, "Navigation first\n");
+	await writeFile(secondPath, "Navigation second\n");
+	await writeFile(thirdPath, "Navigation created\n");
+	let application = await launchApplication(directory);
+	let page = await application.firstWindow();
+	const home = () => page.getByRole("button", { name: "Home", exact: true }).first();
+	const picker = () => page.getByRole("region", { name: "Workspace destination" });
+	const expectHome = async () => {
+		await picker().getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
+		assert.equal(new URL(page.url()).pathname, "/");
+		assert.equal(await page.getByLabel("Reader status").count(), 0);
+	};
+	const persistedId = async () =>
+		JSON.parse(await readFile(join(directory, "workspaces.json"), "utf8")).active_workspace_id;
+	const expectWorkspace = async (id, text) => {
+		await page.getByText(text, { exact: true }).waitFor();
+		assert.equal(new URL(page.url()).pathname, `/workspaces/${id}`);
+		assert.equal(await page.getByLabel("Reader status").count(), 1);
+		assert.equal(await persistedId(), id);
+	};
+	const expectUnavailable = async () => {
+		await page.getByRole("heading", { name: "Workspace unavailable" }).waitFor();
+		assert.equal(await page.getByText("Navigation first", { exact: true }).count(), 0);
+		assert.equal(await page.getByLabel("Reader status").count(), 0);
+	};
+	try {
+		page.setDefaultTimeout(10000);
+		await expectHome();
+		const seed = async (name, color, todoPath) => {
+			const result = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+				name,
+				color,
+				todoPath,
+			});
+			assert.equal(result.status, "applied");
+			return result.confirmed.session.catalogue.active_workspace_id;
+		};
+		const first = await seed("Navigation A", "blue", firstPath);
+		const second = await seed("Navigation B", "green", secondPath);
+		await application.close();
+		application = await launchApplication(directory);
+		page = await application.firstWindow();
+		page.setDefaultTimeout(10000);
+		await expectWorkspace(second, "Navigation second");
+		assert.equal(new URL(page.url()).protocol, "tuxedo:");
+		assert.deepEqual(
+			await page.evaluate(() => ({ length: history.length, back: window.navigation.canGoBack })),
+			{ length: 1, back: false },
+			"Restoration replaces startup Home"
+		);
+		await home().click();
+		await expectHome();
+		assert.equal(await persistedId(), second, "Home preserves remembered selection");
+		await picker().getByRole("button", { name: "blue Navigation A", exact: true }).click();
+		await expectWorkspace(first, "Navigation first");
+		await page.getByRole("button", { name: "Select workspace: Navigation A" }).click();
+		await page.getByRole("menuitem", { name: "Navigation B", exact: true }).click();
+		await expectWorkspace(second, "Navigation second");
+		const historyLength = await page.evaluate(() => history.length);
+		await page.evaluate(() => history.back());
+		await expectWorkspace(first, "Navigation first");
+		await page.evaluate(() => history.forward());
+		await expectWorkspace(second, "Navigation second");
+		assert.equal(
+			await page.evaluate(() => history.length),
+			historyLength,
+			"Traversal adds no entries"
+		);
+
+		await page.evaluate(async () => {
+			const current = await window.desktop.readSession({});
+			await window.desktop.createTodo({
+				scope: current.scope,
+				revision: current.revision,
+				workspaceId: current.session.catalogue.active_workspace_id,
+				description: "Navigation undo",
+				projects: [],
+				contexts: [],
+			});
+		});
+		await page.reload();
+		await page.getByText("Navigation undo", { exact: true }).waitFor();
+		assert.equal(
+			await page.getByRole("button", { name: "Undo creation", exact: true }).isEnabled(),
+			true,
+			"Nested reload preserves Undo"
+		);
+		await home().click();
+		await expectHome();
+		assert.equal(
+			await page.getByRole("button", { name: "Undo creation", exact: true }).isEnabled(),
+			false
+		);
+		await page.evaluate(() => history.back());
+		await expectWorkspace(second, "Navigation second");
+		await page.evaluate(() => history.back());
+		await expectWorkspace(first, "Navigation first");
+		assert.equal(
+			await page.getByRole("button", { name: "Undo last change", exact: true }).isEnabled(),
+			false,
+			"History switching Workspaces clears Undo"
+		);
+
+		// Pending-operation blocking is exercised deterministically by the typed renderer adapters.
+		await page.evaluate(() => history.forward());
+		await expectWorkspace(second, "Navigation second");
+		console.log(
+			"Workspace navigation: startup replace, Home, picker/switcher, persisted Back/Forward, and Undo passed."
+		);
+
+		const direct = await page.goto(`tuxedo://app/workspaces/${first}`);
+		assert.equal(direct.status(), 200);
+		await expectWorkspace(first, "Navigation first");
+		await page.reload();
+		await expectWorkspace(first, "Navigation first");
+		await page.goto("tuxedo://app/workspaces/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+		await expectUnavailable();
+		await page.reload();
+		await expectUnavailable();
+		assert.equal(await persistedId(), first);
+		await picker().getByRole("button", { name: "Home", exact: true }).click();
+		await expectHome();
+		await rm(secondPath);
+		await picker().getByRole("button", { name: "green Navigation B", exact: true }).click();
+		await expectUnavailable();
+		assert.equal(await persistedId(), first, "Failed switch retains confirmed selection");
+		await writeFile(secondPath, "Navigation second\n");
+		await page.getByRole("button", { name: "Retry", exact: true }).click();
+		await expectWorkspace(second, "Navigation second");
+		await home().click();
+		await expectHome();
+		await picker().getByRole("button", { name: "New Workspace", exact: true }).click();
+		await application.evaluate(({ dialog }, todoPath) => {
+			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [todoPath] });
+		}, thirdPath);
+		const dialog = page.getByRole("dialog", { name: "Create workspace", exact: true });
+		await dialog.getByRole("textbox", { name: "Workspace name", exact: true }).fill("Navigation C");
+		await dialog.getByText("Choose Todo file", { exact: true }).click();
+		const beforeCreation = await page.evaluate(() => history.length);
+		await dialog.getByRole("button", { name: "Create workspace", exact: true }).click();
+		await dialog.waitFor({ state: "detached" });
+		const third = await persistedId();
+		await expectWorkspace(third, "Navigation created");
+		assert.equal(
+			await page.evaluate(() => history.length),
+			beforeCreation + 1,
+			"Creation adds one entry"
+		);
+		await page.evaluate(() => history.back());
+		await expectHome();
+		await page.evaluate(() => history.forward());
+		await expectWorkspace(third, "Navigation created");
+		console.log(
+			"Workspace navigation: nested direct load/reload, invalid destination, retained identity, Retry/Home, and UI creation passed."
+		);
+	} finally {
+		await application.close();
+	}
+}
 const development = process.argv.includes("--dev");
 const visible = process.argv.includes("--visible");
 const packagedExecutable = process.env.TUXEDO_PACKAGED_EXECUTABLE;
@@ -19,12 +184,12 @@ const environment = {
 	TUXEDO_TEST_HIDDEN: visible ? "0" : "1",
 };
 if (!packagedExecutable) delete environment.TUXEDO_RENDERER_ORIGIN;
-const launchApplication = () =>
+const launchApplication = (userData = directory) =>
 	electron.launch({
 		timeout: 20000,
 		executablePath: packagedExecutable ?? electronPath,
 		args: packagedExecutable ? [] : [resolve("dist-electron/main.js")],
-		env: environment,
+		env: { ...environment, TUXEDO_USER_DATA: userData },
 	});
 const assertWindowState = async (page) => {
 	if (!visible) {
@@ -75,6 +240,7 @@ try {
 		}
 		environment.TUXEDO_RENDERER_ORIGIN = origin;
 	}
+	if (!development) await testWorkspaceNavigation(launchApplication, join(directory, "navigation"));
 	application = await launchApplication();
 	let page = await application.firstWindow();
 	await assertWindowState(page);
@@ -114,7 +280,7 @@ try {
 		}),
 		true
 	);
-	await page.getByText("No workspace open", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 
 	// Use Chromium's native theme source without changing the host OS preference.
 	await page.emulateMedia({ colorScheme: null });
@@ -153,7 +319,7 @@ try {
 			await cdp.detach();
 		}
 		await page.reload();
-		await page.getByText("No workspace open", { exact: true }).waitFor();
+		await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 	};
 	const expectTheme = async (theme) => {
 		await page.waitForFunction((expected) => {
@@ -185,7 +351,7 @@ try {
 			lightBackground
 		);
 		await page.reload();
-		await page.getByText("No workspace open", { exact: true }).waitFor();
+		await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 		await expectTheme("dark");
 		await application.evaluate(({ nativeTheme }) => {
 			nativeTheme.themeSource = "light";
@@ -240,7 +406,7 @@ try {
 		insetBounds,
 		"Collapsing keeps the outer inset fixed"
 	);
-	await page.getByText("No workspace open", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 	// Collapsed navigation must not leave keyboard focus on offscreen controls.
 	await sidebarToggle.focus();
 	await page.keyboard.press("Shift+Tab");
@@ -655,7 +821,7 @@ try {
 		todoPath: reorderPath,
 	});
 	assert.equal(reorderWorkspace.status, "applied");
-	await page.reload();
+	await page.goto(new URL("/", page.url()).href);
 	assert.equal(
 		await page.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed"),
 		"true"
@@ -817,7 +983,7 @@ try {
 		);
 		assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
 	}
-	await page.reload();
+	await page.goto(new URL("/", page.url()).href);
 	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).fill("Batch");
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
@@ -1129,7 +1295,7 @@ try {
 		todoPath: thresholdPath,
 	});
 	assert.equal(thresholdWorkspace.status, "applied");
-	await page.reload();
+	await page.goto(new URL("/", page.url()).href);
 	await page.getByText("Actionable chore", { exact: true }).waitFor();
 	const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
@@ -1226,7 +1392,7 @@ try {
 		todoPath: recurringPath,
 	});
 	assert.equal(recurringWorkspace.status, "applied");
-	await page.reload();
+	await page.goto(new URL("/", page.url()).href);
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).click();
 	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
 	let recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
@@ -1262,7 +1428,7 @@ try {
 		todoPath: leadPath,
 	});
 	assert.equal(leadWorkspace.status, "applied");
-	await page.reload();
+	await page.goto(new URL("/", page.url()).href);
 	await page.getByRole("checkbox", { name: "Mark Mow complete", exact: true }).click();
 	await page
 		.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\. Show from \d{4}-\d{2}-\d{2}\.$/)

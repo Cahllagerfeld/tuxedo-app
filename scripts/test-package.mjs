@@ -44,7 +44,7 @@ try {
 	const page = await application.firstWindow();
 	page.setDefaultTimeout(10000);
 	console.log("Packaged initial URL:", page.url());
-	await page.getByText("No workspace open", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 	assert.equal(
 		await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
 		visible
@@ -57,7 +57,7 @@ try {
 	await page.reload();
 	await page.getByText("Not Found", { exact: true }).waitFor();
 	await page.goto("tuxedo://app/");
-	await page.getByText("No workspace open", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 	const assets = entries.filter(
 		(path) => /\.(js|css|woff2)$/.test(path) && path.startsWith("/build/")
 	);
