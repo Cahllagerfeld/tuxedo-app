@@ -8,7 +8,6 @@
 	workspace={app.workspace}
 	loading={navigation.busy}
 	disabled={navigation.busy}
-	openWorkspace={navigation.openWorkspace}
 	openCreationDialog={app.openWorkspaceCreationDialog}
 	retry={navigation.retry}
 />

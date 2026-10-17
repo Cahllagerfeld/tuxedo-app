@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
 	import type {
 		WorkspaceSessionActionResult,
@@ -18,7 +19,6 @@
 		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
@@ -31,7 +31,6 @@
 		open = $bindable(false),
 		workspaces,
 		activeWorkspaceId,
-		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog,
 		disabled = false,
@@ -56,16 +55,6 @@
 				toast.error("Could not remove workspace", { description: result.message });
 		} catch (error) {
 			toast.error("Could not remove workspace", { description: errorMessage(error) });
-		}
-	}
-
-	async function chooseWorkspace(workspaceId: string) {
-		try {
-			const result = await selectWorkspace(workspaceId);
-			if (result.status === "rejected")
-				toast.error("Could not open workspace", { description: result.message });
-		} catch (error) {
-			toast.error("Could not open workspace", { description: errorMessage(error) });
 		}
 	}
 
@@ -113,16 +102,22 @@
 							: workspace.name}
 						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 						{disabled}
-						onclick={() => void chooseWorkspace(workspace.id)}
 					>
-						<span
-							class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
-							aria-hidden="true"
-						></span>
-						<span class="truncate">{workspace.name}</span>
-						{#if workspace.id === activeWorkspaceId}<span
-								class="ml-auto text-xs text-muted-foreground">Active</span
-							>{/if}
+						{#snippet child({ props })}
+							<a
+								{...props}
+								href={disabled ? undefined : resolve("/workspaces/[id]", { id: workspace.id })}
+							>
+								<span
+									class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
+									aria-hidden="true"
+								></span>
+								<span class="truncate">{workspace.name}</span>
+								{#if workspace.id === activeWorkspaceId}<span
+										class="ml-auto text-xs text-muted-foreground">Active</span
+									>{/if}
+							</a>
+						{/snippet}
 					</DropdownMenu.Item>
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger {disabled}>

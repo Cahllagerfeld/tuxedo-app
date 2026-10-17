@@ -50,23 +50,20 @@ async function session(mode: "saved" | "empty" | "error" = "saved") {
 	return workspace;
 }
 const actions = () => ({
-	openWorkspace: vi.fn(async () => ({ status: "applied" as const })),
 	openCreationDialog: vi.fn(),
 	retry: vi.fn(async () => {}),
-	goHome: vi.fn(async () => {}),
 });
 
 test("Home lists saved Workspaces in creation order with color and supports selection/creation", async () => {
 	const callbacks = actions();
 	render(WorkspaceHome, { workspace: await session(), ...callbacks });
-	const buttons = page.getByRole("list").getByRole("button");
+	const buttons = page.getByRole("list").getByRole("link");
 	await expect.element(buttons.nth(0)).toHaveTextContent("blue Work");
 	await expect.element(buttons.nth(1)).toHaveTextContent("green Personal");
+	await expect.element(buttons.nth(1)).toHaveAttribute("href", `/workspaces/${second}`);
 	await expect
 		.element(page.getByRole("status"))
 		.toHaveTextContent("Last Todo file could not be opened");
-	await buttons.nth(1).click();
-	expect(callbacks.openWorkspace).toHaveBeenCalledWith(second);
 	await page.getByRole("button", { name: "New Workspace" }).click();
 	expect(callbacks.openCreationDialog).toHaveBeenCalledOnce();
 });
@@ -79,7 +76,7 @@ test("Home startup warning offers Retry while keeping the picker available", asy
 		.toHaveTextContent("Last Todo file could not be opened");
 	await page.getByRole("button", { name: "Retry", exact: true }).click();
 	expect(callbacks.retry).toHaveBeenCalledOnce();
-	await expect.element(page.getByRole("button", { name: "blue Work" })).toBeEnabled();
+	await expect.element(page.getByRole("link", { name: "blue Work" })).toBeEnabled();
 });
 
 test("Home with no saved Workspaces still offers creation", async () => {
@@ -91,7 +88,7 @@ test("Home with no saved Workspaces still offers creation", async () => {
 test("loading and unavailable destinations never expose a retained Workspace picker", async () => {
 	render(WorkspaceHome, { workspace: await session(), ...actions(), loading: true });
 	await expect.element(page.getByRole("status")).toHaveTextContent("Loading Workspaces…");
-	await expect.element(page.getByRole("button", { name: "blue Work" })).not.toBeInTheDocument();
+	await expect.element(page.getByRole("link", { name: "blue Work" })).not.toBeInTheDocument();
 });
 
 test("unavailable destinations expose working Retry and Home, not retained data", async () => {
@@ -100,13 +97,13 @@ test("unavailable destinations expose working Retry and Home, not retained data"
 		workspace: await session(),
 		...callbacks,
 		unavailable: "Workspace was deleted",
+		showHome: true,
 	});
 	await expect.element(page.getByRole("alert")).toHaveTextContent("Workspace was deleted");
 	await expect.element(page.getByRole("list")).not.toBeInTheDocument();
 	await page.getByRole("button", { name: "Retry" }).click();
-	await page.getByRole("button", { name: "Home" }).click();
 	expect(callbacks.retry).toHaveBeenCalledOnce();
-	expect(callbacks.goHome).toHaveBeenCalledOnce();
+	await expect.element(page.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
 });
 
 test("catalogue errors preserve the error and offer Retry", async () => {
@@ -120,6 +117,8 @@ test("catalogue errors preserve the error and offer Retry", async () => {
 
 test("pending operations disable picker and creation actions", async () => {
 	render(WorkspaceHome, { workspace: await session(), ...actions(), disabled: true });
-	await expect.element(page.getByRole("button", { name: "blue Work" })).toBeDisabled();
+	await expect
+		.element(page.getByRole("link", { name: "blue Work" }))
+		.toHaveAttribute("aria-disabled", "true");
 	await expect.element(page.getByRole("button", { name: "New Workspace" })).toBeDisabled();
 });

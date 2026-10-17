@@ -1,26 +1,24 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import { workspaceColorClasses } from "./workspace-colors";
 	import { Button } from "$lib/shared/ui/button";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
-	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	let {
 		workspace,
 		loading = false,
 		disabled = false,
 		unavailable = null,
-		openWorkspace,
 		openCreationDialog,
 		retry,
-		goHome,
+		showHome = false,
 	}: {
 		workspace: ElectronWorkspaceSessionState;
 		loading?: boolean;
 		disabled?: boolean;
 		unavailable?: string | null;
-		openWorkspace: (id: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		retry: () => Promise<void>;
-		goHome?: () => Promise<void>;
+		showHome?: boolean;
 	} = $props();
 	const workspaces = $derived(
 		[...(workspace.catalogue?.workspaces ?? [])].sort((a, b) =>
@@ -41,7 +39,7 @@
 		<p role="alert">{unavailable || workspace.error}</p>
 		<div class="flex gap-2">
 			<Button {disabled} onclick={retry}>Retry</Button>
-			{#if goHome}<Button variant="outline" {disabled} onclick={goHome}>Home</Button>{/if}
+			{#if showHome}<Button variant="outline" {disabled} href={resolve("/")}>Home</Button>{/if}
 		</div>
 	{:else}
 		<h1 class="text-xl font-semibold">Workspaces</h1>
@@ -61,7 +59,7 @@
 						variant="outline"
 						class="w-full justify-start gap-3"
 						{disabled}
-						onclick={() => openWorkspace(saved.id)}
+						href={resolve("/workspaces/[id]", { id: saved.id })}
 					>
 						<span
 							class={`size-2.5 shrink-0 rounded-full ${workspaceColorClasses[saved.color]}`}

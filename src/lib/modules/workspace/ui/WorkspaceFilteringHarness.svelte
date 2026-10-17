@@ -13,6 +13,11 @@
 	onMount(() => void app.workspace.initialize());
 </script>
 
+<!-- Drive confirmed session changes independently of routing in filter integration tests. -->
+{#each app.workspace.catalogue?.workspaces ?? [] as saved (saved.id)}
+	<button onclick={() => app.workspace.open(saved.id)}>Confirm Workspace {saved.name}</button>
+{/each}
+
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">
 	<WorkspaceSidebar
 		workspaces={app.workspace.catalogue?.workspaces ?? []}
@@ -23,17 +28,17 @@
 		collapsible="none"
 		disabled={app.workspace.isOperating || app.workspace.isLoading}
 		pendingOperation={app.workspace.pendingOperation}
-		selectWorkspace={app.workspace.open}
 		deleteWorkspace={app.workspace.deleteWorkspace}
 		openCreationDialog={() => {}}
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
-		<WorkspaceContent
-			bulkSelection={app.bulkSelection}
-			workspace={app.workspace}
-			todoFilter={app.todoFilter}
-			filteredTodoItems={app.filteredTodoItems}
-			openWorkspaceCreationDialog={() => {}}
-		/>
+		{#if app.workspace.todoFile}
+			<WorkspaceContent
+				bulkSelection={app.bulkSelection}
+				workspace={app.workspace}
+				todoFilter={app.todoFilter}
+				filteredTodoItems={app.filteredTodoItems}
+			/>
+		{/if}
 	</Sidebar.Inset>
 </Sidebar.Provider>

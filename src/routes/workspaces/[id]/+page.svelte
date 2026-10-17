@@ -14,7 +14,6 @@
 			workspace={app.workspace}
 			todoFilter={app.todoFilter}
 			filteredTodoItems={app.filteredTodoItems}
-			openWorkspaceCreationDialog={app.openWorkspaceCreationDialog}
 		/>
 	{/key}
 {:else}
@@ -26,9 +25,8 @@
 			app.workspace.error ||
 			app.workspace.warning ||
 			"This Workspace is unavailable."}
-		openWorkspace={navigation.openWorkspace}
 		openCreationDialog={app.openWorkspaceCreationDialog}
+		showHome
 		retry={navigation.retry}
-		goHome={navigation.goHome}
 	/>
 {/if}

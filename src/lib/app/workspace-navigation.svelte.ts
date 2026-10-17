@@ -1,13 +1,12 @@
 import { beforeNavigate, goto, onNavigate } from "$app/navigation";
 import { navigating, page } from "$app/state";
+import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { on } from "svelte/events";
 import { toast } from "svelte-sonner";
 import type { AppState } from "./app-state.svelte";
 import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-types";
 import type { DesktopRequest } from "$lib/shared/desktop/contract";
-
-export const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 
 export function createWorkspaceNavigation(app: AppState) {
 	const workspace = app.workspace;
@@ -42,7 +41,9 @@ export function createWorkspaceNavigation(app: AppState) {
 		void workspace.initialize().then(async () => {
 			if (page.params.id) await confirm(page.params.id);
 			else if (page.url.pathname === "/" && workspace.todoFile && workspace.activeWorkspace)
-				await goto(workspacePath(workspace.activeWorkspace.id), { replaceState: true });
+				await goto(resolve("/workspaces/[id]", { id: workspace.activeWorkspace.id }), {
+					replaceState: true,
+				});
 		});
 		return () => {
 			stop();
@@ -66,15 +67,6 @@ export function createWorkspaceNavigation(app: AppState) {
 				workspace.activeWorkspace?.id === page.params.id
 			);
 		},
-		async openWorkspace(id: string): Promise<WorkspaceSessionActionResult> {
-			if (busy())
-				return { status: "rejected", message: "A Workspace session operation is already running." };
-			await goto(workspacePath(id));
-			return error ? { status: "rejected", message: error } : { status: "applied" };
-		},
-		async goHome() {
-			if (!busy()) await goto("/");
-		},
 		async retry() {
 			if (busy()) return;
 			if (!page.params.id || !workspace.catalogue) await workspace.restore();
@@ -87,7 +79,7 @@ export function createWorkspaceNavigation(app: AppState) {
 				return { status: "rejected", message: "A Workspace session operation is already running." };
 			const result = await workspace.create(input);
 			if (result.status === "applied" && workspace.activeWorkspace && workspace.todoFile)
-				await goto(workspacePath(workspace.activeWorkspace.id));
+				await goto(resolve("/workspaces/[id]", { id: workspace.activeWorkspace.id }));
 			return result;
 		},
 	};

@@ -59,7 +59,6 @@
 				todoFilter={app.todoFilter}
 				todoFileLoaded={!!app.workspace.todoFile}
 				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				selectWorkspace={app.workspace.open}
 				deleteWorkspace={app.workspace.deleteWorkspace}
 				openCreationDialog={app.openWorkspaceCreationDialog}
 			/>
@@ -70,14 +69,15 @@
 			/>
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
-			<WorkspaceContent
-				bulkSelection={app.bulkSelection}
-				bind:creationOpen={app.isTodoCreationOpen}
-				workspace={app.workspace}
-				todoFilter={app.todoFilter}
-				filteredTodoItems={app.filteredTodoItems}
-				openWorkspaceCreationDialog={app.openWorkspaceCreationDialog}
-			/>
+			{#if app.workspace.todoFile}
+				<WorkspaceContent
+					bulkSelection={app.bulkSelection}
+					bind:creationOpen={app.isTodoCreationOpen}
+					workspace={app.workspace}
+					todoFilter={app.todoFilter}
+					filteredTodoItems={app.filteredTodoItems}
+				/>
+			{/if}
 		</div>
 	</div>
 </Sidebar.Provider>

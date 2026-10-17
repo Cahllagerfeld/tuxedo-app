@@ -30,7 +30,6 @@
 		app={appState}
 		readerAvailable={navigation.readerAvailable}
 		navigationBusy={navigation.busy}
-		goHome={navigation.goHome}
 	/>
 	<div
 		data-slot="app-inset"
@@ -45,7 +44,6 @@
 			todoFileLoaded={navigation.readerAvailable}
 			disabled={navigation.busy}
 			pendingOperation={appState.workspace.pendingOperation}
-			selectWorkspace={navigation.openWorkspace}
 			deleteWorkspace={appState.workspace.deleteWorkspace}
 			openCreationDialog={appState.openWorkspaceCreationDialog}
 		/>

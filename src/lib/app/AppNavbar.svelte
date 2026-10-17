@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { AppState } from "./app-state.svelte";
@@ -12,12 +13,10 @@
 		app,
 		readerAvailable = true,
 		navigationBusy = false,
-		goHome,
 	}: {
 		app: AppState;
 		readerAvailable?: boolean;
 		navigationBusy?: boolean;
-		goHome?: () => Promise<void>;
 	} = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
@@ -58,11 +57,8 @@
 		disabled={!canUndo}
 		onclick={undo}><Undo2 aria-hidden="true" /></Button
 	>
-	{#if goHome}<Button
-			variant="ghost"
-			class="[app-region:no-drag]"
-			disabled={navigationBusy}
-			onclick={goHome}>Home</Button
-		>{/if}
+	<Button variant="ghost" class="[app-region:no-drag]" disabled={navigationBusy} href={resolve("/")}
+		>Home</Button
+	>
 	<AppShortcuts {app} {readerAvailable} {navigationBusy} />
 </header>

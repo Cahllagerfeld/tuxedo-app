@@ -14,7 +14,6 @@
 <WorkspaceSwitcher
 	workspaces={session.catalogue?.workspaces ?? []}
 	activeWorkspaceId={session.catalogue?.active_workspace_id ?? null}
-	selectWorkspace={session.open}
 	deleteWorkspace={session.deleteWorkspace}
 	openCreationDialog={() => {}}
 	disabled={session.isOperating}

@@ -17,7 +17,7 @@ async function testWorkspaceNavigation(launchApplication, directory) {
 	await writeFile(thirdPath, "Navigation created\n");
 	let application = await launchApplication(directory);
 	let page = await application.firstWindow();
-	const home = () => page.getByRole("button", { name: "Home", exact: true }).first();
+	const home = () => page.getByRole("link", { name: "Home", exact: true }).first();
 	const picker = () => page.getByRole("region", { name: "Workspace destination" });
 	const expectHome = async () => {
 		await picker().getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
@@ -65,7 +65,7 @@ async function testWorkspaceNavigation(launchApplication, directory) {
 		await home().click();
 		await expectHome();
 		assert.equal(await persistedId(), second, "Home preserves remembered selection");
-		await picker().getByRole("button", { name: "blue Navigation A", exact: true }).click();
+		await picker().getByRole("link", { name: "blue Navigation A", exact: true }).click();
 		await expectWorkspace(first, "Navigation first");
 		await page.getByRole("button", { name: "Select workspace: Navigation A" }).click();
 		await page.getByRole("menuitem", { name: "Navigation B", exact: true }).click();
@@ -132,10 +132,10 @@ async function testWorkspaceNavigation(launchApplication, directory) {
 		await page.reload();
 		await expectUnavailable();
 		assert.equal(await persistedId(), first);
-		await picker().getByRole("button", { name: "Home", exact: true }).click();
+		await picker().getByRole("link", { name: "Home", exact: true }).click();
 		await expectHome();
 		await rm(secondPath);
-		await picker().getByRole("button", { name: "green Navigation B", exact: true }).click();
+		await picker().getByRole("link", { name: "green Navigation B", exact: true }).click();
 		await expectUnavailable();
 		assert.equal(await persistedId(), first, "Failed switch retains confirmed selection");
 		await writeFile(secondPath, "Navigation second\n");
