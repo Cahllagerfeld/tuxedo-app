@@ -21,11 +21,9 @@ const personal = {
 
 describe("WorkspaceSwitcher", () => {
 	it("lists workspaces oldest first, identifies the active one, and selects another", async () => {
-		const selectWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {
 			workspaces: [personal, work],
 			activeWorkspaceId: personal.id,
-			selectWorkspace,
 			deleteWorkspace: vi.fn(),
 			openCreationDialog: vi.fn(),
 		});
@@ -36,8 +34,9 @@ describe("WorkspaceSwitcher", () => {
 		await expect.element(entries.nth(2)).toMatchTextContent("Personal");
 		await expect.element(page.getByRole("menuitem", { name: "Personal, active" })).toBeVisible();
 
-		await page.getByRole("menuitem", { name: "Work", exact: true }).click();
-		expect(selectWorkspace).toHaveBeenCalledWith(work.id);
+		await expect
+			.element(page.getByRole("menuitem", { name: "Work", exact: true }))
+			.toHaveAttribute("href", `/workspaces/${work.id}`);
 	});
 
 	it("offers an intelligible empty-state entry point", async () => {
@@ -45,7 +44,6 @@ describe("WorkspaceSwitcher", () => {
 		render(WorkspaceSwitcher, {
 			workspaces: [],
 			activeWorkspaceId: null,
-			selectWorkspace: vi.fn(),
 			deleteWorkspace: vi.fn(),
 			openCreationDialog,
 		});
@@ -60,7 +58,6 @@ describe("WorkspaceSwitcher", () => {
 		render(WorkspaceSwitcher, {
 			workspaces: [work],
 			activeWorkspaceId: work.id,
-			selectWorkspace: vi.fn(),
 			deleteWorkspace: vi.fn(),
 			openCreationDialog: vi.fn(),
 			disabled: true,
@@ -75,7 +72,6 @@ describe("WorkspaceSwitcher", () => {
 		const props = {
 			workspaces: [work],
 			activeWorkspaceId: work.id,
-			selectWorkspace: vi.fn(),
 			deleteWorkspace: vi.fn(),
 			openCreationDialog: vi.fn(),
 			disabled: false,
@@ -95,7 +91,6 @@ describe("WorkspaceSwitcher", () => {
 		render(WorkspaceSwitcher, {
 			workspaces: [work],
 			activeWorkspaceId: work.id,
-			selectWorkspace: vi.fn(),
 			deleteWorkspace,
 			openCreationDialog: vi.fn(),
 		});
@@ -127,7 +122,6 @@ describe("WorkspaceSwitcher", () => {
 		render(WorkspaceSwitcher, {
 			workspaces: [work],
 			activeWorkspaceId: work.id,
-			selectWorkspace: vi.fn(),
 			deleteWorkspace,
 			openCreationDialog: vi.fn(),
 		});
@@ -144,12 +138,10 @@ describe("WorkspaceSwitcher", () => {
 });
 
 it("opens inactive Workspace options without selecting and confirms the named target", async () => {
-	const selectWorkspace = vi.fn();
 	const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 	render(WorkspaceSwitcher, {
 		workspaces: [work, personal],
 		activeWorkspaceId: work.id,
-		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog: vi.fn(),
 	});
@@ -161,18 +153,15 @@ it("opens inactive Workspace options without selecting and confirms the named ta
 		.toMatchTextContent(
 			"Remove Personal from saved Workspaces? Its Todo file will not be deleted."
 		);
-	expect(selectWorkspace).not.toHaveBeenCalled();
 	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
 	expect(deleteWorkspace).toHaveBeenCalledWith(personal.id);
 });
 
 it("reaches each Workspace's options and cancels or confirms using the keyboard", async () => {
-	const selectWorkspace = vi.fn();
 	const deleteWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 	render(WorkspaceSwitcher, {
 		workspaces: [work, personal],
 		activeWorkspaceId: work.id,
-		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog: vi.fn(),
 	});
@@ -200,15 +189,12 @@ it("reaches each Workspace's options and cancels or confirms using the keyboard"
 	await openWithKeyboard();
 	await userEvent.keyboard("{Tab}{Enter}");
 	expect(deleteWorkspace).toHaveBeenCalledWith(personal.id);
-	expect(selectWorkspace).not.toHaveBeenCalled();
 });
 
 it("opens Workspace options on activation, never on hover", async () => {
-	const selectWorkspace = vi.fn();
 	render(WorkspaceSwitcher, {
 		workspaces: [work, personal],
 		activeWorkspaceId: work.id,
-		selectWorkspace,
 		deleteWorkspace: vi.fn(),
 		openCreationDialog: vi.fn(),
 	});
@@ -222,5 +208,4 @@ it("opens Workspace options on activation, never on hover", async () => {
 		.toBeVisible();
 	await options.click();
 	await expect.element(options).toHaveAttribute("aria-expanded", "false");
-	expect(selectWorkspace).not.toHaveBeenCalled();
 });

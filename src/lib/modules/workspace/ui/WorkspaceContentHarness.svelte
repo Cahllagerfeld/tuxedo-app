@@ -3,7 +3,7 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
 	import { toast } from "svelte-sonner";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "../state/workspace-session-fixture.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
@@ -25,17 +25,18 @@
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const session = new ElectronWorkspaceSessionState(desktop);
+	const app = new AppState(session);
 	onMount(() => {
 		const stop =
 			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
-		void app.workspace.initialize();
+		void session.initialize();
 		return stop;
 	});
 </script>
 
-<!-- Keep notices available for assertions even when CI browser actions are slow. -->
-<Toaster duration={Infinity} />
+<!-- Keep notices available in slow CI; Infinity overflows Sonner's browser timer. -->
+<Toaster duration={60_000} />
 {#if restoration}
 	<button disabled={app.workspace.isOperating} onclick={() => void app.workspace.restore()}
 		>Restore Workspace session</button
@@ -59,7 +60,6 @@
 				todoFilter={app.todoFilter}
 				todoFileLoaded={!!app.workspace.todoFile}
 				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				selectWorkspace={app.workspace.open}
 				deleteWorkspace={app.workspace.deleteWorkspace}
 				openCreationDialog={app.openWorkspaceCreationDialog}
 			/>
@@ -70,14 +70,15 @@
 			/>
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
-			<WorkspaceContent
-				bulkSelection={app.bulkSelection}
-				bind:creationOpen={app.isTodoCreationOpen}
-				workspace={app.workspace}
-				todoFilter={app.todoFilter}
-				filteredTodoItems={app.filteredTodoItems}
-				openWorkspaceCreationDialog={app.openWorkspaceCreationDialog}
-			/>
+			{#if app.workspace.todoFile}
+				<WorkspaceContent
+					bulkSelection={app.bulkSelection}
+					bind:creationOpen={app.isTodoCreationOpen}
+					workspace={app.workspace}
+					todoFilter={app.todoFilter}
+					filteredTodoItems={app.filteredTodoItems}
+				/>
+			{/if}
 		</div>
 	</div>
 </Sidebar.Provider>

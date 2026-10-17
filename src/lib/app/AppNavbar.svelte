@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { AppState } from "./app-state.svelte";
@@ -8,16 +9,29 @@
 	import { createHotkey, formatForDisplay } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
-	let { app }: { app: AppState } = $props();
+	let {
+		app,
+		readerAvailable = true,
+		navigationBusy = false,
+	}: {
+		app: AppState;
+		readerAvailable?: boolean;
+		navigationBusy?: boolean;
+	} = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		!!app.workspace.undoLabel && !app.workspace.isOperating && !app.todoBulkSelectionActive
+		readerAvailable &&
+			!navigationBusy &&
+			!!app.workspace.undoLabel &&
+			!app.workspace.isOperating &&
+			!app.todoBulkSelectionActive
 	);
 	async function undo() {
 		if (!canUndo) return;
 		const outcome = await app.workspace.undoTodo();
 		if (outcome.status === "conflict") toast.warning(outcome.message);
 		else if (outcome.status === "rejected") toast.error(outcome.message);
+		else if (outcome.notice) toast.info(outcome.notice);
 	}
 	createHotkey(
 		undoTodoShortcut.key,
@@ -44,5 +58,8 @@
 		disabled={!canUndo}
 		onclick={undo}><Undo2 aria-hidden="true" /></Button
 	>
-	<AppShortcuts {app} />
+	<Button variant="ghost" class="[app-region:no-drag]" disabled={navigationBusy} href={resolve("/")}
+		>Home</Button
+	>
+	<AppShortcuts {app} {readerAvailable} {navigationBusy} />
 </header>

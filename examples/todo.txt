@@ -63,3 +63,7 @@ x 2026-10-16 2026-10-02 Cancel or Escape preserves selection then leave selectio
 Keep this filtered-out Todo item when deleting only matching selections +HiddenFromBulkDelete
 
 Click Workspace options to remove an unavailable saved reference without opening its Todo file +TuxedoApp @review
+Follow Home and Workspace links then use Back and Forward to reopen confirmed Todo files +Navigation @review
+Restart to resume the last opened Workspace while explicit Home keeps the picker visible +Navigation @review
+Retry an unavailable Workspace or return Home without showing another Workspace's Todo items +Navigation @review
+Keep keyboard focus on recovery when an unreadable Todo file replaces the focused reader +Navigation @review

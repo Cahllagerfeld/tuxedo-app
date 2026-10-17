@@ -1,46 +1,36 @@
 <script lang="ts">
-	import ChevronDown from "@lucide/svelte/icons/chevron-down";
-	import Ellipsis from "@lucide/svelte/icons/ellipsis";
-	import Plus from "@lucide/svelte/icons/plus";
-	import Trash2 from "@lucide/svelte/icons/trash-2";
-	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
-	import { Button } from "$lib/shared/ui/button";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import { resolve } from "$app/paths";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-types";
+	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
+	import { Button } from "$lib/shared/ui/button";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import Ellipsis from "@lucide/svelte/icons/ellipsis";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import Plus from "@lucide/svelte/icons/plus";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import { toast } from "svelte-sonner";
 
 	type Props = {
 		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
 		pendingOperation?: WorkspaceSessionOperation | null;
 	};
 
-	const colorClasses: Record<Workspace["color"], string> = {
-		blue: "bg-blue-600 dark:bg-blue-400",
-		green: "bg-green-600 dark:bg-green-400",
-		amber: "bg-amber-600 dark:bg-amber-400",
-		red: "bg-red-600 dark:bg-red-400",
-		violet: "bg-violet-600 dark:bg-violet-400",
-		pink: "bg-pink-600 dark:bg-pink-400",
-		cyan: "bg-cyan-600 dark:bg-cyan-400",
-		orange: "bg-orange-600 dark:bg-orange-400",
-	};
+	import { workspaceColorClasses as colorClasses } from "./workspace-colors";
 
 	let {
 		open = $bindable(false),
 		workspaces,
 		activeWorkspaceId,
-		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog,
 		disabled = false,
@@ -63,18 +53,9 @@
 			const result = await deleteWorkspace(workspace.id);
 			if (result.status === "rejected")
 				toast.error("Could not remove workspace", { description: result.message });
+			else if (result.status === "applied" && result.notice) toast.info(result.notice);
 		} catch (error) {
 			toast.error("Could not remove workspace", { description: errorMessage(error) });
-		}
-	}
-
-	async function chooseWorkspace(workspaceId: string) {
-		try {
-			const result = await selectWorkspace(workspaceId);
-			if (result.status === "rejected")
-				toast.error("Could not open workspace", { description: result.message });
-		} catch (error) {
-			toast.error("Could not open workspace", { description: errorMessage(error) });
 		}
 	}
 
@@ -122,16 +103,22 @@
 							: workspace.name}
 						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 						{disabled}
-						onclick={() => void chooseWorkspace(workspace.id)}
 					>
-						<span
-							class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
-							aria-hidden="true"
-						></span>
-						<span class="truncate">{workspace.name}</span>
-						{#if workspace.id === activeWorkspaceId}<span
-								class="ml-auto text-xs text-muted-foreground">Active</span
-							>{/if}
+						{#snippet child({ props })}
+							<a
+								{...props}
+								href={disabled ? undefined : resolve("/workspaces/[id]", { id: workspace.id })}
+							>
+								<span
+									class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
+									aria-hidden="true"
+								></span>
+								<span class="truncate">{workspace.name}</span>
+								{#if workspace.id === activeWorkspaceId}<span
+										class="ml-auto text-xs text-muted-foreground">Active</span
+									>{/if}
+							</a>
+						{/snippet}
 					</DropdownMenu.Item>
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger {disabled}>

@@ -8,6 +8,7 @@ import {
 	catalogueSchema,
 	createWorkspaceRequestSchema,
 	switchWorkspaceRequestSchema,
+	readWorkspaceRequestSchema,
 	deleteWorkspaceRequestSchema,
 	setWorkspaceSortOrderRequestSchema,
 	setWorkspaceShowDeferredRequestSchema,
@@ -94,6 +95,20 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		});
 	});
 	return {
+		readWorkspace: (request: DesktopRequest<"readWorkspace">) =>
+			Effect.gen(function* () {
+				const { workspaceId } = yield* attempt(() => readWorkspaceRequestSchema.parse(request));
+				const catalogue = yield* WorkspaceCatalogue.use((store) => store.read);
+				const workspace = catalogue.workspaces.find((w) => w.id === workspaceId);
+				if (!workspace)
+					return yield* new OperationFailure({ message: "Workspace does not exist." });
+				const contents = yield* readContents(workspace.todo_path);
+				return {
+					status: "loaded" as const,
+					workspace,
+					todo_file: parseTodoFile(workspace.todo_path, contents),
+				};
+			}),
 		setSortOrder: (
 			request: DesktopRequest<"setWorkspaceSortOrder">,
 			current: ConfirmedSession,

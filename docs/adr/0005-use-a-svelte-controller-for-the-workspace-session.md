@@ -1,5 +1,7 @@
 # Use a Svelte controller for the Workspace session
 
+Superseded by [ADR-0007](0007-use-sveltekit-loads-for-confirmed-renderer-data.md) for renderer data ownership and initialization. Backend consistency guarantees remain in force.
+
 The backend already owns the canonical Workspace session, while renderer queries disable automatic revalidation and operation responses supply confirmed data directly. Use one Svelte runes controller to hold confirmed renderer data and the current operation and its target, and report errors. Startup read errors remain session state; action outcomes report operation errors for contextual UI notifications. This replaces Svelte Query plus separate operation admission and request lifecycle machinery with an explicit flow suited to the current app; it is a maintainability decision rather than a measured performance improvement. This supersedes only the renderer Svelte Query choice in ADR-0003 and ADR-0004.
 
 Workspace lifecycle operations continue to return coherent Workspace session snapshots. Todo-item completion and deletion continue to return scoped confirmed Todo-file results, accepted only for the matching Workspace, backend scope, and revision. These two acceptance paths keep unrelated catalogue data out of Todo-item responses. Counts and facets derive from the confirmed Todo file; forms and dialogs retain local Svelte state. A single synchronously admitted operation preserves current pending UI and one-operation-at-a-time behavior, with confirmed contents visible until a valid result arrives and unchanged on failure.

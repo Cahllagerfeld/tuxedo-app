@@ -1,6 +1,6 @@
 # Use Effect for backend orchestration
 
-Use Effect 4 for Electron main-process orchestration, retaining the Electron-independent backend in ADR-0004 and the Svelte Workspace session controller in ADR-0005. The desktop API remains narrow, plain-data, and Promise-based. Todo files and the version-1 JSON Workspace catalogue keep their existing formats; this adoption requires no user-data migration. The specification is [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91).
+Use Effect 4 for Electron main-process orchestration, retaining the Electron-independent backend in ADR-0004. Renderer data ownership now follows the SvelteKit loads in ADR-0007, which supersedes ADR-0005. The desktop API remains narrow, plain-data, and Promise-based. Todo files and the version-1 JSON Workspace catalogue keep their existing formats; this adoption requires no user-data migration. The specification is [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91).
 
 ## Validation and failures
 
@@ -16,7 +16,7 @@ Mutations validate backend scope, revision, Active workspace, and persisted Work
 
 ## Resources and shutdown
 
-Todo-file observation adapters acquire watchers and subscriptions in the supplied Scope. Each confirmed observation target has a session-owned Scope containing its signal queue, 250 ms stream debounce, and background reads. Retargeting, Empty/unavailable states, and disposal release it, including partial acquisition. Stale callbacks cannot emit desktop events; observation failures remain best-effort. Events refresh through the existing Svelte restoration path.
+Todo-file observation adapters acquire watchers and subscriptions in the supplied Scope. Each confirmed observation target has a session-owned Scope containing its signal queue, 250 ms stream debounce, and background reads. Retargeting, Empty/unavailable states, and disposal release it, including partial acquisition. Stale callbacks cannot emit desktop events; observation failures remain best-effort. Events trigger an authoritative backend refresh followed by targeted SvelteKit invalidation under ADR-0007.
 
 `application-runtime.ts` owns synchronous admission, tracking of admitted work, and the application Scope. Main supplies thin scoped Electron adapters for startup, activation, dialogs, IPC, protocol/security handlers, and windows. Window child Scopes release native-theme subscriptions and windows. Startup failure follows the same cleanup path as shutdown.
 
@@ -26,4 +26,4 @@ Normal quit closes desktop and observation admission synchronously, drains admit
 
 The application and read-only reference subtree both use Effect 4.0.4 at upstream commit `e17ecdbe902aa7108f775c8ab9c0ddf9f38801ab`. Runtime composition follows `ai-docs/src/04_integration/10_managed-runtime.ts`; ownership follows `ai-docs/src/01_effect/05_resources/10_acquire-release.ts` and public `Scope.fork`/`Scope.close`. `packages/effect/test/ManagedRuntime.test.ts` demonstrates that disposal interrupts fibers, which is why the application drains admitted work first.
 
-Real-file backend operations, typed desktop/controller tests, Svelte form harnesses, and real Electron tests verify these boundaries. The macOS package test copies the application outside the checkout and clears Node resolution overrides before exercising both package assets and desktop workflows. Runtime dependencies must be bundled; no development dependency directory or runtime installation is required. Production bundle/dependency measurements and full-suite results belong in the delivery PR, not another migration document.
+Real-file backend operations, typed desktop/command tests, Svelte form harnesses, and real Electron tests verify these boundaries. The macOS package test copies the application outside the checkout and clears Node resolution overrides before exercising both package assets and desktop workflows. Runtime dependencies must be bundled; no development dependency directory or runtime installation is required. Production bundle/dependency measurements and full-suite results belong in the delivery PR, not another migration document.

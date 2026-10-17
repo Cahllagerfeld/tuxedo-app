@@ -119,6 +119,7 @@
 		deleting = true;
 		const result = await workspace.bulkDeleteTodos(items);
 		if (result.status === "applied") {
+			if (result.notice) toast.info(result.notice);
 			toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
 			deletionFocus = { workspaceKey: context.workspaceKey, index: position };
 			bulkSelection.clear();
@@ -365,6 +366,7 @@
 								disabled={workspace.isOperating || todoFilter.status === "completed"}
 								onclick={() =>
 									void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+										if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 										if (outcome.status !== "applied")
 											toast.error("Could not save Show deferred", {
 												description: outcome.message,
@@ -413,6 +415,7 @@
 								value !== todoFilter.sortOrder
 							)
 								void workspace.setSortOrder(value).then((outcome) => {
+									if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 									if (outcome.status !== "applied")
 										toast.error("Could not save sort order", { description: outcome.message });
 								});

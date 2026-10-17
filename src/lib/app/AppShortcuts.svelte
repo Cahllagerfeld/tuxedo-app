@@ -10,12 +10,16 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { useSidebar } from "$lib/shared/ui/sidebar";
 	import type { AppState } from "./app-state.svelte";
-	let { app }: { app: AppState } = $props();
+	let {
+		app,
+		readerAvailable = true,
+		navigationBusy = false,
+	}: { app: AppState; readerAvailable?: boolean; navigationBusy?: boolean } = $props();
 	const scope = getShortcutScope();
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
 	let helpOpen = $state(false);
-	const idle = $derived(!app.workspace.isLoading && !app.workspace.isOperating);
+	const idle = $derived(!navigationBusy && !app.workspace.isLoading && !app.workspace.isOperating);
 	const actions = {
 		workspace: async () => {
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);
@@ -44,7 +48,8 @@
 					(id === "help" ||
 						id === "sidebar" ||
 						(idle &&
-							(id !== "createTodo" || (!!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
+							(id !== "createTodo" ||
+								(readerAvailable && !!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

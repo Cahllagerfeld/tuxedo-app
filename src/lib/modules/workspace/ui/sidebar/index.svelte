@@ -16,7 +16,6 @@
 		workspaces: readonly Workspace[];
 		todoSummary: TodoFileSummary;
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
@@ -31,7 +30,6 @@
 		workspaces,
 		todoSummary,
 		activeWorkspaceId,
-		selectWorkspace,
 		deleteWorkspace,
 		openCreationDialog,
 		disabled = false,
@@ -54,7 +52,6 @@
 			{activeWorkspaceId}
 			{disabled}
 			{pendingOperation}
-			{selectWorkspace}
 			{deleteWorkspace}
 			{openCreationDialog}
 		/>

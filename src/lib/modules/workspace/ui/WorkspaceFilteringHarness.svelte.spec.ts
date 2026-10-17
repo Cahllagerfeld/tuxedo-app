@@ -181,6 +181,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
@@ -696,8 +697,7 @@ test("resets filters after a successful Workspace switch", async () => {
 	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /^Completed/ }).click();
-	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Review" }).click();
+	await page.getByRole("button", { name: "Confirm Workspace Review", exact: true }).click();
 	await expect
 		.element(page.getByRole("button", { name: /^All/ }))
 		.toHaveAttribute("aria-pressed", "true");
@@ -714,8 +714,7 @@ test("preserves distinct Project spellings as separate choices", async () => {
 			switchWorkspace: async () => ({ status: "applied", confirmed: secondWorkspaceSession }),
 		}),
 	});
-	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Review" }).click();
+	await page.getByRole("button", { name: "Confirm Workspace Review", exact: true }).click();
 	await expect.element(page.getByRole("button", { name: "+Review", exact: true })).toBeVisible();
 	await expect.element(page.getByRole("button", { name: "+review", exact: true })).toBeVisible();
 	await expect.element(page.getByText("Review release", { exact: true })).toBeVisible();
@@ -732,8 +731,7 @@ test("preserves filters after a rejected Workspace switch", async () => {
 	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("work");
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
-	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Review" }).click();
+	await page.getByRole("button", { name: "Confirm Workspace Review", exact: true }).click();
 	await expect
 		.element(page.getByRole("button", { name: "+Work", exact: true }))
 		.toHaveAttribute("aria-pressed", "true");
@@ -961,8 +959,7 @@ test("reveals matching deferred items, keeps facets and totals, and restores Wor
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect.element(page.getByLabelText("Active filters")).not.toBeInTheDocument();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	await page.getByRole("menuitem", { name: "Review" }).click();
+	await page.getByRole("button", { name: "Confirm Workspace Review", exact: true }).click();
 	await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
 });
 
