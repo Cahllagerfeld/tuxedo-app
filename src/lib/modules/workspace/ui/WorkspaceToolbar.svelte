@@ -149,20 +149,51 @@
 			}
 		});
 	}
-	async function completeSelected() {
-		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
-		if (!items.length) return;
+	async function setSelectedCompletion(completed: boolean) {
+		if (workspace.isOperating) return;
+		const items = [...bulkSelection.selectedItems];
+		const count = items.filter((todo) => todo.completed !== completed).length;
+		if (!count) return;
+		const workspaceKey = bulkSelection.context.workspaceKey;
+		const position = filteredTodoItems.indexOf(items[0]);
+		const origin = document.activeElement;
 		previousSelection = undefined;
-		const result = await workspace.bulkSetCompletion(items);
+		const result = await workspace.bulkSetCompletion(items, completed);
 		if (result.status === "applied") {
-			const count = items.length;
-			toast.success(`Completed ${count} ${count === 1 ? "Todo item" : "Todo items"}`);
+			toast.success(
+				completed
+					? `Completed ${count} ${count === 1 ? "Todo item" : "Todo items"}`
+					: `Marked ${count} ${count === 1 ? "Todo item" : "Todo items"} incomplete`
+			);
 			if (result.notice) toast.info(result.notice);
 			bulkSelection.clear();
 		} else if (result.status === "conflict") {
 			toast.error("Todo file reloaded");
 			bulkSelection.clear();
-		} else toast.error("Could not complete Todo items", { description: result.message });
+		} else
+			toast.error(
+				completed ? "Could not complete Todo items" : "Could not mark Todo items incomplete",
+				{
+					description: result.message,
+				}
+			);
+		if (result.status === "applied" || result.status === "conflict") {
+			await tick();
+			if (workspaceKey !== bulkSelection.context.workspaceKey || !bulkSelection.active) return;
+			const focused = document.activeElement;
+			if (
+				focused !== origin &&
+				focused instanceof HTMLElement &&
+				focused !== document.body &&
+				focused.isConnected &&
+				!focused.matches(":disabled") &&
+				!focused.closest("[inert], [hidden]")
+			)
+				return;
+			const todo = filteredTodoItems[Math.min(position, filteredTodoItems.length - 1)];
+			if (todo) focusTodo(todo);
+			else doneButton?.focus();
+		}
 	}
 	function enterSelectionMode() {
 		closeDetails();
@@ -263,7 +294,14 @@
 				<Button
 					size="sm"
 					disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
-					onclick={() => void completeSelected()}><Check aria-hidden="true" />Complete</Button
+					onclick={() => void setSelectedCompletion(true)}
+					><Check aria-hidden="true" />Complete</Button
+				>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={workspace.isOperating || bulkSelection.selectedCompletedCount === 0}
+					onclick={() => void setSelectedCompletion(false)}>Mark incomplete</Button
 				>
 				<Button
 					bind:ref={deleteButton}

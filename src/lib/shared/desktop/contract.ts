@@ -198,7 +198,9 @@ const BulkTodoMutationRequest = Schema.Struct({
 		})
 	),
 });
-export const bulkSetTodoCompletionRequestSchema = effectValidator(BulkTodoMutationRequest);
+export const bulkSetTodoCompletionRequestSchema = effectValidator(
+	Schema.Struct({ ...BulkTodoMutationRequest.fields, completed: Schema.Boolean })
+);
 export const bulkDeleteTodosRequestSchema = effectValidator(
 	BulkTodoMutationRequest.check(
 		Schema.makeFilter((input) =>

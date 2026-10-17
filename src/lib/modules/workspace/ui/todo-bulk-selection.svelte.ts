@@ -62,6 +62,9 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		get selectedOpenCount() {
 			return selectedOpenCount;
 		},
+		get selectedCompletedCount() {
+			return selectedItems.length - selectedOpenCount;
+		},
 		// The UI uses these identities only to announce invalidation to the user.
 		get context() {
 			return { workspaceKey, fileSignature, filterSignature, selection };
