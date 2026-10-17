@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
-	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "./workspace-session-fixture.svelte";
 	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally

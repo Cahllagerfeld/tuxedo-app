@@ -1,14 +1,12 @@
 import {
-	confirmedSessionSchema,
-	confirmedTodoSchema,
 	type SavedView,
 	type TodoSortOrder,
 	type SavedViewFilterValues,
-	type ConfirmedTodo,
 	type ConfirmedSession,
 	type DesktopAPI,
 	type DesktopRequest,
 	type TodoFileObservation,
+	type TodoFileChange,
 	todoFileChangeEvent,
 } from "$lib/shared/desktop/contract";
 import type {
@@ -22,61 +20,54 @@ import type { TodoItem } from "$lib/modules/todo/domain/todo";
 type CreateTodoRequest = DesktopRequest<"createTodo">;
 export type CreateTodoDraft = Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">;
 
-export function reconcileConfirmedSession(
-	previous: ConfirmedSession | undefined,
-	incoming: ConfirmedSession
-): ConfirmedSession {
-	const parsed = confirmedSessionSchema.parse(incoming);
-	if (previous && (previous.scope !== parsed.scope || previous.revision > parsed.revision))
-		return previous;
-	return parsed;
-}
-export function reconcileConfirmedTodo(
-	previous: ConfirmedSession | undefined,
-	incoming: ConfirmedTodo
-): ConfirmedSession | undefined {
-	const parsed = confirmedTodoSchema.parse(incoming);
-	if (
-		!previous ||
-		previous.scope !== parsed.scope ||
-		previous.revision > parsed.revision ||
-		previous.session.status !== "ready" ||
-		previous.session.catalogue.active_workspace_id !== parsed.workspaceId ||
-		previous.session.todo_file.path !== parsed.todo_file.path
-	)
-		return previous;
-	return {
-		...previous,
-		revision: parsed.revision,
-		undoLabel: parsed.undoLabel,
-		session: { ...previous.session, todo_file: parsed.todo_file },
-	};
-}
-export class ElectronWorkspaceSessionState {
-	savedViews = $state.raw<readonly SavedView[]>([]);
-	savedViewsError = $state("");
-	private confirmed = $state.raw<ConfirmedSession>();
-	private readError = $state<string | null>(null);
-	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
-	private initialization: Promise<WorkspaceSessionActionResult> | undefined;
+export type WorkspaceLoadedData = {
+	confirmed?: ConfirmedSession;
+	error?: string;
+	savedViews?: readonly SavedView[];
+	savedViewsError?: string;
+};
 
-	constructor(private readonly desktop: DesktopAPI) {}
+export class ElectronWorkspaceSessionState {
+	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
+	private refreshFailed = $state(false);
+	private reconsiderObservation: (() => void) | undefined;
+
+	constructor(
+		private readonly desktop: DesktopAPI,
+		private readonly getData: () => WorkspaceLoadedData,
+		private readonly invalidate: (dependency: "session" | "views" | "lifecycle") => Promise<void>
+	) {}
+
+	private get confirmed() {
+		return this.getData().confirmed;
+	}
+	get savedViews() {
+		return this.getData().savedViews ?? [];
+	}
+	get savedViewsError() {
+		return this.getData().savedViewsError ?? "";
+	}
+	get refreshError() {
+		return this.refreshFailed
+			? "The screen could not refresh. Retry loading before making another change."
+			: "";
+	}
 
 	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
 		let listening = true;
-		const unsubscribe = observation.onTodoFileChanged((event) => {
-			const parsed = todoFileChangeEvent.payload.safeParse(event);
+		let deferred: TodoFileChange | undefined;
+		const reconsider = () => {
+			if (!listening || this.isOperating || !deferred) return;
+			const event = deferred;
+			deferred = undefined;
 			const previous = this.confirmed;
 			if (
-				!listening ||
-				!parsed.success ||
-				this.isOperating ||
 				!previous ||
 				previous.session.status !== "ready" ||
-				previous.scope !== parsed.data.scope ||
-				previous.revision !== parsed.data.revision ||
-				previous.session.catalogue.active_workspace_id !== parsed.data.workspaceId ||
-				previous.session.todo_file.path !== parsed.data.todoPath
+				previous.scope !== event.scope ||
+				previous.revision !== event.revision ||
+				previous.session.catalogue.active_workspace_id !== event.workspaceId ||
+				previous.session.todo_file.path !== event.todoPath
 			)
 				return;
 			const before = JSON.stringify({
@@ -93,38 +84,58 @@ export class ElectronWorkspaceSessionState {
 				)
 					onSummaryChanged();
 			});
+		};
+		this.reconsiderObservation = reconsider;
+		const unsubscribe = observation.onTodoFileChanged((event) => {
+			const parsed = todoFileChangeEvent.payload.safeParse(event);
+			if (!listening || !parsed.success) return;
+			deferred = parsed.data;
+			reconsider();
 		});
 		return () => {
 			listening = false;
+			deferred = undefined;
+			if (this.reconsiderObservation === reconsider) this.reconsiderObservation = undefined;
 			unsubscribe();
 		};
 	};
 
-	initialize = () =>
-		(this.initialization ??= this.restore().then((outcome) => {
-			if (outcome.status !== "applied" && !this.confirmed) this.readError = outcome.message;
-			return outcome;
-		}));
-
-	private acceptSession(incoming: ConfirmedSession) {
-		this.confirmed = reconcileConfirmedSession(this.confirmed, incoming);
-		this.readError = null;
-	}
-
-	private applySessionOutcome(outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) {
-		if (outcome.status === "applied") this.acceptSession(outcome.confirmed);
+	private async refreshOutcome<T extends WorkspaceSessionActionResult>(
+		outcome: T,
+		dependency: "session" | "views" | "lifecycle" = "session"
+	): Promise<T & { notice?: string }> {
+		if (outcome.status !== "rejected") {
+			try {
+				await this.invalidate(dependency);
+				const error =
+					dependency !== "views"
+						? this.getData().error ||
+							(this.session.status === "unavailable" ? this.session.error : "")
+						: this.savedViewsError;
+				if (error) throw Error(error);
+				if (dependency !== "views") this.refreshFailed = false;
+			} catch {
+				if (dependency !== "views") this.refreshFailed = true;
+				if (outcome.status === "applied")
+					return {
+						...outcome,
+						notice:
+							"Change saved, but the screen could not refresh. Retry loading before making another change.",
+					};
+			}
+		}
 		return outcome;
 	}
 
-	private applyTodoOutcome(outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) {
-		if (outcome.status !== "rejected")
-			this.confirmed = reconcileConfirmedTodo(this.confirmed, outcome.confirmed);
-		return outcome;
-	}
+	private applySessionOutcome = (outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) =>
+		this.refreshOutcome(outcome);
+	private applyTodoOutcome = (outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) =>
+		this.refreshOutcome(outcome);
 
 	private todoTarget(): Pick<CreateTodoRequest, "scope" | "revision" | "workspaceId"> {
 		const confirmed = this.confirmed;
 		if (
+			this.refreshFailed ||
 			!confirmed ||
 			confirmed.session.status !== "ready" ||
 			!confirmed.session.catalogue.active_workspace_id
@@ -140,8 +151,8 @@ export class ElectronWorkspaceSessionState {
 	get session() {
 		return (
 			this.confirmed?.session ??
-			(this.readError !== null
-				? { status: "unavailable" as const, error: this.readError }
+			(this.getData().error
+				? { status: "unavailable" as const, error: this.getData().error! }
 				: { status: "loading" as const })
 		);
 	}
@@ -215,7 +226,11 @@ export class ElectronWorkspaceSessionState {
 		try {
 			const outcome = await action();
 			return outcome.status === "applied"
-				? { status: "applied", ...(outcome.notice ? { notice: outcome.notice } : {}) }
+				? {
+						status: "applied",
+						...(outcome.notice ? { notice: outcome.notice } : {}),
+						...(outcome.workspaceId ? { workspaceId: outcome.workspaceId } : {}),
+					}
 				: { status: outcome.status, message: outcome.message };
 		} catch (error) {
 			return {
@@ -224,22 +239,35 @@ export class ElectronWorkspaceSessionState {
 			};
 		} finally {
 			this.pending = null;
+			this.reconsiderObservation?.();
 		}
 	}
 	restore = () =>
 		this.runAction("restore", async () => {
-			this.acceptSession(await this.desktop.restoreSession({}));
-			try {
-				const views = await this.desktop.readSavedViews({});
-				if (views.status === "applied") {
-					this.savedViews = views.views;
-					this.savedViewsError = "";
-				} else this.savedViewsError = views.message;
-			} catch (error) {
-				this.savedViewsError = error instanceof Error ? error.message : String(error);
-			}
+			await this.desktop.restoreSession({});
+			await this.invalidate("session");
+			this.refreshFailed = !!this.getData().error;
 			return { status: "applied" };
 		});
+
+	reload = (includeViews = false) =>
+		this.runAction("restore", async () => {
+			await this.invalidate(includeViews ? "lifecycle" : "session");
+			this.refreshFailed = !!this.getData().error;
+			return { status: "applied" };
+		});
+	reloadViews = () =>
+		this.runAction(
+			"reload_views",
+			async () => {
+				await this.invalidate("views");
+				return this.savedViewsError
+					? { status: "rejected", message: this.savedViewsError }
+					: { status: "applied" };
+			},
+			this.todoOperationTarget()
+		);
+
 	saveView = (name: string, filters: SavedViewFilterValues) =>
 		this.runAction(
 			"save_view",
@@ -247,11 +275,7 @@ export class ElectronWorkspaceSessionState {
 				const workspaceId = this.activeWorkspace?.id;
 				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
 				const outcome = await this.desktop.saveView({ workspaceId, name, filters });
-				if (outcome.status === "applied") {
-					this.savedViews = outcome.views;
-					this.savedViewsError = "";
-				}
-				return outcome;
+				return this.refreshOutcome(outcome, "views");
 			},
 			this.todoOperationTarget()
 		);
@@ -262,11 +286,7 @@ export class ElectronWorkspaceSessionState {
 				const workspaceId = this.activeWorkspace?.id;
 				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
 				const outcome = await this.desktop.deleteView({ workspaceId, viewId });
-				if (outcome.status === "applied") {
-					this.savedViews = outcome.views;
-					this.savedViewsError = "";
-				}
-				return outcome;
+				return this.refreshOutcome(outcome, "views");
 			},
 			this.todoOperationTarget()
 		);
@@ -274,19 +294,38 @@ export class ElectronWorkspaceSessionState {
 	create = (input: DesktopRequest<"createWorkspace">) =>
 		this.runAction(
 			"create_workspace",
-			async () => this.applySessionOutcome(await this.desktop.createWorkspace(input)),
+			async () => {
+				const outcome = await this.refreshOutcome(
+					await this.desktop.createWorkspace(input),
+					"lifecycle"
+				);
+				return outcome.status === "applied"
+					? ({
+							status: "applied",
+							workspaceId:
+								outcome.confirmed.session.status === "ready"
+									? outcome.confirmed.session.catalogue.active_workspace_id!
+									: undefined,
+							...(outcome.notice ? { notice: outcome.notice } : {}),
+						} as const)
+					: outcome;
+			},
 			{ todoPath: input.todoPath }
 		);
-	open = (workspaceId: string) =>
+	open = (workspaceId: string, refresh = true) =>
 		this.runAction(
 			"open_workspace",
-			async () => this.applySessionOutcome(await this.desktop.switchWorkspace({ workspaceId })),
+			async () => {
+				const outcome = await this.desktop.switchWorkspace({ workspaceId });
+				return refresh ? this.refreshOutcome(outcome, "lifecycle") : outcome;
+			},
 			{ workspaceId }
 		);
 	deleteWorkspace = (workspaceId: string) =>
 		this.runAction(
 			"delete_workspace",
-			async () => this.applySessionOutcome(await this.desktop.deleteWorkspace({ workspaceId })),
+			async () =>
+				this.refreshOutcome(await this.desktop.deleteWorkspace({ workspaceId }), "lifecycle"),
 			{ workspaceId }
 		);
 	setCompletion = (todo: TodoItem) =>

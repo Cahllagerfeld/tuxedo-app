@@ -31,6 +31,7 @@
 		const outcome = await app.workspace.undoTodo();
 		if (outcome.status === "conflict") toast.warning(outcome.message);
 		else if (outcome.status === "rejected") toast.error(outcome.message);
+		else if (outcome.notice) toast.info(outcome.notice);
 	}
 	createHotkey(
 		undoTodoShortcut.key,

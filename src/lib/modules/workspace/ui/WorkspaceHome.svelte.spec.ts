@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { createDesktopClient } from "$lib/shared/desktop/contract";
-import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "../state/workspace-session-fixture.svelte";
 import WorkspaceHome from "./WorkspaceHome.svelte";
 
 const first = "550e8400-e29b-41d4-a716-446655440000";

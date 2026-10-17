@@ -53,6 +53,7 @@
 			const result = await deleteWorkspace(workspace.id);
 			if (result.status === "rejected")
 				toast.error("Could not remove workspace", { description: result.message });
+			else if (result.status === "applied" && result.notice) toast.info(result.notice);
 		} catch (error) {
 			toast.error("Could not remove workspace", { description: errorMessage(error) });
 		}

@@ -105,8 +105,23 @@ async function testWorkspaceNavigation(launchApplication, directory) {
 			await page.getByRole("button", { name: "Undo creation", exact: true }).isEnabled(),
 			false
 		);
+		const beforePreload = await page.evaluate(() => window.desktop.readSession({}));
+		await picker().getByRole("link", { name: "blue Navigation A", exact: true }).hover();
+		// Allow SvelteKit's hover preload to settle; deterministic ordering is covered by the browser adapter.
+		await page.waitForTimeout(350);
+		assert.deepEqual(
+			await page.evaluate(() => window.desktop.readSession({})),
+			beforePreload,
+			"Hover preloading preserves the confirmed revision and Undo"
+		);
+		assert.equal(await persistedId(), second, "Hover preloading does not persist its destination");
 		await page.evaluate(() => history.back());
 		await expectWorkspace(second, "Navigation second");
+		assert.equal(
+			await page.getByRole("button", { name: "Undo creation", exact: true }).isEnabled(),
+			true,
+			"Returning to the same Workspace after preloading preserves Undo"
+		);
 		await page.evaluate(() => history.back());
 		await expectWorkspace(first, "Navigation first");
 		assert.equal(

@@ -140,6 +140,23 @@ export const sessionOutcomeSchema = effectValidator(
 		Rejected,
 	])
 );
+export const readWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
+export const readWorkspaceOutcomeSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({
+			status: Schema.Literal("loaded"),
+			workspace: WorkspaceSchema,
+			todo_file: TodoFileSchema,
+		}).check(
+			Schema.makeFilter((value) =>
+				value.workspace.todo_path === value.todo_file.path
+					? undefined
+					: "Loaded Todo file must belong to the requested Workspace"
+			)
+		),
+		Rejected,
+	])
+);
 export const switchWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
 export const deleteWorkspaceRequestSchema = switchWorkspaceRequestSchema;
 const TodoMutationRequest = Schema.Struct({
@@ -306,6 +323,11 @@ export const setWorkspaceShowDeferredRequestSchema = effectValidator(
 	})
 );
 export const desktopContract = {
+	readWorkspace: {
+		channel: "tuxedo:read-workspace",
+		request: readWorkspaceRequestSchema,
+		response: readWorkspaceOutcomeSchema,
+	},
 	setWorkspaceShowDeferred: {
 		channel: "tuxedo:set-workspace-show-deferred",
 		request: setWorkspaceShowDeferredRequestSchema,
@@ -463,6 +485,7 @@ export function createDesktopClient(
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),
+		readWorkspace: (request) => call("readWorkspace", request),
 		readSession: (request) => call("readSession", request),
 		restoreSession: (request) => call("restoreSession", request),
 	};

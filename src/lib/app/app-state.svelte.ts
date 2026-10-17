@@ -20,9 +20,7 @@ export class AppState {
 		return this.bulkSelection.active;
 	}
 
-	constructor(
-		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)
-	) {
+	constructor(workspace: ElectronWorkspaceSessionState) {
 		this.workspace = workspace;
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));

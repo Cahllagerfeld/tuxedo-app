@@ -60,6 +60,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
@@ -1525,6 +1526,7 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 			},
 			deleteView: async (request) => {
 				expect(request).toEqual({ workspaceId, viewId: scope });
+				views.length = 0;
 				return { status: "applied", views: [] };
 			},
 		}),
@@ -1555,13 +1557,39 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
 });
 
-test("a failed saved-view read warns while the confirmed Todo file remains usable", async () => {
+test("a failed saved-view read can retry without reloading the confirmed Todo file", async () => {
+	let reads = 0;
+	let restores = 0;
 	render(Harness, {
 		desktop: adapter({
-			readSavedViews: async () => ({
-				status: "rejected",
-				message: "Saved views file is invalid and has been preserved.",
-			}),
+			readSavedViews: async () =>
+				++reads === 1
+					? {
+							status: "rejected",
+							message: "Saved views file is invalid and has been preserved.",
+						}
+					: {
+							status: "applied",
+							views: [
+								{
+									id: scope,
+									workspace_id: workspaceId,
+									name: "Recovered view",
+									filters: {
+										status: "all",
+										search: "",
+										project: null,
+										context: null,
+										priority: null,
+										due: null,
+									},
+								},
+							],
+						},
+			restoreSession: async () => {
+				if (++restores > 1) throw Error("Retry must only read saved views");
+				return initial;
+			},
 		}),
 	});
 	await expect
@@ -1577,6 +1605,15 @@ test("a failed saved-view read warns while the confirmed Todo file remains usabl
 	await expect
 		.element(page.getByLabelText("Filtered result count"))
 		.toHaveTextContent("1 matching item");
+	await page.getByRole("button", { name: "Retry saved views", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Recovered view", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeEnabled();
+	expect(reads).toBe(2);
+	expect(restores).toBe(1);
 });
 
 test("saving a view by shortcut opens the naming dialog and respects dialog scope", async () => {

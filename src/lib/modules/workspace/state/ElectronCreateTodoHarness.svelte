@@ -2,9 +2,9 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import {
-		ElectronWorkspaceSessionState,
+		WorkspaceSessionFixture as ElectronWorkspaceSessionState,
 		type CreateTodoDraft,
-	} from "./electron-workspace-session.svelte";
+	} from "./workspace-session-fixture.svelte";
 
 	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
 	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;

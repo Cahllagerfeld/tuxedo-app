@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import { AppState } from "./app-state.svelte";
 	import AppNavbar from "./AppNavbar.svelte";
-	import { ElectronWorkspaceSessionState } from "$lib/modules/workspace/state/electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "$lib/modules/workspace/state/workspace-session-fixture.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
@@ -12,9 +12,10 @@
 		$props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const session = new ElectronWorkspaceSessionState(desktop);
+	const app = new AppState(session);
 	onMount(() => {
-		void app.workspace.initialize();
+		void session.initialize();
 	});
 </script>
 

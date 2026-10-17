@@ -13,7 +13,10 @@ declare global {
 	interface Window {
 		holdTodoWrite: () => Promise<void>;
 		holdWorkspaceSwitch: () => Promise<void>;
+		holdSessionRead: () => Promise<void>;
+		routingState: () => { active: string; revision: number; reads: string[]; switches: number };
 		makeTodoFileUnreadable: () => void;
+		failNextSessionRead: () => void;
 	}
 }
 
@@ -44,6 +47,14 @@ test("real links and history preserve the reader during a write and block overla
 		let finishWrite!: () => void;
 		let finishSwitch: (() => void) | undefined;
 		let writes = 0;
+		let holdRefresh = false;
+		let finishRefresh: (() => void) | undefined;
+		await page.exposeFunction("holdSessionRead", () => {
+			if (!holdRefresh) return;
+			return new Promise<void>((done) => {
+				finishRefresh = done;
+			});
+		});
 		await page.exposeFunction("holdTodoWrite", () => {
 			writes++;
 			return new Promise<void>((done) => {
@@ -64,10 +75,19 @@ test("real links and history preserve the reader during a write and block overla
 				let active = first;
 				let completed = false;
 				let unreadable = false;
+				let failReads = 0;
+				let undoLabel: ConfirmedSession["undoLabel"];
+				window.failNextSessionRead = () => {
+					failReads++;
+				};
+				const reads: string[] = [];
+				let switches = 0;
+				window.routingState = () => ({ active, revision, reads, switches });
 				let notify: ((event: TodoFileChange) => void) | undefined;
 				const snapshot = (): ConfirmedSession => ({
 					scope,
 					revision,
+					...(undoLabel ? { undoLabel } : {}),
 					session: {
 						status: "ready",
 						catalogue: {
@@ -104,9 +124,37 @@ test("real links and history preserve the reader during a write and block overla
 				});
 				const desktop: Pick<
 					DesktopAPI,
-					"restoreSession" | "readSavedViews" | "switchWorkspace" | "setTodoCompletion"
+					| "readSession"
+					| "readWorkspace"
+					| "restoreSession"
+					| "readSavedViews"
+					| "switchWorkspace"
+					| "setTodoCompletion"
 				> &
 					TodoFileObservation = {
+					readSession: async () => {
+						await window.holdSessionRead();
+						if (failReads) {
+							failReads--;
+							throw Error("Follow-up read unavailable");
+						}
+						return desktop.restoreSession({});
+					},
+					readWorkspace: async ({ workspaceId }) => {
+						reads.push(workspaceId);
+						const confirmed = snapshot();
+						if (confirmed.session.status !== "ready") throw Error("Expected Ready");
+						const workspace = confirmed.session.catalogue.workspaces.find(
+							(w) => w.id === workspaceId
+						);
+						return workspace && !unreadable
+							? {
+									status: "loaded",
+									workspace,
+									todo_file: { ...confirmed.session.todo_file, path: workspace.todo_path },
+								}
+							: { status: "rejected", message: "Todo file unreadable" };
+					},
 					restoreSession: async () => {
 						const confirmed = snapshot();
 						if (unreadable && confirmed.session.status === "ready")
@@ -128,14 +176,17 @@ test("real links and history preserve the reader during a write and block overla
 						};
 					},
 					switchWorkspace: async ({ workspaceId }) => {
+						switches++;
 						await window.holdWorkspaceSwitch();
 						active = workspaceId;
+						undoLabel = undefined;
 						revision++;
 						return { status: "applied", confirmed: snapshot() };
 					},
-					setTodoCompletion: async () => {
+					setTodoCompletion: async ({ completed: nextCompleted }) => {
 						await window.holdTodoWrite();
-						completed = true;
+						completed = nextCompleted;
+						undoLabel = completed ? "Undo completion" : "Undo uncompletion";
 						revision++;
 						const confirmed = snapshot();
 						if (confirmed.session.status !== "ready") throw Error("Expected Ready");
@@ -164,11 +215,36 @@ test("real links and history preserve the reader during a write and block overla
 		const home = page.getByRole("link", { name: "Home", exact: true }).first();
 		await home.click();
 		await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
+		const beforePreload = await page.evaluate(() => window.routingState());
+		await page.getByRole("link", { name: "blue Personal", exact: true }).hover();
+		await expect.poll(() => page.evaluate(() => window.routingState().reads)).toContain(second);
+		// Keep this browser import out of Vitest's SSR module transform.
+		await page.evaluate(`(async () => {
+			const { preloadData, invalidate } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			await preloadData("/workspaces/${second}");
+			await invalidate(() => true);
+			await invalidate(() => true);
+		})()`);
+		const afterPreload = await page.evaluate(() => window.routingState());
+		expect(afterPreload.active).toBe(beforePreload.active);
+		expect(afterPreload.revision).toBe(beforePreload.revision);
+		expect(afterPreload.switches).toBe(beforePreload.switches);
 		await page.getByRole("link", { name: "blue Work", exact: true }).click();
 		await item.waitFor();
+		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();
+		const closeDetails = page.getByRole("button", { name: "Close details", exact: true });
+		await closeDetails.focus();
+		await page.evaluate(`(async () => {
+			const { invalidate } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			await invalidate("desktop:session");
+		})()`);
+		expect(await closeDetails.isVisible()).toBe(true);
+		expect(await closeDetails.evaluate((element) => element === document.activeElement)).toBe(true);
+		await closeDetails.click();
 		// Keep both Back and Forward destinations available around the admitted write.
 		await home.click();
 		await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
+		await expect.poll(() => home.isDisabled()).toBe(false);
 		await page.goBack();
 		await item.waitFor();
 		await item.click();
@@ -189,13 +265,56 @@ test("real links and history preserve the reader during a write and block overla
 		});
 		await traverse("back");
 		await traverse("forward");
+		await page.evaluate(`(async () => {
+			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			try { await goto("/workspaces/${second}"); } catch { /* Navigation is deliberately canceled. */ }
+		})()`);
+		expect((await page.evaluate(() => window.routingState())).switches).toBe(
+			beforePreload.switches
+		);
 		expect(page.url()).toBe(destination);
 		expect(await item.isVisible()).toBe(true);
 		expect(await item.isDisabled()).toBe(true);
+		holdRefresh = true;
 		finishWrite();
+		await expect.poll(() => !!finishRefresh).toBe(true);
+		expect(await item.isVisible()).toBe(true);
+		expect(await item.isDisabled()).toBe(true);
+		await home.evaluate((link) => {
+			if (link instanceof HTMLAnchorElement) link.click();
+		});
+		await traverse("back");
+		expect(page.url()).toBe(destination);
+		expect(writes).toBe(1);
+		holdRefresh = false;
+		finishRefresh!();
 		await page
 			.getByRole("checkbox", { name: "Mark Navigation item incomplete", exact: true })
 			.waitFor();
+		const switchesBeforeFailedRead = (await page.evaluate(() => window.routingState())).switches;
+		await page.evaluate(() => window.failNextSessionRead());
+		await page
+			.getByRole("checkbox", { name: "Mark Navigation item incomplete", exact: true })
+			.click();
+		await expect.poll(() => writes).toBe(2);
+		finishWrite();
+		await page.getByRole("heading", { name: "Workspace unavailable" }).waitFor();
+		await page
+			.getByText(
+				"Change saved, but the screen could not refresh. Retry loading before making another change.",
+				{ exact: true }
+			)
+			.waitFor();
+		expect(writes).toBe(2);
+		await page.getByRole("button", { name: "Retry", exact: true }).click();
+		await item.waitFor();
+		await expect
+			.poll(() => page.getByRole("button", { name: "Undo uncompletion", exact: true }).isEnabled())
+			.toBe(true);
+		expect((await page.evaluate(() => window.routingState())).switches).toBe(
+			switchesBeforeFailedRead
+		);
+		expect(writes).toBe(2);
 		await page.goForward();
 		await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
 		await page.getByRole("link", { name: "blue Personal", exact: true }).click();
@@ -205,7 +324,7 @@ test("real links and history preserve the reader during a write and block overla
 		expect(await page.getByRole("checkbox").count()).toBe(0);
 		finishSwitch!();
 		await page
-			.getByRole("checkbox", { name: "Mark Navigation item incomplete", exact: true })
+			.getByRole("checkbox", { name: "Mark Navigation item complete", exact: true })
 			.waitFor();
 		expect(new URL(page.url()).pathname).toBe(`/workspaces/${second}`);
 		expect(await page.getByLabel("Reader status").textContent()).toContain("Personal");
@@ -215,7 +334,7 @@ test("real links and history preserve the reader during a write and block overla
 				.getAttribute("tabindex")
 		).toBe("-1");
 		await page.keyboard.press("Space");
-		expect(writes).toBe(1);
+		expect(writes).toBe(2);
 
 		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();
 		await page.getByRole("button", { name: "Close details", exact: true }).focus();

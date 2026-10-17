@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+import {
+	ElectronWorkspaceSessionState as WorkspaceCommands,
+	type WorkspaceLoadedData,
+} from "./electron-workspace-session.svelte";
+import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "./workspace-session-fixture.svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFileChange } from "$lib/shared/desktop/contract";
 
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
@@ -44,6 +48,7 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -62,6 +67,74 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 	};
 }
 const signal: TodoFileChange = { scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" };
+
+test.each(["current", "not loaded", "stale", "stopped"])(
+	"observation during command refresh reconsiders only the latest still-current event (%s)",
+	async (kind) => {
+		let backend = initial;
+		let data: WorkspaceLoadedData = { confirmed: initial };
+		let finish!: () => void;
+		let restores = 0;
+		let finishRestore!: () => void;
+		let refreshes = 0;
+		const session = new WorkspaceCommands(
+			{
+				...adapter(async () => {
+					restores++;
+					await new Promise<void>((resolve) => {
+						finishRestore = resolve;
+					});
+					backend = { ...changed, revision: 3 };
+					return backend;
+				}),
+				setWorkspaceShowDeferred: async () => {
+					backend = { ...initial, revision: 2 };
+					return { status: "applied", confirmed: backend };
+				},
+			},
+			() => data,
+			async () => {
+				if (kind !== "not loaded") data = { confirmed: backend };
+				if (++refreshes === 1)
+					await new Promise<void>((resolve) => {
+						finish = resolve;
+					});
+				data = { confirmed: backend };
+			}
+		);
+		let notify!: (event: TodoFileChange) => void;
+		const stop = session.observe(
+			{
+				onTodoFileChanged(listener) {
+					notify = listener;
+					return () => {};
+				},
+			},
+			() => {}
+		);
+		const command = session.setShowDeferred(true);
+		await expect.poll(() => !!finish).toBe(true);
+		expect(session.isOperating).toBe(true);
+		const event = { ...signal, revision: kind === "stale" ? 1 : 2 };
+		notify(event);
+		notify(event);
+		if (kind === "stopped") stop();
+		expect(restores).toBe(0);
+		finish();
+		await command;
+		expect(restores).toBe(kind === "current" || kind === "not loaded" ? 1 : 0);
+		if (kind === "current" || kind === "not loaded") {
+			expect(session.isOperating).toBe(true);
+			expect(await session.setShowDeferred(false)).toMatchObject({ status: "rejected" });
+			finishRestore();
+		}
+		await expect.poll(() => session.isOperating).toBe(false);
+		expect(session.session.status).toBe(
+			kind === "current" || kind === "not loaded" ? "empty" : "ready"
+		);
+		stop();
+	}
+);
 
 test("idle Todo-file observation reuses restoration and retains the catalogue on unreadable files", async () => {
 	let loads = 0;
@@ -136,85 +209,82 @@ test.each([
 	"switch",
 	"workspace creation",
 	"workspace deletion",
-])(
-	"observation signals are dropped during %s without delaying the command result",
-	async (operation) => {
-		let loads = 0;
-		let finish!: () => void;
-		const pending = () =>
-			new Promise<{ status: "rejected"; message: string }>((resolve) => {
-				finish = () => resolve({ status: "rejected", message: "Expected rejection" });
-			});
-		const item = {
-			line_number: 1,
-			raw: "Item",
-			description: "Item",
-			completed: false,
-			priority: null,
-			creation_date: null,
-			completion_date: null,
-			projects: [],
-			contexts: [],
-			metadata: {},
-
-			edit: { description: "Item", metadata: [] },
-		};
-		const session = new ElectronWorkspaceSessionState({
-			...adapter(async () => {
-				loads++;
-				if (initial.session.status !== "ready") throw Error("Expected Ready fixture");
-				return {
-					...initial,
-					session: {
-						...initial.session,
-						todo_file: { ...initial.session.todo_file, items: [item] },
-					},
-				};
-			}),
-			setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
-			setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
-			undoTodo: async () => ({ status: "rejected", message: "unused" }),
-			setTodoCompletion: pending,
-			deleteTodo: pending,
-			createTodo: pending,
-			reorderTodo: pending,
-			switchWorkspace: pending,
-			createWorkspace: pending,
-			deleteWorkspace: pending,
+])("observation signals during %s are reconsidered after command rejection", async (operation) => {
+	let loads = 0;
+	let finish!: () => void;
+	const pending = () =>
+		new Promise<{ status: "rejected"; message: string }>((resolve) => {
+			finish = () => resolve({ status: "rejected", message: "Expected rejection" });
 		});
-		await session.initialize();
-		let notify!: (event: TodoFileChange) => void;
-		const stop = session.observe(
-			{
-				onTodoFileChanged(listener) {
-					notify = listener;
-					return () => {};
+	const item = {
+		line_number: 1,
+		raw: "Item",
+		description: "Item",
+		completed: false,
+		priority: null,
+		creation_date: null,
+		completion_date: null,
+		projects: [],
+		contexts: [],
+		metadata: {},
+
+		edit: { description: "Item", metadata: [] },
+	};
+	const session = new ElectronWorkspaceSessionState({
+		...adapter(async () => {
+			loads++;
+			if (initial.session.status !== "ready") throw Error("Expected Ready fixture");
+			return {
+				...initial,
+				session: {
+					...initial.session,
+					todo_file: { ...initial.session.todo_file, items: [item] },
 				},
+			};
+		}),
+		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
+		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
+		undoTodo: async () => ({ status: "rejected", message: "unused" }),
+		setTodoCompletion: pending,
+		deleteTodo: pending,
+		createTodo: pending,
+		reorderTodo: pending,
+		switchWorkspace: pending,
+		createWorkspace: pending,
+		deleteWorkspace: pending,
+	});
+	await session.initialize();
+	let notify!: (event: TodoFileChange) => void;
+	const stop = session.observe(
+		{
+			onTodoFileChanged(listener) {
+				notify = listener;
+				return () => {};
 			},
-			() => {}
-		);
-		const action =
-			operation === "completion"
-				? session.setCompletion(item)
-				: operation === "deletion"
-					? session.deleteTodo(item)
-					: operation === "creation"
-						? session.createTodo({ description: "Item", projects: [], contexts: [] })
-						: operation === "reordering"
-							? session.reorderTodo([item])
-							: operation === "switch"
-								? session.open(workspaceId)
-								: operation === "workspace creation"
-									? session.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" })
-									: session.deleteWorkspace(workspaceId);
-		notify(signal);
-		expect(loads).toBe(1);
-		expect(session.isOperating).toBe(true);
-		finish();
-		await action;
-		expect(session.isOperating).toBe(false);
-		expect(session.session.status).toBe("ready");
-		expect(loads).toBe(1);
-		stop();
-	}
-);
+		},
+		() => {}
+	);
+	const action =
+		operation === "completion"
+			? session.setCompletion(item)
+			: operation === "deletion"
+				? session.deleteTodo(item)
+				: operation === "creation"
+					? session.createTodo({ description: "Item", projects: [], contexts: [] })
+					: operation === "reordering"
+						? session.reorderTodo([item])
+						: operation === "switch"
+							? session.open(workspaceId)
+							: operation === "workspace creation"
+								? session.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" })
+								: session.deleteWorkspace(workspaceId);
+	notify(signal);
+	expect(loads).toBe(1);
+	expect(session.isOperating).toBe(true);
+	finish();
+	await action;
+	await expect.poll(() => session.isOperating).toBe(false);
+	expect(session.session.status).toBe("ready");
+	expect(loads).toBe(2);
+	stop();
+});

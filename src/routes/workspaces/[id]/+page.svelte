@@ -9,7 +9,7 @@
 	// Transfer owned DOM focus before an unreadable-file result removes the reader.
 	$effect.pre(() => {
 		if (
-			!app.workspace.todoFile &&
+			(!app.workspace.todoFile || !!app.workspace.refreshError) &&
 			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
 		) {
 			void tick().then(() => recovery?.focusViewport());

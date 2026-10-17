@@ -9,12 +9,32 @@
 	import * as Sidebar from "@/shared/ui/sidebar/index";
 	import { Toaster } from "@/shared/ui/sonner";
 	import { ModeWatcher } from "mode-watcher";
+	import { page } from "$app/state";
+	import { invalidate } from "$app/navigation";
+	import { ElectronWorkspaceSessionState } from "$lib/modules/workspace/state/electron-workspace-session.svelte";
+	import {
+		sessionDependency,
+		workspaceDependency,
+		viewsDependency,
+	} from "$lib/modules/workspace/state/workspace-load";
 	import { createWorkspaceNavigation } from "@/app/workspace-navigation.svelte";
 	import "./layout.css";
 	let { children } = $props();
 
 	setShortcutScope();
-	const appState = new AppState();
+	const appState = new AppState(
+		new ElectronWorkspaceSessionState(
+			window.desktop,
+			() => ({ ...page.data.sessionData, ...page.data.viewsData }),
+			(dependency) =>
+				invalidate(
+					(url) =>
+						(dependency !== "views" &&
+							(url.href === sessionDependency || url.href === workspaceDependency)) ||
+						(dependency !== "session" && url.href === viewsDependency)
+				)
+		)
+	);
 	const navigation = createWorkspaceNavigation(appState);
 	setAppContext({ app: appState, navigation });
 </script>

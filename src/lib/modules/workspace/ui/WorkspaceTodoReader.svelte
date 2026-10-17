@@ -79,12 +79,14 @@
 	}
 	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
 		const result = await reader.deleteTodo(todo, trigger);
+		if (result.status === "applied" && result.notice) toast.info(result.notice);
 		if (result.status === "conflict") toast.error("Todo file reloaded");
 		else if (result.status === "rejected")
 			toast.error("Could not delete Todo item", { description: result.message });
 	}
 	async function reorderTodoItems(items: readonly TodoItem[]) {
 		const result = await reader.reorder(items);
+		if (result?.status === "applied" && result.notice) toast.info(result.notice);
 		if (result?.status === "conflict") toast.error("Todo file reloaded");
 		else if (result?.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
@@ -151,6 +153,8 @@
 										disabled={workspace.isOperating}
 										onclick={() =>
 											void workspace.setShowDeferred(true).then((outcome) => {
+												if (outcome.status === "applied" && outcome.notice)
+													toast.info(outcome.notice);
 												if (outcome.status !== "applied")
 													toast.error("Could not save Show deferred", {
 														description: outcome.message,

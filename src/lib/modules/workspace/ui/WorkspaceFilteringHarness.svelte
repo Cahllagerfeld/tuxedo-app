@@ -3,14 +3,15 @@
 	import { AppState } from "$lib/app/app-state.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "../state/workspace-session-fixture.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import WorkspaceSidebar from "./sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
-	onMount(() => void app.workspace.initialize());
+	const session = new ElectronWorkspaceSessionState(desktop);
+	const app = new AppState(session);
+	onMount(() => void session.initialize());
 </script>
 
 <!-- Drive confirmed session changes independently of routing in filter integration tests. -->

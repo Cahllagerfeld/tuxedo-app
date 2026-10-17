@@ -233,6 +233,7 @@ const startup = Effect.gen(function* () {
 			})
 		)
 	);
+	yield* register("readWorkspace", backend.readWorkspace);
 	yield* register("readSession", backend.readSession);
 	yield* register("setWorkspaceSortOrder", backend.setWorkspaceSortOrder);
 	yield* register("setWorkspaceShowDeferred", backend.setWorkspaceShowDeferred);

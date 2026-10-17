@@ -3,7 +3,7 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
 	import { toast } from "svelte-sonner";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as ElectronWorkspaceSessionState } from "../state/workspace-session-fixture.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
@@ -25,11 +25,12 @@
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const session = new ElectronWorkspaceSessionState(desktop);
+	const app = new AppState(session);
 	onMount(() => {
 		const stop =
 			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
-		void app.workspace.initialize();
+		void session.initialize();
 		return stop;
 	});
 </script>
