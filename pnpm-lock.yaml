@@ -167,8 +167,8 @@ importers:
   .:
     devDependencies:
       '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.3.0)
+        specifier: 4.0.4
+        version: 4.0.4(effect@4.0.3)(redis@6.3.0)
       '@effect/vitest':
         specifier: 4.0.4
         version: 4.0.4(effect@4.0.3)(vitest@5.0.4)
@@ -309,17 +309,17 @@ packages:
   '@blazediff/core@1.10.0':
     resolution: {integrity: sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ==}
 
-  '@effect/platform-node-shared@4.0.3':
-    resolution: {integrity: sha512-5srkJfmWklWSgwZwlkMeTXobfNtxuwuTCvY9JWdPXRv/PBXAe5kKSptzRxT778oFFsaE9IMI8X61pvkifT9Eug==}
+  '@effect/platform-node-shared@4.0.5':
+    resolution: {integrity: sha512-a8rCdEkfZBGe9C6bsIjxVZuRp73svIyK5IHwHdDAVsvZXjrbkxusfI+rZ8WlX31RP1mKizwI/E72GQTNfdMWHw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.3
+      effect: ^4.0.5
 
-  '@effect/platform-node@4.0.3':
-    resolution: {integrity: sha512-ctvREpC1EzRVsOm0JyIzYHajAQScFaec6Gl+M7TEIpEqdmmx6Ju11Um92EA/CE2KBfY5Fp1QWlqTkK6lOL7tqg==}
+  '@effect/platform-node@4.0.4':
+    resolution: {integrity: sha512-SdoyQMrO5zmqBebb2fxDk0sHYyJjBiw4QmLdV2ZcWf3ATpQPge3B5sTLijZg49PadekOwNeO83o5TfdtiiFEig==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.3
+      effect: ^4.0.4
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/vitest@4.0.4':
@@ -2165,7 +2165,7 @@ snapshots:
 
   '@blazediff/core@1.10.0': {}
 
-  '@effect/platform-node-shared@4.0.3(effect@4.0.3)':
+  '@effect/platform-node-shared@4.0.5(effect@4.0.3)':
     dependencies:
       '@types/ws': 8.18.2
       effect: 4.0.3
@@ -2174,9 +2174,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.3(effect@4.0.3)(redis@6.3.0)':
+  '@effect/platform-node@4.0.4(effect@4.0.3)(redis@6.3.0)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.3(effect@4.0.3)
+      '@effect/platform-node-shared': 4.0.5(effect@4.0.3)
       effect: 4.0.3
       redis: 6.3.0
       undici: 8.11.2
