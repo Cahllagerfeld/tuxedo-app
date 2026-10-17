@@ -5,6 +5,34 @@ import {
 	savedViewsFileSchema,
 	todoFileChangeEvent,
 } from "./contract";
+test.each([true, false])(
+	"bulk completion transport validates the explicit completion state %s",
+	async (completed) => {
+		let forwarded: unknown;
+		const desktop = createDesktopClient(async (channel, request) => {
+			forwarded = { channel, request };
+			return { status: "rejected", message: "Read-only file" };
+		});
+		const request = {
+			scope,
+			revision: 1,
+			workspaceId,
+			completed,
+			targets: [{ lineNumber: 1, expectedRaw: "Item" }],
+		};
+		await desktop.bulkSetTodoCompletion(request);
+		expect(forwarded).toEqual({ channel: "tuxedo:bulk-set-todo-completion", request });
+		const { completed: _, ...missing } = request;
+		for (const invalid of [
+			missing,
+			{ ...request, completed: "false" },
+			{ ...request, targets: [] },
+			{ ...request, targets: [request.targets[0], request.targets[0]] },
+		])
+			expect(() => desktopContract.bulkSetTodoCompletion.request.parse(invalid)).toThrow();
+	}
+);
+
 test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.readSession({})).rejects.toThrow();

@@ -1951,6 +1951,237 @@ test("a successor is shown on its Show from date", async () => {
 		.element(page.getByText(`Next occurrence due ${today}.`, { exact: true }))
 		.toBeVisible();
 });
+test.each(["mixed", "completed remaining", "completed empty"])(
+	"bulk uncompletion handles %s selection, counts and usable focus",
+	async (view) => {
+		await page.viewport(1400, 900);
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const ready = initial.session;
+		const completed = {
+			...todo,
+			completed: true,
+			raw: "x 2026-10-16 Plan release +Work",
+			completion_date: "2026-10-16",
+		};
+		const other = { ...todo, line_number: 2, description: "Other", raw: "Other" };
+		const selectedOther =
+			view === "completed empty" ? { ...other, completed: true, raw: "x Other" } : other;
+		const remaining = {
+			...completed,
+			line_number: 3,
+			description: "Remaining",
+			raw: "x 2026-10-16 Remaining",
+		};
+		const items = [
+			completed,
+			selectedOther,
+			...(view === "completed remaining" ? [remaining] : []),
+		];
+		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () => ({
+			status: "applied",
+			confirmed: confirmedTodo([
+				todo,
+				other,
+				...(view === "completed remaining" ? [remaining] : []),
+			]),
+		}));
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...ready,
+						todo_file: { path: "/tmp/work.todo", items, skipped: [] },
+					},
+				}),
+				bulkSetTodoCompletion: bulk,
+			}),
+		});
+		if (view !== "mixed")
+			await page
+				.getByRole("button", {
+					name: /^Completed/,
+					exact: true,
+				})
+				.click();
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		const incomplete = page.getByRole("button", { name: "Mark incomplete", exact: true });
+		await expect.element(incomplete).toBeDisabled();
+		if (view === "mixed") {
+			await page.getByRole("checkbox", { name: "Select Other", exact: true }).click();
+			await expect.element(incomplete).toBeDisabled();
+			await expect
+				.element(page.getByRole("button", { name: "Complete", exact: true }))
+				.toBeEnabled();
+		}
+		await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+		if (view === "completed empty")
+			await page.getByRole("checkbox", { name: "Select Other", exact: true }).click();
+		await expect.element(incomplete).toBeEnabled();
+		if (view !== "mixed")
+			await expect
+				.element(page.getByRole("button", { name: "Complete", exact: true }))
+				.toBeDisabled();
+		await incomplete.click();
+		expect(bulk).toHaveBeenCalledExactlyOnceWith({
+			scope,
+			revision: 1,
+			workspaceId,
+			completed: false,
+			targets: (view === "completed remaining" ? [completed] : [completed, selectedOther]).map(
+				(item) => ({
+					lineNumber: item.line_number,
+					expectedRaw: item.raw,
+				})
+			),
+		});
+		await expect
+			.element(
+				page.getByText(
+					view === "completed empty"
+						? "Marked 2 Todo items incomplete"
+						: "Marked 1 Todo item incomplete",
+					{ exact: true }
+				)
+			)
+			.toBeVisible();
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect
+			.element(
+				page.getByRole("button", {
+					name:
+						view === "completed empty"
+							? "Exit selection mode"
+							: view === "completed remaining"
+								? "Navigate Remaining"
+								: "Navigate Plan release",
+					exact: true,
+				})
+			)
+			.toHaveFocus();
+	}
+);
+
+test.each([
+	{ status: "conflict", moveFocus: false },
+	{ status: "applied", moveFocus: true },
+	{ status: "conflict", moveFocus: true },
+] as const)(
+	"bulk completion focus after $status with deliberate viewport focus=$moveFocus",
+	async ({ status, moveFocus }) => {
+		await page.viewport(1400, 900);
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const ready = initial.session;
+		const completed = { ...todo, completed: true, raw: "x Plan release +Work" };
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["bulkSetTodoCompletion"]>>) => void;
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...ready,
+						todo_file: { path: "/tmp/work.todo", items: [completed], skipped: [] },
+					},
+				}),
+				bulkSetTodoCompletion: () =>
+					new Promise((resolve) => {
+						finish = resolve;
+					}),
+			}),
+		});
+		await page.getByRole("button", { name: /^Completed/ }).click();
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		const action = page.getByRole("button", { name: "Mark incomplete", exact: true });
+		await action.click();
+		await expect.element(action).toBeDisabled();
+		const viewport = document.querySelector<HTMLElement>(
+			'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+		)!;
+		if (moveFocus) {
+			viewport.focus();
+			expect(document.activeElement).toBe(viewport);
+		}
+		finish(
+			status === "applied"
+				? { status, confirmed: confirmedTodo([todo]) }
+				: { status, message: "Changed externally", confirmed: confirmedTodo([todo]) }
+		);
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Plan release", exact: true }))
+			.not.toBeInTheDocument();
+		if (moveFocus) await expect.poll(() => document.activeElement).toBe(viewport);
+		else
+			await expect
+				.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+				.toHaveFocus();
+	}
+);
+
+test.each(["rejected", "conflict"] as const)(
+	"pending bulk uncompletion locks actions and handles %s",
+	async (status) => {
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const ready = initial.session;
+		const completed = { ...todo, completed: true, raw: "x Plan release +Work" };
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["bulkSetTodoCompletion"]>>) => void;
+		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				})
+		);
+		render(Harness, {
+			shell: true,
+			desktop: adapter({
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...ready,
+						todo_file: { path: "/tmp/work.todo", items: [completed], skipped: [] },
+					},
+				}),
+				bulkSetTodoCompletion: bulk,
+			}),
+		});
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await page.getByRole("button", { name: "Mark incomplete", exact: true }).click();
+		for (const name of [
+			"Mark incomplete",
+			"Complete",
+			"Select all",
+			"Clear selection",
+			"Delete",
+			"Exit selection mode",
+			"Sort Todo items",
+			"Toggle Todo-item search",
+		])
+			await expect.element(page.getByRole("button", { name, exact: true })).toBeDisabled();
+		await userEvent.keyboard("{Escape}{Enter}");
+		expect(bulk).toHaveBeenCalledTimes(1);
+		finish(
+			status === "rejected"
+				? { status, message: "Permission denied" }
+				: { status, message: "Changed externally", confirmed: confirmedTodo([completed]) }
+		);
+		await expect
+			.element(page.getByText(`${status === "rejected" ? 1 : 0} selected`, { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole("button", { name: "Mark incomplete", exact: true }))
+			[status === "rejected" ? "toBeEnabled" : "toBeDisabled"]();
+		if (status === "rejected") {
+			await page.getByRole("button", { name: "Mark incomplete", exact: true }).click();
+			expect(bulk).toHaveBeenCalledTimes(2);
+			finish({ status: "rejected", message: "Still read-only" });
+		}
+	}
+);
+
 test("selection mode completes selected open Todo items through one bulk operation", async () => {
 	const second: TodoFile["items"][number] = {
 		...todo,
