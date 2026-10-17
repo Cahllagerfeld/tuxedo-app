@@ -480,6 +480,73 @@ test("saved-view transport validates persisted view responses", async () => {
 	await expect(desktop.readSavedViews({})).rejects.toThrow();
 });
 
+test.each(["One\rTwo", "One\r", "\uFEFF"])(
+	"batch deletion accepts parser-supported raw content %j",
+	(expectedRaw) => {
+		const request = {
+			scope,
+			revision: 1,
+			workspaceId,
+			targets: [{ lineNumber: 1, expectedRaw }],
+		};
+		expect(desktopContract.bulkDeleteTodos.request.parse(request)).toEqual(request);
+	}
+);
+
+test("batch deletion transport validates targets before IPC and validates every response", async () => {
+	let calls = 0;
+	const request = {
+		scope,
+		revision: 1,
+		workspaceId,
+		targets: [{ lineNumber: 1, expectedRaw: "One" }],
+	};
+	const response = {
+		status: "applied",
+		confirmed: {
+			scope,
+			revision: 2,
+			workspaceId,
+			undoLabel: "Undo deletion",
+			todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
+		},
+	};
+	const desktop = createDesktopClient(async (channel, forwarded) => {
+		calls++;
+		expect(channel).toBe("tuxedo:bulk-delete-todos");
+		expect(forwarded).toEqual(request);
+		return response;
+	});
+	expect(await desktop.bulkDeleteTodos(request)).toEqual(response);
+	for (const invalid of [
+		{ ...request, targets: [] },
+		{ ...request, targets: [request.targets[0], request.targets[0]] },
+		{ ...request, targets: [{ lineNumber: 0, expectedRaw: "One" }] },
+		...["", " ", "\r", "\u0085", " \u2003\r", "One\nTwo"].map((expectedRaw) => ({
+			...request,
+			targets: [{ lineNumber: 1, expectedRaw }],
+		})),
+		{ ...request, scope: "invalid" },
+		{ ...request, workspaceId: "invalid" },
+		{ ...request, revision: -1 },
+		{ ...request, extra: true },
+		{ ...request, targets: [{ ...request.targets[0], extra: true }] },
+	]) {
+		expect(() => desktopContract.bulkDeleteTodos.request.parse(invalid)).toThrow();
+	}
+	await expect(desktop.bulkDeleteTodos({ ...request, targets: [] })).rejects.toThrow();
+	expect(calls).toBe(1);
+	for (const invalid of [
+		{ status: "applied" },
+		{ ...response, confirmed: { ...response.confirmed, revision: -1 } },
+		{ ...response, extra: true },
+	]) {
+		await expect(
+			createDesktopClient(async () => invalid).bulkDeleteTodos(request)
+		).rejects.toThrow();
+	}
+});
+
 test("bulk completion transport validates unique physical-line targets", () => {
 	expect(() =>
 		desktopContract.bulkSetTodoCompletion.request.parse({

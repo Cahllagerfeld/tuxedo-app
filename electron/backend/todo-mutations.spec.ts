@@ -26,6 +26,11 @@ const cases = [
 		expected: "\n2026-13-01 Invalid\nLast",
 	},
 	{
+		operation: "bulk-delete",
+		initial: "First\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
+		expected: "\n2026-13-01 Invalid\nx Hidden\r\n",
+	},
+	{
 		operation: "reorder",
 		initial: "First\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
 		expected: "Last\r\n\n2026-13-01 Invalid\nx Hidden\r\nFirst",
@@ -85,6 +90,16 @@ function mutation(
 				return session.setTodoCompletion({ ...target, completed: operation === "complete" });
 			case "delete":
 				return session.deleteTodo(target);
+			case "bulk-delete":
+				return session.bulkDeleteTodos({
+					scope: target.scope,
+					revision: target.revision,
+					workspaceId: target.workspaceId,
+					targets: [
+						{ lineNumber: target.lineNumber, expectedRaw: target.expectedRaw },
+						{ lineNumber: lastLine, expectedRaw: "Last" },
+					],
+				});
 			case "reorder":
 				return session.reorderTodo({
 					scope: target.scope,
@@ -200,7 +215,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					yield* setup(row.initial, fs);
 				const catalogue = yield* fs.readFile(cataloguePath);
 				const outcome = yield* Effect.promise(() =>
-					runtime.runPromise(mutation(row.operation, target, row.operation === "reorder" ? 5 : 4))
+					runtime.runPromise(mutation(row.operation, target, row.initial.split("\n").length))
 				);
 				expect(outcome.status).toBe("applied");
 				if (outcome.status !== "applied") throw Error("mutation failed");
@@ -248,7 +263,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 								: fs.rename(from, to),
 					}
 				);
-				const effect = mutation(row.operation, target, row.operation === "reorder" ? 5 : 4);
+				const effect = mutation(row.operation, target, row.initial.split("\n").length);
 				fail = true;
 				expect(yield* Effect.promise(() => runtime.runPromise(effect))).toMatchObject({
 					status: "rejected",
@@ -285,7 +300,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			yield* fs.writeFileString(cataloguePath, JSON.stringify(catalogue));
 			expect(
 				yield* Effect.promise(() =>
-					runtime.runPromise(mutation(row.operation, target, row.operation === "reorder" ? 5 : 4))
+					runtime.runPromise(mutation(row.operation, target, row.initial.split("\n").length))
 				)
 			).toMatchObject({
 				status: "rejected",
@@ -335,7 +350,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 								: fs.rename(from, to),
 					}
 				);
-				const effect = mutation(row.operation, target, row.operation === "reorder" ? 5 : 4);
+				const effect = mutation(row.operation, target, row.initial.split("\n").length);
 				yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
 				const writing = runtime.runFork(effect);
 				yield* Deferred.await(entered);

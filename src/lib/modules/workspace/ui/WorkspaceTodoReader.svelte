@@ -57,6 +57,7 @@
 		shortcutScope,
 	});
 	export const closeDetails = () => reader.closeDetails();
+	export const focusTodo = (todo: TodoItem) => todoList?.focusTodo(todo);
 	function revealDetails(node: HTMLElement) {
 		return () => {
 			const grow = Number(getComputedStyle(node).flexGrow);

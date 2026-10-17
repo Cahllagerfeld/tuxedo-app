@@ -52,4 +52,9 @@ Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w
 
+(B) 2026-10-01 Select this and the completed item below then confirm Delete 2 Todo items +BulkDelete @review custom:keep
+Keep this unselected neighbor and its formatting when deleting a selection +BulkDelete @desk
+x 2026-10-16 2026-10-02 Cancel or Escape preserves selection then leave selection mode to undo the whole deletion +BulkDelete pri:A
+Keep this filtered-out Todo item when deleting only matching selections +HiddenFromBulkDelete
+
 Click Workspace options to remove an unavailable saved reference without opening its Todo file +TuxedoApp @review

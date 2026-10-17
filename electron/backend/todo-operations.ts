@@ -6,7 +6,7 @@ import { atomicWrite } from "./atomic-write";
 import { setTodoCompletionLine } from "./complete-todo";
 import { recurringCompletion, generationMarker } from "./recurrence";
 import { replaceTodoLines } from "./replace-todo-lines";
-import { deleteTodoLine } from "./delete-todo";
+import { deleteTodoLine, deleteTodoLines } from "./delete-todo";
 import { appendTodoLine, createTodoLine } from "./create-todo";
 import { parseTodoFile } from "./todo-file";
 import { attempt, readContents, OperationFailure, type OperationError } from "./operation";
@@ -19,6 +19,7 @@ import {
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	bulkSetTodoCompletionRequestSchema,
+	bulkDeleteTodosRequestSchema,
 	undoTodoRequestSchema,
 	type UndoLabel,
 	type DesktopRequest,
@@ -138,7 +139,8 @@ export function createTodoOperations(state: SessionState) {
 	const mutateTodoFile = (
 		input:
 			| Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
-			| DesktopRequest<"bulkSetTodoCompletion">,
+			| DesktopRequest<"bulkSetTodoCompletion">
+			| DesktopRequest<"bulkDeleteTodos">,
 		label: UndoLabel,
 		transform: (
 			contents: string,
@@ -305,6 +307,26 @@ export function createTodoOperations(state: SessionState) {
 							? recurringCompletion(contents, item, raw, today)
 							: replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
 					}
+				);
+			}),
+		bulkDeleteTodos: (request: DesktopRequest<"bulkDeleteTodos">) =>
+			Effect.gen(function* () {
+				const parsed = bulkDeleteTodosRequestSchema.safeParse(request);
+				if (!parsed.success)
+					return { status: "rejected" as const, message: "Invalid bulk deletion request." };
+				const input = parsed.data;
+				if (
+					input.targets.some((target) => {
+						const expected = parseTodoFile("", target.expectedRaw);
+						return expected.items.length !== 1 || expected.skipped.length !== 0;
+					})
+				)
+					return { status: "rejected" as const, message: "Invalid Todo item target." };
+				return yield* mutateTodoFile(input, "Undo deletion", (contents) =>
+					deleteTodoLines(
+						contents,
+						input.targets.map((target) => target.lineNumber)
+					)
 				);
 			}),
 		bulkSetTodoCompletion: (request: DesktopRequest<"bulkSetTodoCompletion">) =>

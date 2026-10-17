@@ -16,7 +16,13 @@
 		desktop,
 		observation,
 		shell = false,
-	}: { desktop: DesktopAPI; observation?: TodoFileObservation; shell?: boolean } = $props();
+		restoration = false,
+	}: {
+		desktop: DesktopAPI;
+		observation?: TodoFileObservation;
+		shell?: boolean;
+		restoration?: boolean;
+	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
@@ -30,6 +36,11 @@
 
 <!-- Keep notices available for assertions even when CI browser actions are slow. -->
 <Toaster duration={Infinity} />
+{#if restoration}
+	<button disabled={app.workspace.isOperating} onclick={() => void app.workspace.restore()}
+		>Restore Workspace session</button
+	>
+{/if}
 <p aria-label="Summary counts">
 	{app.todos.counts.open}/{app.todos.counts.completed}
 </p>
