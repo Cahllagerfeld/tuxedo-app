@@ -1,0 +1,446 @@
+<script lang="ts">
+	import { tick } from "svelte";
+	import { createHotkey } from "@tanstack/svelte-hotkeys";
+	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
+	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
+	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
+	import { Button } from "$lib/shared/ui/button";
+	import * as ButtonGroup from "$lib/shared/ui/button-group";
+	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import Clock from "@lucide/svelte/icons/clock";
+	import Check from "@lucide/svelte/icons/check";
+	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import { Input } from "$lib/shared/ui/input";
+	import SavedViews from "./SavedViews.svelte";
+	import Search from "@lucide/svelte/icons/search";
+	import ListFilter from "@lucide/svelte/icons/list-filter";
+	import { toast } from "svelte-sonner";
+	import X from "@lucide/svelte/icons/x";
+	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import { searchShortcut } from "./shortcuts";
+	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
+
+	type Props = {
+		creationOpen?: boolean;
+		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
+		workspace: ElectronWorkspaceSessionState;
+		todoFilter: TodoFilterState;
+		filteredTodoItems: readonly TodoItem[];
+		closeDetails: () => void;
+		focusTodo: (todo: TodoItem) => void;
+	};
+
+	let {
+		creationOpen = $bindable(false),
+		bulkSelection,
+		workspace,
+		todoFilter,
+		filteredTodoItems,
+		closeDetails,
+		focusTodo,
+	}: Props = $props();
+	let searchInput = $state<HTMLInputElement | null>(null);
+	let searchButton = $state<HTMLButtonElement | null>(null);
+	let searchOpen = $state(false);
+	const searchId = $props.id();
+	const deferredCountId = `${searchId}-deferred-count`;
+	async function openSearch() {
+		searchOpen = true;
+		await tick();
+		searchInput?.focus();
+	}
+	function toggleSearch() {
+		if (searchOpen || todoFilter.hasSearch) {
+			todoFilter.clearSearch();
+			searchOpen = false;
+			searchButton?.focus();
+		} else {
+			void openSearch();
+		}
+	}
+	const shortcutScope = getShortcutScope();
+	let previousSelection: typeof bulkSelection.context | undefined;
+	// Report invalidation to the external toast system; selection itself is derived.
+	$effect(() => {
+		if (workspace.isOperating) return;
+		const current = bulkSelection.context;
+		if (
+			previousSelection &&
+			previousSelection.workspaceKey === current.workspaceKey &&
+			previousSelection.selection !== current.selection &&
+			previousSelection.selection.value.size &&
+			bulkSelection.active &&
+			!workspace.isOperating
+		) {
+			toast.info(
+				previousSelection.fileSignature !== current.fileSignature
+					? "Selection cleared because the Todo file changed."
+					: "Selection cleared because filters changed."
+			);
+		}
+		previousSelection = current;
+	});
+	let deleteButton = $state<HTMLButtonElement | null>(null);
+	let doneButton = $state<HTMLButtonElement | null>(null);
+	let confirmation = $state.raw<{
+		context: typeof bulkSelection.context;
+		items: readonly TodoItem[];
+	} | null>(null);
+	let deleting = $state(false);
+	const deleteOpen = $derived(
+		!!confirmation &&
+			bulkSelection.active &&
+			(deleting ||
+				workspace.isOperating ||
+				confirmation.context.selection === bulkSelection.context.selection)
+	);
+	let deletionError = $state<string | null>(null);
+	let deletionFocus: { workspaceKey: string; index: number } | null = null;
+	let deleteWorkspaceKey = "";
+	function openDeleteConfirmation() {
+		if (workspace.isOperating || !bulkSelection.count) return;
+		deletionError = null;
+		deleteWorkspaceKey = bulkSelection.context.workspaceKey;
+		confirmation = { context: bulkSelection.context, items: [...bulkSelection.selectedItems] };
+	}
+	async function deleteSelected() {
+		if (deleting || workspace.isOperating || !deleteOpen || !confirmation) return;
+		const { context, items } = confirmation;
+		const position = filteredTodoItems.findIndex(
+			(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
+		);
+		deletionError = null;
+		previousSelection = undefined;
+		// Keep the modal through confirmed-data acceptance so its close hook can recover focus.
+		deleting = true;
+		const result = await workspace.bulkDeleteTodos(items);
+		if (result.status === "applied") {
+			toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
+			deletionFocus = { workspaceKey: context.workspaceKey, index: position };
+			bulkSelection.clear();
+			confirmation = null;
+		} else if (result.status === "conflict") {
+			toast.error("Todo file reloaded");
+			bulkSelection.clear();
+			confirmation = null;
+		} else {
+			deletionError = result.message;
+			toast.error("Could not delete Todo items", { description: result.message });
+		}
+		deleting = false;
+	}
+	function restoreDeleteFocus(event: Event) {
+		event.preventDefault();
+		const target = deletionFocus;
+		deletionFocus = null;
+		confirmation = null;
+		const workspaceKey = target?.workspaceKey ?? deleteWorkspaceKey;
+		void tick().then(() => {
+			if (workspaceKey !== bulkSelection.context.workspaceKey || !bulkSelection.active) return;
+			if (!target) (deleteButton?.disabled ? doneButton : deleteButton)?.focus();
+			else {
+				const todo = filteredTodoItems[Math.min(target.index, filteredTodoItems.length - 1)];
+				if (todo) focusTodo(todo);
+				else doneButton?.focus();
+			}
+		});
+	}
+	async function completeSelected() {
+		const items = bulkSelection.selectedItems.filter((todo) => !todo.completed);
+		if (!items.length) return;
+		previousSelection = undefined;
+		const result = await workspace.bulkSetCompletion(items);
+		if (result.status === "applied") {
+			const count = items.length;
+			toast.success(`Completed ${count} ${count === 1 ? "Todo item" : "Todo items"}`);
+			if (result.notice) toast.info(result.notice);
+			bulkSelection.clear();
+		} else if (result.status === "conflict") {
+			toast.error("Todo file reloaded");
+			bulkSelection.clear();
+		} else toast.error("Could not complete Todo items", { description: result.message });
+	}
+	function enterSelectionMode() {
+		closeDetails();
+		bulkSelection.enter();
+	}
+	createHotkey(
+		"Escape",
+		() => bulkSelection.exit(),
+		() => ({
+			enabled:
+				bulkSelection.active &&
+				!deleteOpen &&
+				!workspace.isOperating &&
+				(shortcutScope?.available ?? true),
+			ignoreInputs: true,
+			preventDefault: true,
+		})
+	);
+	createHotkey(searchShortcut.key, toggleSearch, () => ({
+		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
+		ignoreInputs: false,
+		preventDefault: true,
+		requireReset: true,
+	}));
+</script>
+
+<AlertDialog.Root
+	open={deleteOpen}
+	onOpenChange={(open) => {
+		if (!open && !workspace.isOperating && !deleting) confirmation = null;
+	}}
+>
+	<AlertDialog.Content
+		onEscapeKeydown={(event) => {
+			if (workspace.isOperating || deleting) event.preventDefault();
+		}}
+		onCloseAutoFocus={restoreDeleteFocus}
+	>
+		<AlertDialog.Header>
+			<AlertDialog.Title>
+				Delete {confirmation?.items.length ?? 0}
+				{confirmation?.items.length === 1 ? "Todo item" : "Todo items"}?
+			</AlertDialog.Title>
+			<AlertDialog.Description>
+				The selected Todo items will be deleted from the Todo file. After leaving selection mode,
+				you can undo this deletion with Undo last change.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		{#if deletionError}
+			<p role="alert" class="text-sm text-destructive">{deletionError}</p>
+		{/if}
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={workspace.isOperating || deleting}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				variant="destructive"
+				disabled={workspace.isOperating || deleting}
+				onclick={deleteSelected}
+			>
+				{deleting ? "Deleting…" : "Delete Todo items"}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+		{#if deleting}
+			<p role="status" class="text-sm text-muted-foreground">Deleting selected Todo items…</p>
+		{/if}
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
+{#if workspace.todoFile}
+	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
+		<div>
+			{#if bulkSelection.active}
+				<p class="text-sm font-medium" aria-live="polite">
+					{bulkSelection.count} selected
+				</p>
+			{:else}
+				<p class="text-sm font-medium">Todo items</p>
+				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
+					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
+				</p>
+			{/if}
+		</div>
+		<div class="flex flex-wrap items-center gap-2">
+			{#if bulkSelection.active}
+				<ButtonGroup.Root aria-label="Selection controls">
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={workspace.isOperating || filteredTodoItems.length === 0}
+						onclick={bulkSelection.selectAll}>Select all</Button
+					>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={workspace.isOperating || bulkSelection.count === 0}
+						onclick={bulkSelection.clear}>Clear selection</Button
+					>
+				</ButtonGroup.Root>
+				<Button
+					size="sm"
+					disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
+					onclick={() => void completeSelected()}><Check aria-hidden="true" />Complete</Button
+				>
+				<Button
+					bind:ref={deleteButton}
+					variant="destructive"
+					size="sm"
+					disabled={workspace.isOperating || bulkSelection.count === 0}
+					onclick={openDeleteConfirmation}>Delete</Button
+				>
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon-sm"
+									bind:ref={doneButton}
+									aria-label="Exit selection mode"
+									disabled={workspace.isOperating}
+									onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
+								>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Exit selection mode (Esc)</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+			{:else}
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Select items"
+									disabled={workspace.isOperating}
+									onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
+								>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Select items</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+			{/if}
+			<span id={deferredCountId} class="sr-only"
+				>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
+			>
+			<Tooltip.Provider>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Show deferred"
+								aria-describedby={deferredCountId}
+								class="relative aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+								aria-pressed={todoFilter.showDeferred}
+								disabled={workspace.isOperating || todoFilter.status === "completed"}
+								onclick={() =>
+									void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+										if (outcome.status !== "applied")
+											toast.error("Could not save Show deferred", {
+												description: outcome.message,
+											});
+									})}
+							>
+								<Clock aria-hidden="true" />
+								{#if todoFilter.deferredCount > 0}
+									<span
+										aria-hidden="true"
+										class="absolute -top-1 -right-1 rounded-full bg-muted px-1 text-[10px] leading-4 text-muted-foreground tabular-nums"
+										>{todoFilter.deferredCount}</span
+									>
+								{/if}
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content
+						>{todoFilter.showDeferred ? "Hide deferred" : "Show deferred"} ({todoFilter.deferredCount})</Tooltip.Content
+					>
+				</Tooltip.Root>
+			</Tooltip.Provider>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon"
+							aria-label="Sort Todo items"
+							title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
+							disabled={workspace.isOperating}
+						>
+							<ListFilter class="size-4" aria-hidden="true" />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end">
+					<DropdownMenu.Label>Sort Todo items</DropdownMenu.Label>
+					<DropdownMenu.RadioGroup
+						value={todoFilter.sortOrder}
+						onValueChange={(value) => {
+							if (
+								!workspace.isOperating &&
+								(value === "file" || value === "due") &&
+								value !== todoFilter.sortOrder
+							)
+								void workspace.setSortOrder(value).then((outcome) => {
+									if (outcome.status !== "applied")
+										toast.error("Could not save sort order", { description: outcome.message });
+								});
+						}}
+					>
+						<DropdownMenu.RadioItem value="file">File order</DropdownMenu.RadioItem>
+						<DropdownMenu.RadioItem value="due">Due date</DropdownMenu.RadioItem>
+					</DropdownMenu.RadioGroup>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+			<SavedViews {workspace} {todoFilter} />
+			<Button
+				bind:ref={searchButton}
+				variant="ghost"
+				size="icon"
+				aria-label="Toggle Todo-item search"
+				aria-expanded={searchOpen || todoFilter.hasSearch}
+				aria-controls={searchId}
+				disabled={workspace.isOperating}
+				onclick={toggleSearch}
+			>
+				<Search class="size-4" aria-hidden="true" />
+			</Button>
+			{#if !bulkSelection.active}
+				<TodoEditorDialog
+					bind:open={creationOpen}
+					todoFile={workspace.todoFile}
+					saveTodoItem={workspace.createTodo}
+					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					initialProject={todoFilter.selectedProject}
+					initialContext={todoFilter.selectedContext}
+					disabled={workspace.isOperating}
+				/>
+			{/if}
+		</div>
+	</div>
+	{#if searchOpen || todoFilter.hasSearch}
+		<div id={searchId} class="shrink-0 border-b px-5 py-3">
+			<div class="relative min-w-0">
+				<Search
+					class="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<Input
+					type="search"
+					bind:ref={searchInput}
+					bind:value={todoFilter.searchText}
+					aria-label="Search Todo items"
+					placeholder="Search Todo items…"
+					disabled={workspace.isOperating}
+					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+				/>
+				{#if todoFilter.searchText}
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						class="absolute top-1 right-1"
+						aria-label="Clear search"
+						disabled={workspace.isOperating}
+						onclick={todoFilter.clearSearch}
+					>
+						<X class="size-4" aria-hidden="true" />
+					</Button>
+				{/if}
+			</div>
+		</div>
+	{/if}
+	<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
+{/if}

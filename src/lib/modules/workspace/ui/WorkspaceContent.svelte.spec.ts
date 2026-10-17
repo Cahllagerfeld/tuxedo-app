@@ -356,6 +356,42 @@ test("an external replacement clears details and cannot reopen a reused physical
 	await expect.element(panel).not.toBeInTheDocument();
 });
 
+test("empty-query search stays open across Ready → Empty → Ready without remounting", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	const catalogue = initial.session.catalogue;
+	let loads = 0;
+	render(Harness, {
+		restoration: true,
+		desktop: adapter({
+			restoreSession: async () => {
+				loads += 1;
+				return loads === 2
+					? {
+							scope,
+							revision: loads,
+							session: { status: "empty", catalogue, warning: "Todo file unreadable" },
+						}
+					: { ...initial, revision: loads };
+			},
+		}),
+	});
+	const toggle = page.getByRole("button", { name: "Toggle Todo-item search" });
+	const search = page.getByRole("searchbox", { name: "Search Todo items" });
+	const restore = page.getByRole("button", { name: "Restore Workspace session" });
+	await toggle.click();
+	await expect.element(search).toBeVisible();
+	await expect.element(search).toHaveValue("");
+	await restore.click();
+	await expect.element(page.getByLabelText("No active workspace")).toBeVisible();
+	await expect.element(toggle).not.toBeInTheDocument();
+	await expect.element(search).not.toBeInTheDocument();
+	await restore.click();
+	await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+	await expect.element(search).toBeVisible();
+	await expect.element(search).toHaveValue("");
+	expect(loads).toBe(3);
+});
+
 test("an unreadable external reload transfers detail focus to the Empty-state viewport", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	await page.viewport(1400, 900);
