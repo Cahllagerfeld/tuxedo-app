@@ -34,8 +34,8 @@
 	});
 </script>
 
-<!-- Keep notices available for assertions even when CI browser actions are slow. -->
-<Toaster duration={Infinity} />
+<!-- Keep notices available in slow CI; Infinity overflows Sonner's browser timer. -->
+<Toaster duration={60_000} />
 {#if restoration}
 	<button disabled={app.workspace.isOperating} onclick={() => void app.workspace.restore()}
 		>Restore Workspace session</button
