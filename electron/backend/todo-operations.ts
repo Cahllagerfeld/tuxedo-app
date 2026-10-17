@@ -337,8 +337,11 @@ export function createTodoOperations(state: SessionState) {
 				const input = parsed.data;
 				const identity = yield* Identity;
 				const today = new Date(identity.now());
-				return yield* mutateTodoFile(input, "Undo completion", (contents, current) =>
-					bulkCompleteTodos(contents, current, input.targets, today)
+				return yield* mutateTodoFile(
+					input,
+					input.completed ? "Undo completion" : "Undo uncompletion",
+					(contents, current) =>
+						bulkCompleteTodos(contents, current, input.targets, input.completed, today)
 				);
 			}),
 	};

@@ -52,6 +52,11 @@ Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w
 
+x 2026-10-16 2026-10-01 Select completed items and Mark incomplete to restore dates and Priority together +BulkReopen pri:A
+x Reopen this legacy completed item in the same selection +BulkReopen
+Leave this selected open item unchanged when marking the selection incomplete +BulkReopen
+x 2026-10-16 Reopen all matching completed items then use Done to leave selection mode and undo the whole batch +BulkReopen
+
 (B) 2026-10-01 Select this and the completed item below then confirm Delete 2 Todo items +BulkDelete @review custom:keep
 Keep this unselected neighbor and its formatting when deleting a selection +BulkDelete @desk
 x 2026-10-16 2026-10-02 Cancel or Escape preserves selection then leave selection mode to undo the whole deletion +BulkDelete pri:A

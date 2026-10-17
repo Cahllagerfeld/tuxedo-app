@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "vitest";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSessionBackend, type SessionDependencies } from "./session-runtime";
@@ -37,6 +37,7 @@ async function setup(contents: string, dependencies?: SessionDependencies) {
 	return {
 		backend,
 		path,
+		directory,
 		session,
 		items: session.session.todo_file.items,
 		target: {
@@ -47,6 +48,88 @@ async function setup(contents: string, dependencies?: SessionDependencies) {
 	};
 }
 
+test("bulk uncompletion preserves dates, Priority, mixed selection, unrelated edits and whole-batch undo", async () => {
+	const initial =
+		"x 2026-10-16 2026-01-02 First pri:A\r\n\nx\nOpen pri:Z\nx (B) Legacy\nOther\nx 2026-10-16 Last";
+	const { backend, path, target, items } = await setup(initial);
+	const before = initial.replace("Other", "External edit");
+	await writeFile(path, before);
+	const selected = items.filter((item) => item.description !== "Other");
+	const result = await backend.bulkSetTodoCompletion({
+		...target,
+		completed: false,
+		targets: selected.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("bulk uncomplete");
+	expect(result.confirmed.undoLabel).toBe("Undo uncompletion");
+	expect(await readFile(path, "utf8")).toBe(
+		"(A) 2026-01-02 First\r\n\nx\nOpen pri:Z\n(B) Legacy\nExternal edit\nLast"
+	);
+	const undone = await backend.undoTodo({ ...target, revision: result.confirmed.revision });
+	expect(undone.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(before);
+});
+
+test.each([
+	["x 2026-10-16 Conflicting pri:A pri:B", "Conflicting priority metadata"],
+	["x 2026-10-16 ", "without remaining content"],
+])(
+	"bulk uncompletion rejects invalid transformation %s without partial writes",
+	async (invalid, message) => {
+		const contents = `${invalid}\nx 2026-10-16 Safe item\n`;
+		const { backend, path, target, items } = await setup(contents);
+		const result = await backend.bulkSetTodoCompletion({
+			...target,
+			completed: false,
+			targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		expect(result.status).toBe("rejected");
+		if (result.status !== "rejected") throw Error("expected rejection");
+		expect(result.message).toContain(message);
+		expect(await readFile(path, "utf8")).toBe(contents);
+	}
+);
+
+test.each(["x 2026-10-16 Done", "Open"])(
+	"bulk uncompletion validates even unchanged selected target %s",
+	async (last) => {
+		const { backend, path, target, items } = await setup(`x 2026-10-16 First\n${last}\n`);
+		const before = "x 2026-10-16 First\nChanged externally\n";
+		await writeFile(path, before);
+		const result = await backend.bulkSetTodoCompletion({
+			...target,
+			completed: false,
+			targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		expect(result.status).toBe("conflict");
+		if (result.status !== "conflict") throw Error("expected conflict");
+		expect(result.confirmed.todo_file.items[1].raw).toBe("Changed externally");
+		expect(await readFile(path, "utf8")).toBe(before);
+	}
+);
+
+test("a failed bulk uncompletion write preserves disk and confirmed data and permits retry", async () => {
+	const initial = "x 2026-10-16 First\r\nx Legacy";
+	const { backend, path, directory, target, items, session } = await setup(initial);
+	const request = {
+		...target,
+		completed: false,
+		targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	};
+	await chmod(directory, 0o500);
+	try {
+		expect((await backend.bulkSetTodoCompletion(request)).status).toBe("rejected");
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(session);
+		expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+	} finally {
+		await chmod(directory, 0o700);
+	}
+	expect((await backend.bulkSetTodoCompletion(request)).status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe("First\r\nLegacy");
+});
+
 test("bulk completion updates every selected open item atomically with one undo step", async () => {
 	const initial = "(A) First\n(B) Second\nx 2026-01-01 Already done\n";
 	const { backend, path, target, items } = await setup(initial, {
@@ -56,6 +139,7 @@ test("bulk completion updates every selected open item atomically with one undo 
 		},
 	});
 	const result = await backend.bulkSetTodoCompletion({
+		completed: true,
 		...target,
 		targets: [
 			{ lineNumber: items[0].line_number, expectedRaw: items[0].raw },
@@ -80,6 +164,7 @@ test("bulk completion rejects stale targets without writing", async () => {
 	const { backend, path, target, items } = await setup("Open one\n");
 	const item = items[0];
 	const result = await backend.bulkSetTodoCompletion({
+		completed: true,
 		...target,
 		targets: [{ lineNumber: item.line_number, expectedRaw: "Stale" }],
 	});
@@ -92,6 +177,7 @@ test("bulk completion and undo preserve unrelated disk edits and exact line endi
 	const before = "(A) First\r\n\nx\nExternal edit\nLast";
 	await writeFile(path, before);
 	const result = await backend.bulkSetTodoCompletion({
+		completed: true,
 		...target,
 		targets: [items[0], items.at(-1)!].map((item) => ({
 			lineNumber: item.line_number,
@@ -112,6 +198,7 @@ test("a conflict in the last selected target writes nothing", async () => {
 	const { backend, path, target, items } = await setup("First\nSecond\n");
 	await writeFile(path, "First\nChanged\n");
 	const result = await backend.bulkSetTodoCompletion({
+		completed: true,
 		...target,
 		targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
 	});
@@ -123,6 +210,7 @@ test("a failed transformation rejects the whole batch with its actionable error"
 	const contents = "(A) Conflicting pri:B\nSafe item\n";
 	const { backend, path, target, items } = await setup(contents);
 	const result = await backend.bulkSetTodoCompletion({
+		completed: true,
 		...target,
 		targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
 	});
@@ -133,37 +221,48 @@ test("a failed transformation rejects the whole batch with its actionable error"
 	expect(await readFile(path, "utf8")).toBe(contents);
 });
 
-test("empty, duplicate, malformed, and stale-session requests leave the file unchanged", async () => {
-	const { backend, path, target } = await setup("First\n");
-	const valid = { lineNumber: 1, expectedRaw: "First" };
-	for (const request of [
-		{ ...target, targets: [] },
-		{ ...target, targets: [valid, valid] },
-		{ ...target, targets: [{ ...valid, lineNumber: 0 }] },
-		{ ...target, revision: target.revision + 1, targets: [valid] },
-	]) {
-		expect((await backend.bulkSetTodoCompletion(request)).status).toBe("rejected");
-		expect(await readFile(path, "utf8")).toBe("First\n");
+test.each([true, false])(
+	"empty, duplicate, malformed, and stale-session completion=%s requests leave the file unchanged",
+	async (completed) => {
+		const { backend, path, target } = await setup("First\n");
+		const valid = { lineNumber: 1, expectedRaw: "First" };
+		for (const request of [
+			{ ...target, targets: [] },
+			{ ...target, targets: [valid, valid] },
+			{ ...target, targets: [{ ...valid, lineNumber: 0 }] },
+			{ ...target, revision: target.revision + 1, targets: [valid] },
+		]) {
+			expect((await backend.bulkSetTodoCompletion({ ...request, completed })).status).toBe(
+				"rejected"
+			);
+			expect(await readFile(path, "utf8")).toBe("First\n");
+		}
 	}
-});
+);
 
-test("a no-change batch retains the previous undo snapshot", async () => {
-	const initial = "First\nx 2026-01-01 Done\n";
-	const { backend, path, target, items } = await setup(initial);
-	const completed = await backend.bulkSetTodoCompletion({
-		...target,
-		targets: [{ lineNumber: 1, expectedRaw: items[0].raw }],
-	});
-	if (completed.status !== "applied") throw Error("completion failed");
-	const noChange = await backend.bulkSetTodoCompletion({
-		...target,
-		revision: completed.confirmed.revision,
-		targets: [{ lineNumber: 2, expectedRaw: items[1].raw }],
-	});
-	expect(noChange.status).toBe("applied");
-	if (noChange.status !== "applied") throw Error("no-change failed");
-	expect(noChange.confirmed.undoLabel).toBe("Undo completion");
-	const undone = await backend.undoTodo({ ...target, revision: noChange.confirmed.revision });
-	expect(undone.status).toBe("applied");
-	expect(await readFile(path, "utf8")).toBe(initial);
-});
+test.each([true, false])(
+	"a no-change completion=%s batch retains the previous undo snapshot",
+	async (completedState) => {
+		const initial = "First\nx 2026-01-01 Done\nOpen\n";
+		const { backend, path, target, items } = await setup(initial);
+		const completed = await backend.bulkSetTodoCompletion({
+			completed: true,
+			...target,
+			targets: [{ lineNumber: 1, expectedRaw: items[0].raw }],
+		});
+		if (completed.status !== "applied") throw Error("completion failed");
+		const unchanged = items[completedState ? 1 : 2];
+		const noChange = await backend.bulkSetTodoCompletion({
+			completed: completedState,
+			...target,
+			revision: completed.confirmed.revision,
+			targets: [{ lineNumber: unchanged.line_number, expectedRaw: unchanged.raw }],
+		});
+		expect(noChange.status).toBe("applied");
+		if (noChange.status !== "applied") throw Error("no-change failed");
+		expect(noChange.confirmed.undoLabel).toBe("Undo completion");
+		const undone = await backend.undoTodo({ ...target, revision: noChange.confirmed.revision });
+		expect(undone.status).toBe("applied");
+		expect(await readFile(path, "utf8")).toBe(initial);
+	}
+);

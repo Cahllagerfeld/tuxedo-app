@@ -300,7 +300,7 @@ export class ElectronWorkspaceSessionState {
 			},
 			this.todoOperationTarget(todo)
 		);
-	bulkSetCompletion = (items: readonly TodoItem[]) =>
+	bulkSetCompletion = (items: readonly TodoItem[], completed: boolean) =>
 		this.runAction(
 			"bulk_set_todo_item_completion",
 			async () => {
@@ -314,6 +314,7 @@ export class ElectronWorkspaceSessionState {
 				return this.applyTodoOutcome(
 					await this.desktop.bulkSetTodoCompletion({
 						...target,
+						completed,
 						targets: items.map((item) => ({
 							lineNumber: item.line_number,
 							expectedRaw: item.raw,
