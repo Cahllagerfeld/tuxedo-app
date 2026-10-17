@@ -44,7 +44,7 @@
 		"@vitest/browser-playwright": "5.0.4",
 		"bits-ui": "2.19.5",
 		"cn": "0.4.0",
-		"effect": "4.0.3",
+		"effect": "4.0.4",
 		"electron": "44.7.0",
 		"formsnap": "2.0.1",
 		"mode-watcher": "1.1.0",

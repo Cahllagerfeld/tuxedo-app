@@ -7,8 +7,8 @@ formatting, source scanning, tests, and packaging exclude this directory through
 explicit exclusions or application-only input paths.
 
 - Upstream: https://github.com/Effect-TS/effect.git
-- Imported commit: `7547a99f81fa6f7e651d52f3d42081f399bfbca8`
-- Effect package version in this snapshot: `4.0.3`
+- Imported commit: `e17ecdbe902aa7108f775c8ab9c0ddf9f38801ab`
+- Effect package version in this snapshot: `4.0.4`
 
 ## Updating
 
