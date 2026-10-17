@@ -8,10 +8,15 @@
 	import { createHotkey, formatForDisplay } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
-	let { app }: { app: AppState } = $props();
+	import House from "@lucide/svelte/icons/house";
+	import { resolve } from "$app/paths";
+	let { app, readerShown = true }: { app: AppState; readerShown?: boolean } = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		!!app.workspace.undoLabel && !app.workspace.isOperating && !app.todoBulkSelectionActive
+		readerShown &&
+			!!app.workspace.undoLabel &&
+			!app.workspace.isOperating &&
+			!app.todoBulkSelectionActive
 	);
 	async function undo() {
 		if (!canUndo) return;
@@ -39,10 +44,18 @@
 		variant="ghost"
 		size="icon-sm"
 		class="[app-region:no-drag]"
+		aria-label="Home"
+		title="Home"
+		href={resolve("/")}><House aria-hidden="true" /></Button
+	>
+	<Button
+		variant="ghost"
+		size="icon-sm"
+		class="[app-region:no-drag]"
 		aria-label={app.workspace.undoLabel ?? "Undo last change"}
 		title={`${app.workspace.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
 		disabled={!canUndo}
 		onclick={undo}><Undo2 aria-hidden="true" /></Button
 	>
-	<AppShortcuts {app} />
+	<AppShortcuts {app} {readerShown} />
 </header>
