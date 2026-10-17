@@ -45,4 +45,15 @@ export class AppState {
 	openWorkspaceCreationDialog = () => {
 		this.isWorkspaceCreationDialogOpen = true;
 	};
+
+	destinationError = $state("");
+	shows = (workspaceId: string | undefined) =>
+		!!workspaceId && !this.destinationError && this.workspace.activeWorkspace?.id === workspaceId;
+	visitWorkspace = (workspaceId: string) => {
+		this.destinationError = "";
+		if (this.workspace.activeWorkspace?.id === workspaceId && this.workspace.todoFile) return;
+		void this.workspace.open(workspaceId).then((outcome) => {
+			if (outcome.status !== "applied") this.destinationError = outcome.message;
+		});
+	};
 }

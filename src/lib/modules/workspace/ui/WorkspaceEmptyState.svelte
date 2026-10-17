@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -15,6 +16,13 @@
 
 	let { session, disabled, openWorkspaceCreationDialog }: Props = $props();
 	let viewport = $state<HTMLElement | null>(null);
+	const workspaces = $derived(
+		session.status === "empty" || session.status === "ready"
+			? [...session.catalogue.workspaces].sort((left, right) =>
+					left.created_at.localeCompare(right.created_at)
+				)
+			: []
+	);
 
 	export function focusViewport(): void {
 		viewport?.focus();
@@ -52,11 +60,24 @@
 			<Empty.Root aria-label="No active workspace">
 				<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
 				<Empty.Header>
-					<Empty.Title>No workspace open</Empty.Title>
+					<Empty.Title
+						>{session.status === "ready" ? "Workspaces" : "No workspace open"}</Empty.Title
+					>
 					<Empty.Description
 						>Open or create a Workspace to start working with a Todo file.</Empty.Description
 					>
 				</Empty.Header>
+				{#if workspaces.length}
+					<nav aria-label="Saved workspaces" class="flex w-full max-w-xs flex-col gap-2">
+						{#each workspaces as workspace (workspace.id)}
+							<Button
+								variant="outline"
+								{disabled}
+								href={resolve("/workspaces/[id]", { id: workspace.id })}>{workspace.name}</Button
+							>
+						{/each}
+					</nav>
+				{/if}
 				<Button {disabled} onclick={openWorkspaceCreationDialog}>New workspace</Button>
 				{#if session.status === "empty" && session.warning}
 					<p role="status">{session.warning}</p>

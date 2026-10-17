@@ -16,7 +16,7 @@
 		workspaces: readonly Workspace[];
 		todoSummary: TodoFileSummary;
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
+		selectWorkspace: (workspaceId: string) => void;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;

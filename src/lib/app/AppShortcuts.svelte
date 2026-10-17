@@ -10,7 +10,7 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { useSidebar } from "$lib/shared/ui/sidebar";
 	import type { AppState } from "./app-state.svelte";
-	let { app }: { app: AppState } = $props();
+	let { app, readerShown }: { app: AppState; readerShown: boolean } = $props();
 	const scope = getShortcutScope();
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
@@ -44,7 +44,8 @@
 					(id === "help" ||
 						id === "sidebar" ||
 						(idle &&
-							(id !== "createTodo" || (!!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
+							(id !== "createTodo" ||
+								(readerShown && !!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

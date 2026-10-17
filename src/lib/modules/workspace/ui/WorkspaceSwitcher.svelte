@@ -18,7 +18,7 @@
 		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
+		selectWorkspace: (workspaceId: string) => void;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
@@ -68,16 +68,6 @@
 		}
 	}
 
-	async function chooseWorkspace(workspaceId: string) {
-		try {
-			const result = await selectWorkspace(workspaceId);
-			if (result.status === "rejected")
-				toast.error("Could not open workspace", { description: result.message });
-		} catch (error) {
-			toast.error("Could not open workspace", { description: errorMessage(error) });
-		}
-	}
-
 	function errorMessage(error: unknown): string {
 		return error instanceof Error ? error.message : String(error);
 	}
@@ -122,7 +112,7 @@
 							: workspace.name}
 						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 						{disabled}
-						onclick={() => void chooseWorkspace(workspace.id)}
+						onclick={() => selectWorkspace(workspace.id)}
 					>
 						<span
 							class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
