@@ -6,12 +6,14 @@ import type {
 	ConfirmedSession,
 	DesktopAPI,
 	TodoFileObservation,
+	TodoFileChange,
 } from "../src/lib/shared/desktop/contract";
 
 declare global {
 	interface Window {
 		holdTodoWrite: () => Promise<void>;
 		holdWorkspaceSwitch: () => Promise<void>;
+		makeTodoFileUnreadable: () => void;
 	}
 }
 
@@ -61,6 +63,8 @@ test("real links and history preserve the reader during a write and block overla
 				let revision = 1;
 				let active = first;
 				let completed = false;
+				let unreadable = false;
+				let notify: ((event: TodoFileChange) => void) | undefined;
 				const snapshot = (): ConfirmedSession => ({
 					scope,
 					revision,
@@ -103,9 +107,26 @@ test("real links and history preserve the reader during a write and block overla
 					"restoreSession" | "readSavedViews" | "switchWorkspace" | "setTodoCompletion"
 				> &
 					TodoFileObservation = {
-					restoreSession: async () => snapshot(),
+					restoreSession: async () => {
+						const confirmed = snapshot();
+						if (unreadable && confirmed.session.status === "ready")
+							return {
+								...confirmed,
+								session: {
+									status: "empty",
+									catalogue: confirmed.session.catalogue,
+									warning: "Todo file unreadable",
+								},
+							};
+						return confirmed;
+					},
 					readSavedViews: async () => ({ status: "applied", views: [] }),
-					onTodoFileChanged: () => () => {},
+					onTodoFileChanged: (listener) => {
+						notify = listener;
+						return () => {
+							notify = undefined;
+						};
+					},
 					switchWorkspace: async ({ workspaceId }) => {
 						await window.holdWorkspaceSwitch();
 						active = workspaceId;
@@ -130,6 +151,10 @@ test("real links and history preserve the reader during a write and block overla
 					},
 				};
 				Object.defineProperty(window, "desktop", { value: desktop });
+				window.makeTodoFileUnreadable = () => {
+					unreadable = true;
+					notify?.({ scope, revision, workspaceId: active, todoPath: `/tmp/${active}.txt` });
+				};
 			},
 			{ first, second }
 		);
@@ -191,6 +216,24 @@ test("real links and history preserve the reader during a write and block overla
 		).toBe("-1");
 		await page.keyboard.press("Space");
 		expect(writes).toBe(1);
+
+		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();
+		await page.getByRole("button", { name: "Close details", exact: true }).focus();
+		await page.evaluate(() => window.makeTodoFileUnreadable());
+		await page.getByRole("heading", { name: "Workspace unavailable" }).waitFor();
+		await expect
+			.poll(() =>
+				page
+					.getByRole("region", { name: "Workspace destination" })
+					.evaluate((element) => element === document.activeElement)
+			)
+			.toBe(true);
+		await page.keyboard.press("Tab");
+		expect(
+			await page
+				.getByRole("button", { name: "Retry", exact: true })
+				.evaluate((element) => element === document.activeElement)
+		).toBe(true);
 	} finally {
 		await browser.close();
 		if (server.exitCode === null) {

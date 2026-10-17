@@ -3,7 +3,18 @@
 	import { getAppContext } from "$lib/app/app-context";
 	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
 	import WorkspaceHome from "$lib/modules/workspace/ui/WorkspaceHome.svelte";
+	import { tick } from "svelte";
 	const { app, navigation } = getAppContext();
+	let recovery = $state<ReturnType<typeof WorkspaceHome>>();
+	// Transfer owned DOM focus before an unreadable-file result removes the reader.
+	$effect.pre(() => {
+		if (
+			!app.workspace.todoFile &&
+			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
+		) {
+			void tick().then(() => recovery?.focusViewport());
+		}
+	});
 </script>
 
 {#if navigation.readerAvailable}
@@ -18,6 +29,7 @@
 	{/key}
 {:else}
 	<WorkspaceHome
+		bind:this={recovery}
 		workspace={app.workspace}
 		loading={navigation.busy}
 		disabled={navigation.busy}

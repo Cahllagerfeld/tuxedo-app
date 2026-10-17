@@ -25,9 +25,15 @@
 			a.created_at.localeCompare(b.created_at)
 		)
 	);
+	let viewport: HTMLElement;
+	export function focusViewport() {
+		viewport?.focus();
+	}
 </script>
 
 <section
+	bind:this={viewport}
+	tabindex="-1"
 	class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6"
 	aria-label="Workspace destination"
 	aria-busy={loading}
