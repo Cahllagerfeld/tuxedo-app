@@ -187,3 +187,53 @@ test("Workspace switching and restarting clear Undo; a failed switch keeps it", 
 		(await backend.undoTodo({ ...target, revision: switched.confirmed.revision })).status
 	).toBe("rejected");
 });
+
+test.each([
+	["preserve", ["t:2026-10-14", "t:+2d", "t:2026-02-30", "custom:keep"]],
+	["replace", ["custom:keep", "t:2099-01-01"]],
+	["clear", ["custom:keep"]],
+] as const)(
+	"Show from edits %s metadata and Undo restores exact original bytes",
+	async (_, metadata) => {
+		const initial = "  First  +Work t:2026-10-14 t:+2d t:2026-02-30 custom:keep  \r\n\nLast";
+		const { backend, target, todoPath } = await setup(initial);
+		const result = await backend.editTodo({
+			...target,
+			lineNumber: 1,
+			expectedRaw: initial.split("\r\n")[0],
+			description: "Updated",
+			projects: ["Work"],
+			contexts: [],
+			priority: null,
+			creationDate: null,
+			completed: false,
+			completionDate: null,
+			metadata: [...metadata],
+		});
+		expect(result.status).toBe("applied");
+		if (result.status !== "applied") throw Error("Edit failed");
+		expect(await readFile(todoPath, "utf8")).toBe(`Updated +Work ${metadata.join(" ")}\r\n\nLast`);
+		expect(result.confirmed.todo_file.items[0].edit.metadata).toEqual(metadata);
+		expect((await backend.undoTodo(targetOf(result.confirmed))).status).toBe("applied");
+		expect(await readFile(todoPath, "utf8")).toBe(initial);
+	}
+);
+
+test("creating a Show from through the editor payload preserves metadata and undoes the append", async () => {
+	const { backend, todoPath, target, contents } = await setup();
+	const result = await backend.createTodo({
+		...target,
+		description: "Later",
+		projects: [],
+		contexts: [],
+		creationDate: null,
+		metadata: ["t:+2d", "t:2099-01-01", "custom:keep"],
+	});
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("Creation failed");
+	expect(await readFile(todoPath, "utf8")).toBe(
+		`${contents}\r\nLater t:+2d t:2099-01-01 custom:keep`
+	);
+	expect((await backend.undoTodo(targetOf(result.confirmed))).status).toBe("applied");
+	expect(await readFile(todoPath, "utf8")).toBe(contents);
+});

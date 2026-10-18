@@ -449,6 +449,7 @@
 					todoFile={workspace.todoFile}
 					saveTodoItem={workspace.createTodo}
 					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					showDeferred={todoFilter.showDeferred}
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}
 					disabled={workspace.isOperating}

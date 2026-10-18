@@ -1244,6 +1244,36 @@ try {
 	console.log(
 		"Threshold visibility respects effective metadata, completion views, filters, independent dates, and exact file preservation."
 	);
+	await page.getByRole("button", { name: /^All/ }).click();
+	await page.getByRole("button", { name: "Actions for Actionable chore", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	const thresholdPicker = page.getByRole("button", { name: "Show from (optional)" });
+	assert.equal(await thresholdPicker.innerText(), "January 1, 2000");
+	await page.getByPlaceholder("Add key:value").fill("t:2099-01-01");
+	await page.getByPlaceholder("Add key:value").press("Enter");
+	await thresholdPicker.click();
+	await page.getByRole("button", { name: /January 2, 2099/ }).click();
+	await thresholdPicker.click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await page
+		.getByText("Hidden until Show from 2099-01-02. Use Show deferred to see it.", { exact: true })
+		.waitFor();
+	assert.equal(
+		await page.getByRole("button", { name: "Actions for Actionable chore", exact: true }).count(),
+		0
+	);
+	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
+	assert.equal(
+		await readFile(thresholdPath, "utf8"),
+		thresholdContents.replace("Actionable chore t:2000-01-01", "Actionable chore t:2099-01-02")
+	);
+	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+	await page.getByText("Actionable chore", { exact: true }).waitFor();
+	assert.equal(await readFile(thresholdPath, "utf8"), thresholdContents);
+	console.log(
+		"Show from calendar editing replaces repeated thresholds, explains hidden items, and undoes exact bytes through preload/IPC."
+	);
+
 	// Exercise the sandboxed preload's response and event validators with main-supplied data.
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:select-todo-file");

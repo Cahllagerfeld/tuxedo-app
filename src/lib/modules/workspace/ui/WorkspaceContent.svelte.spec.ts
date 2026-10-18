@@ -2943,3 +2943,51 @@ test.each(["completion", "deletion"] as const)(
 		await expect.element(toggle).toBeEnabled();
 	}
 );
+
+test.each(["create", "edit"] as const)(
+	"%s explains a saved hidden Show from without revealing it",
+	async (operation) => {
+		const deferred = {
+			...todo,
+			raw: "Plan release +Work t:9999-12-31",
+			metadata: { t: "9999-12-31" },
+			edit: { description: "Plan release", metadata: ["t:9999-12-31"] },
+		};
+		render(Harness, {
+			desktop: adapter({
+				createTodo: async () => ({ status: "applied", confirmed: confirmedTodo([deferred]) }),
+				editTodo: async () => ({ status: "applied", confirmed: confirmedTodo([deferred]) }),
+			}),
+		});
+		if (operation === "edit") {
+			await page.getByRole("button", { name: "Actions for Plan release", exact: true }).click();
+			await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+		} else {
+			await page.getByRole("button", { name: "Add Todo item", exact: true }).click();
+			await page.getByPlaceholder("What needs doing?").fill("Plan release");
+		}
+		await page.getByPlaceholder("Add key:value").fill("t:9999-12-31");
+		await userEvent.keyboard("{Enter}");
+		await page
+			.getByRole("button", {
+				name: operation === "edit" ? "Save changes" : "Add Todo item",
+				exact: true,
+			})
+			.last()
+			.click();
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText("Hidden until Show from 9999-12-31. Use Show deferred to see it.", {
+					exact: true,
+				})
+			)
+			.toBeVisible();
+		await expect
+			.element(page.getByRole("button", { name: "Show deferred", exact: true }).first())
+			.toHaveAttribute("aria-pressed", "false");
+		await expect
+			.element(page.getByRole("button", { name: "Actions for Plan release", exact: true }))
+			.not.toBeInTheDocument();
+	}
+);

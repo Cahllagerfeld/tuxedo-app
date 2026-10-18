@@ -114,6 +114,7 @@
 				todoToEdit={reader.editingTodo}
 				saveTodoItem={reader.saveEdit}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
+				showDeferred={todoFilter.showDeferred}
 				disabled={workspace.isOperating}
 				onClose={reader.closeEdit}
 			/>
