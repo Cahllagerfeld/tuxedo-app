@@ -106,6 +106,47 @@ test("Due date controls edit the same metadata and preserve malformed values unt
 	await expect.poll(() => calls[2]?.metadata).toEqual(["custom:keep"]);
 });
 
+test("Show from preserves unsupported and repeated metadata until the calendar changes or clears it", async () => {
+	const calls: TodoItemDraft[] = [];
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: {
+			...todoFile.items[0],
+			metadata: { t: "+2d" },
+			edit: { description: "Plan release", metadata: ["t:2026-10-01", "t:+2d", "custom:keep"] },
+		},
+		saveTodoItem: async (input) => {
+			calls.push(input);
+			return { status: "rejected", message: "Retry" };
+		},
+	});
+	const picker = page.getByRole("button", { name: "Show from (optional)" });
+	await expect.element(picker).toHaveTextContent("Pick a date");
+	await expect
+		.element(
+			page.getByText(
+				"Unsupported Show from value: +2d. Kept in Metadata until changed or cleared.",
+				{ exact: true }
+			)
+		)
+		.toBeVisible();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["t:2026-10-01", "t:+2d", "custom:keep"]);
+	await page.getByRole("button", { name: "Remove t:+2d", exact: true }).click();
+	await page.getByPlaceholder("Add key:value").fill("t:2026-10-14");
+	await userEvent.keyboard("{Enter}");
+	await expect.element(picker).toHaveTextContent("October 14, 2026");
+	await picker.click();
+	await page.getByRole("button", { name: /Thursday, October 15, 2026/ }).click();
+	await picker.click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[1]?.metadata).toEqual(["custom:keep", "t:2026-10-15"]);
+	await expect.element(picker).toHaveTextContent("October 15, 2026");
+	await page.getByRole("button", { name: "Clear Show from", exact: true }).click();
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect.poll(() => calls[2]?.metadata).toEqual(["custom:keep"]);
+});
+
 test("editing retains the Todo item's tags instead of creation defaults", async () => {
 	let saved: TodoItemDraft | undefined;
 	render(TodoEditorDialog, {
@@ -564,4 +605,67 @@ test("validates Other priorities and resets its input when choosing a common pri
 		.element(page.getByRole("button", { name: "None", exact: true }))
 		.toHaveAttribute("aria-pressed", "true");
 	await expect.element(input).not.toBeInTheDocument();
+});
+
+test.each(["+2d", "2026-02-30"])(
+	"Show from retains unsupported %s on cancellation",
+	async (value) => {
+		const calls: TodoItemDraft[] = [];
+		render(TodoEditorDialog, {
+			todoFile,
+			todoToEdit: {
+				...todoFile.items[0],
+				edit: { description: "Plan release", metadata: [`t:${value}`] },
+			},
+			saveTodoItem: async (input) => {
+				calls.push(input);
+				return { status: "applied" };
+			},
+		});
+		await expect
+			.element(page.getByRole("button", { name: "Show from (optional)" }))
+			.toHaveTextContent("Pick a date");
+		await expect
+			.element(
+				page.getByText(
+					`Unsupported Show from value: ${value}. Kept in Metadata until changed or cleared.`,
+					{ exact: true }
+				)
+			)
+			.toBeVisible();
+		await page.getByRole("button", { name: "Clear Show from", exact: true }).click();
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		expect(calls).toEqual([]);
+	}
+);
+
+test("creation starts without Show from and warns without blocking a threshold after Due date", async () => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "Show from (optional)" }))
+		.toHaveTextContent("Pick a date");
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("due:2026-10-01");
+	await userEvent.keyboard("{Enter}");
+	await metadata.fill("t:2026-10-14");
+	await userEvent.keyboard("{Enter}");
+	await expect
+		.element(
+			page.getByText(
+				"Show from is after Due date. This Todo item will stay deferred past its deadline.",
+				{ exact: true }
+			)
+		)
+		.toBeVisible();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["due:2026-10-01", "t:2026-10-14"]);
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "Show from (optional)" }))
+		.toHaveTextContent("Pick a date");
 });

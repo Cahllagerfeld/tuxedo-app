@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import {
+		todoDateSchema,
 		todoTagSchema,
 		todoMetadataSchema,
 		todoEditorSchema,
@@ -28,6 +29,7 @@
 		saveTodoItem: SaveTodoItem;
 		workspaceName?: string;
 		disabled?: boolean;
+		showDeferred?: boolean;
 		todoToEdit?: TodoItem;
 		initialProject?: string | null;
 		initialContext?: string | null;
@@ -39,6 +41,7 @@
 		saveTodoItem,
 		workspaceName = "",
 		disabled = false,
+		showDeferred = false,
 		todoToEdit,
 		initialProject = null,
 		initialContext = null,
@@ -56,6 +59,12 @@
 		if (value) metadata.push(`due:${value}`);
 		$formData = { ...$formData, metadata };
 	}
+	function setShowFrom(value: string) {
+		const metadata = $formData.metadata.filter((token) => !token.startsWith("t:"));
+		if (value) metadata.push(`t:${value}`);
+		$formData = { ...$formData, metadata };
+	}
+
 	const schema = todoEditorSchema(() => ({
 		editing: !!todoToEdit,
 		completed: todoToEdit?.completed ?? false,
@@ -71,6 +80,12 @@
 		}
 	);
 	const { form: formData } = form;
+	const showFromToken = $derived(
+		$formData.metadata.findLast((token) => token.startsWith("t:"))?.slice(2)
+	);
+	const showFrom = $derived(
+		showFromToken && todoDateSchema.safeParse(showFromToken).success ? showFromToken : ""
+	);
 
 	let isSubmitting = $state(false);
 	let descriptionInput = $state<HTMLInputElement | null>(null);
@@ -184,9 +199,15 @@
 		try {
 			const result = await form.validateForm({ update: true });
 			if (!result.valid) return;
-			const outcome = await saveTodoItem(draft(result.data));
+			const savedDraft = draft(result.data);
+			const outcome = await saveTodoItem(savedDraft);
 			if (outcome.status === "applied") {
 				if (outcome.notice) toast.info(outcome.notice);
+				if (!showDeferred && !savedDraft.completed && showFrom && showFrom > localToday()) {
+					toast.success(todoToEdit ? "Todo item saved" : "Todo item created", {
+						description: `Hidden until Show from ${showFrom}. Use Show deferred to see it.`,
+					});
+				}
 				isSubmitting = false;
 				open = false;
 				resetForm();
@@ -322,6 +343,39 @@
 						>Stored as due:YYYY-MM-DD in Metadata. Other due values remain in Metadata until you
 						change or clear this date.</Form.Description
 					>
+					<Form.FieldErrors />
+				</Form.Field>
+
+				<Form.Field {form} name="metadata">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label
+								>Show from <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
+							<DatePicker
+								{...props}
+								bind:value={() => showFrom, setShowFrom}
+								label="Show from"
+								disabled={controlsDisabled}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.Description
+						>Stored as t:YYYY-MM-DD in Metadata. Open Todo items stay hidden until this date unless
+						Show deferred is on.</Form.Description
+					>
+					{#if showFromToken && !showFrom}
+						<p class="text-sm text-muted-foreground">
+							Unsupported Show from value: {showFromToken}. Kept in Metadata until changed or
+							cleared.
+						</p>
+					{/if}
+					{#if showFrom && getDueDate() && showFrom > getDueDate()}
+						<p role="status" class="text-sm text-muted-foreground">
+							Show from is after Due date. This Todo item will stay deferred past its deadline.
+						</p>
+					{/if}
 					<Form.FieldErrors />
 				</Form.Field>
 

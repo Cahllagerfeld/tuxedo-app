@@ -32,8 +32,8 @@ x Leave the date slot empty without a Completion date +Legacy @computer due:2026
 (B) Keep an overdue Todo item deferred until its Show from date +TuxedoApp @computer due:2026-10-13 t:2099-01-01
 Show an actionable Todo item after its Show from date +TuxedoApp @computer t:2026-10-14
 Inspect an unsupported relative Show from value through its warning tooltip +Imported @review t:+2d
-Keep an impossible Show from date visible +Imported @review t:2026-02-30
-Use the last Show from token when values repeat +TuxedoApp @computer t:2026-10-14 t:2099-01-01
+Repair an impossible Show from date with the editor calendar +Imported @review t:2026-02-30
+Edit another field to preserve repeated Show from tokens, or choose a date to replace them +TuxedoApp @computer t:2026-10-14 t:2099-01-01
 x 2026-10-14 Keep completed Todo items visible despite a future Show from date +TuxedoApp @computer t:2099-01-01
 
 (A) 2026-10-01 Repeat a chore one month after recorded completion +Home @desk rec:1m
@@ -74,3 +74,7 @@ Return Home to see the last-opened Workspace first while other Workspaces keep t
 Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
 See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
+
+Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01
+Clear Show from in the editor to remove every threshold token +Imported @review t:2026-10-14 t:+2d
+Create an open Todo item with a future Show from to see hidden-until feedback +TuxedoApp @review
