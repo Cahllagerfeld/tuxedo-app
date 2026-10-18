@@ -21,7 +21,11 @@
 		openWorkspaceCreationDialog: () => void;
 	} = $props();
 	const workspaces = $derived(
-		[...catalogue.workspaces].sort((left, right) => left.created_at.localeCompare(right.created_at))
+		[...catalogue.workspaces].sort((left, right) => {
+			if (left.id === catalogue.active_workspace_id) return -1;
+			if (right.id === catalogue.active_workspace_id) return 1;
+			return left.created_at.localeCompare(right.created_at);
+		})
 	);
 </script>
 
