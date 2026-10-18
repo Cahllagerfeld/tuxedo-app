@@ -72,14 +72,19 @@
 			previousSelection &&
 			previousSelection.workspaceKey === current.workspaceKey &&
 			previousSelection.selection !== current.selection &&
-			previousSelection.selection.value.size &&
+			previousSelection.selection.size &&
+			(previousSelection.fileSignature !== current.fileSignature ||
+				previousSelection.filterSignature !== current.filterSignature ||
+				previousSelection.matchingSignature !== current.matchingSignature) &&
 			bulkSelection.active &&
 			!workspace.isOperating
 		) {
 			toast.info(
 				previousSelection.fileSignature !== current.fileSignature
 					? "Selection cleared because the Todo file changed."
-					: "Selection cleared because filters changed."
+					: previousSelection.filterSignature !== current.filterSignature
+						? "Selection cleared because filters changed."
+						: "Selection updated because some Todo items are no longer shown."
 			);
 		}
 		previousSelection = current;
@@ -364,7 +369,9 @@
 								aria-pressed={todoFilter.showDeferred}
 								disabled={workspace.isOperating || todoFilter.status === "completed"}
 								onclick={() =>
-									void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
+									void workspace.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
+										await tick();
+										bulkSelection.reconcileVisibility();
 										if (outcome.status !== "applied")
 											toast.error("Could not save Show deferred", {
 												description: outcome.message,

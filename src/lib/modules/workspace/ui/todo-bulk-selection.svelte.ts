@@ -27,6 +27,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 	);
 	const fileSignature = $derived(JSON.stringify(inputs.getWorkspace().todoFile));
 	const filterSignature = $derived(inputs.getFilterSignature());
+	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
 	const mode = $derived.by(() => {
 		workspaceKey;
 		return cell(false);
@@ -67,7 +68,18 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		},
 		// The UI uses these identities only to announce invalidation to the user.
 		get context() {
-			return { workspaceKey, fileSignature, filterSignature, selection };
+			return {
+				workspaceKey,
+				fileSignature,
+				filterSignature,
+				matchingSignature,
+				selection: selection.value,
+			};
+		},
+		reconcileVisibility() {
+			const visible = new Set(inputs.getMatchingItems().map(todoKey));
+			const retained = new Set([...selection.value].filter((key) => visible.has(key)));
+			if (retained.size !== selection.value.size) selection.value = retained;
 		},
 		enter() {
 			if (inputs.getWorkspace().isOperating) return;

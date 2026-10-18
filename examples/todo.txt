@@ -48,6 +48,7 @@ Omit an absolute Show from when a recurring chore has no Due date +Home rec:1w t
 Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
 
 (A) Use the checklist icon to select and complete this with another open item +BulkReview @computer
+Keep existing selections when this item becomes visible; select it explicitly to include it +BulkReview t:2099-01-01
 Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w
