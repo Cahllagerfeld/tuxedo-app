@@ -168,7 +168,7 @@
 
 <div
 	class={cn(
-		"relative flex min-h-[36px] w-full flex-wrap place-items-center gap-1 rounded-md border border-input bg-background py-0.5 pr-1 pl-1 selection:bg-primary disabled:opacity-50 aria-disabled:cursor-not-allowed dark:bg-input/30",
+		"relative flex min-h-[36px] w-full flex-wrap place-items-center gap-1 rounded-md border border-input bg-background py-0.5 pr-1 pl-1 shadow-xs transition-[color,box-shadow] selection:bg-primary disabled:opacity-50 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 aria-disabled:cursor-not-allowed dark:bg-input/30",
 		className
 	)}
 	aria-disabled={disabled}
