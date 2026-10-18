@@ -65,3 +65,4 @@ Keep this filtered-out Todo item when deleting only matching selections +HiddenF
 Click Workspace options to remove an unavailable saved reference without opening its Todo file +TuxedoApp @review
 Open Home to choose a colored Workspace by its Todo-file path without showing workspace filters +TuxedoApp @review
 Restart Tuxedo to resume the last Workspace without flashing Home +TuxedoApp @review
+Remove a saved Workspace from its Home row options and confirm without deleting its Todo file +TuxedoApp @review

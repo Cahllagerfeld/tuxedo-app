@@ -1501,6 +1501,60 @@ try {
 	await page.goBack();
 	await expectRoute("Route A", "Alpha item");
 	console.log("Navigation waits for admitted operations; failed switches retain the session.");
+	await page.getByRole("link", { name: "Home", exact: true }).click();
+	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	const removeFromHome = async (name, cancel = false) => {
+		await page.getByRole("button", { name: `Options for ${name}`, exact: true }).click();
+		const removal = page.getByRole("menuitem", { name: "Remove workspace", exact: true });
+		assert.equal(
+			await removal.evaluate((element) => {
+				const text = [...element.childNodes].find(
+					(node) =>
+						node.nodeType === Node.TEXT_NODE && node.textContent.includes("Remove workspace")
+				);
+				const range = document.createRange();
+				range.selectNodeContents(text);
+				return range.getClientRects().length;
+			}),
+			1,
+			"Remove workspace must fit on one line"
+		);
+		await removal.click();
+		const confirmation = page.getByRole("alertdialog");
+		await confirmation.waitFor();
+		assert.match(
+			await confirmation.innerText(),
+			new RegExp(`Remove ${name} from saved Workspaces`)
+		);
+		assert.equal(new URL(page.url()).pathname, "/", "Options must not open the Workspace");
+		await confirmation
+			.getByRole("button", { name: cancel ? "Cancel" : "Remove workspace", exact: true })
+			.click();
+		await confirmation.waitFor({ state: "hidden" });
+		if (!cancel) await page.getByRole("link", { name, exact: true }).waitFor({ state: "hidden" });
+	};
+	await removeFromHome("Route C", true);
+	assert.equal(await page.getByRole("link", { name: "Route C", exact: true }).count(), 1);
+	assert.equal(await activeId(), routeIds["Route A"]);
+	await removeFromHome("Route C");
+	assert.equal(await readFile(createdPath, "utf8"), "Gamma item\n");
+	assert.equal(
+		await activeId(),
+		routeIds["Route A"],
+		"Removing an inactive Workspace keeps the active one"
+	);
+	await removeFromHome("Route A");
+	assert.equal(await activeId(), null);
+	assert.equal(await readFile(join(directory, "Route-A.txt"), "utf8"), "Alpha item\n");
+	await page.reload();
+	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	assert.equal(await page.getByRole("link", { name: "Route A", exact: true }).count(), 0);
+	assert.equal(await page.getByRole("link", { name: "Route C", exact: true }).count(), 0);
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	console.log(
+		"Home Workspace options cancel or remove active/inactive references without navigating or deleting Todo files."
+	);
+
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

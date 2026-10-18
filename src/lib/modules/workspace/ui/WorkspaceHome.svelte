@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
@@ -10,11 +11,13 @@
 		catalogue,
 		warning,
 		disabled,
+		deleteWorkspace,
 		openWorkspaceCreationDialog,
 	}: {
 		catalogue: WorkspaceCatalogue;
 		warning?: string | null;
 		disabled: boolean;
+		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openWorkspaceCreationDialog: () => void;
 	} = $props();
 	const workspaces = $derived(
@@ -53,7 +56,12 @@
 	{/if}
 
 	{#if workspaces.length}
-		<WorkspaceList {workspaces} activeWorkspaceId={catalogue.active_workspace_id} {disabled} />
+		<WorkspaceList
+			{deleteWorkspace}
+			{workspaces}
+			activeWorkspaceId={catalogue.active_workspace_id}
+			{disabled}
+		/>
 	{:else}
 		<div
 			aria-label="No active workspace"

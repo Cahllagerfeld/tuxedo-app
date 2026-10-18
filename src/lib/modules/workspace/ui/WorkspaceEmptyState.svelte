@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Alert from "$lib/shared/ui/alert";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
@@ -9,10 +10,11 @@
 	type Props = {
 		session: ElectronWorkspaceSessionState["session"];
 		disabled: boolean;
+		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openWorkspaceCreationDialog: () => void;
 	};
 
-	let { session, disabled, openWorkspaceCreationDialog }: Props = $props();
+	let { session, disabled, deleteWorkspace, openWorkspaceCreationDialog }: Props = $props();
 	let viewport = $state<HTMLElement | null>(null);
 
 	export function focusViewport(): void {
@@ -51,6 +53,7 @@
 			<WorkspaceHome
 				catalogue={session.catalogue}
 				warning={session.status === "empty" ? session.warning : undefined}
+				{deleteWorkspace}
 				{disabled}
 				{openWorkspaceCreationDialog}
 			/>

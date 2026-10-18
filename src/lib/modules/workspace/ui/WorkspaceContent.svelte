@@ -80,6 +80,7 @@
 		<WorkspaceEmptyState
 			bind:this={emptyState}
 			session={workspace.session}
+			deleteWorkspace={workspace.deleteWorkspace}
 			disabled={workspace.isOperating || workspace.isLoading}
 			{openWorkspaceCreationDialog}
 		/>
