@@ -1,10 +1,9 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
-	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Plus from "@lucide/svelte/icons/plus";
-	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
+	import WorkspaceOptionsMenu from "./WorkspaceOptionsMenu.svelte";
+	import WorkspaceRemovalDialog from "./WorkspaceRemovalDialog.svelte";
 	import { Button } from "$lib/shared/ui/button";
 	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
@@ -12,29 +11,19 @@
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
 	} from "$lib/modules/workspace/state/workspace-session-types";
-	import { toast } from "svelte-sonner";
 
 	type Props = {
 		open?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
+		selectWorkspace: (workspaceId: string) => void;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openCreationDialog: () => void;
 		disabled?: boolean;
 		pendingOperation?: WorkspaceSessionOperation | null;
 	};
 
-	const colorClasses: Record<Workspace["color"], string> = {
-		blue: "bg-blue-600 dark:bg-blue-400",
-		green: "bg-green-600 dark:bg-green-400",
-		amber: "bg-amber-600 dark:bg-amber-400",
-		red: "bg-red-600 dark:bg-red-400",
-		violet: "bg-violet-600 dark:bg-violet-400",
-		pink: "bg-pink-600 dark:bg-pink-400",
-		cyan: "bg-cyan-600 dark:bg-cyan-400",
-		orange: "bg-orange-600 dark:bg-orange-400",
-	};
+	import { workspaceColorClasses } from "./workspace-colors";
 
 	let {
 		open = $bindable(false),
@@ -52,35 +41,6 @@
 		[...workspaces].sort((left, right) => left.created_at.localeCompare(right.created_at))
 	);
 	const activeWorkspace = $derived(workspaces.find(({ id }) => id === activeWorkspaceId) ?? null);
-
-	async function confirmDeletion() {
-		if (!workspaceToDelete || disabled) return;
-
-		const workspace = workspaceToDelete;
-		isDeleteDialogOpen = false;
-		workspaceToDelete = null;
-		try {
-			const result = await deleteWorkspace(workspace.id);
-			if (result.status === "rejected")
-				toast.error("Could not remove workspace", { description: result.message });
-		} catch (error) {
-			toast.error("Could not remove workspace", { description: errorMessage(error) });
-		}
-	}
-
-	async function chooseWorkspace(workspaceId: string) {
-		try {
-			const result = await selectWorkspace(workspaceId);
-			if (result.status === "rejected")
-				toast.error("Could not open workspace", { description: result.message });
-		} catch (error) {
-			toast.error("Could not open workspace", { description: errorMessage(error) });
-		}
-	}
-
-	function errorMessage(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
-	}
 </script>
 
 <DropdownMenu.Root bind:open>
@@ -93,7 +53,7 @@
 			>
 				{#if activeWorkspace}
 					<span
-						class={`size-2.5 shrink-0 rounded-full ${colorClasses[activeWorkspace.color]}`}
+						class={`size-2.5 shrink-0 rounded-full ${workspaceColorClasses[activeWorkspace.color]}`}
 						aria-hidden="true"
 					></span>
 				{/if}
@@ -114,18 +74,23 @@
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}
 			{#each sortedWorkspaces as workspace (workspace.id)}
-				<div class="flex items-center gap-1">
+				<div
+					class={[
+						"relative flex items-center gap-1 rounded-sm",
+						!disabled && "focus-within:bg-accent/50 hover:bg-accent/50",
+					]}
+				>
 					<DropdownMenu.Item
-						class="min-w-0 flex-1"
+						class="static min-w-0 flex-1 after:absolute after:inset-0 after:rounded-sm focus:bg-transparent"
 						aria-label={workspace.id === activeWorkspaceId
 							? `${workspace.name}, active`
 							: workspace.name}
 						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 						{disabled}
-						onclick={() => void chooseWorkspace(workspace.id)}
+						onclick={() => selectWorkspace(workspace.id)}
 					>
 						<span
-							class={`size-2 shrink-0 rounded-full ${colorClasses[workspace.color]}`}
+							class={`size-2 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}
 							aria-hidden="true"
 						></span>
 						<span class="truncate">{workspace.name}</span>
@@ -133,35 +98,16 @@
 								class="ml-auto text-xs text-muted-foreground">Active</span
 							>{/if}
 					</DropdownMenu.Item>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger {disabled}>
-							{#snippet child({ props })}
-								<DropdownMenu.Item
-									{...props}
-									{disabled}
-									closeOnSelect={false}
-									aria-label={`Options for ${workspace.name}`}
-									class="shrink-0 hover:bg-accent hover:text-accent-foreground"
-								>
-									<Ellipsis aria-hidden="true" />
-								</DropdownMenu.Item>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content side="right" align="start" class="w-auto">
-							<DropdownMenu.Item
-								variant="destructive"
-								{disabled}
-								onclick={() => {
-									open = false;
-									workspaceToDelete = workspace;
-									isDeleteDialogOpen = true;
-								}}
-							>
-								<Trash2 aria-hidden="true" />
-								Remove workspace
-							</DropdownMenu.Item>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
+					<WorkspaceOptionsMenu
+						workspaceName={workspace.name}
+						{disabled}
+						nested
+						onRemove={() => {
+							open = false;
+							workspaceToDelete = workspace;
+							isDeleteDialogOpen = true;
+						}}
+					/>
 				</div>
 			{/each}
 		{:else}
@@ -175,20 +121,9 @@
 	</DropdownMenu.Content>
 </DropdownMenu.Root>
 
-<AlertDialog.Root bind:open={isDeleteDialogOpen}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Remove workspace?</AlertDialog.Title>
-			<AlertDialog.Description>
-				Remove {workspaceToDelete?.name ?? "this Workspace"} from saved Workspaces? Its Todo file will
-				not be deleted.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action variant="destructive" {disabled} onclick={confirmDeletion}
-				>Remove workspace</AlertDialog.Action
-			>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<WorkspaceRemovalDialog
+	bind:open={isDeleteDialogOpen}
+	workspace={workspaceToDelete}
+	{disabled}
+	{deleteWorkspace}
+/>

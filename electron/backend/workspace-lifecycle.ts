@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { FileSystem } from "effect/FileSystem";
+import type { PlatformError } from "effect/PlatformError";
 import { Identity } from "./identity";
 import { WorkspaceCatalogue } from "./workspace-catalogue";
 import { attempt, OperationFailure, readContents } from "./operation";
@@ -17,6 +18,19 @@ import {
 } from "../../src/lib/shared/desktop/contract";
 
 export type LoadedSession = { session: ConfirmedSession["session"]; todoContents?: string };
+
+function todoFileReadMessage(error: PlatformError): string {
+	if (error.reason._tag === "NotFound")
+		return "This Todo file couldn’t be found. It may have been moved or deleted.";
+	if (error.reason._tag === "PermissionDenied")
+		return "Tuxedo doesn’t have permission to read this Todo file. Check its permissions and try again.";
+	return "This Todo file couldn’t be opened. Check that it’s a readable plain-text file and try again.";
+}
+
+const readWorkspaceContents = (path: string) =>
+	readContents(path).pipe(
+		Effect.mapError((error) => new OperationFailure({ message: todoFileReadMessage(error) }))
+	);
 
 export function createWorkspaceLifecycle(cataloguePath: string) {
 	const unavailable = () => ({
@@ -37,7 +51,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		Effect.gen(function* () {
 			const active = catalogue.workspaces.find((w) => w.id === catalogue.active_workspace_id);
 			if (!active) return { session: { status: "empty", catalogue, warning: null } };
-			return yield* readContents(active.todo_path).pipe(
+			return yield* readWorkspaceContents(active.todo_path).pipe(
 				Effect.map((todoContents) => ({
 					session: {
 						status: "ready" as const,
@@ -46,12 +60,12 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 					},
 					todoContents,
 				})),
-				Effect.catchTag("PlatformError", () =>
+				Effect.catchTag("OperationFailure", (error) =>
 					Effect.succeed({
 						session: {
 							status: "empty" as const,
 							catalogue,
-							warning: `Cannot open Todo file at ${active.todo_path}. Check its location and permissions.`,
+							warning: error.message,
 						},
 					})
 				)
@@ -158,14 +172,22 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 				const workspace = previous.workspaces.find((w) => w.id === workspaceId);
 				if (!workspace)
 					return yield* new OperationFailure({ message: "Workspace does not exist." });
-				const todoContents = yield* readContents(workspace.todo_path);
+				const todoContents = yield* readWorkspaceContents(workspace.todo_path);
 				const todo_file = parseTodoFile(workspace.todo_path, todoContents);
 				const catalogue = { ...previous, active_workspace_id: workspaceId };
 				return yield* commitCatalogue(catalogue, {
 					session: { status: "ready", catalogue, todo_file },
 					todoContents,
 				});
-			}),
+			}).pipe(
+				Effect.catchTag("PlatformError", () =>
+					Effect.fail(
+						new OperationFailure({
+							message: "This Workspace couldn’t be opened. Please try again.",
+						})
+					)
+				)
+			),
 		deleteWorkspace: (request: DesktopRequest<"deleteWorkspace">) =>
 			Effect.gen(function* () {
 				const { workspaceId } = yield* attempt(() => deleteWorkspaceRequestSchema.parse(request));

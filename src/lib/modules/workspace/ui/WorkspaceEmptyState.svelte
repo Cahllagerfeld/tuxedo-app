@@ -1,19 +1,22 @@
 <script lang="ts">
+	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Alert from "$lib/shared/ui/alert";
-	import { Button } from "$lib/shared/ui/button";
 	import * as Empty from "$lib/shared/ui/empty";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
-	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import WorkspaceHome from "./WorkspaceHome.svelte";
 	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
 
 	type Props = {
 		session: ElectronWorkspaceSessionState["session"];
 		disabled: boolean;
+		warning?: string;
+		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openWorkspaceCreationDialog: () => void;
 	};
 
-	let { session, disabled, openWorkspaceCreationDialog }: Props = $props();
+	let { session, warning, disabled, deleteWorkspace, openWorkspaceCreationDialog }: Props =
+		$props();
 	let viewport = $state<HTMLElement | null>(null);
 
 	export function focusViewport(): void {
@@ -25,7 +28,7 @@
 	<ScrollArea
 		bind:viewportRef={viewport}
 		class="h-full w-full"
-		aria-label="Todo item results"
+		aria-label="Workspaces"
 		viewportTabIndex={-1}
 	>
 		{#if session.status === "loading"}
@@ -49,19 +52,13 @@
 				</Alert.Root>
 			</Empty.Root>
 		{:else}
-			<Empty.Root aria-label="No active workspace">
-				<Empty.Media variant="icon"><FolderOpen aria-hidden="true" /></Empty.Media>
-				<Empty.Header>
-					<Empty.Title>No workspace open</Empty.Title>
-					<Empty.Description
-						>Open or create a Workspace to start working with a Todo file.</Empty.Description
-					>
-				</Empty.Header>
-				<Button {disabled} onclick={openWorkspaceCreationDialog}>New workspace</Button>
-				{#if session.status === "empty" && session.warning}
-					<p role="status">{session.warning}</p>
-				{/if}
-			</Empty.Root>
+			<WorkspaceHome
+				catalogue={session.catalogue}
+				warning={warning || (session.status === "empty" ? session.warning : undefined)}
+				{deleteWorkspace}
+				{disabled}
+				{openWorkspaceCreationDialog}
+			/>
 		{/if}
 	</ScrollArea>
 </div>

@@ -103,6 +103,12 @@ The confirmed removal of a Workspace from the saved catalogue followed by a refr
 **Empty state**:
 The state with no active Todo file loaded. It prompts the user to open an existing Workspace or create one, including after the Active workspace is deleted or cannot be opened.
 
+**Home**:
+The setup and recovery screen listing saved Workspaces to open, with Workspace creation. It appears when no Workspace is loaded or a Workspace cannot open. Visiting it never changes the Active workspace; everyday navigation uses the Workspace switcher.
+
+**Workspace destination**:
+The view of one Workspace, reachable through navigation history. It shows Todo items only after that Workspace is confirmed as the Active workspace; otherwise it is loading, or returns to Home with an explanation when unavailable. Navigation waits while a Workspace session operation runs.
+
 **Workspace creation**:
 The act of saving a new Workspace after its chosen Todo file has been successfully read and parsed. A successful creation opens and makes that Workspace active.
 

@@ -77,6 +77,8 @@ try {
 	}
 	application = await launchApplication();
 	let page = await application.firstWindow();
+	// Loading the entry route resumes the backend's Active workspace, like a fresh launch.
+	const reopen = () => page.goto(new URL("/", page.url()).href);
 	await assertWindowState(page);
 	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
 	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
@@ -115,6 +117,11 @@ try {
 		true
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
+	assert.equal(
+		await page.locator("[data-slot='sidebar']").count(),
+		0,
+		"Home must not render workspace filters"
+	);
 
 	// Use Chromium's native theme source without changing the host OS preference.
 	await page.emulateMedia({ colorScheme: null });
@@ -152,7 +159,7 @@ try {
 			await cdp.send("Network.setBlockedURLs", { urls: [] });
 			await cdp.detach();
 		}
-		await page.reload();
+		await reopen();
 		await page.getByText("No workspace open", { exact: true }).waitFor();
 	};
 	const expectTheme = async (theme) => {
@@ -184,7 +191,7 @@ try {
 			await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
 			lightBackground
 		);
-		await page.reload();
+		await reopen();
 		await page.getByText("No workspace open", { exact: true }).waitFor();
 		await expectTheme("dark");
 		await application.evaluate(({ nativeTheme }) => {
@@ -202,6 +209,61 @@ try {
 		}, originalThemeSource);
 	}
 
+	const preferences = await application.evaluate(({ BrowserWindow }) =>
+		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
+	);
+	assert.equal(preferences.sandbox, true);
+	assert.equal(preferences.contextIsolation, true);
+	assert.equal(preferences.nodeIntegration, false);
+	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
+	const todoPath = join(directory, "todo.txt");
+	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
+	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Personal",
+		color: "green",
+		todoPath,
+	});
+	assert.equal(created.status, "applied");
+	assert.equal(created.confirmed.session.status, "ready");
+	assert.equal(created.confirmed.session.todo_file.items.length, 2);
+	assert.equal(created.confirmed.session.todo_file.items[0].description, "Call Mom");
+	assert.deepEqual(
+		(await page.evaluate(() => window.desktop.readSession({}))).session,
+		created.confirmed.session
+	);
+	const beforeUndo = await readFile(todoPath, "utf8");
+	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		sortOrder: "due",
+	});
+	assert.equal(sorted.status, "applied");
+	assert.equal(sorted.confirmed.session.catalogue.workspaces[0].sort_order, "due");
+	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
+	await page.addInitScript(() => {
+		window.startupHomeSeen = false;
+		new MutationObserver(() => {
+			if (
+				document.querySelector(
+					'nav[aria-label="Saved workspaces"], [aria-label="No active workspace"], [aria-label="Loading workspace session"]'
+				)
+			)
+				window.startupHomeSeen = true;
+		}).observe(document, { childList: true, subtree: true });
+	});
+	await reopen();
+	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
+	assert.equal(
+		await page.getByRole("link", { name: "Home", exact: true }).count(),
+		0,
+		"Daily navigation uses the Workspace switcher"
+	);
+	assert.equal(
+		await page.evaluate(() => window.startupHomeSeen),
+		false,
+		"Restoring an Active workspace must never render Home"
+	);
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
@@ -240,7 +302,6 @@ try {
 		insetBounds,
 		"Collapsing keeps the outer inset fixed"
 	);
-	await page.getByText("No workspace open", { exact: true }).waitFor();
 	// Collapsed navigation must not leave keyboard focus on offscreen controls.
 	await sidebarToggle.focus();
 	await page.keyboard.press("Shift+Tab");
@@ -276,40 +337,6 @@ try {
 	}, windowSize);
 	await sidebar.waitFor({ state: "visible" });
 
-	const preferences = await application.evaluate(({ BrowserWindow }) =>
-		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
-	);
-	assert.equal(preferences.sandbox, true);
-	assert.equal(preferences.contextIsolation, true);
-	assert.equal(preferences.nodeIntegration, false);
-	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
-	const todoPath = join(directory, "todo.txt");
-	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
-	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
-		name: "Personal",
-		color: "green",
-		todoPath,
-	});
-	assert.equal(created.status, "applied");
-	assert.equal(created.confirmed.session.status, "ready");
-	assert.equal(created.confirmed.session.todo_file.items.length, 2);
-	assert.equal(created.confirmed.session.todo_file.items[0].description, "Call Mom");
-	assert.deepEqual(
-		(await page.evaluate(() => window.desktop.readSession({}))).session,
-		created.confirmed.session
-	);
-	const beforeUndo = await readFile(todoPath, "utf8");
-	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
-		scope: created.confirmed.scope,
-		revision: created.confirmed.revision,
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
-		sortOrder: "due",
-	});
-	assert.equal(sorted.status, "applied");
-	assert.equal(sorted.confirmed.session.catalogue.workspaces[0].sort_order, "due");
-	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
-	await page.reload();
-	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
 	assert.equal(
 		await page.getByRole("button", { name: "Sort Todo items", exact: true }).getAttribute("title"),
 		"Sort: Due date"
@@ -334,7 +361,7 @@ try {
 		projects: [],
 		contexts: [],
 	});
-	await page.reload();
+	await reopen();
 	const undoButton = page.getByRole("button", { name: "Undo creation", exact: true });
 	await undoButton.waitFor();
 	assert.equal(await undoButton.isEnabled(), true);
@@ -580,7 +607,7 @@ try {
 		window.desktop.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
 	);
 	assert.equal(missing.status, "rejected");
-	await page.reload();
+	await reopen();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	await application.close();
 	application = await launchApplication();
@@ -678,7 +705,7 @@ try {
 		todoPath: reorderPath,
 	});
 	assert.equal(reorderWorkspace.status, "applied");
-	await page.reload();
+	await reopen();
 	assert.equal(
 		await page.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed"),
 		"true"
@@ -694,7 +721,7 @@ try {
 		() => document.querySelector('ul[aria-label="Todo items"] li p')?.textContent === "Last"
 	);
 	assert.equal(await readFile(reorderPath, "utf8"), "Last\r\nx 2026-07-10 Hidden\r\nFirst");
-	await page.reload();
+	await reopen();
 	await page.getByRole("button", { name: /^Open/ }).click();
 	const lastHandle = page.getByRole("button", { name: "Reorder Last", exact: true });
 	await lastHandle.waitFor();
@@ -713,7 +740,7 @@ try {
 	await writeFile(reorderPath, manyItems.join("\n"));
 	// Wait for observation to accept the external edit before starting the drag.
 	await page.getByRole("button", { name: "Reorder Item 1", exact: true }).waitFor();
-	await page.reload();
+	await reopen();
 	await page.getByRole("button", { name: "Reorder Item 1", exact: true }).waitFor();
 	await page.getByRole("list", { name: "Todo items" }).evaluate((list) => {
 		const viewport = list.closest('[data-slot="scroll-area-viewport"]');
@@ -840,7 +867,7 @@ try {
 		);
 		assert.equal(await readFile(deletionPath, "utf8"), bulkDeletionSource);
 	}
-	await page.reload();
+	await reopen();
 	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).fill("Batch");
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
@@ -886,7 +913,7 @@ try {
 		deletionPath,
 		Array.from({ length: 1000 }, (_, index) => `Item ${index + 1}`).join("\n")
 	);
-	await page.reload();
+	await reopen();
 	await page.getByText("Item 1", { exact: true }).waitFor();
 	const renderedItems = page.getByRole("list", { name: "Todo items" }).getByRole("listitem");
 	assert.ok((await renderedItems.count()) < 60, "Todo-item rendering must stay bounded");
@@ -1100,7 +1127,7 @@ try {
 			"\n(Z) Metadata check custom:first due:2026-10-12"
 		)
 	);
-	await page.reload();
+	await reopen();
 	await addTodo.waitFor();
 	const metadataSession = await page.evaluate(() => window.desktop.readSession({}));
 	assert.equal(metadataSession.session.status, "ready");
@@ -1128,7 +1155,7 @@ try {
 			"\n(Z) Edited metadata check custom:first due:2026-10-12"
 		)
 	);
-	await page.reload();
+	await reopen();
 	await addTodo.click({ trial: true });
 	await page.getByRole("list", { name: "Todo items", exact: true }).focus();
 	await page.keyboard.press("End");
@@ -1152,7 +1179,7 @@ try {
 		todoPath: thresholdPath,
 	});
 	assert.equal(thresholdWorkspace.status, "applied");
-	await page.reload();
+	await reopen();
 	await page.getByText("Actionable chore", { exact: true }).waitFor();
 	const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
 	assert.equal(await showDeferred.getAttribute("aria-pressed"), "false");
@@ -1168,7 +1195,7 @@ try {
 	await page.getByText("Future chore", { exact: true }).waitFor();
 	assert.ok(await page.getByTitle("Show from 9999-12-31 · Deferred", { exact: true }).isVisible());
 	assert.ok(await page.getByTitle("Overdue · 2000-01-01", { exact: true }).isVisible());
-	await page.reload();
+	await reopen();
 	await page.getByText("Future chore", { exact: true }).waitFor();
 	assert.equal(
 		await showDeferred.getAttribute("aria-pressed"),
@@ -1249,7 +1276,7 @@ try {
 		todoPath: recurringPath,
 	});
 	assert.equal(recurringWorkspace.status, "applied");
-	await page.reload();
+	await reopen();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).click();
 	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
 	let recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
@@ -1285,7 +1312,7 @@ try {
 		todoPath: leadPath,
 	});
 	assert.equal(leadWorkspace.status, "applied");
-	await page.reload();
+	await reopen();
 	await page.getByRole("checkbox", { name: "Mark Mow complete", exact: true }).click();
 	await page
 		.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\. Show from \d{4}-\d{2}-\d{2}\.$/)
@@ -1346,6 +1373,204 @@ try {
 	console.log(
 		"Sandboxed preload rejects malformed responses and discards malformed observation events."
 	);
+
+	const routeIds = {};
+	for (const [name, item] of [
+		["Route A", "Alpha item"],
+		["Route B", "Beta item"],
+	]) {
+		const routePath = join(directory, `${name.replace(" ", "-")}.txt`);
+		await writeFile(routePath, `${item}\n`);
+		const routed = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+			name,
+			color: "violet",
+			todoPath: routePath,
+		});
+		routeIds[name] = routed.confirmed.session.catalogue.active_workspace_id;
+	}
+	const routeUrl = (path) => new URL(path, page.url()).href;
+	const recoverHome = async () => {
+		await page.goto(routeUrl("/workspaces/00000000-0000-4000-8000-000000000000"));
+		await page.waitForURL(routeUrl("/"));
+		await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	};
+	const activeId = async () =>
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
+			.active_workspace_id;
+	const expectRoute = async (name, item) => {
+		await page.waitForURL(routeUrl(`/workspaces/${routeIds[name]}`));
+		await page.getByText(item, { exact: true }).waitFor();
+		assert.equal(await activeId(), routeIds[name]);
+	};
+	await reopen();
+	await expectRoute("Route B", "Beta item");
+	await recoverHome();
+	await page.waitForURL(routeUrl("/"));
+	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	assert.equal(await page.getByRole("button", { name: "Toggle Sidebar", exact: true }).count(), 0);
+	assert.equal(await activeId(), routeIds["Route B"], "Home preserves the Active workspace");
+	const createdPath = join(directory, "Route-C.txt");
+	await writeFile(createdPath, "Gamma item\n");
+	await application.evaluate(({ ipcMain }, path) => {
+		ipcMain.removeHandler("tuxedo:select-todo-file");
+		ipcMain.handle("tuxedo:select-todo-file", () => path);
+	}, createdPath);
+	await page.getByRole("button", { name: "New workspace", exact: true }).click();
+	await page.getByRole("textbox", { name: "Workspace name" }).fill("Route C");
+	await page.getByRole("button", { name: "Todo file", exact: true }).click();
+	await page.getByText(createdPath, { exact: true }).waitFor();
+	await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+	await page.getByText("Gamma item", { exact: true }).waitFor();
+	routeIds["Route C"] = await activeId();
+	await expectRoute("Route C", "Gamma item");
+	await recoverHome();
+	await page.getByRole("link", { name: "Route A", exact: true }).click();
+	await expectRoute("Route A", "Alpha item");
+	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
+	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
+	await expectRoute("Route B", "Beta item");
+	const historyLength = await page.evaluate(() => history.length);
+	await page.goBack();
+	await expectRoute("Route A", "Alpha item");
+	await page.goForward();
+	await expectRoute("Route B", "Beta item");
+	assert.equal(await page.evaluate(() => history.length), historyLength);
+	console.log(
+		"Home, picker, creation, switcher, Back and Forward switch the persisted Active workspace."
+	);
+
+	await page.getByRole("checkbox", { name: "Mark Beta item complete", exact: true }).click();
+	const routeUndo = page.getByRole("button", { name: "Undo completion", exact: true });
+	await routeUndo.waitFor();
+	await recoverHome();
+	await page.getByRole("link", { name: "Route B", exact: true }).click();
+	await expectRoute("Route B", "Beta item");
+	assert.ok(await routeUndo.isEnabled(), "Returning from Home keeps Undo");
+	await page.getByRole("button", { name: "Select workspace: Route B" }).click();
+	await page.getByRole("menuitem", { name: "Route A", exact: true }).click();
+	await expectRoute("Route A", "Alpha item");
+	await page.goBack();
+	await expectRoute("Route B", "Beta item");
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
+	console.log("Home keeps the Undo opportunity; history switches clear it.");
+
+	await reopen();
+	await expectRoute("Route B", "Beta item");
+	// A kept startup entry would make Back stop at the picker.
+	await page.goBack();
+	await expectRoute("Route B", "Beta item");
+	await page.goto(routeUrl(`/workspaces/${routeIds["Route A"]}`));
+	await expectRoute("Route A", "Alpha item");
+	await page.reload();
+	await expectRoute("Route A", "Alpha item");
+	await recoverHome();
+	assert.equal(await activeId(), routeIds["Route A"], "A failed switch keeps the session");
+	await page.getByText("Workspace unavailable", { exact: true }).waitFor();
+	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	await page.reload();
+	await expectRoute("Route A", "Alpha item");
+	console.log(
+		"Unavailable nested destinations recover on Home; reload resumes the confirmed Active workspace."
+	);
+
+	await rm(join(directory, "Route-A.txt"));
+	await page.waitForURL(routeUrl("/"));
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	await page.getByText("Workspace unavailable", { exact: true }).waitFor();
+	await page
+		.getByText("This Todo file couldn’t be found. It may have been moved or deleted.", {
+			exact: true,
+		})
+		.waitFor();
+	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
+	await page.getByRole("link", { name: "Route A", exact: true }).click();
+	await expectRoute("Route A", "Alpha item");
+	console.log(
+		"An unreadable Todo file returns to Home and can be reopened from its row after recovery."
+	);
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:switch-workspace");
+		ipcMain.handle(
+			"tuxedo:switch-workspace",
+			() => new Promise((resolve) => (globalThis.releaseSwitch = resolve))
+		);
+	});
+	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
+	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
+	await page.getByLabel("Opening workspace", { exact: true }).waitFor();
+	const pendingUrl = page.url();
+	await page.evaluate(() => history.back());
+	await page.waitForTimeout(300);
+	assert.equal(page.url(), pendingUrl, "Back is blocked during a Workspace session operation");
+	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	await application.evaluate(() =>
+		globalThis.releaseSwitch({ status: "rejected", message: "Held switch failed" })
+	);
+	await page.getByText("Held switch failed", { exact: true }).waitFor();
+	assert.equal(await activeId(), routeIds["Route A"]);
+	await page.waitForURL(routeUrl("/"));
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	console.log(
+		"Navigation waits for admitted operations; failed switches recover on Home and retain the session."
+	);
+	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	const removeFromHome = async (name, cancel = false) => {
+		await page.getByRole("button", { name: `Options for ${name}`, exact: true }).click();
+		const removal = page.getByRole("menuitem", { name: "Remove workspace", exact: true });
+		assert.equal(
+			await removal.evaluate((element) => {
+				const text = [...element.childNodes].find(
+					(node) =>
+						node.nodeType === Node.TEXT_NODE && node.textContent.includes("Remove workspace")
+				);
+				const range = document.createRange();
+				range.selectNodeContents(text);
+				return range.getClientRects().length;
+			}),
+			1,
+			"Remove workspace must fit on one line"
+		);
+		await removal.click();
+		const confirmation = page.getByRole("alertdialog");
+		await confirmation.waitFor();
+		assert.match(
+			await confirmation.innerText(),
+			new RegExp(`Remove ${name} from saved Workspaces`)
+		);
+		assert.equal(new URL(page.url()).pathname, "/", "Options must not open the Workspace");
+		await confirmation
+			.getByRole("button", { name: cancel ? "Cancel" : "Remove workspace", exact: true })
+			.click();
+		await confirmation.waitFor({ state: "hidden" });
+		if (!cancel) await page.getByRole("link", { name, exact: true }).waitFor({ state: "hidden" });
+	};
+	await removeFromHome("Route C", true);
+	assert.equal(await page.getByRole("link", { name: "Route C", exact: true }).count(), 1);
+	assert.equal(await activeId(), routeIds["Route A"]);
+	await removeFromHome("Route C");
+	assert.equal(await readFile(createdPath, "utf8"), "Gamma item\n");
+	assert.equal(
+		await activeId(),
+		routeIds["Route A"],
+		"Removing an inactive Workspace keeps the active one"
+	);
+	await removeFromHome("Route A");
+	assert.equal(await activeId(), null);
+	assert.equal(await readFile(join(directory, "Route-A.txt"), "utf8"), "Alpha item\n");
+	await page.reload();
+	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	assert.equal(await page.getByRole("link", { name: "Route A", exact: true }).count(), 0);
+	assert.equal(await page.getByRole("link", { name: "Route C", exact: true }).count(), 0);
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	console.log(
+		"Home Workspace options cancel or remove active/inactive references without navigating or deleting Todo files."
+	);
+
 	console.log(
 		"Real Electron preload/IPC lifecycle, completion, deletion, conflicts, and isolation checks passed."
 	);

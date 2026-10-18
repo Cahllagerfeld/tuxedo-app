@@ -292,7 +292,7 @@ export function sessionLayer(
 				switchWorkspace: (request) =>
 					operation(
 						"switchWorkspace",
-						"Cannot open Workspace: ",
+						"",
 						workspace.switchWorkspace(request).pipe(Effect.map(applied))
 					),
 				deleteWorkspace: (request) =>

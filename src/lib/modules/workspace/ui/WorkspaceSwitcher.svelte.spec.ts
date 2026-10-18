@@ -1,3 +1,4 @@
+import "../../../../routes/layout.css";
 import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -223,4 +224,55 @@ it("opens Workspace options on activation, never on hover", async () => {
 	await options.click();
 	await expect.element(options).toHaveAttribute("aria-expanded", "false");
 	expect(selectWorkspace).not.toHaveBeenCalled();
+});
+
+it("highlights the entire switcher row and keeps options separately focusable", async () => {
+	const selectWorkspace = vi.fn();
+	render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace: vi.fn(),
+		openCreationDialog: vi.fn(),
+	});
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	const item = page.getByRole("menuitem", { name: "Personal", exact: true });
+	const options = page.getByRole("menuitem", { name: "Options for Personal", exact: true });
+	const row = item.element().parentElement!;
+	const background = (element: Element) => getComputedStyle(element).backgroundColor;
+	const initial = background(row);
+	await item.hover();
+	await expect.poll(() => background(row)).not.toBe(initial);
+	expect(background(item.element())).toBe("rgba(0, 0, 0, 0)");
+	await options.hover();
+	await expect.poll(() => background(options.element())).not.toBe("rgba(0, 0, 0, 0)");
+	expect(background(row)).not.toBe(initial);
+	await expect.element(options).toHaveAttribute("aria-expanded", "false");
+	expect(selectWorkspace).not.toHaveBeenCalled();
+});
+
+it("clicking the switcher row gap selects the Workspace while clicking options only opens its menu", async () => {
+	const selectWorkspace = vi.fn();
+	await render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace: vi.fn(),
+		openCreationDialog: vi.fn(),
+	});
+	const switcher = page.getByRole("button", { name: /Select workspace: Work/ });
+	await switcher.click();
+	const item = page.getByRole("menuitem", { name: "Personal", exact: true });
+	const options = page.getByRole("menuitem", { name: "Options for Personal", exact: true });
+	const row = item.element().parentElement!;
+	const gapX =
+		options.element().getBoundingClientRect().left - row.getBoundingClientRect().left - 2;
+	await userEvent.click(row, { position: { x: gapX, y: row.clientHeight / 2 } });
+	expect(selectWorkspace).toHaveBeenCalledExactlyOnceWith(personal.id);
+	await switcher.click();
+	await options.click();
+	await expect
+		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+		.toBeVisible();
+	expect(selectWorkspace).toHaveBeenCalledOnce();
 });

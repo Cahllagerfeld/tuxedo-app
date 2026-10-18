@@ -395,7 +395,7 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	const refreshed = await backend.restoreSession({});
 	expect(refreshed.session).toMatchObject({
 		status: "empty",
-		warning: expect.stringContaining(firstPath),
+		warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 		catalogue: { workspaces: expect.any(Array) },
 	});
 	expect([...paths]).toEqual([]);
@@ -453,7 +453,7 @@ test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
 			if (change === "deletion") {
 				expect(refreshed.session).toMatchObject({
 					status: "empty",
-					warning: expect.stringContaining(path),
+					warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 				});
 				return;
 			}
@@ -501,7 +501,7 @@ test.each([1, 10])(
 					const refreshed = await backend.restoreSession({});
 					expect(refreshed.session).toMatchObject({
 						status: "empty",
-						warning: expect.stringContaining(path),
+						warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 						catalogue: { workspaces: [expect.objectContaining({ todo_path: path })] },
 					});
 				} finally {
