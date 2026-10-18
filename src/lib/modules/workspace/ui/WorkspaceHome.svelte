@@ -54,7 +54,7 @@
 
 	{#if warning}
 		<Alert.Root class="mb-6">
-			<Alert.Title>Could not open your last Workspace</Alert.Title>
+			<Alert.Title>Workspace unavailable</Alert.Title>
 			<Alert.Description>{warning}</Alert.Description>
 		</Alert.Root>
 	{/if}

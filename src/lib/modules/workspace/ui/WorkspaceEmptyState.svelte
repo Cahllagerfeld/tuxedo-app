@@ -10,11 +10,13 @@
 	type Props = {
 		session: ElectronWorkspaceSessionState["session"];
 		disabled: boolean;
+		warning?: string;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openWorkspaceCreationDialog: () => void;
 	};
 
-	let { session, disabled, deleteWorkspace, openWorkspaceCreationDialog }: Props = $props();
+	let { session, warning, disabled, deleteWorkspace, openWorkspaceCreationDialog }: Props =
+		$props();
 	let viewport = $state<HTMLElement | null>(null);
 
 	export function focusViewport(): void {
@@ -52,7 +54,7 @@
 		{:else}
 			<WorkspaceHome
 				catalogue={session.catalogue}
-				warning={session.status === "empty" ? session.warning : undefined}
+				warning={warning || (session.status === "empty" ? session.warning : undefined)}
 				{deleteWorkspace}
 				{disabled}
 				{openWorkspaceCreationDialog}

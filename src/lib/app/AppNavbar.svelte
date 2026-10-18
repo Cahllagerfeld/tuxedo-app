@@ -8,8 +8,6 @@
 	import { createHotkey, formatForDisplay } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
-	import House from "@lucide/svelte/icons/house";
-	import { resolve } from "$app/paths";
 	let {
 		app,
 		readerShown = true,
@@ -45,14 +43,6 @@
 >
 	{#if workspaceShown}
 		<Sidebar.Trigger class="[app-region:no-drag]" />
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			class="[app-region:no-drag]"
-			aria-label="Home"
-			title="Home"
-			href={resolve("/")}><House aria-hidden="true" /></Button
-		>
 		<Button
 			variant="ghost"
 			size="icon-sm"
