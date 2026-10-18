@@ -2289,51 +2289,92 @@ test.each(["rejected", "conflict"] as const)(
 	}
 );
 
-test("selection keyboard selects off-screen matches, suppresses editing, and preserves text input shortcuts", async () => {
-	if (initial.session.status !== "ready") throw Error("Expected Ready");
-	const items = Array.from({ length: 200 }, (_, index) => ({
-		...todo,
-		line_number: index + 1,
-		raw: `Batch ${index}`,
-		description: `Batch ${index}`,
-	}));
-	const hidden = { ...todo, line_number: 201, raw: "Hidden", description: "Hidden" };
-	const session: ConfirmedSession = {
-		...initial,
-		session: {
-			...initial.session,
-			todo_file: { path: "/tmp/work.todo", items: [...items, hidden], skipped: [] },
-		},
-	};
-	const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () => ({
-		status: "rejected",
-		message: "Test rejection",
-	}));
-	render(Harness, {
-		desktop: adapter({ restoreSession: async () => session, bulkSetTodoCompletion: bulk }),
-	});
-	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
-	const search = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
-	await search.fill("Batch");
-	await page.getByRole("button", { name: "Select items", exact: true }).click();
-	const row = page.getByRole("button", { name: "Navigate Batch 0", exact: true });
-	(row.element() as HTMLElement).focus();
-	await userEvent.keyboard("{ArrowDown}{Space}{Enter}e");
-	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
-	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
-	await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
-	await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
-	expect(document.querySelectorAll("[data-row-navigation]").length).toBeLessThan(200);
-	await search.click();
-	await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
-	expect((search.element() as HTMLInputElement).selectionEnd).toBe(5);
-	await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Complete", exact: true }).click();
-	await expect.poll(() => bulk.mock.calls.length).toBe(1);
-	expect(bulk.mock.calls[0][0].targets).toHaveLength(200);
-	expect(bulk.mock.calls[0][0].targets.some((target) => target.lineNumber === 201)).toBe(false);
-});
+test.each(["rejected", "applied"] as const)(
+	"selection keyboard submits off-screen recurring matches with %s feedback and preserves filters",
+	async (status) => {
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const items = Array.from({ length: 200 }, (_, index): TodoFile["items"][number] => ({
+			...todo,
+			line_number: index + 1,
+			raw: `Batch ${index}${index === 0 ? " rec:1w" : index === 199 ? " rec:+1w" : ""}`,
+			metadata: index === 0 ? { rec: "1w" } : index === 199 ? { rec: "+1w" } : {},
+			description: `Batch ${index}`,
+		}));
+		const hidden = { ...todo, line_number: 201, raw: "Hidden", description: "Hidden" };
+		const session: ConfirmedSession = {
+			...initial,
+			session: {
+				...initial.session,
+				todo_file: { path: "/tmp/work.todo", items: [...items, hidden], skipped: [] },
+			},
+		};
+		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () => ({
+			...(status === "rejected"
+				? { status, message: "Test rejection" }
+				: {
+						status,
+						notice: "Generated 1 next occurrence. Skipped 1 unsupported Repeat rule.",
+						confirmed: confirmedTodo([
+							...items.map((item) => ({
+								...item,
+								completed: true,
+								raw: `x 2026-10-18 ${item.raw}`,
+							})),
+							hidden,
+							{
+								...todo,
+								line_number: 202,
+								raw: "Batch next rec:1w",
+								description: "Batch next",
+								metadata: { rec: "1w" },
+							},
+						]),
+					}),
+		}));
+		render(Harness, {
+			desktop: adapter({ restoreSession: async () => session, bulkSetTodoCompletion: bulk }),
+		});
+		await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+		const search = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
+		await search.fill("Batch");
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		const row = page.getByRole("button", { name: "Navigate Batch 0", exact: true });
+		(row.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}{Space}{Enter}e");
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+		const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
+		await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
+		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
+		expect(document.querySelectorAll("[data-row-navigation]").length).toBeLessThan(200);
+		await search.click();
+		await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
+		expect((search.element() as HTMLInputElement).selectionEnd).toBe(5);
+		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Complete", exact: true }).click();
+		await expect.poll(() => bulk.mock.calls.length).toBe(1);
+		expect(bulk.mock.calls[0][0].targets).toHaveLength(200);
+		expect(bulk.mock.calls[0][0].targets.some((target) => target.lineNumber === 201)).toBe(false);
+		if (status === "applied") {
+			await expect
+				.element(page.getByText("Completed 200 Todo items", { exact: true }))
+				.toBeVisible();
+			await expect
+				.element(
+					page.getByText("Generated 1 next occurrence. Skipped 1 unsupported Repeat rule.", {
+						exact: true,
+					})
+				)
+				.toBeVisible();
+			await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+			await expect
+				.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+				.toBeVisible();
+			await expect.element(search).toHaveValue("Batch");
+			expect(bulk).toHaveBeenCalledTimes(1);
+		}
+	}
+);
 
 test.each(["Cancel", "Escape"])(
 	"bulk deletion %s writes nothing, preserves selection, and returns focus before Escape exits",

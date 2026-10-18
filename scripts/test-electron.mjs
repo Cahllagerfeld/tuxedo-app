@@ -1303,6 +1303,62 @@ try {
 	console.log(
 		"Checkbox and editor recurrence generate one successor through preload/IPC; Undo restores exact CRLF/EOF bytes."
 	);
+	const recurringBatchPath = join(directory, "recurring-batch.txt");
+	const recurringBatchBytes =
+		"Batch monthly rec:1m\r\nOrdinary\nBatch weekly rec:1w\nBatch unsupported rec:+1w\nHidden rec:1d";
+	await writeFile(recurringBatchPath, recurringBatchBytes);
+	const recurringBatchWorkspace = await page.evaluate(
+		(input) => window.desktop.createWorkspace(input),
+		{
+			name: "Recurring batch",
+			color: "green",
+			todoPath: recurringBatchPath,
+		}
+	);
+	assert.equal(recurringBatchWorkspace.status, "applied");
+	await reopen();
+	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).fill("Batch");
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("button", { name: "Select all", exact: true }).click();
+	await page.getByText("3 selected", { exact: true }).waitFor();
+	await page.getByRole("button", { name: "Complete", exact: true }).click();
+	await page.getByText("Completed 3 Todo items", { exact: true }).waitFor();
+	await page
+		.getByText("Generated 2 next occurrences. Skipped 1 unsupported Repeat rule.", { exact: true })
+		.waitFor();
+	await page.getByText("0 selected", { exact: true }).waitFor();
+	const recurringBatchState = await page.evaluate(() => window.desktop.readSession({}));
+	const batchItems = recurringBatchState.session.todo_file.items;
+	assert.equal(batchItems.length, 7);
+	assert.deepEqual(
+		batchItems.map((item) => item.description),
+		[
+			"Batch monthly",
+			"Batch monthly",
+			"Ordinary",
+			"Batch weekly",
+			"Batch weekly",
+			"Batch unsupported",
+			"Hidden",
+		]
+	);
+	assert.equal(batchItems.filter((item) => item.completed).length, 3);
+	assert.equal(batchItems[0].metadata["tuxedo-generated"], "1");
+	assert.equal(batchItems[3].metadata["tuxedo-generated"], "1");
+	assert.equal(batchItems[1].metadata["tuxedo-generated"], undefined);
+	assert.equal(batchItems[4].metadata["tuxedo-generated"], undefined);
+	assert.equal(
+		await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).inputValue(),
+		"Batch"
+	);
+	await page.getByRole("button", { name: "Exit selection mode", exact: true }).click();
+	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
+	assert.equal(await readFile(recurringBatchPath, "utf8"), recurringBatchBytes);
+	console.log(
+		"Bulk recurring completion reports aggregate counts, preserves filtered-out items, and undoes exact mixed-ending bytes through the real selection UI."
+	);
 	const leadPath = join(directory, "lead.txt");
 	const leadBytes = "Mow rec:1m due:2020-01-10 t:2020-01-07\n";
 	await writeFile(leadPath, leadBytes);

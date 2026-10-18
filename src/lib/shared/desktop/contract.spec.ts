@@ -589,7 +589,7 @@ test("bulk completion transport validates unique physical-line targets", () => {
 	).toThrow();
 });
 
-test("completion transport carries validated recurrence feedback for checkbox and editor", async () => {
+test("completion transport carries validated recurrence feedback for checkbox, editor, and bulk completion", async () => {
 	const response = {
 		status: "applied",
 		notice: "Next occurrence due 2028-02-29.",
@@ -600,7 +600,7 @@ test("completion transport carries validated recurrence feedback for checkbox an
 			todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
 		},
 	};
-	for (const operation of ["setTodoCompletion", "editTodo"] as const) {
+	for (const operation of ["setTodoCompletion", "editTodo", "bulkSetTodoCompletion"] as const) {
 		expect(desktopContract[operation].response.parse(response)).toEqual(response);
 		for (const notice of ["", 123, { due: "2028-02-29" }])
 			expect(() => desktopContract[operation].response.parse({ ...response, notice })).toThrow();

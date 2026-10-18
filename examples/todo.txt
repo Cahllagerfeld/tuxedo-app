@@ -51,6 +51,9 @@ Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
 Keep this unselected line unchanged during bulk completion +BulkReview @desk
 x 2026-10-16 Leave an already-completed selection unchanged +BulkReview
 Generate one successor when bulk completing this recurring item +BulkReview rec:1w
+Generate another adjacent successor in the same batch and undo both together +BulkReview rec:1m
+Count this unsupported Repeat rule as skipped while completing the batch +BulkReview rec:+1w
+Recomplete this marked original without generating a duplicate successor +BulkReview rec:1w tuxedo-generated:1
 
 x 2026-10-16 2026-10-01 Select completed items and Mark incomplete to restore dates and Priority together +BulkReopen pri:A
 x Reopen this legacy completed item in the same selection +BulkReopen

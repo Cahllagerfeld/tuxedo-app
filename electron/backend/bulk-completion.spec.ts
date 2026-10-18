@@ -266,3 +266,121 @@ test.each([true, false])(
 		expect(await readFile(path, "utf8")).toBe(initial);
 	}
 );
+
+test("bulk recurring completion reports mixed results, inserts beside each original, and undoes exact bytes", async () => {
+	const initial =
+		"(A) Monthly +Home rec:1m due:2028-01-31 t:2028-01-29\r\n\nOrdinary\nWeekly rec:1w\nx 2020-01-01 Already rec:1d\nMarked rec:1d tuxedo-generated:1\nUnsupported rec:+1w\nAlso unsupported rec:0d\nUnselected rec:1d\nYearly rec:1y";
+	const { backend, path, target, items } = await setup(initial, {
+		identity: {
+			uuid: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			now: () => new Date(2028, 0, 31, 12).toISOString(),
+		},
+	});
+	const before = initial.replace("Unselected", "External edit");
+	await writeFile(path, before);
+	const result = await backend.bulkSetTodoCompletion({
+		...target,
+		completed: true,
+		targets: items
+			.filter((item) => item.description !== "Unselected")
+			.reverse()
+			.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	expect(result.status).toBe("applied");
+	if (result.status !== "applied") throw Error("bulk completion failed");
+	expect(result.notice).toBe("Generated 3 next occurrences. Skipped 2 unsupported Repeat rules.");
+	expect(await readFile(path, "utf8")).toBe(
+		"x 2028-01-31 Monthly +Home rec:1m due:2028-01-31 t:2028-01-29 pri:A tuxedo-generated:1\r\n(A) 2028-01-31 Monthly +Home rec:1m t:2028-02-27 due:2028-02-29\r\n\nx 2028-01-31 Ordinary\nx 2028-01-31 Weekly rec:1w tuxedo-generated:1\n2028-01-31 Weekly rec:1w due:2028-02-07\nx 2020-01-01 Already rec:1d\nx 2028-01-31 Marked rec:1d tuxedo-generated:1\nx 2028-01-31 Unsupported rec:+1w\nx 2028-01-31 Also unsupported rec:0d\nExternal edit rec:1d\nx 2028-01-31 Yearly rec:1y tuxedo-generated:1\r\n2028-01-31 Yearly rec:1y due:2029-01-31"
+	);
+	expect(result.confirmed.todo_file.items.filter((item) => item.completed)).toHaveLength(8);
+	const undone = await backend.undoTodo({ ...target, revision: result.confirmed.revision });
+	expect(undone.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(before);
+});
+
+test.each([
+	["Overflow rec:99999y", "supported date range"],
+	["Threshold rec:1d due:0001-01-01 t:9999-12-31", "Show from date"],
+	["(A) Conflicting rec:1d pri:B", "Conflicting priority"],
+])(
+	"bulk recurrence rejects %s without partially completing other targets",
+	async (invalid, message) => {
+		const initial = `Safe rec:1w\n${invalid}\nOrdinary`;
+		const { backend, path, target, items, session } = await setup(initial);
+		const result = await backend.bulkSetTodoCompletion({
+			...target,
+			completed: true,
+			targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		expect(result).toMatchObject({ status: "rejected", message: expect.stringContaining(message) });
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(session);
+	}
+);
+
+test("a recurring batch write failure leaves no completions, markers, successors or temporary files", async () => {
+	const initial = "First rec:1w\r\nLast rec:1m";
+	const { backend, path, directory, target, items, session } = await setup(initial);
+	await chmod(directory, 0o500);
+	try {
+		const result = await backend.bulkSetTodoCompletion({
+			...target,
+			completed: true,
+			targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		expect(result.status).toBe("rejected");
+		expect(await readFile(path, "utf8")).toBe(initial);
+		expect(await backend.readSession({})).toEqual(session);
+		expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+	} finally {
+		await chmod(directory, 0o700);
+	}
+});
+
+test("bulk uncompletion and reopening preserve generation markers and never duplicate successors", async () => {
+	const { backend, path, target, items } = await setup("First rec:1w\nLast rec:1m");
+	const completed = await backend.bulkSetTodoCompletion({
+		...target,
+		completed: true,
+		targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	if (completed.status !== "applied") throw Error("completion failed");
+	expect(completed.notice).toBe("Generated 2 next occurrences.");
+	const before = await readFile(path, "utf8");
+	const reopened = await backend.bulkSetTodoCompletion({
+		...target,
+		revision: completed.confirmed.revision,
+		completed: false,
+		targets: completed.confirmed.todo_file.items
+			.filter((item) => item.completed)
+			.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	if (reopened.status !== "applied") throw Error("uncompletion failed");
+	const originals = reopened.confirmed.todo_file.items.filter(
+		(item) => item.metadata["tuxedo-generated"]
+	);
+	expect(originals).toHaveLength(2);
+	const restored = await backend.restoreSession({});
+	const recompleted = await backend.bulkSetTodoCompletion({
+		...target,
+		revision: restored.revision,
+		completed: true,
+		targets: originals.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	expect(recompleted.status).toBe("applied");
+	expect(await readFile(path, "utf8")).toBe(before);
+});
+
+test("unsupported-only batches report a skip rather than a generation failure", async () => {
+	const { backend, path, target, items } = await setup("Legacy rec:+1w");
+	const result = await backend.bulkSetTodoCompletion({
+		...target,
+		completed: true,
+		targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+	});
+	expect(result).toMatchObject({
+		status: "applied",
+		notice: "Generated 0 next occurrences. Skipped 1 unsupported Repeat rule.",
+	});
+	expect(await readFile(path, "utf8")).toMatch(/^x \d{4}-\d{2}-\d{2} Legacy rec:\+1w$/);
+});
