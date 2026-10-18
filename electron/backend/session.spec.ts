@@ -301,7 +301,7 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 	const missing = await backend.restoreSession({});
 	expect(missing.session).toMatchObject({
 		status: "empty",
-		warning: expect.stringContaining("Cannot open Todo file"),
+		warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 		catalogue: { active_workspace_id: expect.any(String) },
 	});
 });
@@ -591,3 +591,46 @@ test("restoration keeps non-ASCII date-like descriptions intact", async () => {
 		{ line_number: 1, description: "éab-12-34 Invalid date" },
 	]);
 });
+
+test.each([
+	["missing", "This Todo file couldn’t be found. It may have been moved or deleted."],
+	[
+		"permission",
+		"Tuxedo doesn’t have permission to read this Todo file. Check its permissions and try again.",
+	],
+	[
+		"invalid-text",
+		"This Todo file couldn’t be opened. Check that it’s a readable plain-text file and try again.",
+	],
+])(
+	"Todo-file %s errors are friendly during switching and restoration",
+	async (failure, message) => {
+		const directory = await mkdtemp(join(tmpdir(), "tuxedo-friendly-error-"));
+		directories.push(directory);
+		const todoPath = join(directory, "todo.txt");
+		await writeFile(todoPath, "Seed\n");
+		const backend = createSessionBackend(join(directory, "workspaces.json"));
+		try {
+			const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
+			if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+				throw Error("Expected Ready");
+			const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
+			if (failure === "missing") await rm(todoPath);
+			else if (failure === "permission") await chmod(todoPath, 0o000);
+			else await writeFile(todoPath, new Uint8Array([0xff]));
+
+			expect(await backend.switchWorkspace({ workspaceId })).toEqual({
+				status: "rejected",
+				message,
+			});
+			expect(await backend.readSession({})).toEqual(created.confirmed);
+			expect((await backend.restoreSession({})).session).toMatchObject({
+				status: "empty",
+				warning: message,
+			});
+		} finally {
+			if (failure === "permission") await chmod(todoPath, 0o600);
+			await backend.dispose();
+		}
+	}
+);

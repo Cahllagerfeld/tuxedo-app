@@ -90,7 +90,7 @@ test("a missing remaining Active Todo file warns without undoing catalogue delet
 		confirmed: {
 			session: {
 				status: "empty",
-				warning: expect.stringContaining(f.secondPath),
+				warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 				catalogue: { active_workspace_id: f.secondId, workspaces: [{ id: f.secondId }] },
 			},
 		},

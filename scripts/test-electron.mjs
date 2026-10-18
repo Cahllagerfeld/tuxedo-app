@@ -1479,6 +1479,11 @@ try {
 	await page.waitForURL(routeUrl("/"));
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	await page.getByText("Workspace unavailable", { exact: true }).waitFor();
+	await page
+		.getByText("This Todo file couldn’t be found. It may have been moved or deleted.", {
+			exact: true,
+		})
+		.waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
