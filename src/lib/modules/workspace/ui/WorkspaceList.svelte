@@ -30,7 +30,7 @@
 			class="group h-auto w-full justify-start gap-4 rounded-xl p-5 text-left shadow-none sm:gap-5"
 		>
 			<span
-				class={`size-3 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}
+				class={`size-4 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}
 				aria-hidden="true"
 			></span>
 			<span class="flex min-w-0 flex-1 flex-col gap-1.5">
