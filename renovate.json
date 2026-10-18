@@ -25,6 +25,11 @@
 		{
 			"matchUpdateTypes": ["major"],
 			"dependencyDashboardApproval": true
+		},
+		{
+			"matchPackageNames": ["effect", "@effect/*"],
+			"groupName": "Effect dependencies",
+			"separateMajorMinor": false
 		}
 	]
 }
