@@ -87,8 +87,8 @@ describe("TodoFilterState", () => {
 		const view = {
 			status: "open",
 			search: "  café & +Work%  ",
-			project: "工程&Work%",
-			context: "Home",
+			project: "工程\uFEFF&Work%",
+			context: "Home\uFEFFoffice",
 			priority: "A",
 			due: "none",
 		} as const;
@@ -101,6 +101,13 @@ describe("TodoFilterState", () => {
 		restored.sync("work", [open, completed]);
 		expect(restored.snapshot()).toEqual(view);
 		expect(restored.filterItems([open, completed])).toEqual([]);
+		const exactItem = {
+			...open,
+			description: "café & +Work%",
+			projects: [view.project],
+			contexts: [view.context],
+		};
+		expect(restored.filterItems([exactItem])).toEqual([exactItem]);
 		expect(filter.sortOrder).toBe("due");
 		expect(filter.showDeferred).toBe(true);
 	});

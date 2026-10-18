@@ -70,6 +70,21 @@ test("saved views survive restart, remain Workspace-specific, and can be deleted
 	expect(deleted).toMatchObject({ status: "applied", views: [{ workspace_id: otherId }] });
 	expect(await readFile(todoPath, "utf8")).toBe("Invoice +work\n");
 });
+
+test("saved views retain exact parsed Project and Context tokens containing a BOM", async () => {
+	const { backend, path, workspaceId } = await fixture();
+	const exactFilters = { ...filters, project: "Work\uFEFFTeam", context: "desk\uFEFFoffice" };
+	const saved = await backend.saveView({
+		workspaceId,
+		name: "Exact tokens",
+		filters: exactFilters,
+	});
+	expect(saved).toMatchObject({ status: "applied", views: [{ filters: exactFilters }] });
+	await backend.shutdown();
+	const restarted = createSessionBackend(path);
+	backends.push(restarted);
+	expect(await restarted.readSavedViews({})).toEqual(saved);
+});
 test.each(["{broken", '{"version":2,"views":[]}', '{"version":1,"views":[],"extra":true}'])(
 	"invalid saved views are preserved without blocking Workspace restoration: %s",
 	async (contents) => {

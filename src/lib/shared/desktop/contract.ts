@@ -8,7 +8,6 @@ import {
 	todoCreationIssues,
 	TodoDate,
 	TodoPriority,
-	TodoTag,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
 
@@ -243,11 +242,13 @@ export const reorderTodoRequestSchema = effectValidator(
 );
 export const SavedViewName = Schema.NonEmptyString.check(Schema.isTrimmed());
 export const SavedViewNameForm = Schema.Struct({ name: Schema.mutableKey(SavedViewName) });
+// Filters retain exact parsed tokens; unlike editor input, a BOM is source content.
+const TodoFilterTag = Schema.NonEmptyString.check(Schema.isPattern(/^[^\p{White_Space}]+$/u));
 export const SavedViewFilters = Schema.Struct({
 	status: Schema.Literals(["all", "open", "completed"]),
 	search: Schema.String,
-	project: Schema.NullOr(TodoTag),
-	context: Schema.NullOr(TodoTag),
+	project: Schema.NullOr(TodoFilterTag),
+	context: Schema.NullOr(TodoFilterTag),
 	priority: Schema.NullOr(TodoPriority),
 	due: Schema.NullOr(Schema.Literals(["overdue", "today", "upcoming", "none", "invalid"])),
 }).check(

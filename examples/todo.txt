@@ -76,6 +76,7 @@ See a helpful missing-file message on the entry page when a Todo file is moved o
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 Filter this Workspace then switch away and use Back to restore its search and filters +TuxedoApp @review
 Reload a filtered Workspace destination to keep its applied view +TuxedoApp @review
+Keep exact imported Project and Context tokens in URL filters and saved views +Work﻿Team @desk﻿office
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01
 Clear Show from in the editor to remove every threshold token +Imported @review t:2026-10-14 t:+2d
