@@ -29,13 +29,18 @@
 </div>
 <nav aria-label="Saved workspaces" class="flex flex-col gap-3">
 	{#each workspaces as workspace (workspace.id)}
-		<div class="flex items-center rounded-xl border bg-background pr-3">
+		<div
+			class={[
+				"flex items-center rounded-xl border bg-background pr-3 transition-colors",
+				!disabled && "hover:bg-muted/50 has-focus-visible:bg-muted/50",
+			]}
+		>
 			<Button
 				variant="ghost"
 				{disabled}
 				href={resolve("/workspaces/[id]", { id: workspace.id })}
 				aria-label={workspace.name}
-				class="group h-auto min-w-0 flex-1 justify-start gap-4 rounded-xl p-5 text-left sm:gap-5"
+				class="group h-auto min-w-0 flex-1 justify-start gap-4 rounded-xl p-5 text-left hover:bg-transparent sm:gap-5 dark:hover:bg-transparent"
 			>
 				<span
 					class={`size-4 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}

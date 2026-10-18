@@ -35,6 +35,7 @@
 					{...props}
 					variant="ghost"
 					size="icon"
+					class="hover:bg-muted dark:hover:bg-muted"
 					{disabled}
 					aria-label={`Options for ${workspaceName}`}
 				>
