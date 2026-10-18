@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as Alert from "$lib/shared/ui/alert";
 	import { Button } from "$lib/shared/ui/button";
-	import FileText from "@lucide/svelte/icons/file-text";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import Plus from "@lucide/svelte/icons/plus";
 	import type { WorkspaceCatalogue } from "../domain/workspace";
@@ -74,10 +73,4 @@
 			>
 		</div>
 	{/if}
-	<footer
-		class="mt-8 flex items-start gap-2 border-t pt-5 text-xs leading-relaxed text-muted-foreground"
-	>
-		<FileText class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-		<p>Plain text, on your device. Your Todo files stay right where you keep them.</p>
-	</footer>
 </section>
