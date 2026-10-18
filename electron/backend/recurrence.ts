@@ -58,28 +58,29 @@ function nextShowFrom(show: string, sourceDue: string, due: string): string {
 	return shifted;
 }
 
-/** Complete and insert against the original physical positions before one atomic commit. */
-export function recurringCompletion(
+/** Plan a physical-line replacement, including any successor, against the original file. */
+export function planRecurringCompletion(
 	contents: string,
 	source: TodoItem,
 	raw: string,
 	today: Date,
 	priority: string | null = source.priority
-): { contents: string; notice?: string } {
+): { lineNumber: number; raw: string; recurrence?: "generated" | "unsupported"; notice?: string } {
 	const completed = parseTodoFile("", raw).items[0];
 	if (!completed || !completed.completed) throw Error("Invalid completed Todo item.");
-	const replace = (line: string) =>
-		replaceTodoLines(contents, [{ lineNumber: source.line_number, raw: line }]);
+	const lineNumber = source.line_number;
 	if (
 		source.completed ||
 		Object.hasOwn(source.metadata, generationMarker) ||
 		!completed.metadata.rec
 	)
-		return { contents: replace(raw) };
+		return { lineNumber, raw };
 	const rule = /^([1-9][0-9]*)([dwmy])$/u.exec(completed.metadata.rec);
 	if (!rule)
 		return {
-			contents: replace(raw),
+			lineNumber,
+			raw,
+			recurrence: "unsupported",
 			notice: "Unsupported Repeat rule; no next occurrence generated.",
 		};
 	const due = nextDueDate(completed.completion_date, rule);
@@ -120,12 +121,27 @@ export function recurringCompletion(
 	const line = lines[source.line_number - 1];
 	const ending = line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "";
 	const separator = ending || contents.match(/\r\n|\n/u)?.[0] || "\n";
-	lines[source.line_number - 1] = `${raw} ${generationMarker}:1${separator}${successor}${ending}`;
 	return {
-		contents: lines.join(""),
+		lineNumber,
+		raw: `${raw} ${generationMarker}:1${separator}${successor}`,
+		recurrence: "generated",
 		notice:
 			showFrom && showFrom > todayText
 				? `Next occurrence due ${due}. Show from ${showFrom}.`
 				: `Next occurrence due ${due}.`,
+	};
+}
+
+export function recurringCompletion(
+	contents: string,
+	source: TodoItem,
+	raw: string,
+	today: Date,
+	priority: string | null = source.priority
+): { contents: string; notice?: string } {
+	const plan = planRecurringCompletion(contents, source, raw, today, priority);
+	return {
+		contents: replaceTodoLines(contents, [plan]),
+		...(plan.notice ? { notice: plan.notice } : {}),
 	};
 }
