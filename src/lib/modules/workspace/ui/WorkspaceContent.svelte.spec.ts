@@ -2423,6 +2423,8 @@ test.each(["middle", "last", "all"] as const)(
 			);
 		await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+		// CI can observe the success notice after the 200 ms exit-animation window.
+		await new Promise((resolve) => setTimeout(resolve, 400));
 		await expect
 			.element(
 				page.getByText(
