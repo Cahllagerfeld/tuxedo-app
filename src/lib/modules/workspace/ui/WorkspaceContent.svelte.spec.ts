@@ -13,10 +13,12 @@ import { localToday } from "$lib/modules/todo/domain/todo-due";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
 afterEach(async () => {
+	vi.useRealTimers();
 	// Sonner's shared state survives component cleanup between tests.
 	toast.dismiss();
 	await expect.poll(() => document.querySelectorAll("[data-sonner-toast]").length).toBe(0);
 });
+
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 const todo: TodoFile["items"][number] = {
@@ -2733,3 +2735,180 @@ test("unchanged refresh retains selection and a skipped-line edit clears it with
 		.element(page.getByText("Selection cleared because the Todo file changed.", { exact: true }))
 		.toBeVisible();
 });
+
+test.each(["focus", "visibilitychange", "midnight"])(
+	"a %s date refresh clears selection and dismisses stale deletion",
+	async (refresh) => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date(2026, 9, 18, 12));
+		const deferred = {
+			...todo,
+			line_number: 2,
+			raw: "Tomorrow t:2026-10-19",
+			description: "Tomorrow",
+			metadata: { t: "2026-10-19" },
+		};
+		const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>();
+		render(Harness, {
+			desktop: adapter({
+				bulkDeleteTodos,
+				restoreSession: async () => ({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items: [todo, deferred], skipped: [] },
+					},
+				}),
+			}),
+		});
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect
+			.element(page.getByRole("alertdialog", { name: "Delete 1 Todo item?" }))
+			.toBeVisible();
+		if (refresh === "midnight") {
+			vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+			vi.setSystemTime(new Date(2026, 9, 18, 12));
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(12 * 60 * 60 * 1000);
+		} else {
+			vi.setSystemTime(new Date(2026, 9, 19, 12));
+			(refresh === "focus" ? window : document).dispatchEvent(new Event(refresh));
+		}
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
+			.toBeVisible();
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText("Selection cleared because the displayed Todo items changed.", {
+					exact: true,
+				})
+			)
+			.toBeVisible();
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toHaveFocus();
+		expect(bulkDeleteTodos).not.toHaveBeenCalled();
+	}
+);
+
+test("date and badge changes retain selection when the displayed population is unchanged", async () => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date(2026, 9, 18, 12));
+	render(Harness, { desktop: adapter() });
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
+	(row.element() as HTMLElement).focus();
+	vi.setSystemTime(new Date(2026, 9, 19, 12));
+	document.dispatchEvent(new Event("visibilitychange"));
+	await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+	await expect.element(row).toHaveFocus();
+	await expect
+		.element(page.getByText("Selection cleared", { exact: false }))
+		.not.toBeInTheDocument();
+});
+
+test.each(["completion", "deletion"] as const)(
+	"Show deferred resets selection; off-screen %s targets stay fixed across a date refresh",
+	async (operation) => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date(2026, 9, 18, 12));
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		const ready = initial.session;
+		const items = Array.from({ length: 200 }, (_, index) => ({
+			...todo,
+			line_number: index + 1,
+			raw: `Item ${index}`,
+			description: `Item ${index}`,
+		}));
+		const deferred = {
+			...todo,
+			line_number: 201,
+			raw: "Tomorrow t:2026-10-19",
+			description: "Tomorrow",
+			metadata: { t: "2026-10-19" },
+		};
+		let current: ConfirmedSession = {
+			...initial,
+			session: { ...ready, todo_file: { ...ready.todo_file, items: [...items, deferred] } },
+		};
+		let finish!: (result: Awaited<ReturnType<DesktopAPI["bulkDeleteTodos"]>>) => void;
+		const bulk = vi.fn(
+			() =>
+				new Promise<Awaited<ReturnType<DesktopAPI["bulkDeleteTodos"]>>>((resolve) => {
+					finish = resolve;
+				})
+		);
+		render(Harness, {
+			desktop: adapter({
+				restoreSession: async () => current,
+				bulkSetTodoCompletion: bulk,
+				bulkDeleteTodos: bulk,
+				setWorkspaceShowDeferred: async ({ showDeferred }) => {
+					current = {
+						...current,
+						revision: current.revision + 1,
+						session: {
+							...ready,
+							todo_file: { ...ready.todo_file, items: [...items, deferred] },
+							catalogue: {
+								...ready.catalogue,
+								workspaces: ready.catalogue.workspaces.map((w) => ({
+									...w,
+									show_deferred: showDeferred,
+								})),
+							},
+						},
+					};
+					return { status: "applied", confirmed: current };
+				},
+			}),
+		});
+		await page.getByRole("button", { name: "Select items", exact: true }).click();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
+		const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
+		await toggle.click();
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await expect.element(page.getByText("201 selected", { exact: true })).toBeVisible();
+		// A date/badge change alone must preserve selection while deferred items are shown.
+		vi.setSystemTime(new Date(2026, 9, 19, 12));
+		window.dispatchEvent(new Event("focus"));
+		await expect.element(toggle).toHaveTextContent("");
+		await expect.element(page.getByText("201 selected", { exact: true })).toBeVisible();
+		vi.setSystemTime(new Date(2026, 9, 18, 12));
+		window.dispatchEvent(new Event("focus"));
+		await toggle.click();
+		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await page
+			.getByRole("button", {
+				name: operation === "completion" ? "Complete" : "Delete",
+				exact: true,
+			})
+			.click();
+		if (operation === "deletion")
+			await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
+		vi.setSystemTime(new Date(2026, 9, 19, 12));
+		window.dispatchEvent(new Event("focus"));
+		await expect.element(toggle).toHaveTextContent("");
+		await expect.element(toggle).toBeDisabled();
+		await expect
+			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
+			.toBeDisabled();
+		expect(bulk).toHaveBeenCalledExactlyOnceWith({
+			scope,
+			revision: 3,
+			workspaceId,
+			...(operation === "completion" ? { completed: true } : {}),
+			targets: items.map((item) => ({ lineNumber: item.line_number, expectedRaw: item.raw })),
+		});
+		finish({ status: "rejected", message: "Read-only file" });
+		await expect.element(toggle).toBeEnabled();
+	}
+);

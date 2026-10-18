@@ -79,7 +79,9 @@
 			toast.info(
 				previousSelection.fileSignature !== current.fileSignature
 					? "Selection cleared because the Todo file changed."
-					: "Selection cleared because filters changed."
+					: previousSelection.filterSignature !== current.filterSignature
+						? "Selection cleared because filters changed."
+						: "Selection cleared because the displayed Todo items changed."
 			);
 		}
 		previousSelection = current;

@@ -27,6 +27,8 @@ export function createTodoBulkSelection(inputs: Inputs) {
 	);
 	const fileSignature = $derived(JSON.stringify(inputs.getWorkspace().todoFile));
 	const filterSignature = $derived(inputs.getFilterSignature());
+	// Compare membership, so sorting and date-only badge changes retain selection.
+	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
 	const mode = $derived.by(() => {
 		workspaceKey;
 		return cell(false);
@@ -35,6 +37,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		workspaceKey;
 		fileSignature;
 		filterSignature;
+		matchingSignature;
 		return cell(new Set<string>());
 	});
 	const selectedItems = $derived(
