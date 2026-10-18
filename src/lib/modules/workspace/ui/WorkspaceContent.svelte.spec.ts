@@ -382,7 +382,7 @@ test("empty-query search stays open across Ready → Empty → Ready without rem
 	await expect.element(search).toBeVisible();
 	await expect.element(search).toHaveValue("");
 	await restore.click();
-	await expect.element(page.getByLabelText("No active workspace")).toBeVisible();
+	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
 	await expect.element(toggle).not.toBeInTheDocument();
 	await expect.element(search).not.toBeInTheDocument();
 	await restore.click();
@@ -425,7 +425,7 @@ test("an unreadable external reload transfers detail focus to the Empty-state vi
 	await expect.element(page.getByText("Todo file unreadable", { exact: true })).toBeVisible();
 	await expect.element(panel).not.toBeInTheDocument();
 	const viewport = document.querySelector<HTMLElement>(
-		'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
+		'[aria-label="Workspaces"] [data-slot="scroll-area-viewport"]'
 	);
 	await expect.poll(() => document.activeElement).toBe(viewport);
 });
@@ -655,7 +655,7 @@ test("Empty state retains restoration warnings", async () => {
 			}),
 		}),
 	});
-	await expect.element(page.getByLabelText("No active workspace")).toBeVisible();
+	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
 	await expect.element(page.getByText("Could not open /tmp/work.todo")).toBeVisible();
 });
 test("confirmed final deletion clears all App summary facts", async () => {

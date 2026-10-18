@@ -117,6 +117,11 @@ try {
 		true
 	);
 	await page.getByText("No workspace open", { exact: true }).waitFor();
+	assert.equal(
+		await page.locator("[data-slot='sidebar']").count(),
+		0,
+		"Home must not render workspace filters"
+	);
 
 	// Use Chromium's native theme source without changing the host OS preference.
 	await page.emulateMedia({ colorScheme: null });
@@ -204,6 +209,56 @@ try {
 		}, originalThemeSource);
 	}
 
+	const preferences = await application.evaluate(({ BrowserWindow }) =>
+		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
+	);
+	assert.equal(preferences.sandbox, true);
+	assert.equal(preferences.contextIsolation, true);
+	assert.equal(preferences.nodeIntegration, false);
+	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
+	const todoPath = join(directory, "todo.txt");
+	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
+	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Personal",
+		color: "green",
+		todoPath,
+	});
+	assert.equal(created.status, "applied");
+	assert.equal(created.confirmed.session.status, "ready");
+	assert.equal(created.confirmed.session.todo_file.items.length, 2);
+	assert.equal(created.confirmed.session.todo_file.items[0].description, "Call Mom");
+	assert.deepEqual(
+		(await page.evaluate(() => window.desktop.readSession({}))).session,
+		created.confirmed.session
+	);
+	const beforeUndo = await readFile(todoPath, "utf8");
+	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
+		scope: created.confirmed.scope,
+		revision: created.confirmed.revision,
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
+		sortOrder: "due",
+	});
+	assert.equal(sorted.status, "applied");
+	assert.equal(sorted.confirmed.session.catalogue.workspaces[0].sort_order, "due");
+	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
+	await page.addInitScript(() => {
+		window.startupHomeSeen = false;
+		new MutationObserver(() => {
+			if (
+				document.querySelector(
+					'nav[aria-label="Saved workspaces"], [aria-label="No active workspace"], [aria-label="Loading workspace session"]'
+				)
+			)
+				window.startupHomeSeen = true;
+		}).observe(document, { childList: true, subtree: true });
+	});
+	await reopen();
+	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
+	assert.equal(
+		await page.evaluate(() => window.startupHomeSeen),
+		false,
+		"Restoring an Active workspace must never render Home"
+	);
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
@@ -242,7 +297,6 @@ try {
 		insetBounds,
 		"Collapsing keeps the outer inset fixed"
 	);
-	await page.getByText("No workspace open", { exact: true }).waitFor();
 	// Collapsed navigation must not leave keyboard focus on offscreen controls.
 	await sidebarToggle.focus();
 	await page.keyboard.press("Shift+Tab");
@@ -278,40 +332,6 @@ try {
 	}, windowSize);
 	await sidebar.waitFor({ state: "visible" });
 
-	const preferences = await application.evaluate(({ BrowserWindow }) =>
-		BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()
-	);
-	assert.equal(preferences.sandbox, true);
-	assert.equal(preferences.contextIsolation, true);
-	assert.equal(preferences.nodeIntegration, false);
-	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
-	const todoPath = join(directory, "todo.txt");
-	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
-	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
-		name: "Personal",
-		color: "green",
-		todoPath,
-	});
-	assert.equal(created.status, "applied");
-	assert.equal(created.confirmed.session.status, "ready");
-	assert.equal(created.confirmed.session.todo_file.items.length, 2);
-	assert.equal(created.confirmed.session.todo_file.items[0].description, "Call Mom");
-	assert.deepEqual(
-		(await page.evaluate(() => window.desktop.readSession({}))).session,
-		created.confirmed.session
-	);
-	const beforeUndo = await readFile(todoPath, "utf8");
-	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
-		scope: created.confirmed.scope,
-		revision: created.confirmed.revision,
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
-		sortOrder: "due",
-	});
-	assert.equal(sorted.status, "applied");
-	assert.equal(sorted.confirmed.session.catalogue.workspaces[0].sort_order, "due");
-	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
-	await reopen();
-	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
 	assert.equal(
 		await page.getByRole("button", { name: "Sort Todo items", exact: true }).getAttribute("title"),
 		"Sort: Due date"
@@ -1377,6 +1397,8 @@ try {
 	await page.getByRole("link", { name: "Home", exact: true }).click();
 	await page.waitForURL(routeUrl("/"));
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	assert.equal(await page.getByRole("button", { name: "Toggle Sidebar", exact: true }).count(), 0);
 	assert.equal(await activeId(), routeIds["Route B"], "Home preserves the Active workspace");
 	const createdPath = join(directory, "Route-C.txt");
 	await writeFile(createdPath, "Gamma item\n");

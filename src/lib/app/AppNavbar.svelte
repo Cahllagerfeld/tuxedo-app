@@ -10,7 +10,11 @@
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
 	import House from "@lucide/svelte/icons/house";
 	import { resolve } from "$app/paths";
-	let { app, readerShown = true }: { app: AppState; readerShown?: boolean } = $props();
+	let {
+		app,
+		readerShown = true,
+		workspaceShown = readerShown,
+	}: { app: AppState; readerShown?: boolean; workspaceShown?: boolean } = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
 		readerShown &&
@@ -39,23 +43,27 @@
 <header
 	class="flex h-(--window-toolbar-height) shrink-0 items-center bg-window-background pl-24 text-sm font-medium text-muted-foreground select-none [app-region:drag]"
 >
-	<Sidebar.Trigger class="[app-region:no-drag]" />
-	<Button
-		variant="ghost"
-		size="icon-sm"
-		class="[app-region:no-drag]"
-		aria-label="Home"
-		title="Home"
-		href={resolve("/")}><House aria-hidden="true" /></Button
-	>
-	<Button
-		variant="ghost"
-		size="icon-sm"
-		class="[app-region:no-drag]"
-		aria-label={app.workspace.undoLabel ?? "Undo last change"}
-		title={`${app.workspace.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
-		disabled={!canUndo}
-		onclick={undo}><Undo2 aria-hidden="true" /></Button
-	>
-	<AppShortcuts {app} {readerShown} />
+	{#if workspaceShown}
+		<Sidebar.Trigger class="[app-region:no-drag]" />
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			class="[app-region:no-drag]"
+			aria-label="Home"
+			title="Home"
+			href={resolve("/")}><House aria-hidden="true" /></Button
+		>
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			class="[app-region:no-drag]"
+			aria-label={app.workspace.undoLabel ?? "Undo last change"}
+			title={`${app.workspace.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
+			disabled={!canUndo}
+			onclick={undo}><Undo2 aria-hidden="true" /></Button
+		>
+	{:else}
+		<span class="pl-2 text-xs font-semibold tracking-wide">Tuxedo</span>
+	{/if}
+	<AppShortcuts {app} {readerShown} {workspaceShown} />
 </header>

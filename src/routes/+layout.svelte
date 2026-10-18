@@ -21,6 +21,7 @@
 	setShortcutScope();
 	const appState = new AppState();
 	setAppState(appState);
+	let starting = $state(true);
 	const busy = $derived(appState.workspace.isOperating || appState.workspace.isLoading);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const openWorkspace = (id: string, replaceState = false) =>
@@ -42,10 +43,11 @@
 
 	onMount(() => {
 		const stop = appState.workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
-		void appState.workspace.initialize().then(() => {
+		void appState.workspace.initialize().then(async () => {
 			const active = appState.workspace.activeWorkspace;
 			if (page.params.id) appState.visitWorkspace(page.params.id);
-			else if (active && appState.workspace.todoFile) void openWorkspace(active.id, true);
+			else if (active && appState.workspace.todoFile) await openWorkspace(active.id, true);
+			starting = false;
 		});
 		return stop;
 	});
@@ -58,36 +60,46 @@
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
-	<AppNavbar app={appState} readerShown={showsActiveWorkspace} />
-	<div
-		data-slot="app-inset"
-		class="relative m-1 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
-	>
-		<WorkspaceSidebar
-			bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
-			workspaces={appState.workspace.catalogue?.workspaces ?? []}
-			activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
-			todoSummary={appState.todos}
-			todoFilter={appState.todoFilter}
-			todoFileLoaded={showsActiveWorkspace && appState.workspace.todoFile !== null}
-			disabled={busy}
-			pendingOperation={appState.workspace.pendingOperation}
-			selectWorkspace={(id) => void openWorkspace(id)}
-			deleteWorkspace={appState.workspace.deleteWorkspace}
-			openCreationDialog={appState.openWorkspaceCreationDialog}
+	{#if starting}
+		<p role="status" class="sr-only">Loading Tuxedo…</p>
+	{:else}
+		<AppNavbar
+			app={appState}
+			readerShown={showsActiveWorkspace}
+			workspaceShown={!!page.params.id}
 		/>
-		<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-			{@render children()}
-			{#if showsActiveWorkspace}
-				<ReaderStatusBar
-					activeWorkspace={appState.workspace.activeWorkspace}
-					todoFile={appState.workspace.todoFile}
+		<div
+			data-slot="app-inset"
+			class="relative m-1 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+		>
+			{#if page.params.id}
+				<WorkspaceSidebar
+					bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
+					workspaces={appState.workspace.catalogue?.workspaces ?? []}
+					activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
 					todoSummary={appState.todos}
+					todoFilter={appState.todoFilter}
+					todoFileLoaded={showsActiveWorkspace && appState.workspace.todoFile !== null}
+					disabled={busy}
 					pendingOperation={appState.workspace.pendingOperation}
+					selectWorkspace={(id) => void openWorkspace(id)}
+					deleteWorkspace={appState.workspace.deleteWorkspace}
+					openCreationDialog={appState.openWorkspaceCreationDialog}
 				/>
 			{/if}
-		</main>
-	</div>
+			<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+				{@render children()}
+				{#if showsActiveWorkspace}
+					<ReaderStatusBar
+						activeWorkspace={appState.workspace.activeWorkspace}
+						todoFile={appState.workspace.todoFile}
+						todoSummary={appState.todos}
+						pendingOperation={appState.workspace.pendingOperation}
+					/>
+				{/if}
+			</main>
+		</div>
+	{/if}
 	<WorkspaceCreationDialog
 		bind:open={appState.isWorkspaceCreationDialogOpen}
 		disabled={busy}
