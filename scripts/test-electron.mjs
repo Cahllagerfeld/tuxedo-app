@@ -631,6 +631,11 @@ try {
 		await page.getByRole("searchbox", { name: "Search Todo items" }).inputValue(),
 		"Call"
 	);
+	assert.equal(
+		new URL(page.url()).searchParams.get("search"),
+		"Call",
+		"Saved views update destination filters"
+	);
 	await page.getByRole("button", { name: "Clear search", exact: true }).click();
 	const deletedView = await page.evaluate((input) => window.desktop.deleteView(input), {
 		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
@@ -1466,7 +1471,12 @@ try {
 		["Route B", "Beta item"],
 	]) {
 		const routePath = join(directory, `${name.replace(" ", "-")}.txt`);
-		await writeFile(routePath, `${item}\n`);
+		await writeFile(
+			routePath,
+			name === "Route A"
+				? `(A) ${item} +Work @desk due:2099-01-01\nx 2026-10-14 Alpha completed +Other\n`
+				: `${item}\n`
+		);
 		const routed = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 			name,
 			color: "violet",
@@ -1526,9 +1536,67 @@ try {
 		"Home, picker, creation, switcher, Back and Forward switch the persisted Active workspace."
 	);
 
+	const filteredA = routeUrl(
+		`/workspaces/${routeIds["Route A"]}?status=open&search=Alpha&project=Work&context=desk&priority=A&due=upcoming&item=7#reader`
+	);
+	await page.goto(filteredA);
+	await page.getByText("Alpha item", { exact: true }).waitFor();
+	assert.equal(await page.getByText("Alpha completed", { exact: true }).count(), 0);
+	const filterHistoryLength = await page.evaluate(() => history.length);
+	const routeSearch = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
+	await routeSearch.fill("item");
+	await page.waitForURL((url) => url.searchParams.get("search") === "item");
+	const editedA = page.url();
+	assert.equal(new URL(editedA).searchParams.get("item"), "7");
+	assert.equal(new URL(editedA).hash, "#reader");
+	assert.equal(
+		await page.evaluate(() => history.length),
+		filterHistoryLength,
+		"Filter edits replace history"
+	);
+	await page.reload();
+	await page.getByText("Alpha item", { exact: true }).waitFor();
+	assert.equal(await routeSearch.inputValue(), "item");
+	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
+	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
+	await expectRoute("Route B", "Beta item");
+	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+	await routeSearch.fill("Beta");
+	await page.waitForURL((url) => url.searchParams.get("search") === "Beta");
+	const editedB = page.url();
+	await page.goBack();
+	await page.waitForURL(editedA);
+	await page.getByText("Alpha item", { exact: true }).waitFor();
+	assert.equal(await routeSearch.inputValue(), "item");
+	assert.equal(await page.getByText("Alpha completed", { exact: true }).count(), 0);
+	assert.equal(await activeId(), routeIds["Route A"]);
+	await page.goForward();
+	await page.waitForURL(editedB);
+	await page.getByText("Beta item", { exact: true }).waitFor();
+	assert.equal(await routeSearch.inputValue(), "Beta");
+	assert.equal(await activeId(), routeIds["Route B"]);
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
+	await page.waitForURL(routeUrl(`/workspaces/${routeIds["Route B"]}`));
+	console.log(
+		"URL filters survive reload and Workspace history, replace entries, and preserve unrelated query and history state."
+	);
+
 	await page.getByRole("checkbox", { name: "Mark Beta item complete", exact: true }).click();
 	const routeUndo = page.getByRole("button", { name: "Undo completion", exact: true });
 	await routeUndo.waitFor();
+	const beforeFilter = await page.evaluate(() => window.desktop.readSession({}));
+	if ((await routeSearch.count()) === 0)
+		await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
+	await routeSearch.fill("Beta");
+	await page.waitForURL((url) => url.searchParams.get("search") === "Beta");
+	assert.ok(await routeUndo.isEnabled(), "Filter navigation keeps Undo");
+	assert.deepEqual(
+		await page.evaluate(() => window.desktop.readSession({})),
+		beforeFilter,
+		"Filter navigation leaves the confirmed session unchanged"
+	);
+	await page.getByRole("button", { name: "Clear search", exact: true }).click();
+	await page.waitForURL(routeUrl(`/workspaces/${routeIds["Route B"]}`));
 	await recoverHome();
 	await page.getByRole("link", { name: "Route B", exact: true }).click();
 	await expectRoute("Route B", "Beta item");

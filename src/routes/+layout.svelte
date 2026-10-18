@@ -12,6 +12,7 @@
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
 	import { beforeNavigate, goto } from "$app/navigation";
+	import { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { resolve } from "$app/paths";
 	import { page } from "$app/state";
 	import type { DesktopRequest } from "$lib/shared/desktop/contract";
@@ -19,7 +20,21 @@
 	let { children } = $props();
 
 	setShortcutScope();
-	const appState = new AppState();
+	const appState = new AppState(
+		undefined,
+		new TodoFilterState({
+			read: () => page.url,
+			write: (url) => {
+				if (appState.showsDestination(page.params.id) && !busy)
+					void goto(url, {
+						replaceState: true,
+						keepFocus: true,
+						noScroll: true,
+						state: page.state,
+					});
+			},
+		})
+	);
 	setAppState(appState);
 	let starting = $state(true);
 	const busy = $derived(appState.workspace.isOperating || appState.workspace.isLoading);

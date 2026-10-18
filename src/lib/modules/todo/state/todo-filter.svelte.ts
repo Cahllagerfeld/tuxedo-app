@@ -4,6 +4,9 @@ import type { TodoItem } from "$lib/modules/todo/domain/todo";
 import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../domain/todo-due";
 
 import { isDeferred } from "../domain/todo-threshold";
+import { emptyTodoFilters, readTodoFilters, writeTodoFilters } from "./todo-filter-url";
+
+export type TodoFilterURL = { read: () => URL; write: (url: URL) => void };
 
 export type TodoFilterStatus = "all" | "open" | "completed";
 
@@ -14,10 +17,54 @@ export type TodoFilterFacets = Readonly<{
 }>;
 
 export class TodoFilterState {
+	constructor(private readonly url?: TodoFilterURL) {
+		this.values = $derived(this.url ? readTodoFilters(this.url.read()) : this.localFilters);
+	}
+	private localFilters = $state(emptyTodoFilters());
+	private values: SavedViewFilterValues;
+	private update = (filters: SavedViewFilterValues) => {
+		if (this.url) this.url.write(writeTodoFilters(this.url.read(), filters));
+		else this.localFilters = filters;
+	};
+	get status() {
+		return this.values.status;
+	}
+	set status(status: TodoFilterStatus) {
+		this.update({ ...this.values, status });
+	}
+	get selectedProject() {
+		return this.values.project;
+	}
+	set selectedProject(project: string | null) {
+		this.update({ ...this.values, project });
+	}
+	get selectedContext() {
+		return this.values.context;
+	}
+	set selectedContext(context: string | null) {
+		this.update({ ...this.values, context });
+	}
+	get selectedPriority() {
+		return this.values.priority;
+	}
+	set selectedPriority(priority: string | null) {
+		this.update({ ...this.values, priority });
+	}
+	get selectedDue() {
+		return this.values.due;
+	}
+	set selectedDue(due: TodoDueCategory | null) {
+		this.update({ ...this.values, due });
+	}
+	get searchText() {
+		return this.values.search;
+	}
+	set searchText(search: string) {
+		this.update({ ...this.values, search });
+	}
 	private preserveSelections = false;
 	private workspaceKey: string | null | undefined;
 	private items = $state.raw<readonly TodoItem[]>([]);
-	status = $state<TodoFilterStatus>("all");
 	sortOrder = $state<TodoSortOrder>("file");
 	showDeferred = $state(false);
 	deferredCount = $derived(
@@ -29,11 +76,6 @@ export class TodoFilterState {
 			this.status === "all" ? null : this.status === "completed"
 		)
 	);
-	selectedProject = $state<string | null>(null);
-	selectedContext = $state<string | null>(null);
-	selectedPriority = $state<string | null>(null);
-	selectedDue = $state<TodoDueCategory | null>(null);
-	searchText = $state("");
 	private searchTerms = $derived(this.searchText.toLowerCase().split(/\s+/).filter(Boolean));
 	hasSearch = $derived(this.searchTerms.length > 0);
 	today = $state(localToday());
@@ -69,8 +111,11 @@ export class TodoFilterState {
 	}
 
 	setStatus = (status: TodoFilterStatus) => {
-		this.status = status;
-		if (status === "completed") this.clearDue();
+		this.update({
+			...this.values,
+			status,
+			...(status === "completed" ? { due: null, priority: null } : {}),
+		});
 		this.reconcile(this.availableFacets);
 	};
 
@@ -98,11 +143,7 @@ export class TodoFilterState {
 
 	clear = () => {
 		this.preserveSelections = false;
-		this.clearSearch();
-		this.clearDue();
-		this.selectedProject = null;
-		this.selectedContext = null;
-		this.selectedPriority = null;
+		this.update({ ...emptyTodoFilters(), status: this.status });
 	};
 
 	reset = () => {
@@ -121,17 +162,26 @@ export class TodoFilterState {
 		this.items = items;
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
-			this.reset();
+			if (!this.url) this.reset();
+			else {
+				this.sortOrder = "file";
+				this.showDeferred = false;
+			}
 		}
 		if (sortOrder !== undefined) this.sortOrder = sortOrder;
 		if (showDeferred !== undefined) this.showDeferred = showDeferred;
-		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
+		if (
+			!this.url &&
+			!this.preserveSelections &&
+			this.selectedDue === "invalid" &&
+			this.invalidDueCount === 0
+		)
 			this.clearDue();
 		this.reconcile(this.availableFacets);
 	};
 
 	reconcile = (facets: TodoFilterFacets) => {
-		if (this.preserveSelections) return;
+		if (this.url || this.preserveSelections) return;
 		if (this.selectedProject !== null && !facets.projects.includes(this.selectedProject)) {
 			this.selectedProject = null;
 		}
@@ -153,12 +203,7 @@ export class TodoFilterState {
 	});
 	applyView = (filters: SavedViewFilterValues) => {
 		this.preserveSelections = true;
-		this.status = filters.status;
-		this.searchText = filters.search;
-		this.selectedProject = filters.project;
-		this.selectedContext = filters.context;
-		this.selectedPriority = filters.priority;
-		this.selectedDue = filters.due;
+		this.update(filters);
 	};
 
 	private matchesFilters = (item: TodoItem) => {

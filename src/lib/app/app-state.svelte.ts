@@ -10,7 +10,7 @@ import { createTodoBulkSelection } from "$lib/modules/workspace/ui/todo-bulk-sel
 export class AppState {
 	workspace: ElectronWorkspaceSessionState;
 	todos: TodoFileSummary;
-	todoFilter = new TodoFilterState();
+	todoFilter: TodoFilterState;
 	filteredTodoItems: ReturnType<TodoFilterState["filterItems"]>;
 	isWorkspaceCreationDialogOpen = $state(false);
 	isWorkspaceSwitcherOpen = $state(false);
@@ -21,9 +21,11 @@ export class AppState {
 	}
 
 	constructor(
-		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)
+		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop),
+		todoFilter = new TodoFilterState()
 	) {
 		this.workspace = workspace;
+		this.todoFilter = todoFilter;
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
 		this.bulkSelection = createTodoBulkSelection({

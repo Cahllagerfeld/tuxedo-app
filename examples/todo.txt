@@ -74,6 +74,8 @@ Return Home to see the last-opened Workspace first while other Workspaces keep t
 Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
 See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
+Filter this Workspace then switch away and use Back to restore its search and filters +TuxedoApp @review
+Reload a filtered Workspace destination to keep its applied view +TuxedoApp @review
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01
 Clear Show from in the editor to remove every threshold token +Imported @review t:2026-10-14 t:+2d

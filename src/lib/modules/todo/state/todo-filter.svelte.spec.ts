@@ -33,6 +33,77 @@ const completed: TodoItem = {
 };
 
 describe("TodoFilterState", () => {
+	it("reads destination filters and writes edits into the same URL without losing unrelated state", () => {
+		const destination = $state({
+			url: new URL(
+				"https://tuxedo.test/workspaces/work?search=open&project=Work&context=Home&priority=A&status=open&due=none&item=7#reader"
+			),
+		});
+		const filter = new TodoFilterState({
+			read: () => destination.url,
+			write: (next) => {
+				destination.url = next;
+			},
+		});
+		filter.sync("work", [open, completed]);
+		expect(filter.filterItems([open, completed])).toEqual([open]);
+		filter.searchText = "completed";
+		expect(destination.url.searchParams.get("search")).toBe("completed");
+		expect(destination.url.searchParams.get("item")).toBe("7");
+		expect(destination.url.hash).toBe("#reader");
+		filter.setStatus("completed");
+		expect(destination.url.searchParams.has("due")).toBe(false);
+		expect(destination.url.searchParams.has("priority")).toBe(false);
+		expect(filter.filterItems([open, completed])).toEqual([completed]);
+		destination.url = new URL("https://tuxedo.test/workspaces/other?project=Absent&status=open");
+		filter.sync("other", [open, completed]);
+		expect(filter.selectedProject).toBe("Absent");
+		expect(filter.filterItems([open, completed])).toEqual([]);
+		filter.clear();
+		expect(filter.filterItems([open, completed])).toEqual([open]);
+	});
+	it("applies saved views to URL filters with exact values and ignores malformed fields safely", () => {
+		const destination = $state({
+			url: new URL(
+				"https://tuxedo.test/workspaces/work?status=bad&priority=AA&due=yesterday&project=two+words&context=Home"
+			),
+		});
+		const filter = new TodoFilterState({
+			read: () => destination.url,
+			write: (url) => {
+				destination.url = url;
+			},
+		});
+		filter.sync("work", [open, completed], "due", true);
+		expect(filter.filterItems([open, completed])).toEqual([open, completed]);
+		expect(filter.snapshot()).toEqual({
+			status: "all",
+			search: "",
+			project: null,
+			context: "Home",
+			priority: null,
+			due: null,
+		});
+		const view = {
+			status: "open",
+			search: "  café & +Work%  ",
+			project: "工程&Work%",
+			context: "Home",
+			priority: "A",
+			due: "none",
+		} as const;
+		filter.applyView(view);
+		expect(filter.snapshot()).toEqual(view);
+		const restored = new TodoFilterState({
+			read: () => new URL(destination.url.href),
+			write: () => {},
+		});
+		restored.sync("work", [open, completed]);
+		expect(restored.snapshot()).toEqual(view);
+		expect(restored.filterItems([open, completed])).toEqual([]);
+		expect(filter.sortOrder).toBe("due");
+		expect(filter.showDeferred).toBe(true);
+	});
 	it("sorts Due dates without changing the source, leaving ties and undated items in file order", () => {
 		const items: TodoItem[] = [
 			{ ...open, line_number: 1, metadata: {} },
