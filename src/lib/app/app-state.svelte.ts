@@ -29,8 +29,7 @@ export class AppState {
 		this.bulkSelection = createTodoBulkSelection({
 			getWorkspace: () => this.workspace,
 			getMatchingItems: () => this.filteredTodoItems,
-			getFilterSignature: () =>
-				JSON.stringify([this.todoFilter.snapshot(), this.todoFilter.showDeferred]),
+			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
 		});
 		$effect(() =>
 			this.todoFilter.sync(

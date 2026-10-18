@@ -2737,7 +2737,7 @@ test("unchanged refresh retains selection and a skipped-line edit clears it with
 });
 
 test.each(["focus", "visibilitychange", "midnight"])(
-	"a %s date refresh clears selection and dismisses stale deletion",
+	"a %s date refresh preserves selection on arrival and prunes hidden selections",
 	async (refresh) => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(new Date(2026, 9, 18, 12));
@@ -2772,6 +2772,9 @@ test.each(["focus", "visibilitychange", "midnight"])(
 			vi.setSystemTime(new Date(2026, 9, 18, 12));
 			window.dispatchEvent(new Event("focus"));
 			await vi.advanceTimersByTimeAsync(12 * 60 * 60 * 1000);
+			vi.useRealTimers();
+			vi.useFakeTimers({ toFake: ["Date"] });
+			vi.setSystemTime(new Date(2026, 9, 19));
 		} else {
 			vi.setSystemTime(new Date(2026, 9, 19, 12));
 			(refresh === "focus" ? window : document).dispatchEvent(new Event(refresh));
@@ -2779,18 +2782,46 @@ test.each(["focus", "visibilitychange", "midnight"])(
 		await expect
 			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
 			.toBeVisible();
-		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
+			.not.toBeChecked();
+		await expect
+			.element(page.getByRole("alertdialog", { name: "Delete 1 Todo item?" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByText("Selection updated", { exact: false }))
+			.not.toBeInTheDocument();
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		await page.getByRole("button", { name: "Select all", exact: true }).click();
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect
+			.element(page.getByRole("alertdialog", { name: "Delete 2 Todo items?" }))
+			.toBeVisible();
+		vi.setSystemTime(new Date(2026, 9, 18, 12));
+		window.dispatchEvent(new Event("focus"));
+		await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Plan release", exact: true }))
+			.toBeChecked();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
+			.not.toBeInTheDocument();
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 		await expect
 			.element(
-				page.getByText("Selection cleared because the displayed Todo items changed.", {
+				page.getByText("Selection updated because some Todo items are no longer shown.", {
 					exact: true,
 				})
 			)
 			.toBeVisible();
+		await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toHaveFocus();
+		vi.setSystemTime(new Date(2026, 9, 19, 12));
+		window.dispatchEvent(new Event("focus"));
 		await expect
-			.element(page.getByRole("button", { name: "Exit selection mode", exact: true }))
-			.toHaveFocus();
+			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
+			.not.toBeChecked();
+		await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
 		expect(bulkDeleteTodos).not.toHaveBeenCalled();
 	}
 );
@@ -2813,7 +2844,7 @@ test("date and badge changes retain selection when the displayed population is u
 });
 
 test.each(["completion", "deletion"] as const)(
-	"Show deferred resets selection; off-screen %s targets stay fixed across a date refresh",
+	"Show deferred preserves visible selection; off-screen %s targets stay fixed across a date refresh",
 	async (operation) => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(new Date(2026, 9, 18, 12));
@@ -2873,7 +2904,7 @@ test.each(["completion", "deletion"] as const)(
 		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
 		const toggle = page.getByRole("button", { name: "Show deferred", exact: true });
 		await toggle.click();
-		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
 		await page.getByRole("button", { name: "Select all", exact: true }).click();
 		await expect.element(page.getByText("201 selected", { exact: true })).toBeVisible();
 		// A date/badge change alone must preserve selection while deferred items are shown.
@@ -2884,7 +2915,7 @@ test.each(["completion", "deletion"] as const)(
 		vi.setSystemTime(new Date(2026, 9, 18, 12));
 		window.dispatchEvent(new Event("focus"));
 		await toggle.click();
-		await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("200 selected", { exact: true })).toBeVisible();
 		await page.getByRole("button", { name: "Select all", exact: true }).click();
 		await page
 			.getByRole("button", {
