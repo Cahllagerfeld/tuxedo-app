@@ -26,7 +26,7 @@
 					{disabled}
 					closeOnSelect={false}
 					aria-label={`Options for ${workspaceName}`}
-					class="shrink-0 hover:bg-accent hover:text-accent-foreground"
+					class="relative z-10 shrink-0 hover:bg-accent hover:text-accent-foreground"
 				>
 					<Ellipsis aria-hidden="true" />
 				</DropdownMenu.Item>
@@ -35,7 +35,7 @@
 					{...props}
 					variant="ghost"
 					size="icon"
-					class="hover:bg-muted dark:hover:bg-muted"
+					class="relative z-10 hover:bg-muted dark:hover:bg-muted"
 					{disabled}
 					aria-label={`Options for ${workspaceName}`}
 				>

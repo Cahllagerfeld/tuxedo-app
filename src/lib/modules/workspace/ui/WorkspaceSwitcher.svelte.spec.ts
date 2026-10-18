@@ -250,3 +250,29 @@ it("highlights the entire switcher row and keeps options separately focusable", 
 	await expect.element(options).toHaveAttribute("aria-expanded", "false");
 	expect(selectWorkspace).not.toHaveBeenCalled();
 });
+
+it("clicking the switcher row gap selects the Workspace while clicking options only opens its menu", async () => {
+	const selectWorkspace = vi.fn();
+	await render(WorkspaceSwitcher, {
+		workspaces: [work, personal],
+		activeWorkspaceId: work.id,
+		selectWorkspace,
+		deleteWorkspace: vi.fn(),
+		openCreationDialog: vi.fn(),
+	});
+	const switcher = page.getByRole("button", { name: /Select workspace: Work/ });
+	await switcher.click();
+	const item = page.getByRole("menuitem", { name: "Personal", exact: true });
+	const options = page.getByRole("menuitem", { name: "Options for Personal", exact: true });
+	const row = item.element().parentElement!;
+	const gapX =
+		options.element().getBoundingClientRect().left - row.getBoundingClientRect().left - 2;
+	await userEvent.click(row, { position: { x: gapX, y: row.clientHeight / 2 } });
+	expect(selectWorkspace).toHaveBeenCalledExactlyOnceWith(personal.id);
+	await switcher.click();
+	await options.click();
+	await expect
+		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+		.toBeVisible();
+	expect(selectWorkspace).toHaveBeenCalledOnce();
+});

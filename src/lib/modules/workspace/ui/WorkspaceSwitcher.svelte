@@ -76,12 +76,12 @@
 			{#each sortedWorkspaces as workspace (workspace.id)}
 				<div
 					class={[
-						"flex items-center gap-1 rounded-sm",
+						"relative flex items-center gap-1 rounded-sm",
 						!disabled && "focus-within:bg-accent/50 hover:bg-accent/50",
 					]}
 				>
 					<DropdownMenu.Item
-						class="min-w-0 flex-1 focus:bg-transparent"
+						class="static min-w-0 flex-1 after:absolute after:inset-0 after:rounded-sm focus:bg-transparent"
 						aria-label={workspace.id === activeWorkspaceId
 							? `${workspace.name}, active`
 							: workspace.name}

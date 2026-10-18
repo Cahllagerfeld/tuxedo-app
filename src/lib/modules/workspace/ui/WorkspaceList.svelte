@@ -31,16 +31,17 @@
 	{#each workspaces as workspace (workspace.id)}
 		<div
 			class={[
-				"flex items-center rounded-xl border bg-background pr-3 transition-colors",
+				"relative flex items-center rounded-xl border bg-background pr-3 transition-colors",
 				!disabled && "hover:bg-muted/50 has-focus-visible:bg-muted/50",
 			]}
 		>
+			<!-- Keep the stretched link anchored to the row, including while pressed. -->
 			<Button
 				variant="ghost"
 				{disabled}
 				href={resolve("/workspaces/[id]", { id: workspace.id })}
 				aria-label={workspace.name}
-				class="group h-auto min-w-0 flex-1 justify-start gap-4 rounded-xl p-5 text-left hover:bg-transparent sm:gap-5 dark:hover:bg-transparent"
+				class="group h-auto min-w-0 flex-1 justify-start gap-4 rounded-xl p-5 text-left after:absolute after:inset-0 after:rounded-xl hover:bg-transparent active:not-aria-[haspopup]:translate-none sm:gap-5 dark:hover:bg-transparent"
 			>
 				<span
 					class={`size-4 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}

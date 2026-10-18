@@ -109,3 +109,28 @@ test.each(["light", "dark"])(
 		}
 	}
 );
+
+test("Home row padding follows the native link while the options button remains independent", async () => {
+	await render(WorkspaceList, {
+		workspaces: [work],
+		activeWorkspaceId: work.id,
+		disabled: false,
+		deleteWorkspace: vi.fn(),
+	});
+	const link = page.getByRole("link", { name: "Work", exact: true });
+	const options = page.getByRole("button", { name: "Options for Work", exact: true });
+	const row = link.element().parentElement!;
+	const navigate = vi.fn((event: Event) => event.preventDefault());
+	link.element().addEventListener("click", navigate);
+	await userEvent.click(row, { position: { x: row.clientWidth - 3, y: row.clientHeight / 2 } });
+	expect(navigate).toHaveBeenCalledOnce();
+	await options.click();
+	await expect
+		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
+		.toBeVisible();
+	expect(navigate).toHaveBeenCalledOnce();
+	await userEvent.keyboard("{Escape}");
+	link.element().focus();
+	await userEvent.keyboard("{Tab}");
+	await expect.element(options).toHaveFocus();
+});
