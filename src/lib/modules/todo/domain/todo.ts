@@ -3,7 +3,7 @@ import type {
 	TodoFile as ContractTodoFile,
 	SkippedLine as ContractSkippedLine,
 } from "$lib/shared/desktop/todo";
-export { todoItemSchema, todoFileSchema, skippedLineSchema } from "$lib/shared/desktop/todo";
+export { todoFileSchema } from "$lib/shared/desktop/todo";
 export type TodoItem = Readonly<Omit<ContractTodoItem, "projects" | "contexts" | "metadata">> & {
 	readonly projects: readonly string[];
 	readonly contexts: readonly string[];
