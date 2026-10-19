@@ -5,6 +5,7 @@ import {
 	type ConfirmedSession,
 	type DesktopAPI,
 	type DesktopRequest,
+	type DesktopResponse,
 	type TodoFileObservation,
 	type TodoFileChange,
 	todoFileChangeEvent,
@@ -288,7 +289,15 @@ export class WorkspaceCommands {
 	) =>
 		this.runAction("open_workspace", async () => {
 			if (beforeActivation) await beforeActivation;
-			const outcome = await this.desktop.switchWorkspace({ workspaceId });
+			let outcome: DesktopResponse<"switchWorkspace">;
+			try {
+				outcome = await this.desktop.switchWorkspace({ workspaceId });
+			} catch (error) {
+				outcome = {
+					status: "rejected",
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
 			if (navigate && outcome.status === "rejected") {
 				await navigate(outcome);
 				return outcome;

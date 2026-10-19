@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from "$app/paths";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
@@ -66,12 +65,6 @@
 	{:else}
 		<span class="pl-2 text-xs font-semibold tracking-wide">Tuxedo</span>
 	{/if}
-	<Button
-		variant="ghost"
-		href={resolve("/workspaces")}
-		disabled={workspace.isOperating}
-		class="[app-region:no-drag]">Home</Button
-	>
 	<AppShortcuts
 		{workspace}
 		{bulkSelectionActive}

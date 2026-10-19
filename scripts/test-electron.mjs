@@ -256,8 +256,8 @@ try {
 	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
 	assert.equal(
 		await page.getByRole("link", { name: "Home", exact: true }).count(),
-		1,
-		"Home is available without changing the remembered Active workspace"
+		0,
+		"Home is reserved for setup and recovery"
 	);
 	assert.equal(
 		await page.evaluate(() => window.startupHomeSeen),
@@ -1476,8 +1476,15 @@ try {
 	}
 	const routeUrl = (path) => new URL(path, page.url()).href;
 	const recoverHome = async () => {
-		await page.getByRole("link", { name: "Home", exact: true }).first().click();
-		await page.waitForURL(routeUrl("/workspaces"));
+		// A stale destination returns to Home without restoring the app or clearing Undo.
+		await page.evaluate((url) => {
+			const link = document.createElement("a");
+			link.href = url;
+			document.body.append(link);
+			link.click();
+			link.remove();
+		}, routeUrl("/workspaces/00000000-0000-4000-8000-000000000000"));
+		await page.waitForURL((url) => url.pathname === "/workspaces");
 		await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	};
 	const activeId = async () =>
@@ -1491,7 +1498,7 @@ try {
 	await reopen();
 	await expectRoute("Route B", "Beta item");
 	await recoverHome();
-	await page.waitForURL(routeUrl("/workspaces"));
+	await page.waitForURL((url) => url.pathname === "/workspaces");
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	assert.equal(await page.getByRole("button", { name: "Toggle Sidebar", exact: true }).count(), 0);
@@ -1570,22 +1577,21 @@ try {
 	await expectRoute("Route A", "Alpha item");
 	await page.goto(routeUrl("/workspaces/00000000-0000-4000-8000-000000000000"));
 	assert.equal(await activeId(), routeIds["Route A"], "A failed switch keeps the session");
-	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
-	await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
-	await recoverHome();
 	await page.reload();
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
-	assert.equal(new URL(page.url()).pathname, "/workspaces", "Reload preserves explicit Home");
+	assert.equal(new URL(page.url()).pathname, "/workspaces", "Reload preserves recovery Home");
 	await reopen();
 	await expectRoute("Route A", "Alpha item");
 	console.log(
-		"Explicit Home survives reload; the launch route resumes the confirmed Active workspace."
+		"Recovery Home survives reload; the launch route resumes the confirmed Active workspace."
 	);
 
 	await rm(join(directory, "Route-A.txt"));
-	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
-	assert.equal(new URL(page.url()).pathname, `/workspaces/${routeIds["Route A"]}`);
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	await page
 		.getByText(
 			"Cannot read Workspace: This Todo file couldn’t be found. It may have been moved or deleted.",
@@ -1596,13 +1602,14 @@ try {
 		.waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
 	await reopen();
-	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
-	assert.equal(new URL(page.url()).pathname, `/workspaces/${routeIds["Route A"]}`);
-	assert.equal(await page.getByLabel("Workspace home", { exact: true }).count(), 0);
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
 	await page.getByRole("button", { name: "Retry", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
-	console.log("An unreadable Todo file keeps its destination and recovers through Retry.");
+	console.log(
+		"An unreadable Todo file returns Home on observation and startup, and can be reopened."
+	);
 	// Keep the admission check's Back destination within this running app document.
 	await recoverHome();
 	await page.getByRole("link", { name: "Route A", exact: true }).click();
@@ -1641,16 +1648,15 @@ try {
 		globalThis.releaseSwitch({ status: "rejected", message: "Held switch failed" })
 	);
 	await page
-		.getByRole("region", { name: "Workspace destination", exact: true })
+		.getByRole("region", { name: "Workspace home", exact: true })
 		.getByText("Held switch failed", { exact: true })
 		.waitFor();
 	assert.equal(await activeId(), routeIds["Route A"]);
-	await recoverHome();
-	await page.waitForURL(routeUrl("/workspaces"));
+	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	console.log(
-		"Navigation waits for admitted operations; failed switches retain the session and offer Home."
+		"Navigation waits for admitted operations; failed switches retain the session and return Home."
 	);
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
 	const removeFromHome = async (name, cancel = false) => {

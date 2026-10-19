@@ -22,7 +22,8 @@ declare global {
 			restores: number;
 		};
 		makeTodoFileUnreadable: () => void;
-		failNextSessionRead: () => void;
+		makeTodoFileReadable: () => void;
+		failSessionReads: (count: number) => void;
 	}
 }
 
@@ -85,8 +86,8 @@ test("real links and history preserve the reader during a write and block overla
 				let restores = 0;
 				let failReads = 0;
 				let undoLabel: ConfirmedSession["undoLabel"];
-				window.failNextSessionRead = () => {
-					failReads++;
+				window.failSessionReads = (count) => {
+					failReads += count;
 				};
 				const reads: string[] = [];
 				let switches = 0;
@@ -200,6 +201,12 @@ test("real links and history preserve the reader during a write and block overla
 						};
 					},
 					switchWorkspace: async ({ workspaceId }) => {
+						if (workspaceId !== first && workspaceId !== second)
+							return { status: "rejected", message: "Workspace no longer exists" };
+						if (sessionStorage.getItem("throwActivation")) {
+							sessionStorage.removeItem("throwActivation");
+							throw Error("Workspace bridge unavailable");
+						}
 						if (sessionStorage.getItem("failActivation")) {
 							sessionStorage.removeItem("failActivation");
 							return { status: "rejected", message: "Catalogue is read-only" };
@@ -234,14 +241,26 @@ test("real links and history preserve the reader during a write and block overla
 					unreadable = true;
 					notify?.({ scope, revision, workspaceId: active, todoPath: `/tmp/${active}.txt` });
 				};
+				window.makeTodoFileReadable = () => {
+					unreadable = false;
+				};
 			},
 			{ first, second }
 		);
 		await page.goto(await origin);
 		const item = page.getByRole("checkbox", { name: "Mark Navigation item complete", exact: true });
 		await item.waitFor();
-		const home = page.getByRole("link", { name: "Home", exact: true }).first();
-		await home.click();
+		expect(await page.getByRole("link", { name: "Home", exact: true }).count()).toBe(0);
+		const visit = (path: string) =>
+			page.evaluate(`(async () => {
+			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			try { await goto(${JSON.stringify(path)}); } catch { /* Admission can cancel this navigation. */ }
+		})()`);
+		await visit("/workspaces");
+		await item.waitFor();
+		expect(new URL(page.url()).pathname).toBe(`/workspaces/${first}`);
+		const recoverHome = () => visit("/workspaces/00000000-0000-4000-8000-000000000000");
+		await recoverHome();
 		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
 		const beforePreload = await page.evaluate(() => window.routingState());
 		await page.getByRole("link", { name: "Personal", exact: true }).hover();
@@ -270,9 +289,11 @@ test("real links and history preserve the reader during a write and block overla
 		expect(await closeDetails.evaluate((element) => element === document.activeElement)).toBe(true);
 		await closeDetails.click();
 		// Keep both Back and Forward destinations available around the admitted write.
-		await home.click();
+		await recoverHome();
 		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
-		await expect.poll(() => home.isDisabled()).toBe(false);
+		await expect
+			.poll(() => page.getByRole("link", { name: "Work", exact: true }).isEnabled())
+			.toBe(true);
 		await page.goBack();
 		await item.waitFor();
 		await item.click();
@@ -288,9 +309,7 @@ test("real links and history preserve the reader during a write and block overla
 				await new Promise(requestAnimationFrame);
 			}, direction);
 		};
-		await home.evaluate((link) => {
-			if (link instanceof HTMLAnchorElement) link.click();
-		});
+		await visit("/workspaces");
 		await traverse("back");
 		await traverse("forward");
 		await page.evaluate(`(async () => {
@@ -308,9 +327,7 @@ test("real links and history preserve the reader during a write and block overla
 		await expect.poll(() => !!finishRefresh).toBe(true);
 		expect(await item.isVisible()).toBe(true);
 		expect(await item.isDisabled()).toBe(true);
-		await home.evaluate((link) => {
-			if (link instanceof HTMLAnchorElement) link.click();
-		});
+		await visit("/workspaces");
 		await traverse("back");
 		expect(page.url()).toBe(destination);
 		expect(writes).toBe(1);
@@ -320,13 +337,14 @@ test("real links and history preserve the reader during a write and block overla
 			.getByRole("checkbox", { name: "Mark Navigation item incomplete", exact: true })
 			.waitFor();
 		const switchesBeforeFailedRead = (await page.evaluate(() => window.routingState())).switches;
-		await page.evaluate(() => window.failNextSessionRead());
+		await page.evaluate(() => window.failSessionReads(2));
 		await page
 			.getByRole("checkbox", { name: "Mark Navigation item incomplete", exact: true })
 			.click();
 		await expect.poll(() => writes).toBe(2);
 		finishWrite();
-		await page.getByRole("heading", { name: "Workspace unavailable" }).waitFor();
+		await page.getByText("Follow-up read unavailable", { exact: true }).waitFor();
+		expect(new URL(page.url()).pathname).toBe("/workspaces");
 		await page
 			.getByText(
 				"Change saved, but the screen could not refresh. Retry loading before making another change.",
@@ -343,7 +361,7 @@ test("real links and history preserve the reader during a write and block overla
 			switchesBeforeFailedRead
 		);
 		expect(writes).toBe(2);
-		await page.goForward();
+		await recoverHome();
 		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
 		await page.getByRole("link", { name: "Personal", exact: true }).click();
 		await expect.poll(() => !!finishSwitch).toBe(true);
@@ -403,14 +421,25 @@ test("real links and history preserve the reader during a write and block overla
 		).toEqual(historyEntries);
 
 		await page.evaluate(() => sessionStorage.setItem("failActivation", "1"));
+		await traverse("forward");
+		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
+		expect(new URL(page.url()).pathname).toBe("/workspaces");
+		await page
+			.getByRole("region", { name: "Workspace home", exact: true })
+			.getByText("Catalogue is read-only", { exact: true })
+			.waitFor();
+		expect((await page.evaluate(() => window.routingState())).active).toBe(second);
+		await page.goBack();
+		await item.waitFor();
+		await page.evaluate(() => sessionStorage.setItem("throwActivation", "1"));
 		await page.evaluate(`(async () => {
 			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
 			try { await goto("/workspaces/${first}"); } catch { /* Admission resumes the failed destination. */ }
 		})()`);
-		await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
+		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
 		await page
-			.getByRole("region", { name: "Workspace destination", exact: true })
-			.getByText("Catalogue is read-only", { exact: true })
+			.getByRole("region", { name: "Workspace home", exact: true })
+			.getByText("Workspace bridge unavailable", { exact: true })
 			.waitFor();
 		expect((await page.evaluate(() => window.routingState())).active).toBe(second);
 		await page.goBack();
@@ -434,34 +463,29 @@ test("real links and history preserve the reader during a write and block overla
 		);
 		holdRefresh = false;
 		finishRefresh!();
-		await page.getByRole("heading", { name: "Workspace unavailable" }).waitFor();
+		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
 		await expect
 			.poll(() => page.evaluate(() => window.routingState().restores))
 			.toBe(restoresBeforeNavigation + 1);
 		await expect
-			.poll(() =>
-				page
-					.getByRole("region", { name: "Workspace destination" })
-					.evaluate((element) => element === document.activeElement)
-			)
+			.poll(() => page.evaluate(() => document.activeElement === document.body))
 			.toBe(true);
-		await page.keyboard.press("Tab");
-		expect(
-			await page
-				.getByRole("button", { name: "Retry", exact: true })
-				.evaluate((element) => element === document.activeElement)
-		).toBe(true);
+		expect(new URL(page.url()).pathname).toBe("/workspaces");
+		expect(await page.getByText("Todo file unreadable", { exact: true }).isVisible()).toBe(true);
+		await page.evaluate(() => window.makeTodoFileReadable());
+		await page.getByRole("button", { name: "Retry", exact: true }).click();
+		await item.waitFor();
 		await page.evaluate(() => sessionStorage.setItem("failStartup", "1"));
 		await page.goto(new URL("/", page.url()).href);
 		await page.getByText("Startup bridge unavailable", { exact: true }).waitFor();
 		await page.getByRole("button", { name: "Retry", exact: true }).click();
-		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
+		await item.waitFor();
 		await page.evaluate(() => sessionStorage.setItem("failActivation", "1"));
 		await page.goto(new URL(`/workspaces/${second}`, page.url()).href);
 		await page.getByText("Catalogue is read-only", { exact: true }).waitFor();
 		expect((await page.evaluate(() => window.routingState())).active).toBe(first);
-		await page.getByRole("link", { name: "Home", exact: true }).first().click();
 		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
+		expect(new URL(page.url()).pathname).toBe("/workspaces");
 		expect(await page.getByRole("link", { name: "Work", exact: true }).isVisible()).toBe(true);
 	} finally {
 		await browser.close();

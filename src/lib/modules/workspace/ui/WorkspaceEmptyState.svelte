@@ -37,6 +37,7 @@
 			<WorkspaceHome
 				catalogue={session.catalogue}
 				warning={warning || (session.status === "empty" ? session.warning : undefined)}
+				{retry}
 				{deleteWorkspace}
 				{disabled}
 				{openWorkspaceCreationDialog}

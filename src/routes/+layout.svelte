@@ -20,10 +20,12 @@
 		window.desktop,
 		() => ({ ...data.sessionData, ...data.viewsData }),
 		async (dependency) => {
-			await invalidate(
-				(url) =>
-					(dependency !== "views" && url.href === sessionDependency) ||
-					(dependency !== "session" && url.href === viewsDependency)
+			await navigation.refresh(() =>
+				invalidate(
+					(url) =>
+						(dependency !== "views" && url.href === sessionDependency) ||
+						(dependency !== "session" && url.href === viewsDependency)
+				)
 			);
 			reader.todoFilter.reconcileSource();
 		},

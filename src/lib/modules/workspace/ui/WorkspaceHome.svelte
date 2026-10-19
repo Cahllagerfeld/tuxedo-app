@@ -10,12 +10,14 @@
 	let {
 		catalogue,
 		warning,
+		retry,
 		disabled,
 		deleteWorkspace,
 		openWorkspaceCreationDialog,
 	}: {
 		catalogue: WorkspaceCatalogue;
 		warning?: string | null;
+		retry?: () => Promise<void>;
 		disabled: boolean;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
 		openWorkspaceCreationDialog: () => void;
@@ -56,6 +58,7 @@
 		<Alert.Root class="mb-6">
 			<Alert.Title>Workspace unavailable</Alert.Title>
 			<Alert.Description>{warning}</Alert.Description>
+			{#if retry}<Button {disabled} onclick={retry}>Retry</Button>{/if}
 		</Alert.Root>
 	{/if}
 

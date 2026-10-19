@@ -15,7 +15,7 @@
 <AppShell>
 	<WorkspaceEmptyState
 		{session}
-		warning={navigation.error}
+		warning={navigation.error || data.unavailableMessage}
 		deleteWorkspace={workspace.deleteWorkspace}
 		disabled={navigation.busy}
 		{openWorkspaceCreationDialog}

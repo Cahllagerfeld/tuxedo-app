@@ -69,11 +69,11 @@ Keep this filtered-out Todo item when deleting only matching selections +HiddenF
 Click Workspace options to remove an unavailable saved reference without opening its Todo file +TuxedoApp @review
 Use the entry page to choose a colored Workspace by its Todo-file path without showing workspace filters +TuxedoApp @review
 Restart Tuxedo to resume the last Workspace without flashing Home +TuxedoApp @review
-Restart with a moved Todo file and retry its remembered Workspace or choose Home +TuxedoApp @review
+Restart with a moved Todo file to see Home and reopen its remembered Workspace after restoring the file +TuxedoApp @review
 Remove a saved Workspace from its Home row options and confirm without deleting its Todo file +TuxedoApp @review
 Return Home to see the last-opened Workspace first while other Workspaces keep their creation order +TuxedoApp @review
-Use the switcher for everyday navigation and choose Retry or Home when a Todo file cannot open +TuxedoApp @review
-See a helpful missing-file message at the requested destination when a Todo file is moved or deleted +TuxedoApp @review
+Use the switcher for everyday navigation while Home is reserved for setup and failed Workspace loads +TuxedoApp @review
+Return automatically to Home with a helpful missing-file message when a Todo file is moved or deleted +TuxedoApp @review
 Hover another Workspace and refresh this one without changing the Active workspace or consuming Undo +TuxedoApp @review
 Keep the confirmed reader visible while a saved change or Workspace switch loads its result +TuxedoApp @review
 Keep text search and filters when the current Workspace reloads, and start fresh when switching Workspaces +TuxedoApp @review
