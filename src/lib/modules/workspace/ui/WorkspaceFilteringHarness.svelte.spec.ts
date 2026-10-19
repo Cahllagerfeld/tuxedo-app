@@ -181,6 +181,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,

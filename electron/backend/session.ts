@@ -58,7 +58,6 @@ export function sessionLayer(
 			let confirmed: ConfirmedSession | undefined;
 			let todoContents: string | undefined;
 			let undo: UndoChange | undefined;
-			let busy = false;
 			const state: SessionState = {
 				get undo() {
 					return undo;
@@ -97,16 +96,8 @@ export function sessionLayer(
 			): Effect.Effect<A, E> =>
 				semaphore
 					.withPermit(
-						Effect.gen(function* () {
-							busy = true;
-							return yield* effect;
-						}).pipe(
-							Effect.ensuring(
-								Effect.gen(function* () {
-									yield* syncObservation;
-									busy = false;
-								})
-							),
+						effect.pipe(
+							Effect.ensuring(syncObservation),
 							Effect.uninterruptible,
 							Effect.withSpan(`WorkspaceSession.${operation}`)
 						)
@@ -144,12 +135,7 @@ export function sessionLayer(
 					const targetScope = yield* Scope.make();
 					observed = { current, scope: targetScope };
 					const refresh = Effect.suspend(() => {
-						if (
-							isShuttingDown() ||
-							busy ||
-							current !== confirmed ||
-							observed?.scope !== targetScope
-						)
+						if (isShuttingDown() || current !== confirmed || observed?.scope !== targetScope)
 							return Effect.void;
 						return serialize(
 							"observe",
@@ -281,6 +267,8 @@ export function sessionLayer(
 				saveView: (request) => operation("saveView", "Cannot save view: ", views.save(request)),
 				deleteView: (request) =>
 					operation("deleteView", "Cannot delete view: ", views.delete(request)),
+				readWorkspace: (request) =>
+					operation("readWorkspace", "Cannot read Workspace: ", workspace.readWorkspace(request)),
 				readSession: () => read("readSession"),
 				restoreSession: () => read("restoreSession"),
 				createWorkspace: (request) =>

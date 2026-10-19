@@ -9,28 +9,38 @@
 	import * as Dialog from "$lib/shared/ui/dialog";
 	import { Button } from "$lib/shared/ui/button";
 	import { useSidebar } from "$lib/shared/ui/sidebar";
-	import type { AppState } from "./app-state.svelte";
+	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 	let {
-		app,
+		workspace,
+		bulkSelectionActive,
+		openWorkspaceSwitcher,
+		openWorkspaceCreationDialog,
+		openTodoCreation,
 		readerShown,
 		workspaceShown,
-	}: { app: AppState; readerShown: boolean; workspaceShown: boolean } = $props();
+	}: {
+		workspace: WorkspaceCommands;
+		bulkSelectionActive: boolean;
+		openWorkspaceSwitcher: () => void;
+		openWorkspaceCreationDialog: () => void;
+		openTodoCreation: () => void;
+		readerShown: boolean;
+		workspaceShown: boolean;
+	} = $props();
 	const scope = getShortcutScope();
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
 	let helpOpen = $state(false);
-	const idle = $derived(!app.workspace.isLoading && !app.workspace.isOperating);
+	const idle = $derived(!workspace.isLoading && !workspace.isOperating);
 	const actions = {
 		workspace: async () => {
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);
 			else sidebar.setOpen(true);
 			await tick();
-			app.isWorkspaceSwitcherOpen = true;
+			openWorkspaceSwitcher();
 		},
-		createWorkspace: () => app.openWorkspaceCreationDialog(),
-		createTodo: () => {
-			app.isTodoCreationOpen = true;
-		},
+		createWorkspace: () => openWorkspaceCreationDialog(),
+		createTodo: () => openTodoCreation(),
 		help: () => {
 			helpOpen = true;
 		},
@@ -51,7 +61,7 @@
 							id !== "sidebar" &&
 							(id !== "workspace" || workspaceShown) &&
 							(id !== "createTodo" ||
-								(readerShown && !!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
+								(readerShown && !!workspace.todoFile && !bulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

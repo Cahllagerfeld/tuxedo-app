@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
-	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
 	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const session = new ElectronWorkspaceSessionState(desktop);
+	const session = new WorkspaceCommands(desktop);
 	onMount(() => {
 		void session.initialize();
 	});

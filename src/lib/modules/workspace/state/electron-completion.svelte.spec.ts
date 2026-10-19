@@ -51,6 +51,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		restoreSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
@@ -125,13 +126,10 @@ test("completion binds target and preserves confirmed controls and summary until
 	await expect.element(page.getByLabelText("Open count")).toHaveTextContent("0");
 	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 });
-test.each(["rejected", "conflict", "old", "wrong-workspace", "wrong-scope"])(
+test.each(["rejected", "conflict"])(
 	"completion handles %s while preserving scoped confirmed state",
 	async (kind) => {
 		const response = updated();
-		if (kind === "old") response.revision = 4;
-		if (kind === "wrong-workspace") response.workspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		if (kind === "wrong-scope") response.scope = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		render(Harness, {
 			desktop: adapter(async () =>
 				kind === "rejected"

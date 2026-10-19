@@ -256,8 +256,8 @@ try {
 	await page.getByRole("button", { name: "Sort Todo items", exact: true }).waitFor();
 	assert.equal(
 		await page.getByRole("link", { name: "Home", exact: true }).count(),
-		0,
-		"Daily navigation uses the Workspace switcher"
+		1,
+		"Home is available without changing the remembered Active workspace"
 	);
 	assert.equal(
 		await page.evaluate(() => window.startupHomeSeen),
@@ -1476,7 +1476,7 @@ try {
 	}
 	const routeUrl = (path) => new URL(path, page.url()).href;
 	const recoverHome = async () => {
-		await page.goto(routeUrl("/workspaces/00000000-0000-4000-8000-000000000000"));
+		await page.getByRole("link", { name: "Home", exact: true }).first().click();
 		await page.waitForURL(routeUrl("/"));
 		await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	};
@@ -1516,12 +1516,17 @@ try {
 	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
 	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
 	await expectRoute("Route B", "Beta item");
-	const historyLength = await page.evaluate(() => history.length);
-	await page.goBack();
+	const historyEntries = await page.evaluate(() =>
+		window.navigation.entries().map((entry) => entry.key)
+	);
+	await page.evaluate(() => history.back());
 	await expectRoute("Route A", "Alpha item");
-	await page.goForward();
+	await page.evaluate(() => history.forward());
 	await expectRoute("Route B", "Beta item");
-	assert.equal(await page.evaluate(() => history.length), historyLength);
+	assert.deepEqual(
+		await page.evaluate(() => window.navigation.entries().map((entry) => entry.key)),
+		historyEntries
+	);
 	console.log(
 		"Home, picker, creation, switcher, Back and Forward switch the persisted Active workspace."
 	);
@@ -1529,6 +1534,19 @@ try {
 	await page.getByRole("checkbox", { name: "Mark Beta item complete", exact: true }).click();
 	const routeUndo = page.getByRole("button", { name: "Undo completion", exact: true });
 	await routeUndo.waitFor();
+	const beforeRead = await page.evaluate(() => window.desktop.readSession({}));
+	for (let index = 0; index < 2; index++) {
+		assert.equal(
+			(
+				await page.evaluate(
+					(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
+					routeIds["Route A"]
+				)
+			).status,
+			"loaded"
+		);
+		assert.deepEqual(await page.evaluate(() => window.desktop.readSession({})), beforeRead);
+	}
 	await recoverHome();
 	await page.getByRole("link", { name: "Route B", exact: true }).click();
 	await expectRoute("Route B", "Beta item");
@@ -1536,7 +1554,7 @@ try {
 	await page.getByRole("button", { name: "Select workspace: Route B" }).click();
 	await page.getByRole("menuitem", { name: "Route A", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
-	await page.goBack();
+	await page.evaluate(() => history.back());
 	await expectRoute("Route B", "Beta item");
 	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
 	console.log("Home keeps the Undo opportunity; history switches clear it.");
@@ -1544,40 +1562,40 @@ try {
 	await reopen();
 	await expectRoute("Route B", "Beta item");
 	// A kept startup entry would make Back stop at the picker.
-	await page.goBack();
+	await page.evaluate(() => history.back());
 	await expectRoute("Route B", "Beta item");
 	await page.goto(routeUrl(`/workspaces/${routeIds["Route A"]}`));
 	await expectRoute("Route A", "Alpha item");
 	await page.reload();
 	await expectRoute("Route A", "Alpha item");
-	await recoverHome();
+	await page.goto(routeUrl("/workspaces/00000000-0000-4000-8000-000000000000"));
 	assert.equal(await activeId(), routeIds["Route A"], "A failed switch keeps the session");
-	await page.getByText("Workspace unavailable", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
-	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
+	await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+	await recoverHome();
 	await page.reload();
 	await expectRoute("Route A", "Alpha item");
 	console.log(
-		"Unavailable nested destinations recover on Home; reload resumes the confirmed Active workspace."
+		"Unavailable nested destinations offer Retry and Home; reload resumes the confirmed Active workspace."
 	);
 
 	await rm(join(directory, "Route-A.txt"));
-	await page.waitForURL(routeUrl("/"));
-	await page.getByLabel("Workspace home", { exact: true }).waitFor();
-	await page.getByText("Workspace unavailable", { exact: true }).waitFor();
+	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, `/workspaces/${routeIds["Route A"]}`);
 	await page
-		.getByText("This Todo file couldn’t be found. It may have been moved or deleted.", {
-			exact: true,
-		})
+		.getByText(
+			"Cannot read Workspace: This Todo file couldn’t be found. It may have been moved or deleted.",
+			{
+				exact: true,
+			}
+		)
 		.waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
-	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
-	await page.getByRole("link", { name: "Route A", exact: true }).click();
+	await page.getByRole("button", { name: "Retry", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
-	console.log(
-		"An unreadable Todo file returns to Home and can be reopened from its row after recovery."
-	);
+	console.log("An unreadable Todo file keeps its destination and recovers through Retry.");
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:switch-workspace");
 		ipcMain.handle(
@@ -1587,22 +1605,35 @@ try {
 	});
 	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
 	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
-	await page.getByLabel("Opening workspace", { exact: true }).waitFor();
+	await page
+		.getByRole("checkbox", { name: "Mark Alpha item complete", exact: true })
+		.waitFor({ state: "visible" });
+	await page.waitForFunction(
+		(button) => button.disabled,
+		await page.getByRole("button", { name: "Select workspace: Route A" }).elementHandle()
+	);
 	const pendingUrl = page.url();
 	await page.evaluate(() => history.back());
 	await page.waitForTimeout(300);
 	assert.equal(page.url(), pendingUrl, "Back is blocked during a Workspace session operation");
-	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	assert.ok(
+		await page.getByText("Alpha item", { exact: true }).isVisible(),
+		"The confirmed reader stays visible during a switch"
+	);
 	await application.evaluate(() =>
 		globalThis.releaseSwitch({ status: "rejected", message: "Held switch failed" })
 	);
-	await page.getByText("Held switch failed", { exact: true }).waitFor();
+	await page
+		.getByRole("region", { name: "Workspace destination", exact: true })
+		.getByText("Held switch failed", { exact: true })
+		.waitFor();
 	assert.equal(await activeId(), routeIds["Route A"]);
+	await recoverHome();
 	await page.waitForURL(routeUrl("/"));
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	console.log(
-		"Navigation waits for admitted operations; failed switches recover on Home and retain the session."
+		"Navigation waits for admitted operations; failed switches retain the session and offer Home."
 	);
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
 	const removeFromHome = async (name, cancel = false) => {

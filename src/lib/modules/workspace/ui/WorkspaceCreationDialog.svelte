@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from "svelte-sonner";
 	import * as Schema from "effect/Schema";
 	import { WorkspaceCreationRequest } from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
@@ -126,6 +127,7 @@
 				serverError = outcome.message;
 				return;
 			}
+			if (outcome.notice) toast.info(outcome.notice);
 			open = false;
 			resetForm();
 		} catch (error) {

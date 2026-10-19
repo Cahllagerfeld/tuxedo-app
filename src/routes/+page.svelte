@@ -1,16 +1,16 @@
 <script>
-	import { getAppState } from "$lib/app/app-context";
+	import { getWorkspaceContext } from "$lib/app/app-context";
 	import WorkspaceEmptyState from "$lib/modules/workspace/ui/WorkspaceEmptyState.svelte";
-
-	const appState = getAppState();
+	const { workspace, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceEmptyState
-		session={appState.workspace.session}
-		warning={appState.destinationError}
-		deleteWorkspace={appState.workspace.deleteWorkspace}
-		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
-		openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
+		session={workspace.session}
+		warning={navigation.error}
+		deleteWorkspace={workspace.deleteWorkspace}
+		disabled={navigation.busy}
+		{openWorkspaceCreationDialog}
+		retry={navigation.retry}
 	/>
 </div>

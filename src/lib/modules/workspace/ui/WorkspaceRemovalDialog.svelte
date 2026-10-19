@@ -23,6 +23,7 @@
 		open = false;
 		try {
 			const result = await deleteWorkspace(selected.id);
+			if (result.status === "applied" && result.notice) toast.info(result.notice);
 			if (result.status === "rejected")
 				toast.error("Could not remove workspace", { description: result.message });
 		} catch (error) {

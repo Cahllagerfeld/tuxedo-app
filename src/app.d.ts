@@ -8,6 +8,9 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+	interface Window {
+		navigation: EventTarget & { entries(): readonly { key: string }[] };
+	}
 }
 
 export {};

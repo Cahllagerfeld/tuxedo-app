@@ -6,7 +6,7 @@ Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organize
 
 Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR.
 
-The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. A Svelte session controller holds confirmed renderer data and tracks one operation at a time; counts and facets derive from its Todo file.
+The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. SvelteKit loads own confirmed renderer data, refreshed through targeted invalidation after commands and external changes. A small Svelte command coordinator admits one operation at a time through its refresh; counts and facets derive from the loaded Todo file. Loads and preloads never activate a Workspace.
 
 The Todo-file summary provides total, open, completed, and skipped-line counts. Filter facets and their counts derive from the selected completion view of the confirmed Todo file.
 
@@ -18,7 +18,7 @@ Generation adds app-owned `tuxedo-generated:1` metadata to the original and excl
 
 Creation checks the whole Todo file against confirmed contents; editing checks its targeted physical line, preserving external changes elsewhere. An omitted Creation date uses the current local calendar date; an explicit date or no date is preserved.
 
-Drag the row handle to reorder the displayed Todo items within their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place. External edits reload the Active workspace's Todo file while the Workspace session is idle. Changed parsed contents show an info notice; a stably unreadable file enters the Empty state with a warning. Mutations check disk contents before writing and return confirmed data or a conflict.
+Drag the row handle to reorder the displayed Todo items within their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place. External edits reload the Active workspace's Todo file while the Workspace session is idle. Changed parsed contents show an info notice; a stably unreadable file offers Retry and Home at its destination. Mutations check disk contents before writing and return confirmed data or a conflict.
 
 Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
 

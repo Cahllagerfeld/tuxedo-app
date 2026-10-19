@@ -13,13 +13,23 @@ export type TodoFilterFacets = Readonly<{
 	priorities: readonly string[];
 }>;
 
+type FilterSource = {
+	items: readonly TodoItem[];
+	sortOrder: TodoSortOrder;
+	showDeferred: boolean;
+};
+
 export class TodoFilterState {
 	private preserveSelections = false;
 	private workspaceKey: string | null | undefined;
-	private items = $state.raw<readonly TodoItem[]>([]);
+	private localItems = $state.raw<readonly TodoItem[]>([]);
+	constructor(private readonly source?: () => FilterSource) {}
+	private get items() {
+		return this.source?.().items ?? this.localItems;
+	}
 	status = $state<TodoFilterStatus>("all");
-	sortOrder = $state<TodoSortOrder>("file");
-	showDeferred = $state(false);
+	sortOrder = $derived.by<TodoSortOrder>(() => this.source?.().sortOrder ?? "file");
+	showDeferred = $derived.by(() => this.source?.().showDeferred ?? false);
 	deferredCount = $derived(
 		this.items.filter((item) => this.matchesFilters(item) && isDeferred(item, this.today)).length
 	);
@@ -118,7 +128,7 @@ export class TodoFilterState {
 		sortOrder?: TodoSortOrder,
 		showDeferred?: boolean
 	) => {
-		this.items = items;
+		this.localItems = items;
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();
@@ -141,6 +151,11 @@ export class TodoFilterState {
 		if (this.selectedPriority !== null && !facets.priorities.includes(this.selectedPriority)) {
 			this.selectedPriority = null;
 		}
+	};
+	reconcileSource = () => {
+		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
+			this.clearDue();
+		this.reconcile(this.availableFacets);
 	};
 
 	snapshot = (): SavedViewFilterValues => ({

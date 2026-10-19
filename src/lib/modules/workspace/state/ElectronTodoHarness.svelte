@@ -7,10 +7,10 @@
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
 	import { summarizeTodoFilterFacets } from "$lib/modules/todo/domain/todo-filter-facets";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
-	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const session = new ElectronWorkspaceSessionState(desktop);
+	const session = new WorkspaceCommands(desktop);
 	onMount(() => {
 		void session.initialize();
 	});

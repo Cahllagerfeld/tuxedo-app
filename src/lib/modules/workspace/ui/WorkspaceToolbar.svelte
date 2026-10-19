@@ -19,7 +19,7 @@
 	import ListFilter from "@lucide/svelte/icons/list-filter";
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -27,7 +27,7 @@
 	type Props = {
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		workspace: ElectronWorkspaceSessionState;
+		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		closeDetails: () => void;
@@ -372,6 +372,7 @@
 									void workspace.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
 										await tick();
 										bulkSelection.reconcileVisibility();
+										if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 										if (outcome.status !== "applied")
 											toast.error("Could not save Show deferred", {
 												description: outcome.message,
@@ -420,6 +421,7 @@
 								value !== todoFilter.sortOrder
 							)
 								void workspace.setSortOrder(value).then((outcome) => {
+									if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 									if (outcome.status !== "applied")
 										toast.error("Could not save sort order", { description: outcome.message });
 								});

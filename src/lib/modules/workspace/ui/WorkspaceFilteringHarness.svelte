@@ -1,38 +1,46 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { AppState } from "$lib/app/app-state.svelte";
+	import { createReaderState } from "$lib/app/reader-state.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { WorkspaceSessionFixture as WorkspaceCommands } from "../state/workspace-session-fixture.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import WorkspaceSidebar from "./sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
-	onMount(() => void app.workspace.initialize());
+	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
+		reader.todoFilter.reconcileSource()
+	);
+	const reader = createReaderState(session);
+	let switcherOpen = $state(false);
+	let creationDialogOpen = $state(false);
+	const openWorkspaceCreationDialog = () => {
+		creationDialogOpen = true;
+	};
+	onMount(() => void session.initialize());
 </script>
 
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">
 	<WorkspaceSidebar
-		workspaces={app.workspace.catalogue?.workspaces ?? []}
-		activeWorkspaceId={app.workspace.activeWorkspace?.id ?? null}
-		todoSummary={app.todos}
-		todoFilter={app.todoFilter}
-		todoFileLoaded={app.workspace.todoFile !== null}
+		workspaces={session.catalogue?.workspaces ?? []}
+		activeWorkspaceId={session.activeWorkspace?.id ?? null}
+		todoSummary={reader.todos}
+		todoFilter={reader.todoFilter}
+		todoFileLoaded={session.todoFile !== null}
 		collapsible="none"
-		disabled={app.workspace.isOperating || app.workspace.isLoading}
-		pendingOperation={app.workspace.pendingOperation}
-		selectWorkspace={app.workspace.open}
-		deleteWorkspace={app.workspace.deleteWorkspace}
+		disabled={session.isOperating || session.isLoading}
+		pendingOperation={session.pendingOperation}
+		selectWorkspace={session.open}
+		deleteWorkspace={session.deleteWorkspace}
 		openCreationDialog={() => {}}
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
-			bulkSelection={app.bulkSelection}
-			workspace={app.workspace}
-			todoFilter={app.todoFilter}
-			filteredTodoItems={app.filteredTodoItems}
+			bulkSelection={reader.bulkSelection}
+			workspace={session}
+			todoFilter={reader.todoFilter}
+			filteredTodoItems={reader.filteredTodoItems}
 			openWorkspaceCreationDialog={() => {}}
 		/>
 	</Sidebar.Inset>

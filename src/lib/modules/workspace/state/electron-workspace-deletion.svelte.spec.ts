@@ -34,6 +34,7 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
 		readSession: async () => initial,
+		readWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		restoreSession: async () => initial,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		writeClipboardText: async () => null,
@@ -92,38 +93,16 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 		.element(page.getByRole("button", { name: /Select workspace: No workspace selected/ }))
 		.toBeEnabled();
 });
-test.each(["rejected", "old", "wrong-scope"])(
-	"deletion outcome %s preserves the current confirmed Workspace",
-	async (kind) => {
-		render(ElectronDeletionHarness, {
-			desktop: adapter(async () =>
-				kind === "rejected"
-					? { status: "rejected", message: "Catalogue write failed" }
-					: {
-							status: "applied",
-							confirmed: {
-								...initial,
-								scope:
-									kind === "wrong-scope" ? "550e8400-e29b-41d4-a716-446655440099" : initial.scope,
-								revision: kind === "old" ? 4 : 6,
-								session: {
-									status: "empty",
-									catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
-									warning: null,
-								},
-							},
-						}
-			),
-		});
-		await confirm();
-		await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
-		await expect
-			.element(page.getByRole("button", { name: /Select workspace: Work/ }))
-			.toBeEnabled();
-		await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
-		await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
-	}
-);
+test("rejected deletion preserves the current confirmed Workspace", async () => {
+	render(ElectronDeletionHarness, {
+		desktop: adapter(async () => ({ status: "rejected", message: "Catalogue write failed" })),
+	});
+	await confirm();
+	await expect.element(page.getByLabelText("Pending operation")).toHaveTextContent("none");
+	await expect.element(page.getByRole("button", { name: /Select workspace: Work/ })).toBeEnabled();
+	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("1");
+	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
+});
 
 const unavailable = {
 	...workspace,

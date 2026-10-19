@@ -3,6 +3,7 @@ export type WorkspaceSessionOperation =
 	| "set_workspace_show_deferred"
 	| "undo_todo_change"
 	| "restore"
+	| "reload_views"
 	| "save_view"
 	| "delete_view"
 	| "create_workspace"
@@ -17,7 +18,7 @@ export type WorkspaceSessionOperation =
 	| "reorder_todo_items";
 
 export type WorkspaceSessionActionResult =
-	| { status: "applied"; notice?: string }
+	| { status: "applied"; notice?: string; workspaceId?: string }
 	| { status: "conflict"; message: string }
 	| { status: "rejected"; message: string };
 

@@ -11,6 +11,15 @@ const getWindow = () => window;
 api.readFile("/etc/passwd");
 // @ts-expect-error Read-session requests cannot carry arbitrary filesystem paths.
 api.readSession({ path: "/etc/passwd" });
+// @ts-expect-error Destination reads accept saved Workspace identity, not arbitrary paths.
+api.readWorkspace({ todoPath: "/etc/passwd" });
+registerDesktopOperation(ipc, getWindow, () => true, "readWorkspace", api.readWorkspace);
+api.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" }).then((result) => {
+	if (result.status === "loaded") {
+		// @ts-expect-error A speculative destination is not a confirmed mutation target.
+		result.revision;
+	}
+});
 // @ts-expect-error Main cannot register an unknown operation/channel.
 registerDesktopOperation(ipc, getWindow, () => true, "arbitraryChannel", api.readSession);
 registerDesktopOperation(

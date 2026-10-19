@@ -4,7 +4,7 @@
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
@@ -12,7 +12,7 @@
 	type Props = {
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		workspace: ElectronWorkspaceSessionState;
+		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		openWorkspaceCreationDialog: () => void;

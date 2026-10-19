@@ -9,7 +9,7 @@
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
 	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import * as Resizable from "$lib/shared/ui/resizable";
 	import * as Sheet from "$lib/shared/ui/sheet";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -24,7 +24,7 @@
 		filteredTodoItems,
 		bulkSelection,
 	}: {
-		workspace: ElectronWorkspaceSessionState;
+		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
@@ -79,12 +79,14 @@
 	}
 	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
 		const result = await reader.deleteTodo(todo, trigger);
+		if (result.status === "applied" && result.notice) toast.info(result.notice);
 		if (result.status === "conflict") toast.error("Todo file reloaded");
 		else if (result.status === "rejected")
 			toast.error("Could not delete Todo item", { description: result.message });
 	}
 	async function reorderTodoItems(items: readonly TodoItem[]) {
 		const result = await reader.reorder(items);
+		if (result?.status === "applied" && result.notice) toast.info(result.notice);
 		if (result?.status === "conflict") toast.error("Todo file reloaded");
 		else if (result?.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
@@ -152,6 +154,8 @@
 										disabled={workspace.isOperating}
 										onclick={() =>
 											void workspace.setShowDeferred(true).then((outcome) => {
+												if (outcome.status === "applied" && outcome.notice)
+													toast.info(outcome.notice);
 												if (outcome.status !== "applied")
 													toast.error("Could not save Show deferred", {
 														description: outcome.message,

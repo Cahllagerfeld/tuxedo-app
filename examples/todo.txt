@@ -71,8 +71,10 @@ Use the entry page to choose a colored Workspace by its Todo-file path without s
 Restart Tuxedo to resume the last Workspace without flashing Home +TuxedoApp @review
 Remove a saved Workspace from its Home row options and confirm without deleting its Todo file +TuxedoApp @review
 Return Home to see the last-opened Workspace first while other Workspaces keep their creation order +TuxedoApp @review
-Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
-See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
+Use the switcher for everyday navigation and choose Retry or Home when a Todo file cannot open +TuxedoApp @review
+See a helpful missing-file message at the requested destination when a Todo file is moved or deleted +TuxedoApp @review
+Hover another Workspace and refresh this one without changing the Active workspace or consuming Undo +TuxedoApp @review
+Keep the confirmed reader visible while a saved change or Workspace switch loads its result +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01

@@ -2,9 +2,9 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import {
-		ElectronWorkspaceSessionState,
+		WorkspaceSessionFixture as WorkspaceCommands,
 		type CreateTodoDraft,
-	} from "./electron-workspace-session.svelte";
+	} from "./workspace-session-fixture.svelte";
 
 	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
 	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;
@@ -14,7 +14,7 @@
 
 	let { desktop }: { desktop: CreateTodoDesktop } = $props();
 	// svelte-ignore state_referenced_locally
-	const session = new ElectronWorkspaceSessionState(desktop);
+	const session = new WorkspaceCommands(desktop);
 	onMount(() => {
 		void session.initialize();
 	});

@@ -3,8 +3,8 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
 	import { toast } from "svelte-sonner";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
-	import { AppState } from "$lib/app/app-state.svelte";
+	import { WorkspaceSessionFixture as WorkspaceCommands } from "../state/workspace-session-fixture.svelte";
+	import { createReaderState } from "$lib/app/reader-state.svelte";
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import AppNavbar from "$lib/app/AppNavbar.svelte";
@@ -25,11 +25,19 @@
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
+		reader.todoFilter.reconcileSource()
+	);
+	const reader = createReaderState(session);
+	let switcherOpen = $state(false);
+	let creationDialogOpen = $state(false);
+	const openWorkspaceCreationDialog = () => {
+		creationDialogOpen = true;
+	};
 	onMount(() => {
 		const stop =
-			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
-		void app.workspace.initialize();
+			observation && session.observe(observation, () => toast.info("Todo file reloaded"));
+		void session.initialize();
 		return stop;
 	});
 </script>
@@ -37,53 +45,63 @@
 <!-- Sonner only guards per-toast Infinity; an inherited Infinity becomes an immediate timer. -->
 <Toaster duration={60_000} />
 {#if restoration}
-	<button disabled={app.workspace.isOperating} onclick={() => void app.workspace.restore()}
+	<button disabled={session.isOperating} onclick={() => void session.restore()}
 		>Restore Workspace session</button
 	>
 {/if}
 <p aria-label="Summary counts">
-	{app.todos.counts.open}/{app.todos.counts.completed}
+	{reader.todos.counts.open}/{reader.todos.counts.completed}
 </p>
-<p aria-label="Filter projects">{app.todoFilter.availableFacets.projects.join(",")}</p>
+<p aria-label="Filter projects">{reader.todoFilter.availableFacets.projects.join(",")}</p>
 <Sidebar.Provider class="min-h-0 flex-col" style="--window-toolbar-height: 2.5rem;">
 	{#if shell}
-		<AppNavbar {app} />
+		<AppNavbar
+			workspace={session}
+			bulkSelectionActive={reader.bulkSelection.active}
+			openWorkspaceSwitcher={() => {
+				switcherOpen = true;
+			}}
+			{openWorkspaceCreationDialog}
+			openTodoCreation={() => {
+				reader.creationOpen = true;
+			}}
+		/>
 	{/if}
 	<div class="relative flex min-h-0">
 		{#if shell}
 			<WorkspaceSidebar
-				bind:switcherOpen={app.isWorkspaceSwitcherOpen}
-				workspaces={app.workspace.catalogue?.workspaces ?? []}
-				activeWorkspaceId={app.workspace.activeWorkspace?.id ?? null}
-				todoSummary={app.todos}
-				todoFilter={app.todoFilter}
-				todoFileLoaded={!!app.workspace.todoFile}
-				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				selectWorkspace={app.workspace.open}
-				deleteWorkspace={app.workspace.deleteWorkspace}
-				openCreationDialog={app.openWorkspaceCreationDialog}
+				bind:switcherOpen
+				workspaces={session.catalogue?.workspaces ?? []}
+				activeWorkspaceId={session.activeWorkspace?.id ?? null}
+				todoSummary={reader.todos}
+				todoFilter={reader.todoFilter}
+				todoFileLoaded={!!session.todoFile}
+				disabled={session.isOperating || session.isLoading}
+				selectWorkspace={session.open}
+				deleteWorkspace={session.deleteWorkspace}
+				openCreationDialog={openWorkspaceCreationDialog}
 			/>
 			<WorkspaceCreationDialog
-				bind:open={app.isWorkspaceCreationDialogOpen}
-				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				createWorkspace={app.workspace.create}
+				bind:open={creationDialogOpen}
+				disabled={session.isOperating || session.isLoading}
+				createWorkspace={session.create}
 			/>
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
 			<WorkspaceContent
-				bulkSelection={app.bulkSelection}
-				bind:creationOpen={app.isTodoCreationOpen}
-				workspace={app.workspace}
-				todoFilter={app.todoFilter}
-				filteredTodoItems={app.filteredTodoItems}
-				openWorkspaceCreationDialog={app.openWorkspaceCreationDialog}
+				bulkSelection={reader.bulkSelection}
+				bind:creationOpen={reader.creationOpen}
+				workspace={session}
+				todoFilter={reader.todoFilter}
+				filteredTodoItems={reader.filteredTodoItems}
+				{openWorkspaceCreationDialog}
 			/>
 		</div>
 	</div>
 </Sidebar.Provider>
 <ReaderStatusBar
-	activeWorkspace={app.workspace.activeWorkspace}
-	todoFile={app.workspace.todoFile}
-	todoSummary={app.todos}
-	pendingOperation={app.workspace.pendingOperation}
+	activeWorkspace={session.activeWorkspace}
+	todoFile={session.todoFile}
+	todoSummary={reader.todos}
+	pendingOperation={session.pendingOperation}
 />

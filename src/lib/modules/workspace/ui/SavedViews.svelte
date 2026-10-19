@@ -15,13 +15,11 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
-	let {
-		workspace,
-		todoFilter,
-	}: { workspace: ElectronWorkspaceSessionState; todoFilter: TodoFilterState } = $props();
+	let { workspace, todoFilter }: { workspace: WorkspaceCommands; todoFilter: TodoFilterState } =
+		$props();
 	let menuOpen = $state(false);
 	let saveOpen = $state(false);
 	let error = $state("");
@@ -61,12 +59,14 @@
 		const outcome = await workspace.saveView($formData.name, todoFilter.snapshot());
 		if (outcome.status === "applied") {
 			saveOpen = false;
-			toast.success("View saved");
+			if (outcome.notice) toast.info(outcome.notice);
+			else toast.success("View saved");
 		} else error = outcome.message;
 	}
 	async function deleteView(id: string) {
 		const outcome = await workspace.deleteView(id);
 		if (outcome.status !== "applied") toast.error(outcome.message);
+		else if (outcome.notice) toast.info(outcome.notice);
 	}
 </script>
 
@@ -87,9 +87,18 @@
 	<Popover.Content align="end" class="w-72">
 		<div class="grid gap-2">
 			<p class="text-sm font-medium">Saved views</p>
-			{#if workspace.savedViewsError}<p role="alert" class="text-xs text-destructive">
-					{workspace.savedViewsError}
-				</p>{/if}
+			{#if workspace.savedViewsError}
+				<p role="alert" class="text-xs text-destructive">{workspace.savedViewsError}</p>
+				<Button
+					variant="outline"
+					disabled={workspace.isOperating}
+					onclick={() => {
+						void workspace.reloadViews().then((outcome) => {
+							if (outcome.status !== "applied") toast.error(outcome.message);
+						});
+					}}>Retry saved views</Button
+				>
+			{/if}
 			<div class="max-h-64 overflow-y-auto">
 				{#each views as view (view.id)}
 					<div class="flex min-w-0 items-center gap-1">

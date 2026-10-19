@@ -1,5 +1,5 @@
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
-import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
 const todoKey = (todo: TodoItem) => `${todo.line_number}\0${todo.raw}`;
 
@@ -16,7 +16,7 @@ function cell<T>(initial: T) {
 }
 
 type Inputs = {
-	readonly getWorkspace: () => ElectronWorkspaceSessionState;
+	readonly getWorkspace: () => WorkspaceCommands;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
 };

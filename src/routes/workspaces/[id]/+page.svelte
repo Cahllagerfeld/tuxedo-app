@@ -1,34 +1,44 @@
 <script lang="ts">
-	import { getAppState } from "$lib/app/app-context";
+	import { getWorkspaceContext } from "$lib/app/app-context";
 	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
-	import WorkspaceLoading from "$lib/modules/workspace/ui/WorkspaceLoading.svelte";
-	import { goto } from "$app/navigation";
-	import { resolve } from "$app/paths";
+	import WorkspaceRecovery from "$lib/modules/workspace/ui/WorkspaceRecovery.svelte";
+	import { tick } from "svelte";
 	import type { PageProps } from "./$types";
-
-	let { params }: PageProps = $props();
-	const appState = getAppState();
-	const workspace = appState.workspace;
-
-	// Navigation is external to Svelte state: failed or lost destinations recover through Home.
-	$effect(() => {
-		if (!workspace.isOperating && !workspace.isLoading && !appState.showsDestination(params.id)) {
-			void goto(resolve("/"), { replaceState: true });
-		}
+	let { data, params }: PageProps = $props();
+	const { workspace, reader, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
+	let recovery = $state<ReturnType<typeof WorkspaceRecovery>>();
+	// Transfer owned DOM focus when an unreadable-file result removes the reader.
+	$effect.pre(() => {
+		if (
+			!navigation.readerAvailable &&
+			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
+		)
+			void tick().then(() => recovery?.focusViewport());
 	});
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-	{#if appState.showsDestination(params.id)}
-		<WorkspaceContent
-			bind:creationOpen={appState.isTodoCreationOpen}
-			bulkSelection={appState.bulkSelection}
-			{workspace}
-			todoFilter={appState.todoFilter}
-			filteredTodoItems={appState.filteredTodoItems}
-			openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
-		/>
+	{#if navigation.readerAvailable}
+		{#key params.id}
+			<WorkspaceContent
+				bind:creationOpen={reader.creationOpen}
+				bulkSelection={reader.bulkSelection}
+				{workspace}
+				todoFilter={reader.todoFilter}
+				filteredTodoItems={reader.filteredTodoItems}
+				{openWorkspaceCreationDialog}
+			/>
+		{/key}
 	{:else}
-		<WorkspaceLoading />
+		<WorkspaceRecovery
+			bind:this={recovery}
+			message={navigation.error ||
+				(data.destination?.status === "rejected" ? data.destination.message : "") ||
+				workspace.error ||
+				workspace.warning ||
+				"This Workspace is unavailable."}
+			disabled={navigation.busy}
+			retry={navigation.retry}
+		/>
 	{/if}
 </div>

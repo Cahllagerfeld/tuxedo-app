@@ -87,7 +87,7 @@
 							: workspace.name}
 						aria-current={workspace.id === activeWorkspaceId ? "true" : undefined}
 						{disabled}
-						onclick={() => selectWorkspace(workspace.id)}
+						onSelect={() => selectWorkspace(workspace.id)}
 					>
 						<span
 							class={`size-2 shrink-0 rounded-full ${workspaceColorClasses[workspace.color]}`}

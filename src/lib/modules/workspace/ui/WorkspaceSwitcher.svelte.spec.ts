@@ -72,6 +72,26 @@ describe("WorkspaceSwitcher", () => {
 			.toBeDisabled();
 	});
 
+	it("closes the menu when selecting a Workspace synchronously disables its controls", async () => {
+		let admit = () => {};
+		const props = {
+			workspaces: [work, personal],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(() => admit()),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+			disabled: false,
+		};
+		const view = await render(WorkspaceSwitcher, props);
+		admit = () => {
+			void view.rerender({ ...props, disabled: true });
+		};
+		await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+		await page.getByRole("menuitem", { name: "Personal", exact: true }).click();
+		expect(props.selectWorkspace).toHaveBeenCalledOnce();
+		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+	});
+
 	it("disables an already-open deletion confirmation when another operation starts", async () => {
 		const props = {
 			workspaces: [work],

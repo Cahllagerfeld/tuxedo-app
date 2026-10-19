@@ -180,6 +180,32 @@ const catalogue = {
 	],
 };
 const todo_file = { path: "/tmp/work.todo", items: [], skipped: [] };
+test("destination read transport validates identity, file coherence and absence of mutation tokens", async () => {
+	const loaded = { status: "loaded", workspace: catalogue.workspaces[0], todo_file };
+	let forwarded: unknown;
+	const desktop = createDesktopClient(async (channel, request) => {
+		forwarded = { channel, request };
+		return loaded;
+	});
+	expect(await desktop.readWorkspace({ workspaceId })).toEqual(loaded);
+	expect(forwarded).toEqual({ channel: "tuxedo:read-workspace", request: { workspaceId } });
+	for (const invalid of [{ workspaceId: "unknown" }, { workspaceId, path: "/etc/passwd" }])
+		expect(() => desktopContract.readWorkspace.request.parse(invalid)).toThrow();
+	for (const invalid of [
+		{ ...loaded, todo_file: { ...todo_file, path: "/tmp/other.todo" } },
+		{ ...loaded, scope, revision: 1 },
+		{ status: "loaded", todo_file },
+	])
+		await expect(
+			createDesktopClient(async () => invalid).readWorkspace({ workspaceId })
+		).rejects.toThrow();
+	expect(
+		await createDesktopClient(async () => ({
+			status: "rejected",
+			message: "Missing Workspace",
+		})).readWorkspace({ workspaceId })
+	).toEqual({ status: "rejected", message: "Missing Workspace" });
+});
 test.each([
 	{
 		status: "empty",
