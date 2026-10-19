@@ -75,6 +75,7 @@ Use the switcher for everyday navigation and choose Retry or Home when a Todo fi
 See a helpful missing-file message at the requested destination when a Todo file is moved or deleted +TuxedoApp @review
 Hover another Workspace and refresh this one without changing the Active workspace or consuming Undo +TuxedoApp @review
 Keep the confirmed reader visible while a saved change or Workspace switch loads its result +TuxedoApp @review
+Keep text search and filters when the current Workspace reloads, and start fresh when switching Workspaces +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01

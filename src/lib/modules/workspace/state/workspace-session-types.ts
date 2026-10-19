@@ -21,11 +21,3 @@ export type WorkspaceSessionActionResult =
 	| { status: "applied"; notice?: string; workspaceId?: string }
 	| { status: "conflict"; message: string }
 	| { status: "rejected"; message: string };
-
-export type WorkspaceSessionOperationTarget =
-	{ workspaceId: string; lineNumber?: number } | { todoPath: string };
-
-export type PendingWorkspaceSessionOperation = {
-	operation: WorkspaceSessionOperation;
-	target: WorkspaceSessionOperationTarget | null;
-};

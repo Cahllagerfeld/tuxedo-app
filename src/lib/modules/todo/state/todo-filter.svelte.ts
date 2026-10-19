@@ -5,13 +5,7 @@ import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../
 
 import { isDeferred } from "../domain/todo-threshold";
 
-export type TodoFilterStatus = "all" | "open" | "completed";
-
-export type TodoFilterFacets = Readonly<{
-	projects: readonly string[];
-	contexts: readonly string[];
-	priorities: readonly string[];
-}>;
+type TodoFilterStatus = "all" | "open" | "completed";
 
 type FilterSource = {
 	items: readonly TodoItem[];
@@ -21,15 +15,17 @@ type FilterSource = {
 
 export class TodoFilterState {
 	private preserveSelections = false;
-	private workspaceKey: string | null | undefined;
-	private localItems = $state.raw<readonly TodoItem[]>([]);
-	constructor(private readonly source?: () => FilterSource) {}
+	constructor(private readonly source: () => FilterSource) {}
 	private get items() {
-		return this.source?.().items ?? this.localItems;
+		return this.source().items;
 	}
 	status = $state<TodoFilterStatus>("all");
-	sortOrder = $derived.by<TodoSortOrder>(() => this.source?.().sortOrder ?? "file");
-	showDeferred = $derived.by(() => this.source?.().showDeferred ?? false);
+	get sortOrder() {
+		return this.source().sortOrder;
+	}
+	get showDeferred() {
+		return this.source().showDeferred;
+	}
 	deferredCount = $derived(
 		this.items.filter((item) => this.matchesFilters(item) && isDeferred(item, this.today)).length
 	);
@@ -81,7 +77,7 @@ export class TodoFilterState {
 	setStatus = (status: TodoFilterStatus) => {
 		this.status = status;
 		if (status === "completed") this.clearDue();
-		this.reconcile(this.availableFacets);
+		this.reconcile();
 	};
 
 	toggleProject = (project: string) => {
@@ -115,33 +111,9 @@ export class TodoFilterState {
 		this.selectedPriority = null;
 	};
 
-	reset = () => {
-		this.status = "all";
-		this.sortOrder = "file";
-		this.showDeferred = false;
-		this.clear();
-	};
-
-	sync = (
-		workspaceKey: string | null,
-		items: readonly TodoItem[],
-		sortOrder?: TodoSortOrder,
-		showDeferred?: boolean
-	) => {
-		this.localItems = items;
-		if (this.workspaceKey !== workspaceKey) {
-			this.workspaceKey = workspaceKey;
-			this.reset();
-		}
-		if (sortOrder !== undefined) this.sortOrder = sortOrder;
-		if (showDeferred !== undefined) this.showDeferred = showDeferred;
-		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
-			this.clearDue();
-		this.reconcile(this.availableFacets);
-	};
-
-	reconcile = (facets: TodoFilterFacets) => {
+	private reconcile = () => {
 		if (this.preserveSelections) return;
+		const facets = this.availableFacets;
 		if (this.selectedProject !== null && !facets.projects.includes(this.selectedProject)) {
 			this.selectedProject = null;
 		}
@@ -155,7 +127,7 @@ export class TodoFilterState {
 	reconcileSource = () => {
 		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
 			this.clearDue();
-		this.reconcile(this.availableFacets);
+		this.reconcile();
 	};
 
 	snapshot = (): SavedViewFilterValues => ({

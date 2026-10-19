@@ -83,7 +83,7 @@ The most recently successfully selected Workspace and the one the app attempts t
 The coherent state returned after a Workspace lifecycle operation: the persisted Workspace catalogue and, when a Workspace is successfully opened or created, that active Workspace's loaded Todo file.
 
 **Workspace session**:
-The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
+The confirmed in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Empty, Ready, or unavailable because the Workspace catalogue cannot be read. SvelteKit waits for initial load data before rendering the app.
 
 **Workspace session operation**:
 An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, or reordering. Workspace session operations do not overlap, including the renderer refresh needed to display their results. Repeatable reads do not activate a Workspace or consume Undo.

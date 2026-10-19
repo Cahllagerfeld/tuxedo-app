@@ -1,18 +1,10 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
-	import {
-		WorkspaceSessionFixture as WorkspaceCommands,
-		type CreateTodoDraft,
-	} from "./workspace-session-fixture.svelte";
+	import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
+	import type { CreateTodoDraft } from "./workspace-commands.svelte";
 
-	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
-	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;
-	export type CreateTodoDesktop = DesktopAPI & {
-		createTodo: (request: CreateTodoRequest) => Promise<TodoOutcome>;
-	};
-
-	let { desktop }: { desktop: CreateTodoDesktop } = $props();
+	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
 	onMount(() => {
@@ -34,7 +26,4 @@
 <button disabled={session.isOperating} onclick={create}>Create</button>
 <p aria-label="Item count">{session.todoFile?.items.length ?? 0}</p>
 <p aria-label="Pending operation">{session.pendingOperation ?? "none"}</p>
-<p aria-label="Pending target">
-	{session.pendingTarget ? JSON.stringify(session.pendingTarget) : "none"}
-</p>
 <p aria-label="Action result">{result}</p>

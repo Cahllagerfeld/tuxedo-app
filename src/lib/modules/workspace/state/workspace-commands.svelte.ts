@@ -11,24 +11,22 @@ import {
 } from "$lib/shared/desktop/contract";
 import type {
 	WorkspaceSessionActionResult,
-	PendingWorkspaceSessionOperation,
 	WorkspaceSessionOperation,
-	WorkspaceSessionOperationTarget,
 } from "./workspace-session-types";
 import type { TodoItem } from "$lib/modules/todo/domain/todo";
 
 type CreateTodoRequest = DesktopRequest<"createTodo">;
 export type CreateTodoDraft = Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">;
 
-export type WorkspaceLoadedData = {
-	confirmed?: ConfirmedSession;
-	error?: string;
+export type WorkspaceLoadedData = (
+	{ confirmed: ConfirmedSession; error?: never } | { confirmed?: never; error: string }
+) & {
 	savedViews?: readonly SavedView[];
 	savedViewsError?: string;
 };
 
 export class WorkspaceCommands {
-	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
+	private pending = $state<WorkspaceSessionOperation | null>(null);
 	private refreshFailed = $state(false);
 	private reconsiderObservation: (() => void) | undefined;
 
@@ -111,11 +109,7 @@ export class WorkspaceCommands {
 		if (outcome.status !== "rejected") {
 			try {
 				await (refresh ? refresh() : this.invalidate(dependency));
-				const error =
-					dependency !== "views"
-						? this.getData().error ||
-							(this.session.status === "unavailable" ? this.session.error : "")
-						: this.savedViewsError;
+				const error = dependency !== "views" ? this.error : this.savedViewsError;
 				if (error) throw Error(error);
 				if (dependency !== "views") this.refreshFailed = false;
 			} catch {
@@ -148,48 +142,32 @@ export class WorkspaceCommands {
 	}
 
 	get session() {
-		return (
-			this.confirmed?.session ??
-			(this.getData().error
-				? { status: "unavailable" as const, error: this.getData().error! }
-				: { status: "loading" as const })
-		);
-	}
-	get isLoading() {
-		return this.session.status === "loading";
+		const data = this.getData();
+		return data.confirmed
+			? data.confirmed.session
+			: { status: "unavailable" as const, error: data.error };
 	}
 	get undoLabel() {
 		return this.session.status === "ready" ? this.confirmed?.undoLabel : undefined;
 	}
 	undoTodo = () =>
-		this.runAction(
-			"undo_todo_change",
-			async () => this.refreshOutcome(await this.desktop.undoTodo(this.todoTarget())),
-			this.todoOperationTarget()
+		this.runAction("undo_todo_change", async () =>
+			this.refreshOutcome(await this.desktop.undoTodo(this.todoTarget()))
 		);
 	setSortOrder = (sortOrder: TodoSortOrder) =>
-		this.runAction(
-			"set_workspace_sort_order",
-			async () =>
-				this.refreshOutcome(
-					await this.desktop.setWorkspaceSortOrder({ ...this.todoTarget(), sortOrder })
-				),
-			this.todoOperationTarget()
+		this.runAction("set_workspace_sort_order", async () =>
+			this.refreshOutcome(
+				await this.desktop.setWorkspaceSortOrder({ ...this.todoTarget(), sortOrder })
+			)
 		);
 	setShowDeferred = (showDeferred: boolean) =>
-		this.runAction(
-			"set_workspace_show_deferred",
-			async () =>
-				this.refreshOutcome(
-					await this.desktop.setWorkspaceShowDeferred({ ...this.todoTarget(), showDeferred })
-				),
-			this.todoOperationTarget()
+		this.runAction("set_workspace_show_deferred", async () =>
+			this.refreshOutcome(
+				await this.desktop.setWorkspaceShowDeferred({ ...this.todoTarget(), showDeferred })
+			)
 		);
 	get pendingOperation(): WorkspaceSessionOperation | null {
-		return this.pending?.operation ?? null;
-	}
-	get pendingTarget(): WorkspaceSessionOperationTarget | null {
-		return this.pending?.target ?? null;
+		return this.pending;
 	}
 	get isOperating() {
 		return this.pending !== null || this.navigationPending();
@@ -215,13 +193,12 @@ export class WorkspaceCommands {
 	}
 	private async runAction(
 		operation: WorkspaceSessionOperation,
-		action: () => Promise<WorkspaceSessionActionResult>,
-		target: WorkspaceSessionOperationTarget | null = null
+		action: () => Promise<WorkspaceSessionActionResult>
 	): Promise<WorkspaceSessionActionResult> {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
 		// Admission and pending UI share one synchronous state transition.
-		this.pending = { operation, target };
+		this.pending = operation;
 		try {
 			const outcome = await action();
 			return outcome.status === "applied"
@@ -256,216 +233,161 @@ export class WorkspaceCommands {
 		});
 
 	reloadViews = () =>
-		this.runAction(
-			"reload_views",
-			async () => {
-				await this.invalidate("views");
-				return this.savedViewsError
-					? { status: "rejected", message: this.savedViewsError }
-					: { status: "applied" };
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("reload_views", async () => {
+			await this.invalidate("views");
+			return this.savedViewsError
+				? { status: "rejected", message: this.savedViewsError }
+				: { status: "applied" };
+		});
 
 	saveView = (name: string, filters: SavedViewFilterValues) =>
-		this.runAction(
-			"save_view",
-			async () => {
-				const workspaceId = this.activeWorkspace?.id;
-				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
-				const outcome = await this.desktop.saveView({ workspaceId, name, filters });
-				return this.refreshOutcome(outcome, "views");
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("save_view", async () => {
+			const workspaceId = this.activeWorkspace?.id;
+			if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
+			const outcome = await this.desktop.saveView({ workspaceId, name, filters });
+			return this.refreshOutcome(outcome, "views");
+		});
 	deleteView = (viewId: string) =>
-		this.runAction(
-			"delete_view",
-			async () => {
-				const workspaceId = this.activeWorkspace?.id;
-				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
-				const outcome = await this.desktop.deleteView({ workspaceId, viewId });
-				return this.refreshOutcome(outcome, "views");
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("delete_view", async () => {
+			const workspaceId = this.activeWorkspace?.id;
+			if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
+			const outcome = await this.desktop.deleteView({ workspaceId, viewId });
+			return this.refreshOutcome(outcome, "views");
+		});
 
 	create = (
 		input: DesktopRequest<"createWorkspace">,
 		navigate?: (workspaceId: string) => Promise<void>
 	) =>
-		this.runAction(
-			"create_workspace",
-			async () => {
-				const saved = await this.desktop.createWorkspace(input);
-				const workspaceId =
-					saved.status === "applied" && saved.confirmed.session.status === "ready"
-						? saved.confirmed.session.catalogue.active_workspace_id
-						: null;
-				const outcome = await this.refreshOutcome(
-					saved,
-					"lifecycle",
-					navigate && workspaceId ? () => navigate(workspaceId) : undefined
-				);
-				return outcome.status === "applied"
-					? ({
-							status: "applied",
-							workspaceId:
-								outcome.confirmed.session.status === "ready"
-									? outcome.confirmed.session.catalogue.active_workspace_id!
-									: undefined,
-							...(outcome.notice ? { notice: outcome.notice } : {}),
-						} as const)
-					: outcome;
-			},
-			{ todoPath: input.todoPath }
-		);
+		this.runAction("create_workspace", async () => {
+			const saved = await this.desktop.createWorkspace(input);
+			const workspaceId =
+				saved.status === "applied" && saved.confirmed.session.status === "ready"
+					? saved.confirmed.session.catalogue.active_workspace_id
+					: null;
+			const outcome = await this.refreshOutcome(
+				saved,
+				"lifecycle",
+				navigate && workspaceId ? () => navigate(workspaceId) : undefined
+			);
+			return outcome.status === "applied"
+				? ({
+						status: "applied",
+						workspaceId:
+							outcome.confirmed.session.status === "ready"
+								? outcome.confirmed.session.catalogue.active_workspace_id!
+								: undefined,
+						...(outcome.notice ? { notice: outcome.notice } : {}),
+					} as const)
+				: outcome;
+		});
 	open = (
 		workspaceId: string,
 		navigate?: (outcome: WorkspaceSessionActionResult) => Promise<void>,
 		beforeActivation?: Promise<void>
 	) =>
-		this.runAction(
-			"open_workspace",
-			async () => {
-				if (beforeActivation) await beforeActivation;
-				const outcome = await this.desktop.switchWorkspace({ workspaceId });
-				if (navigate && outcome.status === "rejected") {
-					await navigate(outcome);
-					return outcome;
-				}
-				return this.refreshOutcome(
-					outcome,
-					"lifecycle",
-					navigate ? () => navigate(outcome) : undefined
-				);
-			},
-			{ workspaceId }
-		);
+		this.runAction("open_workspace", async () => {
+			if (beforeActivation) await beforeActivation;
+			const outcome = await this.desktop.switchWorkspace({ workspaceId });
+			if (navigate && outcome.status === "rejected") {
+				await navigate(outcome);
+				return outcome;
+			}
+			return this.refreshOutcome(
+				outcome,
+				"lifecycle",
+				navigate ? () => navigate(outcome) : undefined
+			);
+		});
 	deleteWorkspace = (workspaceId: string) =>
-		this.runAction(
-			"delete_workspace",
-			async () =>
-				this.refreshOutcome(await this.desktop.deleteWorkspace({ workspaceId }), "lifecycle"),
-			{ workspaceId }
+		this.runAction("delete_workspace", async () =>
+			this.refreshOutcome(await this.desktop.deleteWorkspace({ workspaceId }), "lifecycle")
 		);
 	setCompletion = (todo: TodoItem) =>
-		this.runAction(
-			"set_todo_item_completion",
-			async () => {
-				const input = this.todoMutationTarget(todo);
-				return this.refreshOutcome(
-					await this.desktop.setTodoCompletion({ ...input, completed: !todo.completed })
-				);
-			},
-			this.todoOperationTarget(todo)
-		);
+		this.runAction("set_todo_item_completion", async () => {
+			const input = this.todoMutationTarget(todo);
+			return this.refreshOutcome(
+				await this.desktop.setTodoCompletion({ ...input, completed: !todo.completed })
+			);
+		});
 	bulkSetCompletion = (items: readonly TodoItem[], completed: boolean) =>
-		this.runAction(
-			"bulk_set_todo_item_completion",
-			async () => {
-				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
-				return this.refreshOutcome(
-					await this.desktop.bulkSetTodoCompletion({
-						...target,
-						completed,
-						targets: items.map((item) => ({
-							lineNumber: item.line_number,
-							expectedRaw: item.raw,
-						})),
-					})
-				);
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("bulk_set_todo_item_completion", async () => {
+			const target = this.todoTarget();
+			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+			if (items.some((item) => current.get(item.line_number) !== item.raw))
+				return {
+					status: "rejected",
+					message: "The Todo file changed. Try again with its current Todo items.",
+				};
+			return this.refreshOutcome(
+				await this.desktop.bulkSetTodoCompletion({
+					...target,
+					completed,
+					targets: items.map((item) => ({
+						lineNumber: item.line_number,
+						expectedRaw: item.raw,
+					})),
+				})
+			);
+		});
 	bulkDeleteTodos = (items: readonly TodoItem[]) =>
-		this.runAction(
-			"bulk_delete_todo_items",
-			async () => {
-				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
-				return this.refreshOutcome(
-					await this.desktop.bulkDeleteTodos({
-						...target,
-						targets: items.map((item) => ({
-							lineNumber: item.line_number,
-							expectedRaw: item.raw,
-						})),
-					})
-				);
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("bulk_delete_todo_items", async () => {
+			const target = this.todoTarget();
+			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+			if (items.some((item) => current.get(item.line_number) !== item.raw))
+				return {
+					status: "rejected",
+					message: "The Todo file changed. Try again with its current Todo items.",
+				};
+			return this.refreshOutcome(
+				await this.desktop.bulkDeleteTodos({
+					...target,
+					targets: items.map((item) => ({
+						lineNumber: item.line_number,
+						expectedRaw: item.raw,
+					})),
+				})
+			);
+		});
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
 		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
 	}
-	private todoOperationTarget(todo?: TodoItem): WorkspaceSessionOperationTarget | null {
-		const workspaceId = this.catalogue?.active_workspace_id;
-		return workspaceId ? { workspaceId, ...(todo ? { lineNumber: todo.line_number } : {}) } : null;
-	}
 	editTodo = (todo: TodoItem, draft: CreateTodoDraft) =>
-		this.runAction(
-			"edit_todo_item",
-			async () => {
-				const target = this.todoMutationTarget(todo);
-				return this.refreshOutcome(
-					await this.desktop.editTodo({
-						...draft,
-						...target,
-						creationDate: draft.creationDate ?? null,
-						completed: draft.completed ?? todo.completed,
-					})
-				);
-			},
-			this.todoOperationTarget(todo)
-		);
+		this.runAction("edit_todo_item", async () => {
+			const target = this.todoMutationTarget(todo);
+			return this.refreshOutcome(
+				await this.desktop.editTodo({
+					...draft,
+					...target,
+					creationDate: draft.creationDate ?? null,
+					completed: draft.completed ?? todo.completed,
+				})
+			);
+		});
 	deleteTodo = (todo: TodoItem) =>
-		this.runAction(
-			"delete_todo_item",
-			async () => {
-				const input = this.todoMutationTarget(todo);
-				return this.refreshOutcome(await this.desktop.deleteTodo(input));
-			},
-			this.todoOperationTarget(todo)
-		);
+		this.runAction("delete_todo_item", async () => {
+			const input = this.todoMutationTarget(todo);
+			return this.refreshOutcome(await this.desktop.deleteTodo(input));
+		});
 	reorderTodo = (items: readonly TodoItem[]) =>
-		this.runAction(
-			"reorder_todo_items",
-			async () => {
-				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
-				return this.refreshOutcome(
-					await this.desktop.reorderTodo({
-						...target,
-						lineNumbers: items.map((item) => item.line_number),
-					})
-				);
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("reorder_todo_items", async () => {
+			const target = this.todoTarget();
+			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+			if (items.some((item) => current.get(item.line_number) !== item.raw))
+				return {
+					status: "rejected",
+					message: "The Todo file changed. Try again with its current Todo items.",
+				};
+			return this.refreshOutcome(
+				await this.desktop.reorderTodo({
+					...target,
+					lineNumbers: items.map((item) => item.line_number),
+				})
+			);
+		});
 	createTodo = (draft: CreateTodoDraft) =>
-		this.runAction(
-			"create_todo_item",
-			async () => {
-				const target = this.todoTarget();
-				return this.refreshOutcome(await this.desktop.createTodo({ ...target, ...draft }));
-			},
-			this.todoOperationTarget()
-		);
+		this.runAction("create_todo_item", async () => {
+			const target = this.todoTarget();
+			return this.refreshOutcome(await this.desktop.createTodo({ ...target, ...draft }));
+		});
 }

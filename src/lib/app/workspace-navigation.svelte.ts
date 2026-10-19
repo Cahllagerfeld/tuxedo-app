@@ -1,5 +1,5 @@
 import { afterNavigate, beforeNavigate, goto } from "$app/navigation";
-import { navigating, page } from "$app/state";
+import { page } from "$app/state";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { on } from "svelte/events";
@@ -24,7 +24,7 @@ export function createWorkspaceNavigation(
 		(failure?.workspaceId === page.params.id ? failure?.message : "") || getEntryError()
 	);
 	let admittedHref: string | undefined;
-	const busy = () => workspace.isOperating || !!navigating.to;
+	const busy = () => workspace.isOperating;
 	const destination = $derived(getDestination());
 	const matchingFile = $derived(
 		destination?.status === "loaded" &&

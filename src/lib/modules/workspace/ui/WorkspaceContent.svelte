@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { onMount } from "svelte";
 	import { localToday } from "$lib/modules/todo/domain/todo-due";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
-	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -15,7 +14,6 @@
 		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
-		openWorkspaceCreationDialog: () => void;
 	};
 
 	let {
@@ -24,18 +22,7 @@
 		workspace,
 		todoFilter,
 		filteredTodoItems,
-		openWorkspaceCreationDialog,
 	}: Props = $props();
-	let emptyState = $state<ReturnType<typeof WorkspaceEmptyState>>();
-	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
-	$effect.pre(() => {
-		if (
-			!workspace.todoFile &&
-			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
-		) {
-			void tick().then(() => emptyState?.focusViewport());
-		}
-	});
 	let reader = $state<ReturnType<typeof WorkspaceTodoReader>>();
 
 	onMount(() => {
@@ -69,21 +56,11 @@
 		closeDetails={() => reader?.closeDetails()}
 		focusTodo={(todo) => void reader?.focusTodo(todo)}
 	/>
-	{#if workspace.todoFile}
-		<WorkspaceTodoReader
-			bind:this={reader}
-			{workspace}
-			{todoFilter}
-			{filteredTodoItems}
-			{bulkSelection}
-		/>
-	{:else}
-		<WorkspaceEmptyState
-			bind:this={emptyState}
-			session={workspace.session}
-			deleteWorkspace={workspace.deleteWorkspace}
-			disabled={workspace.isOperating || workspace.isLoading}
-			{openWorkspaceCreationDialog}
-		/>
-	{/if}
+	<WorkspaceTodoReader
+		bind:this={reader}
+		{workspace}
+		{todoFilter}
+		{filteredTodoItems}
+		{bulkSelection}
+	/>
 </div>

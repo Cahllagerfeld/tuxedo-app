@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "$lib/shared/desktop/contract";
-import Harness, { type CreateTodoDesktop } from "./ElectronCreateTodoHarness.svelte";
+import Harness from "./ElectronCreateTodoHarness.svelte";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
@@ -42,7 +42,7 @@ const initial: ConfirmedSession = {
 	},
 };
 
-function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop {
+function desktop(createTodo: DesktopAPI["createTodo"]): DesktopAPI {
 	return {
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
@@ -78,8 +78,8 @@ function confirmed(items: Array<typeof item> = []): ConfirmedTodo {
 }
 
 test("create constructs its request from the confirmed active session and accepts the scoped file", async () => {
-	let request: Parameters<CreateTodoDesktop["createTodo"]>[0] | undefined;
-	let finish!: (outcome: Awaited<ReturnType<CreateTodoDesktop["createTodo"]>>) => void;
+	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
+	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["createTodo"]>>) => void;
 	render(Harness, {
 		desktop: desktop((input) => {
 			request = input;
@@ -103,9 +103,6 @@ test("create constructs its request from the confirmed active session and accept
 		projects: ["Work"],
 		contexts: ["Office"],
 	});
-	await expect
-		.element(page.getByLabelText("Pending target"))
-		.toHaveTextContent(JSON.stringify({ workspaceId }));
 
 	finish({ status: "applied", confirmed: confirmed([item, { ...item, line_number: 2 }]) });
 	await expect.element(page.getByLabelText("Item count")).toHaveTextContent("2");
@@ -114,7 +111,7 @@ test("create constructs its request from the confirmed active session and accept
 
 test("create admission is synchronous and blocks a second create until the first settles", async () => {
 	let attempts = 0;
-	let finish!: (outcome: Awaited<ReturnType<CreateTodoDesktop["createTodo"]>>) => void;
+	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["createTodo"]>>) => void;
 	render(Harness, {
 		desktop: desktop(() => {
 			attempts++;
@@ -125,7 +122,7 @@ test("create admission is synchronous and blocks a second create until the first
 	});
 
 	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
-	const create = page.getByRole("button", { name: "Create" });
+	await expect.element(page.getByRole("button", { name: "Create", exact: true })).toBeEnabled();
 	const createButton = document.querySelector("button")!;
 	createButton.click();
 	createButton.click();

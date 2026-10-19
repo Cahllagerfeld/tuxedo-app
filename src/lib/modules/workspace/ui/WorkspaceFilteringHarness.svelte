@@ -13,11 +13,6 @@
 		reader.todoFilter.reconcileSource()
 	);
 	const reader = createReaderState(session);
-	let switcherOpen = $state(false);
-	let creationDialogOpen = $state(false);
-	const openWorkspaceCreationDialog = () => {
-		creationDialogOpen = true;
-	};
 	onMount(() => void session.initialize());
 </script>
 
@@ -29,7 +24,7 @@
 		todoFilter={reader.todoFilter}
 		todoFileLoaded={session.todoFile !== null}
 		collapsible="none"
-		disabled={session.isOperating || session.isLoading}
+		disabled={session.isOperating}
 		pendingOperation={session.pendingOperation}
 		selectWorkspace={session.open}
 		deleteWorkspace={session.deleteWorkspace}
@@ -41,7 +36,6 @@
 			workspace={session}
 			todoFilter={reader.todoFilter}
 			filteredTodoItems={reader.filteredTodoItems}
-			openWorkspaceCreationDialog={() => {}}
 		/>
 	</Sidebar.Inset>
 </Sidebar.Provider>

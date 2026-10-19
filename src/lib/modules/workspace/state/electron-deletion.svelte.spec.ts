@@ -98,9 +98,6 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 	});
 	await expect.element(page.getByRole("button", { name: "Switch", exact: true })).toBeDisabled();
 	await expect
-		.element(page.getByLabelText("Pending target"))
-		.toHaveTextContent('{"workspaceId":"550e8400-e29b-41d4-a716-446655440000","lineNumber":1}');
-	await expect
 		.element(page.getByRole("checkbox", { name: "Mark Finished incomplete" }))
 		.toBeDisabled();
 	await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
@@ -117,7 +114,6 @@ test("row deletion is bound to the confirmed Workspace and keeps controls and su
 	await expect.element(page.getByLabelText("Open items")).toHaveTextContent("0");
 	await expect.element(page.getByLabelText("Completed items")).toHaveTextContent("1");
 	await expect.element(page.getByLabelText("Projects")).toHaveTextContent("Home");
-	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 	await expect
 		.element(page.getByRole("button", { name: "Actions for Delete", exact: true }))
 		.not.toBeInTheDocument();
@@ -194,7 +190,6 @@ test("batch deletion sends one scoped request, blocks duplicate and lifecycle ad
 	const before = state.todoFile;
 	const deleting = state.bulkDeleteTodos([completed, open]);
 	expect(state.pendingOperation).toBe("bulk_delete_todo_items");
-	expect(state.pendingTarget).toEqual({ workspaceId });
 	expect(state.todoFile).toBe(before);
 	expect(bulkDeleteTodos).toHaveBeenCalledExactlyOnceWith({
 		scope,

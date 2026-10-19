@@ -16,12 +16,10 @@
 		desktop,
 		observation,
 		shell = false,
-		restoration = false,
 	}: {
 		desktop: DesktopAPI;
 		observation?: TodoFileObservation;
 		shell?: boolean;
-		restoration?: boolean;
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
@@ -44,11 +42,6 @@
 
 <!-- Sonner only guards per-toast Infinity; an inherited Infinity becomes an immediate timer. -->
 <Toaster duration={60_000} />
-{#if restoration}
-	<button disabled={session.isOperating} onclick={() => void session.restore()}
-		>Restore Workspace session</button
-	>
-{/if}
 <p aria-label="Summary counts">
 	{reader.todos.counts.open}/{reader.todos.counts.completed}
 </p>
@@ -76,14 +69,14 @@
 				todoSummary={reader.todos}
 				todoFilter={reader.todoFilter}
 				todoFileLoaded={!!session.todoFile}
-				disabled={session.isOperating || session.isLoading}
+				disabled={session.isOperating}
 				selectWorkspace={session.open}
 				deleteWorkspace={session.deleteWorkspace}
 				openCreationDialog={openWorkspaceCreationDialog}
 			/>
 			<WorkspaceCreationDialog
 				bind:open={creationDialogOpen}
-				disabled={session.isOperating || session.isLoading}
+				disabled={session.isOperating}
 				createWorkspace={session.create}
 			/>
 		{/if}
@@ -94,7 +87,6 @@
 				workspace={session}
 				todoFilter={reader.todoFilter}
 				filteredTodoItems={reader.filteredTodoItems}
-				{openWorkspaceCreationDialog}
 			/>
 		</div>
 	</div>

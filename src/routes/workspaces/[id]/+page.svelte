@@ -5,7 +5,7 @@
 	import { tick } from "svelte";
 	import type { PageProps } from "./$types";
 	let { data, params }: PageProps = $props();
-	const { workspace, reader, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
+	const { workspace, reader, navigation } = getWorkspaceContext();
 	let recovery = $state<ReturnType<typeof WorkspaceRecovery>>();
 	// Transfer owned DOM focus when an unreadable-file result removes the reader.
 	$effect.pre(() => {
@@ -26,7 +26,6 @@
 				{workspace}
 				todoFilter={reader.todoFilter}
 				filteredTodoItems={reader.filteredTodoItems}
-				{openWorkspaceCreationDialog}
 			/>
 		{/key}
 	{:else}

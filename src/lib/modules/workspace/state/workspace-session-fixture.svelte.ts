@@ -2,14 +2,12 @@ import { WorkspaceCommands, type WorkspaceLoadedData } from "./workspace-command
 import { readViewsData } from "./workspace-load";
 import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "$lib/shared/desktop/contract";
 
-// Legacy UI adapters return writes rather than subsequent reads; model their backend here.
+// Model backend confirmations for isolated renderer tests.
 export class WorkspaceSessionFixture extends WorkspaceCommands {
-	private initializeFixture: () => Promise<
-		{ status: "applied" } | { status: "rejected"; message: string }
-	>;
+	initialize: WorkspaceCommands["restore"];
 	constructor(desktop: DesktopAPI, onRefreshed: () => void = () => {}) {
 		let backend: ConfirmedSession | undefined;
-		let data = $state.raw<WorkspaceLoadedData>({});
+		let data = $state.raw<WorkspaceLoadedData>({ error: "No Workspace data loaded." });
 		const adapter = new Proxy(desktop, {
 			get(target, key: keyof DesktopAPI) {
 				return async (...args: unknown[]) => {
@@ -31,7 +29,8 @@ export class WorkspaceSessionFixture extends WorkspaceCommands {
 			},
 		});
 		const refresh = async (dependency: "session" | "views" | "lifecycle") => {
-			if (dependency !== "views") data = { ...data, confirmed: backend, error: undefined };
+			if (dependency !== "views" && backend)
+				data = { ...data, confirmed: backend, error: undefined };
 			if (dependency !== "session") {
 				data = {
 					...data,
@@ -43,22 +42,11 @@ export class WorkspaceSessionFixture extends WorkspaceCommands {
 			onRefreshed();
 		};
 		super(adapter, () => data, refresh);
-		let initialization: ReturnType<typeof this.initializeFixture> | undefined;
-		this.initializeFixture = () =>
-			(initialization ??= (async () => {
-				try {
-					backend = await adapter.restoreSession({});
-					await refresh("session");
-					await refresh("views");
-					return { status: "applied" as const };
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error);
-					data = { error: message };
-					return { status: "rejected" as const, message };
-				}
-			})());
+		this.initialize = async () => {
+			const outcome = await this.restore();
+			if (outcome.status === "applied") await this.reloadViews();
+			else data = { error: outcome.message };
+			return outcome;
+		};
 	}
-	initialize = () => this.initializeFixture();
 }
-
-export type { CreateTodoDraft } from "./workspace-commands.svelte";

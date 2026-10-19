@@ -359,80 +359,6 @@ test("an external replacement clears details and cannot reopen a reused physical
 	await expect.element(panel).not.toBeInTheDocument();
 });
 
-test("empty-query search stays open across Ready → Empty → Ready without remounting", async () => {
-	if (initial.session.status !== "ready") throw Error("Expected Ready");
-	const catalogue = initial.session.catalogue;
-	let loads = 0;
-	render(Harness, {
-		restoration: true,
-		desktop: adapter({
-			restoreSession: async () => {
-				loads += 1;
-				return loads === 2
-					? {
-							scope,
-							revision: loads,
-							session: { status: "empty", catalogue, warning: "Todo file unreadable" },
-						}
-					: { ...initial, revision: loads };
-			},
-		}),
-	});
-	const toggle = page.getByRole("button", { name: "Toggle Todo-item search" });
-	const search = page.getByRole("searchbox", { name: "Search Todo items" });
-	const restore = page.getByRole("button", { name: "Restore Workspace session" });
-	await toggle.click();
-	await expect.element(search).toBeVisible();
-	await expect.element(search).toHaveValue("");
-	await restore.click();
-	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
-	await expect.element(toggle).not.toBeInTheDocument();
-	await expect.element(search).not.toBeInTheDocument();
-	await restore.click();
-	await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
-	await expect.element(search).toBeVisible();
-	await expect.element(search).toHaveValue("");
-	expect(loads).toBe(3);
-});
-
-test("an unreadable external reload transfers detail focus to the Empty-state viewport", async () => {
-	if (initial.session.status !== "ready") throw Error("Expected Ready");
-	await page.viewport(1400, 900);
-	const catalogue = initial.session.catalogue;
-	let loads = 0;
-	let notify!: (change: TodoFileChange) => void;
-	render(Harness, {
-		desktop: adapter({
-			restoreSession: async () =>
-				loads++
-					? {
-							scope,
-							revision: 2,
-							session: { status: "empty", catalogue, warning: "Todo file unreadable" },
-						}
-					: initial,
-		}),
-		observation: {
-			onTodoFileChanged(listener) {
-				notify = listener;
-				return () => {};
-			},
-		},
-	});
-	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
-	const panel = page.getByRole("complementary", { name: "Todo item details" });
-	(
-		panel.getByRole("button", { name: "Close details", exact: true }).element() as HTMLElement
-	).focus();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
-	await expect.element(page.getByText("Todo file unreadable", { exact: true })).toBeVisible();
-	await expect.element(panel).not.toBeInTheDocument();
-	const viewport = document.querySelector<HTMLElement>(
-		'[aria-label="Workspaces"] [data-slot="scroll-area-viewport"]'
-	);
-	await expect.poll(() => document.activeElement).toBe(viewport);
-});
-
 test("narrow details use a Sheet, allow editing, and restore the row after Escape", async () => {
 	await page.viewport(700, 800);
 	render(Harness, { desktop: adapter() });
@@ -552,11 +478,6 @@ test("conflict recovery and delayed observation never stack error and info notic
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
 });
-test("loading is a non-actionable Workspace session", async () => {
-	render(Harness, { desktop: adapter({ restoreSession: () => new Promise(() => {}) }) });
-	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
-	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
-});
 test("accepted completion keeps the item checked in the default All view", async () => {
 	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
 	render(Harness, {
@@ -632,34 +553,6 @@ test("rejected deletion preserves confirmed content and reports its contextual e
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Could not delete Todo item")).toBeVisible();
 	await expect.element(page.getByText("permission denied")).toBeVisible();
-});
-test("an unavailable catalogue offers no actions", async () => {
-	render(Harness, {
-		desktop: adapter({
-			restoreSession: async () => ({
-				scope,
-				revision: 1,
-				session: { status: "unavailable", error: "invalid catalogue" },
-			}),
-		}),
-	});
-	await expect.element(page.getByRole("alert")).toMatchTextContent("invalid catalogue");
-	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
-});
-test("Empty state retains restoration warnings", async () => {
-	if (initial.session.status !== "ready") throw Error("No initial file");
-	const catalogue = initial.session.catalogue;
-	render(Harness, {
-		desktop: adapter({
-			restoreSession: async () => ({
-				scope,
-				revision: 1,
-				session: { status: "empty", catalogue, warning: "Could not open /tmp/work.todo" },
-			}),
-		}),
-	});
-	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
-	await expect.element(page.getByText("Could not open /tmp/work.todo")).toBeVisible();
 });
 test("confirmed final deletion clears all App summary facts", async () => {
 	render(Harness, {
@@ -1366,30 +1259,11 @@ test("shortcuts clean up on remount and modifier actions remain usable while typ
 	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("loading suspends mutations, help remains available, and held sidebar keys fire once", async () => {
+test("held sidebar keys fire once", async () => {
 	await page.viewport(1200, 800);
-	let ready!: (session: ConfirmedSession) => void;
-	render(Harness, {
-		desktop: adapter({
-			restoreSession: () =>
-				new Promise((resolve) => {
-					ready = resolve;
-				}),
-		}),
-		shell: true,
-	});
-	await expect.element(page.getByText("Loading workspaces…", { exact: true })).toBeVisible();
-	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
-	await userEvent.keyboard(`{${mod}>}n{/${mod}}`);
-	await userEvent.keyboard(`{${mod}>}p{/${mod}}`);
-	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-	await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
-	await userEvent.keyboard(`{${mod}>}/{/${mod}}`);
-	await expect.element(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
-	await userEvent.keyboard("{Escape}");
-	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-	ready(initial);
+	render(Harness, { desktop: adapter(), shell: true });
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+	const mod = /Mac/i.test(navigator.platform) ? "Meta" : "Control";
 	const options = {
 		key: "b",
 		code: "KeyB",

@@ -50,6 +50,3 @@
 <p aria-label="Projects">{summarizeTodoFilterFacets(summary.items, null).projects.join(",")}</p>
 <p aria-label="Action result">{result}</p>
 <p aria-label="Pending operation">{session.pendingOperation ?? "none"}</p>
-<p aria-label="Pending target">
-	{session.pendingTarget ? JSON.stringify(session.pendingTarget) : "none"}
-</p>
