@@ -68,7 +68,7 @@
 	{/if}
 	<Button
 		variant="ghost"
-		href={resolve("/")}
+		href={resolve("/workspaces")}
 		disabled={workspace.isOperating}
 		class="[app-region:no-drag]">Home</Button
 	>

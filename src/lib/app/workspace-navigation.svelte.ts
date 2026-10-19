@@ -11,25 +11,13 @@ import {
 	viewsDependency,
 } from "$lib/modules/workspace/state/workspace-load";
 import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
-import type { DesktopRequest, DesktopResponse } from "$lib/shared/desktop/contract";
+import type { DesktopRequest } from "$lib/shared/desktop/contract";
 import { clearEntryFailure } from "./workspace-entry";
 
-export function createWorkspaceNavigation(
-	workspace: WorkspaceCommands,
-	getDestination: () => DesktopResponse<"readWorkspace"> | undefined,
-	getEntryError: () => string | undefined
-) {
+export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
 	let failure = $state<{ workspaceId: string; message: string } | null>(null);
-	const error = $derived(
-		(failure?.workspaceId === page.params.id ? failure?.message : "") || getEntryError()
-	);
 	let admittedHref: string | undefined;
 	const busy = () => workspace.isOperating;
-	const destination = $derived(getDestination());
-	const matchingFile = $derived(
-		destination?.status === "loaded" &&
-			JSON.stringify(destination.todo_file) === JSON.stringify(workspace.todoFile)
-	);
 
 	async function commit(id: string, url: URL, delta?: number) {
 		clearEntryFailure();
@@ -141,25 +129,7 @@ export function createWorkspaceNavigation(
 		},
 		get error() {
 			return (
-				error ||
-				workspace.refreshError ||
-				(destination?.status === "rejected"
-					? destination.message
-					: page.params.id && !matchingFile && workspace.todoFile
-						? "The Todo file changed. Retry loading its current contents."
-						: "")
-			);
-		},
-		get readerAvailable() {
-			return (
-				!!page.params.id &&
-				!error &&
-				!workspace.refreshError &&
-				destination?.status === "loaded" &&
-				matchingFile &&
-				destination.workspace.id === page.params.id &&
-				!!workspace.todoFile &&
-				workspace.activeWorkspace?.id === page.params.id
+				(failure?.workspaceId === page.params.id ? failure?.message : "") || workspace.refreshError
 			);
 		},
 		async retry() {

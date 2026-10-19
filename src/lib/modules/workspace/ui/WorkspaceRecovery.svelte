@@ -28,7 +28,7 @@
 		<Empty.Content
 			><Button {disabled} onclick={retry}>Retry</Button><Button
 				variant="outline"
-				href={resolve("/")}
+				href={resolve("/workspaces")}
 				{disabled}>Home</Button
 			></Empty.Content
 		>

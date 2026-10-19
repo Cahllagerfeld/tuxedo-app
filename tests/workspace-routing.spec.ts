@@ -348,7 +348,7 @@ test("real links and history preserve the reader during a write and block overla
 		await page.getByRole("link", { name: "Personal", exact: true }).click();
 		await expect.poll(() => !!finishSwitch).toBe(true);
 		await traverse("back");
-		expect(new URL(page.url()).pathname).toBe("/");
+		expect(new URL(page.url()).pathname).toBe("/workspaces");
 		expect(await page.getByRole("checkbox").count()).toBe(0);
 		finishSwitch!();
 		await page
@@ -378,7 +378,7 @@ test("real links and history preserve the reader during a write and block overla
 		expect(await item.isDisabled()).toBe(true);
 		await page.evaluate(`(async () => {
 			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
-			try { await goto("/"); } catch { /* The pending switch blocks another destination. */ }
+			try { await goto("/workspaces"); } catch { /* The pending switch blocks another destination. */ }
 		})()`);
 		expect((await page.evaluate(() => window.routingState())).switches).toBe(2);
 		finishSwitch!();
@@ -401,6 +401,20 @@ test("real links and history preserve the reader during a write and block overla
 		expect(
 			await page.evaluate(() => window.navigation.entries().map((entry) => entry.key))
 		).toEqual(historyEntries);
+
+		await page.evaluate(() => sessionStorage.setItem("failActivation", "1"));
+		await page.evaluate(`(async () => {
+			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			try { await goto("/workspaces/${first}"); } catch { /* Admission resumes the failed destination. */ }
+		})()`);
+		await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
+		await page
+			.getByRole("region", { name: "Workspace destination", exact: true })
+			.getByText("Catalogue is read-only", { exact: true })
+			.waitFor();
+		expect((await page.evaluate(() => window.routingState())).active).toBe(second);
+		await page.goBack();
+		await item.waitFor();
 
 		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();
 		await page.getByRole("button", { name: "Close details", exact: true }).focus();

@@ -2,14 +2,11 @@
 	import { setWorkspaceContext } from "@/app/app-context";
 	import { createReaderState } from "@/app/reader-state.svelte";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import AppNavbar from "@/app/AppNavbar.svelte";
-	import ReaderStatusBar from "@/app/ReaderStatusBar.svelte";
-	import WorkspaceSidebar from "@/modules/workspace/ui/sidebar/index.svelte";
 	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
 	import * as Sidebar from "@/shared/ui/sidebar/index";
 	import { Toaster } from "@/shared/ui/sonner";
 	import { ModeWatcher } from "mode-watcher";
-	import { navigating, page } from "$app/state";
+	import { navigating } from "$app/state";
 	import { afterNavigate, invalidate } from "$app/navigation";
 	import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 	import { sessionDependency, viewsDependency } from "$lib/modules/workspace/state/workspace-load";
@@ -40,13 +37,8 @@
 				reader.bulkSelection.exit();
 			});
 	});
-	const navigation = createWorkspaceNavigation(
-		workspace,
-		() => data.destination,
-		() => data.destinationError
-	);
+	const navigation = createWorkspaceNavigation(workspace);
 	let creationDialogOpen = $state(false);
-	let switcherOpen = $state(false);
 	const openWorkspaceCreationDialog = () => {
 		creationDialogOpen = true;
 	};
@@ -61,50 +53,7 @@
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 	data-sveltekit-preload-data={navigation.busy ? "off" : "hover"}
 >
-	<AppNavbar
-		{workspace}
-		bulkSelectionActive={reader.bulkSelection.active}
-		readerShown={navigation.readerAvailable}
-		workspaceShown={!!page.params.id}
-		openWorkspaceSwitcher={() => {
-			switcherOpen = true;
-		}}
-		{openWorkspaceCreationDialog}
-		openTodoCreation={() => {
-			reader.creationOpen = true;
-		}}
-	/>
-	<div
-		data-slot="app-inset"
-		class="relative m-1 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
-	>
-		{#if page.params.id}
-			<WorkspaceSidebar
-				bind:switcherOpen
-				workspaces={workspace.catalogue?.workspaces ?? []}
-				activeWorkspaceId={workspace.activeWorkspace?.id ?? null}
-				todoSummary={reader.todos}
-				todoFilter={reader.todoFilter}
-				todoFileLoaded={navigation.readerAvailable}
-				disabled={navigation.busy}
-				pendingOperation={workspace.pendingOperation}
-				selectWorkspace={(id) => navigation.selectWorkspace(id)}
-				deleteWorkspace={workspace.deleteWorkspace}
-				openCreationDialog={openWorkspaceCreationDialog}
-			/>
-		{/if}
-		<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-			{@render children()}
-			{#if navigation.readerAvailable}
-				<ReaderStatusBar
-					activeWorkspace={workspace.activeWorkspace}
-					todoFile={workspace.todoFile}
-					todoSummary={reader.todos}
-					pendingOperation={workspace.pendingOperation}
-				/>
-			{/if}
-		</main>
-	</div>
+	{@render children()}
 	<WorkspaceCreationDialog
 		bind:open={creationDialogOpen}
 		disabled={navigation.busy}

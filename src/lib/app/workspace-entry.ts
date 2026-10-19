@@ -1,5 +1,3 @@
-import { resolve } from "$app/paths";
-
 // Only startup's command failure crosses into the first load; confirmed data belongs to loads.
 export let entryFailure:
 	| { phase: "restore"; message: string }
@@ -21,8 +19,6 @@ export async function prepareWorkspaceEntry() {
 			const outcome = await window.desktop.switchWorkspace({ workspaceId: activatingId });
 			if (outcome.status === "rejected")
 				entryFailure = { phase: "activate", workspaceId: activatingId, message: outcome.message };
-		} else if (!id && location.pathname === resolve("/") && active) {
-			history.replaceState(history.state, "", resolve("/workspaces/[id]", { id: active }));
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

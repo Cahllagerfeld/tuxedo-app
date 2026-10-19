@@ -1477,7 +1477,7 @@ try {
 	const routeUrl = (path) => new URL(path, page.url()).href;
 	const recoverHome = async () => {
 		await page.getByRole("link", { name: "Home", exact: true }).first().click();
-		await page.waitForURL(routeUrl("/"));
+		await page.waitForURL(routeUrl("/workspaces"));
 		await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	};
 	const activeId = async () =>
@@ -1491,7 +1491,7 @@ try {
 	await reopen();
 	await expectRoute("Route B", "Beta item");
 	await recoverHome();
-	await page.waitForURL(routeUrl("/"));
+	await page.waitForURL(routeUrl("/workspaces"));
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	assert.equal(await page.getByRole("button", { name: "Toggle Sidebar", exact: true }).count(), 0);
@@ -1575,9 +1575,12 @@ try {
 	await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
 	await recoverHome();
 	await page.reload();
+	await page.getByLabel("Workspace home", { exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, "/workspaces", "Reload preserves explicit Home");
+	await reopen();
 	await expectRoute("Route A", "Alpha item");
 	console.log(
-		"Unavailable nested destinations offer Retry and Home; reload resumes the confirmed Active workspace."
+		"Explicit Home survives reload; the launch route resumes the confirmed Active workspace."
 	);
 
 	await rm(join(directory, "Route-A.txt"));
@@ -1592,10 +1595,18 @@ try {
 		)
 		.waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
+	await reopen();
+	await page.getByRole("heading", { name: "Workspace unavailable", exact: true }).waitFor();
+	assert.equal(new URL(page.url()).pathname, `/workspaces/${routeIds["Route A"]}`);
+	assert.equal(await page.getByLabel("Workspace home", { exact: true }).count(), 0);
 	await writeFile(join(directory, "Route-A.txt"), "Alpha item\n");
 	await page.getByRole("button", { name: "Retry", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
 	console.log("An unreadable Todo file keeps its destination and recovers through Retry.");
+	// Keep the admission check's Back destination within this running app document.
+	await recoverHome();
+	await page.getByRole("link", { name: "Route A", exact: true }).click();
+	await expectRoute("Route A", "Alpha item");
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:switch-workspace");
 		ipcMain.handle(
@@ -1613,9 +1624,15 @@ try {
 		await page.getByRole("button", { name: "Select workspace: Route A" }).elementHandle()
 	);
 	const pendingUrl = page.url();
+	const pendingDocument = await page.evaluate(() => performance.timeOrigin);
 	await page.evaluate(() => history.back());
 	await page.waitForTimeout(300);
 	assert.equal(page.url(), pendingUrl, "Back is blocked during a Workspace session operation");
+	assert.equal(
+		await page.evaluate(() => performance.timeOrigin),
+		pendingDocument,
+		"Back must not reload during an admitted switch"
+	);
 	assert.ok(
 		await page.getByText("Alpha item", { exact: true }).isVisible(),
 		"The confirmed reader stays visible during a switch"
@@ -1629,7 +1646,7 @@ try {
 		.waitFor();
 	assert.equal(await activeId(), routeIds["Route A"]);
 	await recoverHome();
-	await page.waitForURL(routeUrl("/"));
+	await page.waitForURL(routeUrl("/workspaces"));
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	assert.equal(await page.locator("[data-slot='sidebar']").count(), 0);
 	console.log(
@@ -1659,7 +1676,11 @@ try {
 			await confirmation.innerText(),
 			new RegExp(`Remove ${name} from saved Workspaces`)
 		);
-		assert.equal(new URL(page.url()).pathname, "/", "Options must not open the Workspace");
+		assert.equal(
+			new URL(page.url()).pathname,
+			"/workspaces",
+			"Options must not open the Workspace"
+		);
 		await confirmation
 			.getByRole("button", { name: cancel ? "Cancel" : "Remove workspace", exact: true })
 			.click();

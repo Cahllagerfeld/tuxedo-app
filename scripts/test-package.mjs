@@ -49,7 +49,7 @@ try {
 		await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
 		visible
 	);
-	assert.equal(page.url(), "tuxedo://app/");
+	assert.equal(page.url(), "tuxedo://app/workspaces");
 	assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
 	const route = await page.goto("tuxedo://app/projects/Work");
 	assert.equal(route.status(), 200);

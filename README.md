@@ -8,6 +8,8 @@ Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then
 
 The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. SvelteKit loads own confirmed renderer data, refreshed through targeted invalidation after commands and external changes. A small Svelte command coordinator admits one operation at a time through its refresh; counts and facets derive from the loaded Todo file. Loads and preloads never activate a Workspace.
 
+The root layout loads the shared session and saved views; the Workspace detail page loads its requested Todo file. The launch route `/` redirects before rendering to the remembered Workspace or to Home at `/workspaces`. Explicit Home visits preserve the Active workspace and remain on the picker.
+
 The Todo-file summary provides total, open, completed, and skipped-line counts. Filter facets and their counts derive from the selected completion view of the confirmed Todo file.
 
 The shared Todo-item editor supports Description, Priority, Creation date, Projects, Contexts, and `key:value` metadata; completed items also expose their Completion date. Completion records the local date and stores Priority as `pri:A` metadata; uncompletion restores a valid single-letter Priority. The parser also accepts legacy completed items with a leading Priority or no Completion date.

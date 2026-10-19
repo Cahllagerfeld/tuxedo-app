@@ -104,7 +104,7 @@ The confirmed removal of a Workspace from the saved catalogue followed by a refr
 The state with no active Todo file loaded, including after the Active workspace is deleted or cannot be opened. Home offers Workspace selection and creation; an unavailable Workspace destination offers Retry and Home.
 
 **Home**:
-The setup and recovery screen listing saved Workspaces to open, with Workspace creation. Users can explicitly visit it while a Workspace remains active. Visiting it never changes the Active workspace; startup resumes a readable remembered Workspace without adding a Home history entry.
+The setup and recovery screen at `/workspaces` listing saved Workspaces to open, with Workspace creation. Users can explicitly visit it while a Workspace remains active. Visiting it never changes the Active workspace. The launch page at `/` redirects to the remembered Workspace or Home before rendering, without retaining a launch history entry.
 
 **Workspace destination**:
 The view of one Workspace, reachable through navigation history. It shows Todo items only after that Workspace is confirmed as the Active workspace; an unavailable destination keeps its address and offers Retry and Home. The outgoing confirmed reader stays visible during activation. Navigation waits while a Workspace session operation runs; preloading a destination never activates it.
