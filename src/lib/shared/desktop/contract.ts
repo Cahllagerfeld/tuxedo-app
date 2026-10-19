@@ -78,9 +78,7 @@ const CatalogueSchema = Schema.Struct({
 		return issues;
 	})
 );
-export const workspaceSchema = effectValidator(WorkspaceSchema);
 export const catalogueSchema = effectValidator(CatalogueSchema);
-export { todoItemSchema, todoFileSchema } from "./todo";
 export type { TodoFile } from "./todo";
 export type Catalogue = typeof CatalogueSchema.Type;
 export const WorkspaceCreationRequest = Schema.Struct({
@@ -112,7 +110,6 @@ const SessionSchema = Schema.Union([
 			: undefined;
 	})
 );
-export const sessionSchema = effectValidator(SessionSchema);
 const UndoLabel = Schema.Literals([
 	"Undo creation",
 	"Undo edit",
@@ -128,20 +125,20 @@ const ConfirmedSessionSchema = Schema.Struct({
 	undoLabel: Schema.optional(UndoLabel),
 	session: SessionSchema,
 });
-export const confirmedSessionSchema = effectValidator(ConfirmedSessionSchema);
+const confirmedSessionSchema = effectValidator(ConfirmedSessionSchema);
 export type ConfirmedSession = typeof ConfirmedSessionSchema.Type;
 const Rejected = Schema.Struct({
 	status: Schema.Literal("rejected"),
 	message: Schema.NonEmptyString,
 });
-export const sessionOutcomeSchema = effectValidator(
+const sessionOutcomeSchema = effectValidator(
 	Schema.Union([
 		Schema.Struct({ status: Schema.Literal("applied"), confirmed: ConfirmedSessionSchema }),
 		Rejected,
 	])
 );
 export const readWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
-export const readWorkspaceOutcomeSchema = effectValidator(
+const readWorkspaceOutcomeSchema = effectValidator(
 	Schema.Union([
 		Schema.Struct({
 			status: Schema.Literal("loaded"),
@@ -174,12 +171,11 @@ const ConfirmedTodoSchema = Schema.Struct({
 	undoLabel: Schema.optional(UndoLabel),
 	todo_file: TodoFileSchema,
 });
-export const confirmedTodoSchema = effectValidator(ConfirmedTodoSchema);
 export const undoTodoRequestSchema = effectValidator(
 	Schema.Struct({ scope: UUID, revision: Revision, workspaceId: UUID })
 );
 export type ConfirmedTodo = typeof ConfirmedTodoSchema.Type;
-export const todoOutcomeSchema = effectValidator(
+const todoOutcomeSchema = effectValidator(
 	Schema.Union([
 		Schema.Struct({
 			status: Schema.Literal("applied"),
@@ -230,13 +226,7 @@ export const bulkDeleteTodosRequestSchema = effectValidator(
 		)
 	)
 );
-export {
-	createTodoRequestSchema,
-	normalizeTodoDescription,
-	todoTagSchema,
-	todoDateSchema,
-	todoMetadataSchema,
-} from "./todo-creation";
+export { createTodoRequestSchema, normalizeTodoDescription, todoDateSchema } from "./todo-creation";
 export const editTodoRequestSchema = effectValidator(
 	Schema.Struct({
 		...TodoMutationRequest.fields,
@@ -258,9 +248,9 @@ export const reorderTodoRequestSchema = effectValidator(
 		),
 	})
 );
-export const SavedViewName = Schema.NonEmptyString.check(Schema.isTrimmed());
+const SavedViewName = Schema.NonEmptyString.check(Schema.isTrimmed());
 export const SavedViewNameForm = Schema.Struct({ name: Schema.mutableKey(SavedViewName) });
-export const SavedViewFilters = Schema.Struct({
+const SavedViewFilters = Schema.Struct({
 	status: Schema.Literals(["all", "open", "completed"]),
 	search: Schema.String,
 	project: Schema.NullOr(TodoTag),

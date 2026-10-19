@@ -19,7 +19,7 @@ export const TodoItemSchema = Schema.Struct({
 	contexts: Schema.mutable(Schema.Array(Schema.String)),
 	metadata: Schema.Record(Schema.String, Schema.String),
 });
-export const SkippedLineSchema = Schema.Struct({
+const SkippedLineSchema = Schema.Struct({
 	line_number: LineNumber,
 	raw: Schema.String,
 	reason: Schema.NonEmptyString,
@@ -29,8 +29,6 @@ export const TodoFileSchema = Schema.Struct({
 	items: Schema.mutable(Schema.Array(TodoItemSchema)),
 	skipped: Schema.mutable(Schema.Array(SkippedLineSchema)),
 });
-export const todoItemSchema = effectValidator(TodoItemSchema);
-export const skippedLineSchema = effectValidator(SkippedLineSchema);
 export const todoFileSchema = effectValidator(TodoFileSchema);
 export type TodoFile = typeof TodoFileSchema.Type;
 export type TodoItem = typeof TodoItemSchema.Type;

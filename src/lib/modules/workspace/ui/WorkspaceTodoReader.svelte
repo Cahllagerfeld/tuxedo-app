@@ -10,6 +10,7 @@
 	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Resizable from "$lib/shared/ui/resizable";
 	import * as Sheet from "$lib/shared/ui/sheet";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -70,26 +71,19 @@
 			};
 		};
 	}
-	async function toggleTodoCompletion(todo: TodoItem) {
-		const result = await reader.toggleCompletion(todo);
-		if (result.status === "applied" && result.notice) toast.info(result.notice);
-		if (result.status === "conflict") toast.error("Todo file reloaded");
-		else if (result.status === "rejected")
-			toast.error("Could not update Todo item", { description: result.message });
-	}
-	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
-		const result = await reader.deleteTodo(todo, trigger);
-		if (result.status === "applied" && result.notice) toast.info(result.notice);
-		if (result.status === "conflict") toast.error("Todo file reloaded");
-		else if (result.status === "rejected")
-			toast.error("Could not delete Todo item", { description: result.message });
-	}
-	async function reorderTodoItems(items: readonly TodoItem[]) {
-		const result = await reader.reorder(items);
+	function reportTodoOutcome(result: WorkspaceSessionActionResult | undefined, failure: string) {
 		if (result?.status === "applied" && result.notice) toast.info(result.notice);
 		if (result?.status === "conflict") toast.error("Todo file reloaded");
-		else if (result?.status === "rejected")
-			toast.error("Could not reorder Todo items", { description: result.message });
+		else if (result?.status === "rejected") toast.error(failure, { description: result.message });
+	}
+	async function toggleTodoCompletion(todo: TodoItem) {
+		reportTodoOutcome(await reader.toggleCompletion(todo), "Could not update Todo item");
+	}
+	async function deleteTodoItem(todo: TodoItem, trigger?: HTMLButtonElement | null) {
+		reportTodoOutcome(await reader.deleteTodo(todo, trigger), "Could not delete Todo item");
+	}
+	async function reorderTodoItems(items: readonly TodoItem[]) {
+		reportTodoOutcome(await reader.reorder(items), "Could not reorder Todo items");
 	}
 </script>
 

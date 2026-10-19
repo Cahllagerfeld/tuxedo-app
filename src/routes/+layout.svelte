@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { setWorkspaceContext } from "@/app/app-context";
-	import { createReaderState } from "@/app/reader-state.svelte";
+	import { setWorkspaceContext } from "$lib/app/app-context";
+	import { createReaderState } from "$lib/app/reader-state.svelte";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
-	import * as Sidebar from "@/shared/ui/sidebar/index";
-	import { Toaster } from "@/shared/ui/sonner";
+	import WorkspaceCreationDialog from "$lib/modules/workspace/ui/WorkspaceCreationDialog.svelte";
+	import * as Sidebar from "$lib/shared/ui/sidebar/index";
+	import { Toaster } from "$lib/shared/ui/sonner";
 	import { ModeWatcher } from "mode-watcher";
 	import { navigating } from "$app/state";
 	import { afterNavigate, invalidate } from "$app/navigation";
 	import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 	import { sessionDependency, viewsDependency } from "$lib/modules/workspace/state/workspace-load";
-	import { createWorkspaceNavigation } from "@/app/workspace-navigation.svelte";
+	import { createWorkspaceNavigation } from "$lib/app/workspace-navigation.svelte";
 	import type { LayoutProps } from "./$types";
 	import "./layout.css";
 	let { data, children }: LayoutProps = $props();

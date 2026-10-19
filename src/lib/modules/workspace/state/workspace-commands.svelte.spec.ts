@@ -1,10 +1,15 @@
 import { expect, test } from "vitest";
 import { WorkspaceCommands, type WorkspaceLoadedData } from "./workspace-commands.svelte";
 import { createDesktopClient, type ConfirmedSession } from "$lib/shared/desktop/contract";
+import type { TodoItem } from "$lib/shared/desktop/todo";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
-const ready = (revision: number, show_deferred = false): ConfirmedSession => ({
+const ready = (
+	revision: number,
+	show_deferred = false,
+	items: TodoItem[] = []
+): ConfirmedSession => ({
 	scope,
 	revision,
 	undoLabel: "Undo creation",
@@ -24,9 +29,57 @@ const ready = (revision: number, show_deferred = false): ConfirmedSession => ({
 				},
 			],
 		},
-		todo_file: { path: "/tmp/work.todo", items: [], skipped: [] },
+		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	},
 });
+
+test.each(["completion", "deletion", "reordering"] as const)(
+	"batch %s rejects changed or missing Todo items before calling desktop",
+	async (operation) => {
+		const todo: TodoItem = {
+			line_number: 1,
+			raw: "Current content",
+			description: "Current content",
+			completed: false,
+			priority: null,
+			creation_date: null,
+			completion_date: null,
+			projects: [],
+			contexts: [],
+			metadata: {},
+			edit: { description: "Current content", metadata: [] },
+		};
+		const confirmed = ready(1, false, [todo]);
+		let calls = 0;
+		const session = new WorkspaceCommands(
+			createDesktopClient(async () => {
+				calls++;
+				throw Error("Stale selections must not reach desktop");
+			}),
+			() => ({ confirmed }),
+			async () => {
+				throw Error("Rejected selections must not refresh");
+			}
+		);
+		for (const stale of [
+			{ ...todo, raw: "Old content" },
+			{ ...todo, line_number: 2 },
+		]) {
+			const items = [todo, stale];
+			const result = await (operation === "completion"
+				? session.bulkSetCompletion(items, true)
+				: operation === "deletion"
+					? session.bulkDeleteTodos(items)
+					: session.reorderTodo(items));
+			expect(result).toEqual({
+				status: "rejected",
+				message: "The Todo file changed. Try again with its current Todo items.",
+			});
+			expect(session.isOperating).toBe(false);
+		}
+		expect(calls).toBe(0);
+	}
+);
 
 function fixture(
 	refresh: (data: WorkspaceLoadedData) => Promise<WorkspaceLoadedData>,

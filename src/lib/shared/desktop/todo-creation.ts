@@ -24,12 +24,12 @@ export const TodoTag = Schema.String.check(
 			: "Todo tags must be trimmed and must not contain whitespace"
 	)
 );
-export const TodoTags = Schema.mutable(Schema.Array(TodoTag)).check(
+const TodoTags = Schema.mutable(Schema.Array(TodoTag)).check(
 	Schema.makeFilter((values) =>
 		new Set(values).size === values.length ? undefined : "Todo tags must be unique"
 	)
 );
-export const TodoDescription = Schema.String.check(
+const TodoDescription = Schema.String.check(
 	Schema.makeFilter((value) =>
 		containsTodoToken(value)
 			? "Use the Project, Context, and Metadata inputs for these tokens."
@@ -45,7 +45,7 @@ export const TodoDate = Schema.String.check(
 			: "Use a valid date in YYYY-MM-DD format.";
 	})
 );
-export const TodoMetadata = Schema.String.check(
+const TodoMetadata = Schema.String.check(
 	Schema.makeFilter((value) =>
 		!/^[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+$/u.test(value)
 			? "Use key:value without spaces or extra colons."

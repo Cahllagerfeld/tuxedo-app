@@ -1,6 +1,6 @@
 import { Effect, Exit, Scope, type ManagedRuntime } from "effect";
 
-export const shutdownDeadlineMs = 10_000;
+const shutdownDeadlineMs = 10_000;
 
 export function createApplicationRuntime<R>(
 	runtime: ManagedRuntime.ManagedRuntime<R, never>,

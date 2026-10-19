@@ -321,13 +321,7 @@ export class WorkspaceCommands {
 		});
 	bulkSetCompletion = (items: readonly TodoItem[], completed: boolean) =>
 		this.runAction("bulk_set_todo_item_completion", async () => {
-			const target = this.todoTarget();
-			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-			if (items.some((item) => current.get(item.line_number) !== item.raw))
-				return {
-					status: "rejected",
-					message: "The Todo file changed. Try again with its current Todo items.",
-				};
+			const target = this.todoBatchTarget(items);
 			return this.refreshOutcome(
 				await this.desktop.bulkSetTodoCompletion({
 					...target,
@@ -341,13 +335,7 @@ export class WorkspaceCommands {
 		});
 	bulkDeleteTodos = (items: readonly TodoItem[]) =>
 		this.runAction("bulk_delete_todo_items", async () => {
-			const target = this.todoTarget();
-			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-			if (items.some((item) => current.get(item.line_number) !== item.raw))
-				return {
-					status: "rejected",
-					message: "The Todo file changed. Try again with its current Todo items.",
-				};
+			const target = this.todoBatchTarget(items);
 			return this.refreshOutcome(
 				await this.desktop.bulkDeleteTodos({
 					...target,
@@ -358,6 +346,13 @@ export class WorkspaceCommands {
 				})
 			);
 		});
+	private todoBatchTarget(items: readonly TodoItem[]) {
+		const target = this.todoTarget();
+		const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+		if (items.some((item) => current.get(item.line_number) !== item.raw))
+			throw Error("The Todo file changed. Try again with its current Todo items.");
+		return target;
+	}
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
 		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
 	}
@@ -380,13 +375,7 @@ export class WorkspaceCommands {
 		});
 	reorderTodo = (items: readonly TodoItem[]) =>
 		this.runAction("reorder_todo_items", async () => {
-			const target = this.todoTarget();
-			const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-			if (items.some((item) => current.get(item.line_number) !== item.raw))
-				return {
-					status: "rejected",
-					message: "The Todo file changed. Try again with its current Todo items.",
-				};
+			const target = this.todoBatchTarget(items);
 			return this.refreshOutcome(
 				await this.desktop.reorderTodo({
 					...target,
