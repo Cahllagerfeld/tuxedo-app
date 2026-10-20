@@ -76,6 +76,8 @@ Use the switcher for everyday navigation while Home is reserved for setup and fa
 Return automatically to Home with a helpful missing-file message when a Todo file is moved or deleted +TuxedoApp @review
 Hover another Workspace and refresh this one without changing the Active workspace or consuming Undo +TuxedoApp @review
 Keep the confirmed reader visible while a saved change or Workspace switch loads its result +TuxedoApp @review
+Complete an item and confirm counts and facets refresh before another change is admitted +TuxedoApp @review
+Keep the saved-change notice accurate if its follow-up refresh fails, then retry reading +TuxedoApp @review
 Keep text search and filters when the current Workspace reloads, and start fresh when switching Workspaces +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 

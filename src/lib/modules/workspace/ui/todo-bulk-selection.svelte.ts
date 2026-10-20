@@ -15,8 +15,11 @@ function cell<T>(initial: T) {
 	};
 }
 
+import type { WorkspaceData } from "../state/workspace-data.svelte";
+
 type Inputs = {
-	readonly getWorkspace: () => WorkspaceCommands;
+	readonly getWorkspace: () => WorkspaceData;
+	readonly getCommands: () => WorkspaceCommands;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
 };
@@ -46,7 +49,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		selection.value = new Set();
 	}
 	function exit() {
-		if (inputs.getWorkspace().isOperating) return;
+		if (inputs.getCommands().isOperating) return;
 		mode.value = false;
 		clear();
 	}
@@ -82,13 +85,13 @@ export function createTodoBulkSelection(inputs: Inputs) {
 			if (retained.size !== selection.value.size) selection.value = retained;
 		},
 		enter() {
-			if (inputs.getWorkspace().isOperating) return;
+			if (inputs.getCommands().isOperating) return;
 			mode.value = true;
 			clear();
 		},
 		exit,
 		toggle(todo: TodoItem) {
-			if (inputs.getWorkspace().isOperating) return;
+			if (inputs.getCommands().isOperating) return;
 			const next = new Set(selection.value);
 			const key = todoKey(todo);
 			if (next.has(key)) next.delete(key);
@@ -96,7 +99,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 			selection.value = next;
 		},
 		selectAll() {
-			if (!inputs.getWorkspace().isOperating)
+			if (!inputs.getCommands().isOperating)
 				selection.value = new Set(inputs.getMatchingItems().map(todoKey));
 		},
 		clear,

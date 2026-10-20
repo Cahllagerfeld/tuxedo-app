@@ -191,6 +191,7 @@ test("batch deletion sends one scoped request, blocks duplicate and lifecycle ad
 	const deleting = state.bulkDeleteTodos([completed, open]);
 	expect(state.pendingOperation).toBe("bulk_delete_todo_items");
 	expect(state.todoFile).toBe(before);
+	await expect.poll(() => bulkDeleteTodos.mock.calls.length).toBe(1);
 	expect(bulkDeleteTodos).toHaveBeenCalledExactlyOnceWith({
 		scope,
 		revision: 5,

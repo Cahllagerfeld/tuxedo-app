@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
 	import { toast } from "svelte-sonner";
 	import { WorkspaceSessionFixture as WorkspaceCommands } from "../state/workspace-session-fixture.svelte";
@@ -26,12 +26,13 @@
 	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
 		reader.todoFilter.reconcileSource()
 	);
-	const reader = createReaderState(session);
+	const reader = createReaderState(session.data, session);
 	let switcherOpen = $state(false);
 	let creationDialogOpen = $state(false);
 	const openWorkspaceCreationDialog = () => {
 		creationDialogOpen = true;
 	};
+	onDestroy(() => session.destroy());
 	onMount(() => {
 		const stop =
 			observation && session.observe(observation, () => toast.info("Todo file reloaded"));
@@ -49,7 +50,8 @@
 <Sidebar.Provider class="min-h-0 flex-col" style="--window-toolbar-height: 2.5rem;">
 	{#if shell}
 		<AppNavbar
-			workspace={session}
+			workspace={session.data}
+			commands={session}
 			bulkSelectionActive={reader.bulkSelection.active}
 			openWorkspaceSwitcher={() => {
 				switcherOpen = true;
@@ -84,7 +86,8 @@
 			<WorkspaceContent
 				bulkSelection={reader.bulkSelection}
 				bind:creationOpen={reader.creationOpen}
-				workspace={session}
+				workspace={session.data}
+				commands={session}
 				todoFilter={reader.todoFilter}
 				filteredTodoItems={reader.filteredTodoItems}
 			/>

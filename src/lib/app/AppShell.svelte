@@ -13,12 +13,14 @@
 		workspaceShown?: boolean;
 		readerShown?: boolean;
 	} = $props();
-	const { workspace, reader, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
+	const { workspace, commands, reader, navigation, openWorkspaceCreationDialog } =
+		getWorkspaceContext();
 	let switcherOpen = $state(false);
 </script>
 
 <AppNavbar
 	{workspace}
+	{commands}
 	bulkSelectionActive={reader.bulkSelection.active}
 	{readerShown}
 	{workspaceShown}
@@ -43,9 +45,9 @@
 			todoFilter={reader.todoFilter}
 			todoFileLoaded={readerShown}
 			disabled={navigation.busy}
-			pendingOperation={workspace.pendingOperation}
+			pendingOperation={commands.pendingOperation}
 			selectWorkspace={navigation.selectWorkspace}
-			deleteWorkspace={workspace.deleteWorkspace}
+			deleteWorkspace={commands.deleteWorkspace}
 			openCreationDialog={openWorkspaceCreationDialog}
 		/>
 	{/if}
@@ -56,7 +58,7 @@
 				activeWorkspace={workspace.activeWorkspace}
 				todoFile={workspace.todoFile}
 				todoSummary={reader.todos}
-				pendingOperation={workspace.pendingOperation}
+				pendingOperation={commands.pendingOperation}
 			/>
 		{/if}
 	</main>

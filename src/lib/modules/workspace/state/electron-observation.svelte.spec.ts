@@ -1,8 +1,7 @@
 import { expect, test } from "vitest";
-import {
-	WorkspaceCommands as LoadedWorkspaceCommands,
-	type WorkspaceLoadedData,
-} from "./workspace-commands.svelte";
+import { WorkspaceCommands as LoadedWorkspaceCommands } from "./workspace-commands.svelte";
+import { WorkspaceData } from "./workspace-data.svelte";
+import { createWorkspaceQueryClient, workspaceQueryKeys } from "./workspace-queries";
 import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFileChange } from "$lib/shared/desktop/contract";
 
@@ -68,40 +67,39 @@ function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 }
 const signal: TodoFileChange = { scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" };
 
-test.each(["current", "not loaded", "stale", "stopped"])(
+test.each(["current", "stale", "stopped"])(
 	"observation during command refresh reconsiders only the latest still-current event (%s)",
 	async (kind) => {
 		let backend = initial;
-		let data: WorkspaceLoadedData = { confirmed: initial };
 		let finish!: () => void;
 		let restores = 0;
 		let finishRestore!: () => void;
 		let refreshes = 0;
-		const session = new LoadedWorkspaceCommands(
-			{
-				...adapter(async () => {
-					restores++;
-					await new Promise<void>((resolve) => {
-						finishRestore = resolve;
-					});
-					backend = { ...changed, revision: 3 };
-					return backend;
-				}),
-				setWorkspaceShowDeferred: async () => {
-					backend = { ...initial, revision: 2 };
-					return { status: "applied", confirmed: backend };
-				},
+		const queryClient = createWorkspaceQueryClient();
+		queryClient.setQueryData(workspaceQueryKeys.session, initial);
+		const desktop: DesktopAPI = {
+			...adapter(async () => {
+				restores++;
+				await new Promise<void>((resolve) => {
+					finishRestore = resolve;
+				});
+				backend = { ...changed, revision: 3 };
+				return backend;
+			}),
+			setWorkspaceShowDeferred: async () => {
+				backend = { ...initial, revision: 2 };
+				return { status: "applied", confirmed: backend };
 			},
-			() => data,
-			async () => {
-				if (kind !== "not loaded") data = { confirmed: backend };
+			readSession: async () => {
 				if (++refreshes === 1)
 					await new Promise<void>((resolve) => {
 						finish = resolve;
 					});
-				data = { confirmed: backend };
-			}
-		);
+				return backend;
+			},
+		};
+		const data = new WorkspaceData(desktop, queryClient);
+		const session = new LoadedWorkspaceCommands(desktop, data, queryClient);
 		let notify!: (event: TodoFileChange) => void;
 		const stop = session.observe(
 			{
@@ -122,17 +120,18 @@ test.each(["current", "not loaded", "stale", "stopped"])(
 		expect(restores).toBe(0);
 		finish();
 		await command;
-		expect(restores).toBe(kind === "current" || kind === "not loaded" ? 1 : 0);
-		if (kind === "current" || kind === "not loaded") {
+		expect(restores).toBe(kind === "current" ? 1 : 0);
+		if (kind === "current") {
 			expect(session.isOperating).toBe(true);
 			expect(await session.setShowDeferred(false)).toMatchObject({ status: "rejected" });
 			finishRestore();
 		}
 		await expect.poll(() => session.isOperating).toBe(false);
-		expect(session.session.status).toBe(
-			kind === "current" || kind === "not loaded" ? "empty" : "ready"
-		);
+		expect(data.session.status).toBe(kind === "current" ? "empty" : "ready");
 		stop();
+		session.destroy();
+		data.destroy();
+		queryClient.clear();
 	}
 );
 
@@ -277,6 +276,7 @@ test.each([
 	notify(signal);
 	expect(loads).toBe(1);
 	expect(session.isOperating).toBe(true);
+	await expect.poll(() => !!finish).toBe(true);
 	finish();
 	await action;
 	await expect.poll(() => session.isOperating).toBe(false);

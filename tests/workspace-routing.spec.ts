@@ -56,10 +56,12 @@ test("real links and history preserve the reader during a write and block overla
 		let writes = 0;
 		let holdRefresh = false;
 		let finishRefresh: (() => void) | undefined;
+		const pendingReads: (() => void)[] = [];
 		await page.exposeFunction("holdSessionRead", () => {
 			if (!holdRefresh) return;
 			return new Promise<void>((done) => {
-				finishRefresh = done;
+				pendingReads.push(done);
+				finishRefresh = () => pendingReads.splice(0).forEach((finish) => finish());
 			});
 		});
 		await page.exposeFunction("holdTodoWrite", () => {
@@ -142,6 +144,7 @@ test("real links and history preserve the reader during a write and block overla
 				> &
 					TodoFileObservation = {
 					readSession: async () => {
+						reads.push(active);
 						await window.holdSessionRead();
 						if (failReads) {
 							failReads--;
@@ -264,26 +267,32 @@ test("real links and history preserve the reader during a write and block overla
 		await page.getByRole("heading", { name: "Your workspaces.", exact: true }).waitFor();
 		const beforePreload = await page.evaluate(() => window.routingState());
 		await page.getByRole("link", { name: "Personal", exact: true }).hover();
-		await expect.poll(() => page.evaluate(() => window.routingState().reads)).toContain(second);
 		// Keep this browser import out of Vitest's SSR module transform.
 		await page.evaluate(`(async () => {
-			const { preloadData, invalidate } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			const { preloadData } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
+			const { load } = await import("/src/routes/+layout.ts");
+			const { queryClient } = await load();
+			const { workspaceQueryKeys } = await import("/src/lib/modules/workspace/state/workspace-queries.ts");
 			await preloadData("/workspaces/${second}");
-			await invalidate(() => true);
-			await invalidate(() => true);
+			await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.session });
+			await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.session });
 		})()`);
 		const afterPreload = await page.evaluate(() => window.routingState());
 		expect(afterPreload.active).toBe(beforePreload.active);
 		expect(afterPreload.revision).toBe(beforePreload.revision);
 		expect(afterPreload.switches).toBe(beforePreload.switches);
+		expect(afterPreload.restores).toBe(beforePreload.restores);
+		expect(afterPreload.reads.every((id) => id === first)).toBe(true);
 		await page.getByRole("link", { name: "Work", exact: true }).click();
 		await item.waitFor();
 		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();
 		const closeDetails = page.getByRole("button", { name: "Close details", exact: true });
 		await closeDetails.focus();
 		await page.evaluate(`(async () => {
-			const { invalidate } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
-			await invalidate("desktop:session");
+			const { load } = await import("/src/routes/+layout.ts");
+			const { queryClient } = await load();
+			const { workspaceQueryKeys } = await import("/src/lib/modules/workspace/state/workspace-queries.ts");
+			await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.destination("${first}"), refetchType: "all" });
 		})()`);
 		expect(await closeDetails.isVisible()).toBe(true);
 		expect(await closeDetails.evaluate((element) => element === document.activeElement)).toBe(true);
@@ -452,7 +461,11 @@ test("real links and history preserve the reader during a write and block overla
 		finishRefresh = undefined;
 		await page.evaluate(`(async () => {
 			const { goto } = await import("/node_modules/@sveltejs/kit/src/runtime/app/navigation.js");
-			void goto(location.href, { invalidate: ["desktop:session"], keepFocus: true, noScroll: true });
+			const { load } = await import("/src/routes/+layout.ts");
+			const { queryClient } = await load();
+			const { workspaceQueryKeys } = await import("/src/lib/modules/workspace/state/workspace-queries.ts");
+			await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.destinations, refetchType: "none" });
+			void goto(location.href, { invalidateAll: true, keepFocus: true, noScroll: true });
 		})()`);
 		await expect.poll(() => !!finishRefresh).toBe(true);
 		expect(await item.isVisible()).toBe(true);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import AppNavbar from "./AppNavbar.svelte";
 	import { WorkspaceSessionFixture as WorkspaceCommands } from "$lib/modules/workspace/state/workspace-session-fixture.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
@@ -11,6 +11,7 @@
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
+	onDestroy(() => session.destroy());
 	onMount(() => {
 		void session.initialize();
 	});
@@ -18,7 +19,8 @@
 
 <Sidebar.Provider>
 	<AppNavbar
-		workspace={session}
+		workspace={session.data}
+		commands={session}
 		bulkSelectionActive={false}
 		openWorkspaceSwitcher={() => {}}
 		openWorkspaceCreationDialog={() => {}}

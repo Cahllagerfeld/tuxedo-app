@@ -16,9 +16,14 @@
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceData } from "../state/workspace-data.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
-	let { workspace, todoFilter }: { workspace: WorkspaceCommands; todoFilter: TodoFilterState } =
+	let {
+		workspace,
+		commands,
+		todoFilter,
+	}: { workspace: WorkspaceData; commands: WorkspaceCommands; todoFilter: TodoFilterState } =
 		$props();
 	let menuOpen = $state(false);
 	let saveOpen = $state(false);
@@ -35,7 +40,7 @@
 	const { form: formData } = form;
 	const shortcutScope = getShortcutScope();
 	const canSave = $derived(
-		!!workspace.todoFile && !workspace.isOperating && !workspace.savedViewsError
+		!!workspace.todoFile && !commands.isOperating && !workspace.savedViewsError
 	);
 	function openSave() {
 		if (!canSave) return;
@@ -52,11 +57,11 @@
 	}));
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
-		if (workspace.isOperating) return;
+		if (commands.isOperating) return;
 		$formData.name = $formData.name.trim();
 		const validation = await form.validateForm();
 		if (!validation.valid) return;
-		const outcome = await workspace.saveView($formData.name, todoFilter.snapshot());
+		const outcome = await commands.saveView($formData.name, todoFilter.snapshot());
 		if (outcome.status === "applied") {
 			saveOpen = false;
 			if (outcome.notice) toast.info(outcome.notice);
@@ -64,7 +69,7 @@
 		} else error = outcome.message;
 	}
 	async function deleteView(id: string) {
-		const outcome = await workspace.deleteView(id);
+		const outcome = await commands.deleteView(id);
 		if (outcome.status !== "applied") toast.error(outcome.message);
 		else if (outcome.notice) toast.info(outcome.notice);
 	}
@@ -78,7 +83,7 @@
 				variant="ghost"
 				size="icon"
 				aria-label="Saved views"
-				disabled={workspace.isOperating}
+				disabled={commands.isOperating}
 			>
 				<Bookmark class="size-4" aria-hidden="true" />
 			</Button>
@@ -91,9 +96,9 @@
 				<p role="alert" class="text-xs text-destructive">{workspace.savedViewsError}</p>
 				<Button
 					variant="outline"
-					disabled={workspace.isOperating}
+					disabled={commands.isOperating}
 					onclick={() => {
-						void workspace.reloadViews().then((outcome) => {
+						void commands.reloadViews().then((outcome) => {
 							if (outcome.status !== "applied") toast.error(outcome.message);
 						});
 					}}>Retry saved views</Button
@@ -105,7 +110,7 @@
 						<Button
 							variant="ghost"
 							class="min-w-0 flex-1 justify-start"
-							disabled={workspace.isOperating}
+							disabled={commands.isOperating}
 							onclick={() => {
 								todoFilter.applyView(view.filters);
 								menuOpen = false;
@@ -115,7 +120,7 @@
 							variant="destructive"
 							size="icon-sm"
 							aria-label={`Delete saved view ${view.name}`}
-							disabled={workspace.isOperating}
+							disabled={commands.isOperating}
 							onclick={() => deleteView(view.id)}
 							><Trash2 class="size-4" aria-hidden="true" /></Button
 						>
@@ -135,7 +140,7 @@
 	</Popover.Content>
 </Popover.Root>
 <Dialog.Root bind:open={saveOpen}>
-	<Dialog.Content showCloseButton={!workspace.isOperating}>
+	<Dialog.Content showCloseButton={!commands.isOperating}>
 		<Dialog.Header>
 			<Dialog.Title>Save current view</Dialog.Title>
 			<Dialog.Description
@@ -151,7 +156,7 @@
 						<Input
 							{...props}
 							bind:value={$formData.name}
-							disabled={workspace.isOperating}
+							disabled={commands.isOperating}
 							autocomplete="off"
 						/>
 					{/snippet}
@@ -164,10 +169,10 @@
 				<Button
 					type="button"
 					variant="outline"
-					disabled={workspace.isOperating}
+					disabled={commands.isOperating}
 					onclick={() => (saveOpen = false)}>Cancel</Button
 				>
-				<Button type="submit" disabled={workspace.isOperating}>Save view</Button>
+				<Button type="submit" disabled={commands.isOperating}>Save view</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

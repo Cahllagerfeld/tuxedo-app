@@ -7,7 +7,9 @@ class CreationState {
 	open = $state(false);
 }
 
-export function createReaderState(workspace: WorkspaceCommands) {
+import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
+
+export function createReaderState(workspace: WorkspaceData, commands: WorkspaceCommands) {
 	const workspaceId = $derived(workspace.activeWorkspace?.id);
 	const todos = $derived(summarizeTodoFile(workspace.todoFile));
 	const todoFilter = $derived.by(() => {
@@ -25,6 +27,7 @@ export function createReaderState(workspace: WorkspaceCommands) {
 	});
 	const bulkSelection = createTodoBulkSelection({
 		getWorkspace: () => workspace,
+		getCommands: () => commands,
 		getMatchingItems: () => filteredTodoItems,
 		getFilterSignature: () => JSON.stringify(todoFilter.snapshot()),
 	});

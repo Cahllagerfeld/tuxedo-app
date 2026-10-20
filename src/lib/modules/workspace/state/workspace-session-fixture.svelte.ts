@@ -1,16 +1,21 @@
-import { WorkspaceCommands, type WorkspaceLoadedData } from "./workspace-commands.svelte";
-import { readViewsData } from "./workspace-load";
+import { WorkspaceCommands } from "./workspace-commands.svelte";
+import { WorkspaceData } from "./workspace-data.svelte";
+import { createWorkspaceQueryClient, workspaceViewsQuery } from "./workspace-queries";
 import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "$lib/shared/desktop/contract";
 
 // Model backend confirmations for isolated renderer tests.
 export class WorkspaceSessionFixture extends WorkspaceCommands {
 	initialize: WorkspaceCommands["restore"];
+	private readonly clearQueries: () => void;
 	constructor(desktop: DesktopAPI, onRefreshed: () => void = () => {}) {
 		let backend: ConfirmedSession | undefined;
-		let data = $state.raw<WorkspaceLoadedData>({ error: "No Workspace data loaded." });
 		const adapter = new Proxy(desktop, {
 			get(target, key: keyof DesktopAPI) {
 				return async (...args: unknown[]) => {
+					if (key === "readSession") {
+						if (!backend) throw Error("No Workspace data loaded.");
+						return backend;
+					}
 					const outcome = await Reflect.apply(target[key], target, args);
 					if (key === "restoreSession") backend = outcome;
 					else if (outcome?.confirmed && outcome.status !== "rejected") {
@@ -28,25 +33,53 @@ export class WorkspaceSessionFixture extends WorkspaceCommands {
 				};
 			},
 		});
-		const refresh = async (dependency: "session" | "views" | "lifecycle") => {
-			if (dependency !== "views" && backend)
-				data = { ...data, confirmed: backend, error: undefined };
-			if (dependency !== "session") {
-				data = {
-					...data,
-					savedViews: undefined,
-					savedViewsError: undefined,
-					...(await readViewsData(desktop)),
-				};
-			}
-			onRefreshed();
-		};
-		super(adapter, () => data, refresh);
+		const queryClient = createWorkspaceQueryClient();
+		const viewsLoaded = queryClient.query(workspaceViewsQuery(adapter)).catch(() => undefined);
+		const data = new WorkspaceData(adapter, queryClient);
+		super(
+			adapter,
+			data,
+			queryClient,
+			() => false,
+			async () => onRefreshed()
+		);
+		this.clearQueries = () => queryClient.clear();
 		this.initialize = async () => {
 			const outcome = await this.restore();
-			if (outcome.status === "applied") await this.reloadViews();
-			else data = { error: outcome.message };
+			await viewsLoaded;
 			return outcome;
 		};
+	}
+	override destroy() {
+		super.destroy();
+		this.data.destroy();
+		this.clearQueries();
+	}
+	get session() {
+		return this.data.session;
+	}
+	get catalogue() {
+		return this.data.catalogue;
+	}
+	get activeWorkspace() {
+		return this.data.activeWorkspace;
+	}
+	get todoFile() {
+		return this.data.todoFile;
+	}
+	get undoLabel() {
+		return this.data.undoLabel;
+	}
+	get error() {
+		return this.data.error;
+	}
+	get warning() {
+		return this.data.warning;
+	}
+	get savedViews() {
+		return this.data.savedViews;
+	}
+	get savedViewsError() {
+		return this.data.savedViewsError;
 	}
 }

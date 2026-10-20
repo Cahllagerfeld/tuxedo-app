@@ -1,5 +1,7 @@
 # Use SvelteKit loads for confirmed renderer data
 
+Superseded by [ADR-0008](0008-use-tanstack-query-for-desktop-rpcs.md) for renderer data ownership and refresh. Navigation activation and backend consistency guarantees remain in force.
+
 SvelteKit universal loads own confirmed renderer data, including saved views, in the static Electron SPA. Explicit desktop-read dependencies and targeted invalidation replace ADR-0005's mutable controller snapshot and mount initialization. A small Svelte command coordinator owns synchronous admission, operation progress, and contextual outcomes through the required refresh, not another data cache. This follows [issue #163](https://github.com/Cahllagerfeld/tuxedo-app/issues/163).
 
 Reads and activation are separate: loading or preloading a Workspace cannot persist its selection, retarget observation, clear Undo, or advance an existing mutation revision. Only actual admitted navigation activates the destination; the reader is actionable only when the route and backend confirmation agree. Startup resumes an available remembered Workspace with history replacement. Home is reserved for setup and recovery; a plain visit resumes an available Active workspace, and the toolbar exposes no Home navigation.

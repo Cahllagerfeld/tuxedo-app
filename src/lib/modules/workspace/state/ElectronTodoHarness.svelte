@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
@@ -11,6 +11,7 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
+	onDestroy(() => session.destroy());
 	onMount(() => {
 		void session.initialize();
 	});

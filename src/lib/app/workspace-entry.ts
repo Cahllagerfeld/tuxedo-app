@@ -1,4 +1,4 @@
-// Only startup's command failure crosses into the first load; confirmed data belongs to loads.
+// Only startup's command failure crosses into the first load; Query owns confirmed data.
 export let entryFailure:
 	| { phase: "restore"; message: string }
 	| { phase: "activate"; workspaceId: string; message: string }

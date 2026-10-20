@@ -1,6 +1,6 @@
 # Use Effect for backend orchestration
 
-Use Effect 4 for Electron main-process orchestration, retaining the Electron-independent backend in ADR-0004. Renderer data ownership now follows the SvelteKit loads in ADR-0007, which supersedes ADR-0005. The desktop API remains narrow, plain-data, and Promise-based. Todo files and the version-1 JSON Workspace catalogue keep their existing formats; this adoption requires no user-data migration. The specification is [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91).
+Use Effect 4 for Electron main-process orchestration, retaining the Electron-independent backend in ADR-0004. Renderer data ownership now follows TanStack Query with SvelteKit load prefetching in ADR-0008, which supersedes ADR-0007. The desktop API remains narrow, plain-data, and Promise-based. Todo files and the version-1 JSON Workspace catalogue keep their existing formats; this adoption requires no user-data migration. The specification is [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91).
 
 ## Validation and failures
 
@@ -16,7 +16,7 @@ Mutations validate backend scope, revision, Active workspace, and persisted Work
 
 ## Resources and shutdown
 
-Todo-file observation adapters acquire watchers and subscriptions in the supplied Scope. Each confirmed observation target has a session-owned Scope containing its signal queue, 250 ms stream debounce, and background reads. Retargeting, Empty/unavailable states, and disposal release it, including partial acquisition. Stale callbacks cannot emit desktop events; observation failures remain best-effort. Events trigger an authoritative backend refresh followed by targeted SvelteKit invalidation under ADR-0007.
+Todo-file observation adapters acquire watchers and subscriptions in the supplied Scope. Each confirmed observation target has a session-owned Scope containing its signal queue, 250 ms stream debounce, and background reads. Retargeting, Empty/unavailable states, and disposal release it, including partial acquisition. Stale callbacks cannot emit desktop events; observation failures remain best-effort. Events trigger an authoritative backend refresh followed by targeted query invalidation under ADR-0008.
 
 `application-runtime.ts` owns synchronous admission, tracking of admitted work, and the application Scope. Main supplies thin scoped Electron adapters for startup, activation, dialogs, IPC, protocol/security handlers, and windows. Window child Scopes release native-theme subscriptions and windows. Startup failure follows the same cleanup path as shutdown.
 

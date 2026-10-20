@@ -5,37 +5,27 @@ import { onMount } from "svelte";
 import { on } from "svelte/events";
 import { toast } from "svelte-sonner";
 import { invalidate } from "$app/navigation";
-import {
-	sessionDependency,
-	workspaceDependency,
-	viewsDependency,
-} from "$lib/modules/workspace/state/workspace-load";
 import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 import type { DesktopRequest } from "$lib/shared/desktop/contract";
 import { clearEntryFailure } from "./workspace-entry";
 import { unavailableWorkspaceUrl } from "./workspace-home";
 
-export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
+export function createWorkspaceNavigation(commands: WorkspaceCommands) {
+	const workspace = commands.data;
 	let failure = $state("");
 	let admittedHref: string | undefined;
-	const busy = () => workspace.isOperating;
-	async function refresh(read: () => Promise<void>) {
-		const recoveryHref = page.params.id
-			? new URL(unavailableWorkspaceUrl(page.params.id), page.url).href
-			: undefined;
-		// A failed load may redirect to Home while the owning command still holds admission.
-		admittedHref = recoveryHref;
-		try {
-			await read();
-		} finally {
-			if (admittedHref === recoveryHref) admittedHref = undefined;
-		}
+	const busy = () => commands.isOperating;
+	async function recover(force = false) {
+		if (!page.params.id || (!force && workspace.todoFile && !workspace.error)) return;
+		const recovery = new URL(unavailableWorkspaceUrl(page.params.id), page.url);
+		admittedHref = recovery.href;
+		await goto(recovery, { replaceState: true });
 	}
 
 	async function commit(id: string, url: URL, delta?: number) {
 		clearEntryFailure();
 		// Drop a speculative destination snapshot after activation, before Kit loads the actual entry.
-		await refresh(() => invalidate(workspaceDependency(id)));
+		await invalidate(`workspace:destination:${id}`);
 		admittedHref = url.href;
 		if (delta !== undefined) {
 			// Preserve the browser's existing entry, state, scroll and traversal direction.
@@ -44,14 +34,14 @@ export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
 				history.go(delta);
 			});
 		} else {
-			await goto(url, { invalidate: [sessionDependency, viewsDependency] });
+			await goto(url);
 		}
 	}
 	let finishTraversal: (() => void) | undefined;
 
 	async function visit(id: string, url: URL, delta?: number, beforeActivation?: Promise<void>) {
 		failure = "";
-		const outcome = await workspace.open(
+		const outcome = await commands.open(
 			id,
 			async (outcome) => {
 				if (outcome.status !== "applied") failure = outcome.message;
@@ -103,11 +93,11 @@ export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
 		// Kit retains the traversed address when a history load redirects to Home.
 		if (event.to?.route.id === "/workspaces" && location.href !== event.to.url.href)
 			replaceState(event.to.url, page.state);
-		void event.complete.then(() => workspace.resumeObservation());
+		void event.complete.then(() => commands.resumeObservation());
 	});
 
 	onMount(() => {
-		const stop = workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
+		const stop = commands.observe(window.desktop, () => toast.info("Todo file reloaded"));
 		// Chromium can traverse history while Kit is awaiting a load and skips beforeNavigate then.
 		const unblock = on(
 			window.navigation,
@@ -134,7 +124,7 @@ export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
 	});
 
 	return {
-		refresh,
+		recover,
 		selectWorkspace(id: string) {
 			if (busy()) return;
 			const url = new URL(resolve("/workspaces/[id]", { id }), page.url);
@@ -145,23 +135,24 @@ export function createWorkspaceNavigation(workspace: WorkspaceCommands) {
 			return busy();
 		},
 		get error() {
-			return failure || workspace.refreshError;
+			return failure || workspace.error || commands.refreshError;
 		},
 		async retry() {
 			if (busy()) return;
 			clearEntryFailure();
 			failure = "";
 			const requestedId = page.url.searchParams.get("unavailable");
-			const outcome = await workspace.restore();
+			const outcome = await commands.restore();
 			if (outcome.status !== "applied") return;
 			const id = requestedId || workspace.activeWorkspace?.id;
 			if (!id) return;
 			const url = new URL(resolve("/workspaces/[id]", { id }), page.url);
-			if (workspace.activeWorkspace?.id === id && workspace.todoFile) await goto(url);
+			if (workspace.activeWorkspace?.id === id && workspace.todoFile)
+				await goto(url, { invalidate: [`workspace:destination:${id}`] });
 			else await visit(id, url);
 		},
 		createWorkspace(input: DesktopRequest<"createWorkspace">) {
-			return workspace.create(input, (id) =>
+			return commands.create(input, (id) =>
 				commit(id, new URL(resolve("/workspaces/[id]", { id }), page.url))
 			);
 		},

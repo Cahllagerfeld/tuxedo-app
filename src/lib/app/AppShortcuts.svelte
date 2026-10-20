@@ -10,8 +10,10 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { useSidebar } from "$lib/shared/ui/sidebar";
 	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
+	import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
 	let {
 		workspace,
+		commands,
 		bulkSelectionActive,
 		openWorkspaceSwitcher,
 		openWorkspaceCreationDialog,
@@ -19,7 +21,8 @@
 		readerShown,
 		workspaceShown,
 	}: {
-		workspace: WorkspaceCommands;
+		workspace: WorkspaceData;
+		commands: WorkspaceCommands;
 		bulkSelectionActive: boolean;
 		openWorkspaceSwitcher: () => void;
 		openWorkspaceCreationDialog: () => void;
@@ -31,7 +34,7 @@
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
 	let helpOpen = $state(false);
-	const idle = $derived(!workspace.isOperating);
+	const idle = $derived(!commands.isOperating);
 	const actions = {
 		workspace: async () => {
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);

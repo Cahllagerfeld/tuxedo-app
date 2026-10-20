@@ -4,15 +4,16 @@
 	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
 	import type { PageProps } from "./$types";
 	let { data }: PageProps = $props();
-	const { workspace, reader } = getWorkspaceContext();
+	const { workspace, commands, reader } = getWorkspaceContext();
 </script>
 
 <AppShell workspaceShown readerShown>
-	{#key data.destination.workspace.id}
+	{#key data.workspaceId}
 		<WorkspaceContent
 			bind:creationOpen={reader.creationOpen}
 			bulkSelection={reader.bulkSelection}
 			{workspace}
+			{commands}
 			todoFilter={reader.todoFilter}
 			filteredTodoItems={reader.filteredTodoItems}
 		/>

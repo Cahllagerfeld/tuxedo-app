@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { WorkspaceCommands, type WorkspaceLoadedData } from "./workspace-commands.svelte";
+import { WorkspaceCommands } from "./workspace-commands.svelte";
+import { WorkspaceData } from "./workspace-data.svelte";
+import {
+	createWorkspaceQueryClient,
+	workspaceQueryKeys,
+	workspaceDestinationQuery,
+} from "./workspace-queries";
 import { createDesktopClient, type ConfirmedSession } from "$lib/shared/desktop/contract";
 import type { TodoItem } from "$lib/shared/desktop/todo";
 
@@ -33,8 +39,158 @@ const ready = (
 	},
 });
 
+function fixture(
+	options: {
+		read?: () => Promise<ConfirmedSession>;
+		write?: () => Promise<unknown>;
+		navigating?: () => boolean;
+		workspaceId?: () => string | undefined;
+	} = {}
+) {
+	const queryClient = createWorkspaceQueryClient();
+	queryClient.setQueryData(workspaceQueryKeys.session, ready(1));
+	queryClient.setQueryData(workspaceQueryKeys.views, []);
+	const requests: string[] = [];
+	const desktop = createDesktopClient(async (channel) => {
+		requests.push(channel);
+		if (channel === "tuxedo:read-session") return options.read ? options.read() : ready(2, true);
+		if (channel === "tuxedo:restore-session") return ready(2, true);
+		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
+		return options.write ? options.write() : { status: "applied", confirmed: ready(2, true) };
+	});
+	const data = new WorkspaceData(desktop, queryClient, options.workspaceId);
+	const commands = new WorkspaceCommands(desktop, data, queryClient, options.navigating);
+	return { queryClient, data, commands, requests };
+}
+
+test("confirmed reads come from the Query cache rather than mutation outcomes", async () => {
+	const { data, commands, queryClient } = fixture({ read: async () => ready(2, false) });
+	expect(await commands.setShowDeferred(true)).toEqual({ status: "applied" });
+	expect(data.activeWorkspace?.show_deferred).toBe(false);
+	queryClient.setQueryData(workspaceQueryKeys.session, ready(3, true));
+	expect(data.activeWorkspace?.show_deferred).toBe(true);
+	expect(data.undoLabel).toBe("Undo creation");
+});
+
+test("admission remains synchronous and closed until Query revalidation finishes", async () => {
+	let finish!: (session: ConfirmedSession) => void;
+	const { commands, data, requests } = fixture({
+		read: () =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	});
+	const saving = commands.setShowDeferred(true);
+	expect(await commands.setShowDeferred(false)).toMatchObject({ status: "rejected" });
+	await expect.poll(() => !!finish).toBe(true);
+	expect(commands.isOperating).toBe(true);
+	expect(commands.pendingOperation).toBe("set_workspace_show_deferred");
+	expect(data.activeWorkspace?.show_deferred).toBe(false);
+	expect(data.todoFile?.path).toBe("/tmp/work.todo");
+	expect(await commands.open(workspaceId)).toMatchObject({ status: "rejected" });
+	finish(ready(2, true));
+	expect(await saving).toEqual({ status: "applied" });
+	expect(commands.isOperating).toBe(false);
+	expect(data.activeWorkspace?.show_deferred).toBe(true);
+	expect(
+		requests.filter((channel) => channel === "tuxedo:set-workspace-show-deferred")
+	).toHaveLength(1);
+});
+
+test("navigation admission prevents mutations of the outgoing Workspace", async () => {
+	const { commands, requests } = fixture({ navigating: () => true });
+	expect(
+		await commands.createTodo({ description: "Blocked", projects: [], contexts: [] })
+	).toMatchObject({ status: "rejected" });
+	expect(requests).toEqual([]);
+});
+
+test("a rejected mutation does not refetch or overwrite confirmed data", async () => {
+	const { commands, data, requests } = fixture({
+		write: async () => ({ status: "rejected", message: "Read-only catalogue" }),
+	});
+	expect(await commands.setShowDeferred(true)).toEqual({
+		status: "rejected",
+		message: "Read-only catalogue",
+	});
+	expect(data.activeWorkspace?.show_deferred).toBe(false);
+	expect(requests).toEqual(["tuxedo:set-workspace-show-deferred"]);
+});
+
+test("a committed write followed by failed Query refresh keeps old data and is never retried", async () => {
+	const { commands, data, requests } = fixture({
+		read: async () => {
+			throw Error("Read failed");
+		},
+	});
+	expect(await commands.setShowDeferred(true)).toMatchObject({
+		status: "applied",
+		notice: expect.stringContaining("Change saved"),
+	});
+	expect(data.todoFile?.path).toBe("/tmp/work.todo");
+	expect(data.activeWorkspace?.show_deferred).toBe(false);
+	expect(data.error).toBe("Read failed");
+	expect(commands.refreshError).toContain("could not refresh");
+	expect(
+		await commands.createTodo({ description: "No obsolete target", projects: [], contexts: [] })
+	).toMatchObject({ status: "rejected" });
+	expect(requests).toEqual(["tuxedo:set-workspace-show-deferred", "tuxedo:read-session"]);
+});
+
+test("a rejected transport write is never retried", async () => {
+	const { commands, requests } = fixture({
+		write: async () => {
+			throw Error("Disconnected");
+		},
+	});
+	expect(await commands.setShowDeferred(true)).toEqual({
+		status: "rejected",
+		message: "Disconnected",
+	});
+	expect(requests).toEqual(["tuxedo:set-workspace-show-deferred"]);
+});
+
+test("a conflict refetches backend confirmation before the next write", async () => {
+	const { commands, data, requests } = fixture({
+		write: async () => ({
+			status: "conflict",
+			message: "Changed on disk",
+			confirmed: {
+				scope,
+				revision: 2,
+				workspaceId,
+				todo_file: { path: "/tmp/work.todo", items: [], skipped: [] },
+			},
+		}),
+	});
+	expect(await commands.createTodo({ description: "New", projects: [], contexts: [] })).toEqual({
+		status: "conflict",
+		message: "Changed on disk",
+	});
+	expect(data.confirmed?.revision).toBe(2);
+	expect(data.activeWorkspace?.show_deferred).toBe(true);
+	expect(requests).toEqual(["tuxedo:create-todo", "tuxedo:read-session"]);
+});
+
+test("creation remains saved when navigation fails after successful Query refresh", async () => {
+	const { commands, requests } = fixture();
+	expect(
+		await commands.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" }, async () => {
+			throw Error("Destination unavailable");
+		})
+	).toMatchObject({
+		status: "applied",
+		workspaceId,
+		notice: expect.stringContaining("Change saved"),
+	});
+	expect(
+		await commands.createTodo({ description: "Blocked", projects: [], contexts: [] })
+	).toMatchObject({ status: "rejected" });
+	expect(requests.filter((channel) => channel === "tuxedo:create-workspace")).toHaveLength(1);
+});
+
 test.each(["completion", "deletion", "reordering"] as const)(
-	"batch %s rejects changed or missing Todo items before calling desktop",
+	"batch %s rejects stale Todo items before reaching IPC",
 	async (operation) => {
 		const todo: TodoItem = {
 			line_number: 1,
@@ -49,214 +205,131 @@ test.each(["completion", "deletion", "reordering"] as const)(
 			metadata: {},
 			edit: { description: "Current content", metadata: [] },
 		};
-		const confirmed = ready(1, false, [todo]);
-		let calls = 0;
-		const session = new WorkspaceCommands(
-			createDesktopClient(async () => {
-				calls++;
-				throw Error("Stale selections must not reach desktop");
-			}),
-			() => ({ confirmed }),
-			async () => {
-				throw Error("Rejected selections must not refresh");
-			}
-		);
+		const { commands, queryClient, requests } = fixture();
+		queryClient.setQueryData(workspaceQueryKeys.session, ready(1, false, [todo]));
 		for (const stale of [
 			{ ...todo, raw: "Old content" },
 			{ ...todo, line_number: 2 },
 		]) {
-			const items = [todo, stale];
 			const result = await (operation === "completion"
-				? session.bulkSetCompletion(items, true)
+				? commands.bulkSetCompletion([todo, stale], true)
 				: operation === "deletion"
-					? session.bulkDeleteTodos(items)
-					: session.reorderTodo(items));
+					? commands.bulkDeleteTodos([todo, stale])
+					: commands.reorderTodo([todo, stale]));
 			expect(result).toEqual({
 				status: "rejected",
 				message: "The Todo file changed. Try again with its current Todo items.",
 			});
-			expect(session.isOperating).toBe(false);
 		}
-		expect(calls).toBe(0);
+		expect(requests).toEqual([]);
 	}
 );
 
-function fixture(
-	refresh: (data: WorkspaceLoadedData) => Promise<WorkspaceLoadedData>,
-	rejected = false
-) {
-	let data = $state.raw<WorkspaceLoadedData>({ confirmed: ready(1) });
-	const requests: string[] = [];
-	const session = new WorkspaceCommands(
-		createDesktopClient(async (channel) => {
-			requests.push(channel);
-			if (channel === "tuxedo:set-workspace-show-deferred")
-				return rejected
-					? { status: "rejected", message: "Read-only catalogue" }
-					: { status: "applied", confirmed: ready(2, true) };
-			throw Error("Unexpected operation");
-		}),
-		() => data,
-		async () => {
-			data = await refresh(data);
-		}
-	);
-	return {
-		session,
-		requests,
-		replace: (incoming: WorkspaceLoadedData) => {
-			data = incoming;
+test("subscribing to load-prefetched queries does not duplicate IPC reads", async () => {
+	const { requests, data } = fixture();
+	await Promise.resolve();
+	expect(data.confirmed?.revision).toBe(1);
+	expect(data.savedViews).toEqual([]);
+	expect(requests).toEqual([]);
+});
+
+test("lifecycle refresh preserves the outgoing route query until navigation commits", async () => {
+	const { commands, data, queryClient } = fixture({ workspaceId: () => workspaceId });
+	queryClient.setQueryData(workspaceQueryKeys.destination(workspaceId), ready(1));
+	expect(
+		await commands.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" })
+	).toMatchObject({ status: "applied" });
+	expect(queryClient.getQueryData<ConfirmedSession>(workspaceQueryKeys.session)?.revision).toBe(2);
+	expect(data.confirmed?.revision).toBe(1);
+	expect(data.activeWorkspace?.show_deferred).toBe(false);
+	expect(
+		queryClient.getQueryState(workspaceQueryKeys.destination(workspaceId))?.isInvalidated
+	).toBe(true);
+});
+
+test.each(["empty", "unavailable"] as const)(
+	"destination queries accept %s confirmations for Home recovery",
+	async (status) => {
+		const confirmed: ConfirmedSession = {
+			scope,
+			revision: 2,
+			session:
+				status === "empty"
+					? {
+							status,
+							warning: null,
+							catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+						}
+					: { status, error: "Catalogue unavailable" },
+		};
+		const desktop = createDesktopClient(async () => confirmed);
+		const queryClient = createWorkspaceQueryClient();
+		expect(await queryClient.query(workspaceDestinationQuery(desktop, workspaceId))).toEqual(
+			confirmed
+		);
+	}
+);
+
+test("Home recovery invalidates prior destination confirmations before retrying navigation", async () => {
+	const { commands, queryClient } = fixture();
+	queryClient.setQueryData(workspaceQueryKeys.destination(workspaceId), {
+		scope,
+		revision: 1,
+		session: {
+			status: "empty",
+			warning: "Could not read Todo file",
+			catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+		},
+	});
+	expect(await commands.restore()).toEqual({ status: "applied" });
+	expect(
+		queryClient.getQueryState(workspaceQueryKeys.destination(workspaceId))?.isInvalidated
+	).toBe(true);
+});
+
+test("deleting an inactive Workspace refreshes the displayed destination catalogue", async () => {
+	const otherId = "550e8400-e29b-41d4-a716-446655440001";
+	const initial = ready(1);
+	if (initial.session.status !== "ready") throw Error("Expected a Ready fixture");
+	let current: ConfirmedSession = {
+		...initial,
+		session: {
+			...initial.session,
+			catalogue: {
+				...initial.session.catalogue,
+				workspaces: [
+					...initial.session.catalogue.workspaces,
+					{
+						id: otherId,
+						name: "Personal",
+						color: "green",
+						todo_path: "/tmp/personal.todo",
+						created_at: "2026-10-15T10:00:00Z",
+					},
+				],
+			},
 		},
 	};
-}
-
-test("confirmed data belongs to the load getter, not command outcomes", async () => {
-	const { session, replace } = fixture(async (data) => data);
-	expect(await session.setShowDeferred(true)).toEqual({ status: "applied" });
-	expect(session.activeWorkspace?.show_deferred).toBe(false);
-	replace({ confirmed: ready(2, true) });
-	expect(session.activeWorkspace?.show_deferred).toBe(true);
-	expect(session.undoLabel).toBe("Undo creation");
-});
-
-test("navigation admission prevents a command from targeting the outgoing reader", async () => {
-	let calls = 0;
-	const session = new WorkspaceCommands(
-		createDesktopClient(async () => {
-			calls++;
-			throw Error("A command must not start");
-		}),
-		() => ({ confirmed: ready(1) }),
-		async () => {},
-		() => true
-	);
-	expect(session.isOperating).toBe(true);
-	expect(
-		await session.createTodo({ description: "Blocked", projects: [], contexts: [] })
-	).toMatchObject({ status: "rejected" });
-	expect(calls).toBe(0);
-});
-
-test("creation remains saved when its destination fails to load", async () => {
-	let calls = 0;
-	const session = new WorkspaceCommands(
-		createDesktopClient(async () => {
-			calls++;
-			return { status: "applied", confirmed: ready(2) };
-		}),
-		() => ({ confirmed: ready(1) }),
-		async () => {}
-	);
-	expect(
-		await session.create({ name: "Work", color: "blue", todoPath: "/tmp/work.todo" }, async () => {
-			throw Error("Destination unavailable");
-		})
-	).toMatchObject({
-		status: "applied",
+	const desktop = createDesktopClient(async (channel) => {
+		if (channel === "tuxedo:read-session") return current;
+		if (channel === "tuxedo:delete-workspace") {
+			current = ready(2);
+			return { status: "applied", confirmed: current };
+		}
+		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
+		throw Error("Unexpected operation");
+	});
+	const queryClient = createWorkspaceQueryClient();
+	queryClient.setQueryData(workspaceQueryKeys.session, current);
+	queryClient.setQueryData(workspaceQueryKeys.views, []);
+	await queryClient.query(workspaceDestinationQuery(desktop, workspaceId));
+	const data = new WorkspaceData(desktop, queryClient, () => workspaceId);
+	const commands = new WorkspaceCommands(desktop, data, queryClient);
+	expect(data.catalogue?.workspaces.map((workspace) => workspace.id)).toEqual([
 		workspaceId,
-		notice: expect.stringContaining("Change saved"),
-	});
-	expect(
-		await session.createTodo({ description: "No obsolete target", projects: [], contexts: [] })
-	).toMatchObject({ status: "rejected" });
-	expect(calls).toBe(1);
+		otherId,
+	]);
+	expect(await commands.deleteWorkspace(otherId)).toEqual({ status: "applied" });
+	expect(data.catalogue?.workspaces.map((workspace) => workspace.id)).toEqual([workspaceId]);
+	expect(data.confirmed?.revision).toBe(2);
 });
-
-test("command admission and pending controls remain held through revalidation", async () => {
-	let finish!: (data: WorkspaceLoadedData) => void;
-	const { session, requests } = fixture(
-		() =>
-			new Promise((resolve) => {
-				finish = resolve;
-			})
-	);
-	const saving = session.setShowDeferred(true);
-	await expect.poll(() => !!finish).toBe(true);
-	expect(session.isOperating).toBe(true);
-	expect(session.todoFile?.path).toBe("/tmp/work.todo");
-	expect(session.activeWorkspace?.show_deferred).toBe(false);
-	expect(await session.open(workspaceId)).toMatchObject({ status: "rejected" });
-	expect(await session.setShowDeferred(false)).toMatchObject({ status: "rejected" });
-	expect(requests).toHaveLength(1);
-	finish({ confirmed: ready(2, true) });
-	expect(await saving).toEqual({ status: "applied" });
-	expect(session.isOperating).toBe(false);
-	expect(session.activeWorkspace?.show_deferred).toBe(true);
-});
-
-test("failed commands retain confirmed data without requesting refresh", async () => {
-	let refreshes = 0;
-	const { session } = fixture(async (data) => {
-		refreshes++;
-		return data;
-	}, true);
-	expect(await session.setShowDeferred(true)).toEqual({
-		status: "rejected",
-		message: "Read-only catalogue",
-	});
-	expect(refreshes).toBe(0);
-	expect(session.activeWorkspace?.show_deferred).toBe(false);
-	expect(session.todoFile?.path).toBe("/tmp/work.todo");
-});
-
-test("a conflict refreshes confirmed disk data before releasing command admission", async () => {
-	let data = $state.raw<WorkspaceLoadedData>({ confirmed: ready(1) });
-	let finish!: () => void;
-	const revisions: number[] = [];
-	const session = new WorkspaceCommands(
-		createDesktopClient(async (channel, request) => {
-			if (channel !== "tuxedo:create-todo") throw Error("Unexpected operation");
-			revisions.push((request as { revision: number }).revision);
-			return {
-				status: "conflict",
-				message: "Changed on disk",
-				confirmed: {
-					scope,
-					revision: 2,
-					workspaceId,
-					todo_file: { path: "/tmp/work.todo", items: [], skipped: [] },
-				},
-			};
-		}),
-		() => data,
-		() =>
-			new Promise((resolve) => {
-				finish = () => {
-					data = { confirmed: ready(2, true) };
-					resolve();
-				};
-			})
-	);
-	const command = session.createTodo({ description: "New", projects: [], contexts: [] });
-	await expect.poll(() => !!finish).toBe(true);
-	expect(session.isOperating).toBe(true);
-	expect(session.activeWorkspace?.show_deferred).toBe(false);
-	finish();
-	expect(await command).toEqual({ status: "conflict", message: "Changed on disk" });
-	expect(session.activeWorkspace?.show_deferred).toBe(true);
-	const next = session.createTodo({ description: "New", projects: [], contexts: [] });
-	await expect.poll(() => revisions.length).toBe(2);
-	finish();
-	await next;
-	expect(revisions).toEqual([1, 2]);
-});
-
-test.each(["throw", "loaded error"])(
-	"a saved command with %s during refresh is not reported as unsaved or retried",
-	async (failure) => {
-		const { session, requests } = fixture(async () => {
-			if (failure === "throw") throw Error("Read failed");
-			return { error: "Read failed" };
-		});
-		expect(await session.setShowDeferred(true)).toMatchObject({
-			status: "applied",
-			notice: expect.stringContaining("Change saved"),
-		});
-		expect(requests).toHaveLength(1);
-		expect(session.isOperating).toBe(false);
-		expect(
-			await session.createTodo({ description: "No stale write", projects: [], contexts: [] })
-		).toMatchObject({ status: "rejected" });
-		expect(requests).toHaveLength(1);
-	}
-);

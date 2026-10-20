@@ -39,6 +39,7 @@
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
 		"@tailwindcss/vite": "4.3.3",
 		"@tanstack/svelte-hotkeys": "0.13.0",
+		"@tanstack/svelte-query": "^6.3.5",
 		"@tanstack/svelte-virtual": "3.13.43",
 		"@types/node": "24.19.2",
 		"@vitest/browser-playwright": "5.0.4",

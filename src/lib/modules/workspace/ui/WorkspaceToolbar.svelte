@@ -20,6 +20,7 @@
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceData } from "../state/workspace-data.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -27,7 +28,8 @@
 	type Props = {
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		workspace: WorkspaceCommands;
+		workspace: WorkspaceData;
+		commands: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		closeDetails: () => void;
@@ -38,6 +40,7 @@
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
+		commands,
 		todoFilter,
 		filteredTodoItems,
 		closeDetails,
@@ -66,7 +69,7 @@
 	let previousSelection: typeof bulkSelection.context | undefined;
 	// Report invalidation to the external toast system; selection itself is derived.
 	$effect(() => {
-		if (workspace.isOperating) return;
+		if (commands.isOperating) return;
 		const current = bulkSelection.context;
 		if (
 			previousSelection &&
@@ -77,7 +80,7 @@
 				previousSelection.filterSignature !== current.filterSignature ||
 				previousSelection.matchingSignature !== current.matchingSignature) &&
 			bulkSelection.active &&
-			!workspace.isOperating
+			!commands.isOperating
 		) {
 			toast.info(
 				previousSelection.fileSignature !== current.fileSignature
@@ -100,20 +103,20 @@
 		!!confirmation &&
 			bulkSelection.active &&
 			(deleting ||
-				workspace.isOperating ||
+				commands.isOperating ||
 				confirmation.context.selection === bulkSelection.context.selection)
 	);
 	let deletionError = $state<string | null>(null);
 	let deletionFocus: { workspaceKey: string; index: number } | null = null;
 	let deleteWorkspaceKey = "";
 	function openDeleteConfirmation() {
-		if (workspace.isOperating || !bulkSelection.count) return;
+		if (commands.isOperating || !bulkSelection.count) return;
 		deletionError = null;
 		deleteWorkspaceKey = bulkSelection.context.workspaceKey;
 		confirmation = { context: bulkSelection.context, items: [...bulkSelection.selectedItems] };
 	}
 	async function deleteSelected() {
-		if (deleting || workspace.isOperating || !deleteOpen || !confirmation) return;
+		if (deleting || commands.isOperating || !deleteOpen || !confirmation) return;
 		const { context, items } = confirmation;
 		const position = filteredTodoItems.findIndex(
 			(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
@@ -122,7 +125,7 @@
 		previousSelection = undefined;
 		// Keep the modal through confirmed-data acceptance so its close hook can recover focus.
 		deleting = true;
-		const result = await workspace.bulkDeleteTodos(items);
+		const result = await commands.bulkDeleteTodos(items);
 		if (result.status === "applied") {
 			toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
 			deletionFocus = { workspaceKey: context.workspaceKey, index: position };
@@ -155,7 +158,7 @@
 		});
 	}
 	async function setSelectedCompletion(completed: boolean) {
-		if (workspace.isOperating) return;
+		if (commands.isOperating) return;
 		const items = [...bulkSelection.selectedItems];
 		const count = items.filter((todo) => todo.completed !== completed).length;
 		if (!count) return;
@@ -163,7 +166,7 @@
 		const position = filteredTodoItems.indexOf(items[0]);
 		const origin = document.activeElement;
 		previousSelection = undefined;
-		const result = await workspace.bulkSetCompletion(items, completed);
+		const result = await commands.bulkSetCompletion(items, completed);
 		if (result.status === "applied") {
 			toast.success(
 				completed
@@ -211,14 +214,14 @@
 			enabled:
 				bulkSelection.active &&
 				!deleteOpen &&
-				!workspace.isOperating &&
+				!commands.isOperating &&
 				(shortcutScope?.available ?? true),
 			ignoreInputs: true,
 			preventDefault: true,
 		})
 	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
-		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
+		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !commands.isOperating,
 		ignoreInputs: false,
 		preventDefault: true,
 		requireReset: true,
@@ -228,12 +231,12 @@
 <AlertDialog.Root
 	open={deleteOpen}
 	onOpenChange={(open) => {
-		if (!open && !workspace.isOperating && !deleting) confirmation = null;
+		if (!open && !commands.isOperating && !deleting) confirmation = null;
 	}}
 >
 	<AlertDialog.Content
 		onEscapeKeydown={(event) => {
-			if (workspace.isOperating || deleting) event.preventDefault();
+			if (commands.isOperating || deleting) event.preventDefault();
 		}}
 		onCloseAutoFocus={restoreDeleteFocus}
 	>
@@ -251,10 +254,10 @@
 			<p role="alert" class="text-sm text-destructive">{deletionError}</p>
 		{/if}
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={workspace.isOperating || deleting}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel disabled={commands.isOperating || deleting}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				variant="destructive"
-				disabled={workspace.isOperating || deleting}
+				disabled={commands.isOperating || deleting}
 				onclick={deleteSelected}
 			>
 				{deleting ? "Deleting…" : "Delete Todo items"}
@@ -286,33 +289,33 @@
 					<Button
 						variant="outline"
 						size="sm"
-						disabled={workspace.isOperating || filteredTodoItems.length === 0}
+						disabled={commands.isOperating || filteredTodoItems.length === 0}
 						onclick={bulkSelection.selectAll}>Select all</Button
 					>
 					<Button
 						variant="outline"
 						size="sm"
-						disabled={workspace.isOperating || bulkSelection.count === 0}
+						disabled={commands.isOperating || bulkSelection.count === 0}
 						onclick={bulkSelection.clear}>Clear selection</Button
 					>
 				</ButtonGroup.Root>
 				<Button
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
+					disabled={commands.isOperating || bulkSelection.selectedOpenCount === 0}
 					onclick={() => void setSelectedCompletion(true)}
 					><Check aria-hidden="true" />Complete</Button
 				>
 				<Button
 					variant="outline"
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.selectedCompletedCount === 0}
+					disabled={commands.isOperating || bulkSelection.selectedCompletedCount === 0}
 					onclick={() => void setSelectedCompletion(false)}>Mark incomplete</Button
 				>
 				<Button
 					bind:ref={deleteButton}
 					variant="destructive"
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.count === 0}
+					disabled={commands.isOperating || bulkSelection.count === 0}
 					onclick={openDeleteConfirmation}>Delete</Button
 				>
 				<Tooltip.Provider>
@@ -325,7 +328,7 @@
 									size="icon-sm"
 									bind:ref={doneButton}
 									aria-label="Exit selection mode"
-									disabled={workspace.isOperating}
+									disabled={commands.isOperating}
 									onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
 								>
 							{/snippet}
@@ -343,7 +346,7 @@
 									variant="ghost"
 									size="icon-sm"
 									aria-label="Select items"
-									disabled={workspace.isOperating}
+									disabled={commands.isOperating}
 									onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
 								>
 							{/snippet}
@@ -367,9 +370,9 @@
 								aria-describedby={deferredCountId}
 								class="relative aria-pressed:bg-accent aria-pressed:text-accent-foreground"
 								aria-pressed={todoFilter.showDeferred}
-								disabled={workspace.isOperating || todoFilter.status === "completed"}
+								disabled={commands.isOperating || todoFilter.status === "completed"}
 								onclick={() =>
-									void workspace.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
+									void commands.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
 										await tick();
 										bulkSelection.reconcileVisibility();
 										if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
@@ -404,7 +407,7 @@
 							size="icon"
 							aria-label="Sort Todo items"
 							title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
-							disabled={workspace.isOperating}
+							disabled={commands.isOperating}
 						>
 							<ListFilter class="size-4" aria-hidden="true" />
 						</Button>
@@ -416,11 +419,11 @@
 						value={todoFilter.sortOrder}
 						onValueChange={(value) => {
 							if (
-								!workspace.isOperating &&
+								!commands.isOperating &&
 								(value === "file" || value === "due") &&
 								value !== todoFilter.sortOrder
 							)
-								void workspace.setSortOrder(value).then((outcome) => {
+								void commands.setSortOrder(value).then((outcome) => {
 									if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 									if (outcome.status !== "applied")
 										toast.error("Could not save sort order", { description: outcome.message });
@@ -432,7 +435,7 @@
 					</DropdownMenu.RadioGroup>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<SavedViews {workspace} {todoFilter} />
+			<SavedViews {workspace} {commands} {todoFilter} />
 			<Button
 				bind:ref={searchButton}
 				variant="ghost"
@@ -440,7 +443,7 @@
 				aria-label="Toggle Todo-item search"
 				aria-expanded={searchOpen || todoFilter.hasSearch}
 				aria-controls={searchId}
-				disabled={workspace.isOperating}
+				disabled={commands.isOperating}
 				onclick={toggleSearch}
 			>
 				<Search class="size-4" aria-hidden="true" />
@@ -449,12 +452,12 @@
 				<TodoEditorDialog
 					bind:open={creationOpen}
 					todoFile={workspace.todoFile}
-					saveTodoItem={workspace.createTodo}
+					saveTodoItem={commands.createTodo}
 					workspaceName={workspace.activeWorkspace?.name ?? ""}
 					showDeferred={todoFilter.showDeferred}
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}
-					disabled={workspace.isOperating}
+					disabled={commands.isOperating}
 				/>
 			{/if}
 		</div>
@@ -472,7 +475,7 @@
 					bind:value={todoFilter.searchText}
 					aria-label="Search Todo items"
 					placeholder="Search Todo items…"
-					disabled={workspace.isOperating}
+					disabled={commands.isOperating}
 					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
 				/>
 				{#if todoFilter.searchText}
@@ -481,7 +484,7 @@
 						size="icon-xs"
 						class="absolute top-1 right-1"
 						aria-label="Clear search"
-						disabled={workspace.isOperating}
+						disabled={commands.isOperating}
 						onclick={todoFilter.clearSearch}
 					>
 						<X class="size-4" aria-hidden="true" />
@@ -490,5 +493,5 @@
 			</div>
 		</div>
 	{/if}
-	<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
+	<ActiveTodoFilters {todoFilter} disabled={commands.isOperating} />
 {/if}

@@ -1,8 +1,13 @@
 import {
-	type SavedView,
+	MutationObserver,
+	type MutationObserverResult,
+	type QueryClient,
+} from "@tanstack/svelte-query";
+import type { WorkspaceData } from "./workspace-data.svelte";
+import { workspaceQueryKeys } from "./workspace-queries";
+import {
 	type TodoSortOrder,
 	type SavedViewFilterValues,
-	type ConfirmedSession,
 	type DesktopAPI,
 	type DesktopRequest,
 	type DesktopResponse,
@@ -19,34 +24,88 @@ import type { TodoItem } from "$lib/modules/todo/domain/todo";
 type CreateTodoRequest = DesktopRequest<"createTodo">;
 export type CreateTodoDraft = Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">;
 
-export type WorkspaceLoadedData = (
-	{ confirmed: ConfirmedSession; error?: never } | { confirmed?: never; error: string }
-) & {
-	savedViews?: readonly SavedView[];
-	savedViewsError?: string;
+type CommandInput = {
+	operation: WorkspaceSessionOperation;
+	action: () => Promise<WorkspaceSessionActionResult>;
 };
 
 export class WorkspaceCommands {
-	private pending = $state<WorkspaceSessionOperation | null>(null);
+	private mutationResult =
+		$state.raw<MutationObserverResult<WorkspaceSessionActionResult, Error, CommandInput>>();
+	private readonly mutation: MutationObserver<WorkspaceSessionActionResult, Error, CommandInput>;
+	private readonly unsubscribe: () => void;
 	private refreshFailed = $state(false);
 	private reconsiderObservation: (() => void) | undefined;
 
 	constructor(
 		private readonly desktop: DesktopAPI,
-		private readonly getData: () => WorkspaceLoadedData,
-		private readonly invalidate: (dependency: "session" | "views" | "lifecycle") => Promise<void>,
-		private readonly navigationPending: () => boolean = () => false
-	) {}
+		readonly data: WorkspaceData,
+		private readonly queryClient: QueryClient,
+		private readonly navigationPending: () => boolean = () => false,
+		private readonly afterRefresh: (
+			dependency: "session" | "views" | "lifecycle"
+		) => Promise<void> = async () => {}
+	) {
+		this.mutation = new MutationObserver(queryClient, {
+			mutationKey: [...workspaceQueryKeys.all, "command"],
+			mutationFn: ({ action }) => action(),
+			retry: false,
+			networkMode: "always",
+		});
+		this.mutationResult = this.mutation.getCurrentResult();
+		this.unsubscribe = this.mutation.subscribe((result) => {
+			this.mutationResult = result;
+		});
+	}
 
-	private get confirmed() {
-		return this.getData().confirmed;
+	destroy() {
+		this.unsubscribe();
 	}
-	get savedViews() {
-		return this.getData().savedViews ?? [];
+	private async invalidate(dependency: "session" | "views" | "lifecycle") {
+		if (dependency === "lifecycle" || this.pendingOperation === "restore")
+			await this.queryClient.invalidateQueries({
+				queryKey: workspaceQueryKeys.destinations,
+				refetchType: "none",
+			});
+		try {
+			const results = await Promise.allSettled([
+				...((dependency === "session" || this.pendingOperation === "delete_workspace") &&
+				this.data.routeWorkspaceId
+					? [
+							this.queryClient.invalidateQueries(
+								{
+									queryKey: workspaceQueryKeys.destination(this.data.routeWorkspaceId),
+									exact: true,
+									refetchType: "all",
+								},
+								{ throwOnError: true }
+							),
+						]
+					: []),
+				...(dependency !== "views"
+					? [
+							this.queryClient.invalidateQueries(
+								{ queryKey: workspaceQueryKeys.session },
+								{ throwOnError: true }
+							),
+						]
+					: []),
+				...(dependency !== "session"
+					? [
+							this.queryClient.invalidateQueries(
+								{ queryKey: workspaceQueryKeys.views },
+								{ throwOnError: true }
+							),
+						]
+					: []),
+			]);
+			const failure = results.find((result) => result.status === "rejected");
+			if (failure?.status === "rejected") throw failure.reason;
+		} finally {
+			await this.afterRefresh(dependency);
+		}
 	}
-	get savedViewsError() {
-		return this.getData().savedViewsError ?? "";
-	}
+
 	get refreshError() {
 		return this.refreshFailed
 			? "The screen could not refresh. Retry loading before making another change."
@@ -62,7 +121,7 @@ export class WorkspaceCommands {
 			if (!listening || this.isOperating || !deferred) return;
 			const event = deferred;
 			deferred = undefined;
-			const previous = this.confirmed;
+			const previous = this.data.confirmed;
 			if (
 				!previous ||
 				previous.session.status !== "ready" ||
@@ -77,7 +136,7 @@ export class WorkspaceCommands {
 				skipped: previous.session.todo_file.skipped,
 			});
 			void this.restore().then((outcome) => {
-				const file = this.todoFile;
+				const file = this.data.todoFile;
 				if (
 					listening &&
 					outcome.status === "applied" &&
@@ -109,8 +168,9 @@ export class WorkspaceCommands {
 	): Promise<T & { notice?: string }> {
 		if (outcome.status !== "rejected") {
 			try {
-				await (refresh ? refresh() : this.invalidate(dependency));
-				const error = dependency !== "views" ? this.error : this.savedViewsError;
+				await this.invalidate(dependency);
+				if (refresh) await refresh();
+				const error = dependency !== "views" ? this.data.error : this.data.savedViewsError;
 				if (error) throw Error(error);
 				if (dependency !== "views") this.refreshFailed = false;
 			} catch {
@@ -127,7 +187,7 @@ export class WorkspaceCommands {
 	}
 
 	private todoTarget(): Pick<CreateTodoRequest, "scope" | "revision" | "workspaceId"> {
-		const confirmed = this.confirmed;
+		const confirmed = this.data.confirmed;
 		if (
 			this.refreshFailed ||
 			!confirmed ||
@@ -142,15 +202,6 @@ export class WorkspaceCommands {
 		};
 	}
 
-	get session() {
-		const data = this.getData();
-		return data.confirmed
-			? data.confirmed.session
-			: { status: "unavailable" as const, error: data.error };
-	}
-	get undoLabel() {
-		return this.session.status === "ready" ? this.confirmed?.undoLabel : undefined;
-	}
 	undoTodo = () =>
 		this.runAction("undo_todo_change", async () =>
 			this.refreshOutcome(await this.desktop.undoTodo(this.todoTarget()))
@@ -168,29 +219,14 @@ export class WorkspaceCommands {
 			)
 		);
 	get pendingOperation(): WorkspaceSessionOperation | null {
-		return this.pending;
+		return this.mutationResult?.isPending ? this.mutationResult.variables.operation : null;
 	}
 	get isOperating() {
-		return this.pending !== null || this.navigationPending();
-	}
-	get catalogue() {
-		return this.session.status === "empty" || this.session.status === "ready"
-			? this.session.catalogue
-			: null;
-	}
-	get activeWorkspace() {
 		return (
-			this.catalogue?.workspaces.find((w) => w.id === this.catalogue?.active_workspace_id) ?? null
+			!!this.mutationResult?.isPending ||
+			this.mutation.getCurrentResult().isPending ||
+			this.navigationPending()
 		);
-	}
-	get todoFile() {
-		return this.session.status === "ready" ? this.session.todo_file : null;
-	}
-	get error() {
-		return this.session.status === "unavailable" ? this.session.error : "";
-	}
-	get warning() {
-		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
 	}
 	private async runAction(
 		operation: WorkspaceSessionOperation,
@@ -199,9 +235,8 @@ export class WorkspaceCommands {
 		if (this.isOperating)
 			return { status: "rejected", message: "A Workspace session operation is already running." };
 		// Admission and pending UI share one synchronous state transition.
-		this.pending = operation;
 		try {
-			const outcome = await action();
+			const outcome = await this.mutation.mutate({ operation, action });
 			return outcome.status === "applied"
 				? {
 						status: "applied",
@@ -215,7 +250,6 @@ export class WorkspaceCommands {
 				message: error instanceof Error ? error.message : String(error),
 			};
 		} finally {
-			this.pending = null;
 			this.reconsiderObservation?.();
 		}
 	}
@@ -224,7 +258,7 @@ export class WorkspaceCommands {
 			try {
 				await this.desktop.restoreSession({});
 				await this.invalidate("session");
-				const error = this.getData().error;
+				const error = this.data.error;
 				this.refreshFailed = !!error;
 				return error ? { status: "rejected", message: error } : { status: "applied" };
 			} catch (error) {
@@ -236,21 +270,21 @@ export class WorkspaceCommands {
 	reloadViews = () =>
 		this.runAction("reload_views", async () => {
 			await this.invalidate("views");
-			return this.savedViewsError
-				? { status: "rejected", message: this.savedViewsError }
+			return this.data.savedViewsError
+				? { status: "rejected", message: this.data.savedViewsError }
 				: { status: "applied" };
 		});
 
 	saveView = (name: string, filters: SavedViewFilterValues) =>
 		this.runAction("save_view", async () => {
-			const workspaceId = this.activeWorkspace?.id;
+			const workspaceId = this.data.activeWorkspace?.id;
 			if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
 			const outcome = await this.desktop.saveView({ workspaceId, name, filters });
 			return this.refreshOutcome(outcome, "views");
 		});
 	deleteView = (viewId: string) =>
 		this.runAction("delete_view", async () => {
-			const workspaceId = this.activeWorkspace?.id;
+			const workspaceId = this.data.activeWorkspace?.id;
 			if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
 			const outcome = await this.desktop.deleteView({ workspaceId, viewId });
 			return this.refreshOutcome(outcome, "views");
@@ -348,7 +382,7 @@ export class WorkspaceCommands {
 		});
 	private todoBatchTarget(items: readonly TodoItem[]) {
 		const target = this.todoTarget();
-		const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+		const current = new Map(this.data.todoFile?.items.map((item) => [item.line_number, item.raw]));
 		if (items.some((item) => current.get(item.line_number) !== item.raw))
 			throw Error("The Todo file changed. Try again with its current Todo items.");
 		return target;

@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
 	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
+	onDestroy(() => session.destroy());
 	onMount(() => {
 		void session.initialize();
 	});

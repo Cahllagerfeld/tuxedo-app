@@ -638,7 +638,7 @@ try {
 	});
 	assert.deepEqual(deletedView, { status: "applied", views: [] });
 
-	// Real observation signals cross preload/IPC and use the mounted controller.
+	// Real observation signals cross preload/IPC and refresh the mounted queries.
 	await writeFile(
 		todoPath,
 		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n"
@@ -1594,7 +1594,7 @@ try {
 	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	await page
 		.getByText(
-			"Cannot read Workspace: This Todo file couldn’t be found. It may have been moved or deleted.",
+			"This Todo file couldn’t be found. It may have been moved or deleted.",
 			{
 				exact: true,
 			}

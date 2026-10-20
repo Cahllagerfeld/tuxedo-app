@@ -4,19 +4,14 @@
 	import WorkspaceEmptyState from "$lib/modules/workspace/ui/WorkspaceEmptyState.svelte";
 	import type { PageProps } from "./$types";
 	let { data }: PageProps = $props();
-	const { workspace, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
-	const session = $derived(
-		data.sessionData.confirmed
-			? data.sessionData.confirmed.session
-			: { status: "unavailable" as const, error: data.sessionData.error }
-	);
+	const { workspace, commands, navigation, openWorkspaceCreationDialog } = getWorkspaceContext();
 </script>
 
 <AppShell>
 	<WorkspaceEmptyState
-		{session}
+		session={workspace.session}
 		warning={navigation.error || data.unavailableMessage}
-		deleteWorkspace={workspace.deleteWorkspace}
+		deleteWorkspace={commands.deleteWorkspace}
 		disabled={navigation.busy}
 		{openWorkspaceCreationDialog}
 		retry={navigation.retry}

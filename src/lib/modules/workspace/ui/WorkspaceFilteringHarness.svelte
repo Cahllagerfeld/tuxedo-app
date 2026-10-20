@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { createReaderState } from "$lib/app/reader-state.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
@@ -12,7 +12,8 @@
 	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
 		reader.todoFilter.reconcileSource()
 	);
-	const reader = createReaderState(session);
+	const reader = createReaderState(session.data, session);
+	onDestroy(() => session.destroy());
 	onMount(() => void session.initialize());
 </script>
 
@@ -33,7 +34,8 @@
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
 			bulkSelection={reader.bulkSelection}
-			workspace={session}
+			workspace={session.data}
+			commands={session}
 			todoFilter={reader.todoFilter}
 			filteredTodoItems={reader.filteredTodoItems}
 		/>

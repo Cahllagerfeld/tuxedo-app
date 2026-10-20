@@ -5,8 +5,11 @@ import type { TodoItemDraft, SaveTodoItemResult } from "$lib/modules/todo/ui/tod
 import type { ShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
+import type { WorkspaceData } from "../state/workspace-data.svelte";
+
 type Inputs = {
-	readonly workspace: WorkspaceCommands;
+	readonly workspace: WorkspaceData;
+	readonly commands: WorkspaceCommands;
 	readonly fileOrder: boolean;
 	readonly wide: boolean;
 	readonly list: ReturnType<typeof TodoList> | undefined;
@@ -149,19 +152,19 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 		closeEdit,
 		saveEdit: (draft: TodoItemDraft) => {
 			const todo = editingTodo!;
-			return change(todo, () => inputs.workspace.editTodo(todo, draft));
+			return change(todo, () => inputs.commands.editTodo(todo, draft));
 		},
 		toggleCompletion: (todo: TodoItem) =>
 			change(
 				todo,
-				() => inputs.workspace.setCompletion(todo),
+				() => inputs.commands.setCompletion(todo),
 				todo.line_number,
 				inputs.list?.captureFocus(todo)
 			),
 		deleteTodo: (todo: TodoItem, trigger?: HTMLButtonElement | null) =>
 			change(
 				todo,
-				() => inputs.workspace.deleteTodo(todo),
+				() => inputs.commands.deleteTodo(todo),
 				null,
 				inputs.list?.captureFocus(todo, false, trigger),
 				trigger
@@ -177,10 +180,10 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 			return todo
 				? change(
 						todo,
-						() => inputs.workspace.reorderTodo(items),
+						() => inputs.commands.reorderTodo(items),
 						index < 0 ? todo.line_number : lines[index]
 					)
-				: inputs.workspace.reorderTodo(items);
+				: inputs.commands.reorderTodo(items);
 		},
 		navigate: (todo: TodoItem) => {
 			if (selectedTodo && inputs.wide) select(todo);

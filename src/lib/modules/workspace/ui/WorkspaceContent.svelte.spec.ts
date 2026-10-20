@@ -2091,6 +2091,7 @@ test.each(["rejected", "conflict"] as const)(
 			await page.getByRole("button", { name: "Mark incomplete", exact: true }).click();
 			expect(bulk).toHaveBeenCalledTimes(2);
 			finish({ status: "rejected", message: "Still read-only" });
+			await expect.element(page.getByText("Still read-only", { exact: true })).toBeVisible();
 		}
 	}
 );

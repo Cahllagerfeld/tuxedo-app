@@ -10,6 +10,7 @@
 	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceData } from "../state/workspace-data.svelte";
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Resizable from "$lib/shared/ui/resizable";
 	import * as Sheet from "$lib/shared/ui/sheet";
@@ -21,11 +22,13 @@
 	import type { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	let {
 		workspace,
+		commands,
 		todoFilter,
 		filteredTodoItems,
 		bulkSelection,
 	}: {
-		workspace: WorkspaceCommands;
+		workspace: WorkspaceData;
+		commands: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
@@ -37,6 +40,9 @@
 	let desktopDetails = $state<HTMLElement | null>(null);
 	const selectionMode = $derived(bulkSelection.active);
 	const reader = createTodoReaderInteraction({
+		get commands() {
+			return commands;
+		},
 		get workspace() {
 			return workspace;
 		},
@@ -94,7 +100,7 @@
 		{todo}
 		today={todoFilter.today}
 		{path}
-		disabled={workspace.isOperating}
+		disabled={commands.isOperating}
 		onClose={reader.closeDetails}
 		onEdit={reader.startEdit}
 		onToggleComplete={toggleTodoCompletion}
@@ -111,7 +117,7 @@
 				saveTodoItem={reader.saveEdit}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
 				showDeferred={todoFilter.showDeferred}
-				disabled={workspace.isOperating}
+				disabled={commands.isOperating}
 				onClose={reader.closeEdit}
 			/>
 		{/if}
@@ -145,9 +151,9 @@
 										</Empty.Description>
 									</Empty.Header>
 									<Button
-										disabled={workspace.isOperating}
+										disabled={commands.isOperating}
 										onclick={() =>
-											void workspace.setShowDeferred(true).then((outcome) => {
+											void commands.setShowDeferred(true).then((outcome) => {
 												if (outcome.status === "applied" && outcome.notice)
 													toast.info(outcome.notice);
 												if (outcome.status !== "applied")
@@ -172,7 +178,7 @@
 										</Empty.Description>
 									</Empty.Header>
 									{#if todoFilter.hasFilters}
-										<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
+										<Button disabled={commands.isOperating} onclick={todoFilter.clear}
 											>Clear filters</Button
 										>
 									{/if}
@@ -188,7 +194,7 @@
 							scrollElement={todoViewport}
 							todoFile={workspace.todoFile}
 							items={filteredTodoItems}
-							disabled={workspace.isOperating}
+							disabled={commands.isOperating}
 							onToggleComplete={selectionMode ? () => {} : toggleTodoCompletion}
 							onDelete={selectionMode ? () => {} : deleteTodoItem}
 							onEdit={selectionMode ? undefined : reader.startEdit}

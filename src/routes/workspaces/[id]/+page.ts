@@ -1,27 +1,22 @@
 import { entryFailure } from "$lib/app/workspace-entry";
 import { unavailableWorkspaceUrl } from "$lib/app/workspace-home";
 import { redirect } from "@sveltejs/kit";
-import {
-	readWorkspaceData,
-	sessionDependency,
-	workspaceDependency,
-} from "$lib/modules/workspace/state/workspace-load";
+import { workspaceDestinationQuery } from "$lib/modules/workspace/state/workspace-queries";
 import type { PageLoad } from "./$types";
 
-export const load: PageLoad = async ({ depends, params, parent }) => {
-	depends(sessionDependency, workspaceDependency(params.id));
-	const [{ sessionData }, destination] = await Promise.all([
-		parent(),
-		readWorkspaceData(window.desktop, params.id),
-	]);
-	const session = sessionData.confirmed?.session;
+export const load: PageLoad = async ({ params, parent, depends }) => {
+	// Discard a speculative route check after actual Workspace activation.
+	depends(`workspace:destination:${params.id}`);
+	const { queryClient } = await parent();
+	const confirmed = await queryClient
+		.query(workspaceDestinationQuery(window.desktop, params.id))
+		.catch(() => undefined);
+	const session = confirmed?.session;
 	if (
 		(entryFailure?.phase === "activate" && entryFailure.workspaceId === params.id) ||
-		destination.status !== "loaded" ||
 		session?.status !== "ready" ||
-		session.catalogue.active_workspace_id !== params.id ||
-		JSON.stringify(destination.todo_file) !== JSON.stringify(session.todo_file)
+		session.catalogue.active_workspace_id !== params.id
 	)
 		redirect(307, unavailableWorkspaceUrl(params.id));
-	return { destination };
+	return { workspaceId: params.id };
 };

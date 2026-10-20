@@ -2,6 +2,7 @@
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
+	import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
 	import { Button } from "$lib/shared/ui/button";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import { toast } from "svelte-sonner";
@@ -10,6 +11,7 @@
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
 	let {
 		workspace,
+		commands,
 		bulkSelectionActive,
 		openWorkspaceSwitcher,
 		openWorkspaceCreationDialog,
@@ -17,7 +19,8 @@
 		readerShown = true,
 		workspaceShown = readerShown,
 	}: {
-		workspace: WorkspaceCommands;
+		workspace: WorkspaceData;
+		commands: WorkspaceCommands;
 		bulkSelectionActive: boolean;
 		openWorkspaceSwitcher: () => void;
 		openWorkspaceCreationDialog: () => void;
@@ -27,11 +30,11 @@
 	} = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		readerShown && !!workspace.undoLabel && !workspace.isOperating && !bulkSelectionActive
+		readerShown && !!workspace.undoLabel && !commands.isOperating && !bulkSelectionActive
 	);
 	async function undo() {
 		if (!canUndo) return;
-		const outcome = await workspace.undoTodo();
+		const outcome = await commands.undoTodo();
 		if (outcome.status === "conflict") toast.warning(outcome.message);
 		else if (outcome.status === "rejected") toast.error(outcome.message);
 		else if (outcome.notice) toast.info(outcome.notice);
@@ -67,6 +70,7 @@
 	{/if}
 	<AppShortcuts
 		{workspace}
+		{commands}
 		{bulkSelectionActive}
 		{readerShown}
 		{workspaceShown}

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. SvelteKit loads own confirmed renderer data; a Svelte command coordinator admits operations through their refresh.
+Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. SvelteKit loads prefetch desktop RPCs into TanStack Query; a Svelte command coordinator admits operations through invalidation and refresh.
 
 Run tools via devenv: `devenv shell -- pnpm|gh|node ...`.
 
