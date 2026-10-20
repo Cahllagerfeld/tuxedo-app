@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createQuery } from "@tanstack/svelte-query";
+	import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { onDestroy, onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "$lib/shared/desktop/contract";
@@ -26,7 +28,26 @@
 	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
 		reader.todoFilter.reconcileSource()
 	);
-	const reader = createReaderState(session.data, session);
+	const sessionQuery = createQuery(
+		() => workspaceSessionQuery(session.desktop),
+		() => session.queryClient
+	);
+	const catalogue = $derived(
+		sessionQuery.data?.session.status === "ready" || sessionQuery.data?.session.status === "empty"
+			? sessionQuery.data.session.catalogue
+			: null
+	);
+	const workspace = $derived(
+		catalogue?.workspaces.find((item) => item.id === catalogue.active_workspace_id) ?? null
+	);
+	const todoFile = $derived(
+		sessionQuery.data?.session.status === "ready" ? sessionQuery.data.session.todo_file : null
+	);
+	const reader = createReaderState(
+		() => workspace,
+		() => todoFile,
+		session
+	);
 	let switcherOpen = $state(false);
 	let creationDialogOpen = $state(false);
 	const openWorkspaceCreationDialog = () => {
@@ -50,7 +71,8 @@
 <Sidebar.Provider class="min-h-0 flex-col" style="--window-toolbar-height: 2.5rem;">
 	{#if shell}
 		<AppNavbar
-			workspace={session.data}
+			{todoFile}
+			undoLabel={sessionQuery.data?.undoLabel}
 			commands={session}
 			bulkSelectionActive={reader.bulkSelection.active}
 			openWorkspaceSwitcher={() => {
@@ -66,11 +88,11 @@
 		{#if shell}
 			<WorkspaceSidebar
 				bind:switcherOpen
-				workspaces={session.catalogue?.workspaces ?? []}
-				activeWorkspaceId={session.activeWorkspace?.id ?? null}
+				workspaces={catalogue?.workspaces ?? []}
+				activeWorkspaceId={workspace?.id ?? null}
 				todoSummary={reader.todos}
 				todoFilter={reader.todoFilter}
-				todoFileLoaded={!!session.todoFile}
+				todoFileLoaded={!!todoFile}
 				disabled={session.isOperating}
 				selectWorkspace={session.open}
 				deleteWorkspace={session.deleteWorkspace}
@@ -86,7 +108,8 @@
 			<WorkspaceContent
 				bulkSelection={reader.bulkSelection}
 				bind:creationOpen={reader.creationOpen}
-				workspace={session.data}
+				{workspace}
+				{todoFile}
 				commands={session}
 				todoFilter={reader.todoFilter}
 				filteredTodoItems={reader.filteredTodoItems}
@@ -95,8 +118,8 @@
 	</div>
 </Sidebar.Provider>
 <ReaderStatusBar
-	activeWorkspace={session.activeWorkspace}
-	todoFile={session.todoFile}
+	activeWorkspace={workspace}
+	{todoFile}
 	todoSummary={reader.todos}
 	pendingOperation={session.pendingOperation}
 />

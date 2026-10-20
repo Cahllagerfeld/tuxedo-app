@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createQuery } from "@tanstack/svelte-query";
+	import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
 	import { onDestroy, onMount } from "svelte";
 	import AppNavbar from "./AppNavbar.svelte";
 	import { WorkspaceSessionFixture as WorkspaceCommands } from "$lib/modules/workspace/state/workspace-session-fixture.svelte";
@@ -11,6 +13,14 @@
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
+	const sessionQuery = createQuery(
+		() => workspaceSessionQuery(session.desktop),
+		() => session.queryClient
+	);
+	const todoFile = $derived(
+		sessionQuery.data?.session.status === "ready" ? sessionQuery.data.session.todo_file : null
+	);
+
 	onDestroy(() => session.destroy());
 	onMount(() => {
 		void session.initialize();
@@ -19,7 +29,8 @@
 
 <Sidebar.Provider>
 	<AppNavbar
-		workspace={session.data}
+		{todoFile}
+		undoLabel={sessionQuery.data?.undoLabel}
 		commands={session}
 		bulkSelectionActive={false}
 		openWorkspaceSwitcher={() => {}}
@@ -31,6 +42,6 @@
 	>Create item</button
 >
 <button onclick={() => session.restore()}>Refresh</button>
-<p aria-label="Item count">{session.todoFile?.items.length ?? 0}</p>
+<p aria-label="Item count">{todoFile?.items.length ?? 0}</p>
 <input aria-label="Draft" />
 <Toaster />

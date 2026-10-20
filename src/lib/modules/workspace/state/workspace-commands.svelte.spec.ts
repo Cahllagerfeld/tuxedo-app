@@ -1,8 +1,7 @@
 import { expect, test } from "vitest";
 import { WorkspaceCommands } from "./workspace-commands.svelte";
-import { WorkspaceData } from "./workspace-data.svelte";
+import { createFixtureQueryClient, workspaceFixtureData } from "./workspace-session-fixture.svelte";
 import {
-	createWorkspaceQueryClient,
 	workspaceQueryKeys,
 	workspaceDestinationQuery,
 	type WorkspaceDestination,
@@ -58,9 +57,6 @@ function fixture(
 		workspaceId?: () => string | undefined;
 	} = {}
 ) {
-	const queryClient = createWorkspaceQueryClient();
-	queryClient.setQueryData(workspaceQueryKeys.session, ready(1));
-	queryClient.setQueryData(workspaceQueryKeys.views, []);
 	const requests: string[] = [];
 	const desktop = createDesktopClient(async (channel) => {
 		requests.push(channel);
@@ -71,8 +67,16 @@ function fixture(
 		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
 		return options.write ? options.write() : { status: "applied", confirmed: ready(2, true) };
 	});
-	const data = new WorkspaceData(desktop, queryClient, options.workspaceId);
-	const commands = new WorkspaceCommands(desktop, data, queryClient, options.navigating);
+	const queryClient = createFixtureQueryClient(desktop);
+	queryClient.setQueryData(workspaceQueryKeys.session, ready(1));
+	queryClient.setQueryData(workspaceQueryKeys.views, []);
+	const data = workspaceFixtureData(queryClient, options.workspaceId);
+	const commands = new WorkspaceCommands(
+		desktop,
+		queryClient,
+		options.workspaceId,
+		options.navigating
+	);
 	return { queryClient, data, commands, requests };
 }
 
@@ -142,7 +146,7 @@ test("a committed write followed by failed Query refresh keeps old data and is n
 	});
 	expect(data.todoFile?.path).toBe("/tmp/work.todo");
 	expect(data.activeWorkspace?.show_deferred).toBe(false);
-	expect(data.error).toBe("Read failed");
+	await expect.poll(() => data.error).toBe("Read failed");
 	expect(commands.refreshError).toContain("could not refresh");
 	expect(
 		await commands.createTodo({ description: "No obsolete target", projects: [], contexts: [] })
@@ -281,7 +285,7 @@ test("an inactive destination preloads through a repeatable RPC without activati
 		if (channel === "tuxedo:read-workspace") return inactive;
 		throw Error("Preloading must not activate a Workspace");
 	});
-	const queryClient = createWorkspaceQueryClient();
+	const queryClient = createFixtureQueryClient(desktop);
 	queryClient.setQueryData(workspaceQueryKeys.session, active);
 	expect(await queryClient.query(workspaceDestinationQuery(desktop, otherId))).toEqual(inactive);
 	expect(queryClient.getQueryData(workspaceQueryKeys.session)).toEqual(active);
@@ -291,17 +295,18 @@ test("an inactive destination preloads through a repeatable RPC without activati
 });
 
 test("an unavailable destination rejects its query without replacing prior confirmed contents", async () => {
-	const queryClient = createWorkspaceQueryClient();
+	const desktop = createDesktopClient(async () => ({
+		status: "rejected",
+		message: "Todo file unavailable",
+	}));
+	const queryClient = createFixtureQueryClient(desktop);
 	const prior = destination(ready(1));
 	queryClient.setQueryData(workspaceQueryKeys.destination(workspaceId), prior);
 	await queryClient.invalidateQueries({
 		queryKey: workspaceQueryKeys.destinations,
 		refetchType: "none",
 	});
-	const desktop = createDesktopClient(async () => ({
-		status: "rejected",
-		message: "Todo file unavailable",
-	}));
+
 	await expect(queryClient.query(workspaceDestinationQuery(desktop, workspaceId))).rejects.toThrow(
 		"Todo file unavailable"
 	);
@@ -350,12 +355,12 @@ test("deleting an inactive Workspace refreshes the displayed destination catalog
 		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
 		throw Error("Unexpected operation");
 	});
-	const queryClient = createWorkspaceQueryClient();
+	const queryClient = createFixtureQueryClient(desktop);
 	queryClient.setQueryData(workspaceQueryKeys.session, current);
 	queryClient.setQueryData(workspaceQueryKeys.views, []);
 	await queryClient.query(workspaceDestinationQuery(desktop, workspaceId));
-	const data = new WorkspaceData(desktop, queryClient, () => workspaceId);
-	const commands = new WorkspaceCommands(desktop, data, queryClient);
+	const data = workspaceFixtureData(queryClient, () => workspaceId);
+	const commands = new WorkspaceCommands(desktop, queryClient, () => workspaceId);
 	expect(data.catalogue?.workspaces.map((workspace) => workspace.id)).toEqual([
 		workspaceId,
 		otherId,
@@ -392,16 +397,16 @@ test("deleting the Active workspace recovers Home without refetching its removed
 		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
 		throw Error("Unexpected operation");
 	});
-	const queryClient = createWorkspaceQueryClient();
+	const queryClient = createFixtureQueryClient(desktop);
 	queryClient.setQueryData(workspaceQueryKeys.session, current);
 	queryClient.setQueryData(workspaceQueryKeys.views, []);
 	await queryClient.query(workspaceDestinationQuery(desktop, workspaceId));
 	requests.length = 0;
-	const data = new WorkspaceData(desktop, queryClient, () => routeId);
+	const data = workspaceFixtureData(queryClient, () => routeId);
 	const commands = new WorkspaceCommands(
 		desktop,
-		data,
 		queryClient,
+		() => routeId,
 		() => false,
 		async () => {
 			if (data.session.status !== "ready") routeId = undefined;

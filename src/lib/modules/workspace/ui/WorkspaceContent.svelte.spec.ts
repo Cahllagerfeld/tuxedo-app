@@ -1545,7 +1545,7 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	const views: import("$lib/shared/desktop/contract").SavedView[] = [];
 	render(Harness, {
 		desktop: adapter({
-			readSavedViews: async () => ({ status: "applied", views }),
+			readSavedViews: async () => ({ status: "applied", views: [...views] }),
 			saveView: async (request) => {
 				views.push({
 					id: scope,
@@ -1586,6 +1586,33 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Delete saved view Release work" }).click();
 	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
+});
+
+test("saved views show skeletons while the initial query is pending", async () => {
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["readSavedViews"]>>) => void;
+	render(Harness, {
+		desktop: adapter({
+			readSavedViews: () =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		}),
+	});
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await expect.element(page.getByRole("status", { name: "Loading saved views" })).toBeVisible();
+	await expect
+		.element(page.getByText("No saved views yet.", { exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeDisabled();
+	finish({ status: "applied", views: [] });
+	await expect
+		.element(page.getByRole("status", { name: "Loading saved views" }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeEnabled();
 });
 
 test("a failed saved-view read can retry without reloading the confirmed Todo file", async () => {

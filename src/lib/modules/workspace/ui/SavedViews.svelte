@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { Skeleton } from "$lib/shared/ui/skeleton";
+	import { createQuery } from "@tanstack/svelte-query";
+	import { workspaceViewsQuery } from "../state/workspace-queries";
 	import * as Schema from "effect/Schema";
 	import { SavedViewNameForm } from "$lib/shared/desktop/contract";
 	import { defaults, superForm } from "sveltekit-superforms";
@@ -16,20 +19,30 @@
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { WorkspaceData } from "../state/workspace-data.svelte";
+	import type { Workspace } from "../domain/workspace";
+	import type { TodoFile } from "$lib/shared/desktop/todo";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
 	let {
 		workspace,
+		todoFile,
 		commands,
 		todoFilter,
-	}: { workspace: WorkspaceData; commands: WorkspaceCommands; todoFilter: TodoFilterState } =
-		$props();
+	}: {
+		workspace: Workspace | null;
+		todoFile: TodoFile | null;
+		commands: WorkspaceCommands;
+		todoFilter: TodoFilterState;
+	} = $props();
+	const viewsQuery = createQuery(
+		() => workspaceViewsQuery(commands.desktop),
+		() => commands.queryClient
+	);
 	let menuOpen = $state(false);
 	let saveOpen = $state(false);
 	let error = $state("");
 	const views = $derived(
-		workspace.savedViews.filter((view) => view.workspace_id === workspace.activeWorkspace?.id)
+		(viewsQuery.data ?? []).filter((view) => view.workspace_id === workspace?.id)
 	);
 	const schema = Schema.toStandardSchemaV1(SavedViewNameForm);
 	const initialValues = { name: "" };
@@ -40,7 +53,7 @@
 	const { form: formData } = form;
 	const shortcutScope = getShortcutScope();
 	const canSave = $derived(
-		!!workspace.todoFile && !commands.isOperating && !workspace.savedViewsError
+		!!todoFile && !commands.isOperating && !viewsQuery.isPending && !viewsQuery.error
 	);
 	function openSave() {
 		if (!canSave) return;
@@ -92,8 +105,12 @@
 	<Popover.Content align="end" class="w-72">
 		<div class="grid gap-2">
 			<p class="text-sm font-medium">Saved views</p>
-			{#if workspace.savedViewsError}
-				<p role="alert" class="text-xs text-destructive">{workspace.savedViewsError}</p>
+			{#if viewsQuery.isPending}
+				<div role="status" aria-label="Loading saved views" class="grid gap-2">
+					<Skeleton class="h-8 w-full" /><Skeleton class="h-8 w-3/4" />
+				</div>
+			{:else if viewsQuery.error}
+				<p role="alert" class="text-xs text-destructive">{viewsQuery.error?.message}</p>
 				<Button
 					variant="outline"
 					disabled={commands.isOperating}
@@ -104,29 +121,31 @@
 					}}>Retry saved views</Button
 				>
 			{/if}
-			<div class="max-h-64 overflow-y-auto">
-				{#each views as view (view.id)}
-					<div class="flex min-w-0 items-center gap-1">
-						<Button
-							variant="ghost"
-							class="min-w-0 flex-1 justify-start"
-							disabled={commands.isOperating}
-							onclick={() => {
-								todoFilter.applyView(view.filters);
-								menuOpen = false;
-							}}><span class="truncate">{view.name}</span></Button
-						>
-						<Button
-							variant="destructive"
-							size="icon-sm"
-							aria-label={`Delete saved view ${view.name}`}
-							disabled={commands.isOperating}
-							onclick={() => deleteView(view.id)}
-							><Trash2 class="size-4" aria-hidden="true" /></Button
-						>
-					</div>
-				{:else}<p class="py-2 text-xs text-muted-foreground">No saved views yet.</p>{/each}
-			</div>
+			{#if viewsQuery.data}
+				<div class="max-h-64 overflow-y-auto">
+					{#each views as view (view.id)}
+						<div class="flex min-w-0 items-center gap-1">
+							<Button
+								variant="ghost"
+								class="min-w-0 flex-1 justify-start"
+								disabled={commands.isOperating}
+								onclick={() => {
+									todoFilter.applyView(view.filters);
+									menuOpen = false;
+								}}><span class="truncate">{view.name}</span></Button
+							>
+							<Button
+								variant="destructive"
+								size="icon-sm"
+								aria-label={`Delete saved view ${view.name}`}
+								disabled={commands.isOperating}
+								onclick={() => deleteView(view.id)}
+								><Trash2 class="size-4" aria-hidden="true" /></Button
+							>
+						</div>
+					{:else}<p class="py-2 text-xs text-muted-foreground">No saved views yet.</p>{/each}
+				</div>
+			{/if}
 			<Button
 				variant="outline"
 				class="justify-between"

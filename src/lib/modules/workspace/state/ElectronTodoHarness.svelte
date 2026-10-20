@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createQuery } from "@tanstack/svelte-query";
+	import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
 	import { onDestroy, onMount } from "svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
 	import TodoList from "$lib/modules/todo/ui/TodoList.svelte";
@@ -11,13 +13,21 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const session = new WorkspaceCommands(desktop);
+	const sessionQuery = createQuery(
+		() => workspaceSessionQuery(session.desktop),
+		() => session.queryClient
+	);
+	const todoFile = $derived(
+		sessionQuery.data?.session.status === "ready" ? sessionQuery.data.session.todo_file : null
+	);
+
 	onDestroy(() => session.destroy());
 	onMount(() => {
 		void session.initialize();
 	});
 	let result = $state("");
 	let viewport = $state<HTMLElement | null>(null);
-	const summary = $derived(summarizeTodoFile(session.todoFile));
+	const summary = $derived(summarizeTodoFile(todoFile));
 	async function remove(todo: TodoItem) {
 		const outcome = await session.deleteTodo(todo);
 		result = outcome.status === "applied" ? "Applied" : outcome.message;
@@ -28,11 +38,11 @@
 	}
 </script>
 
-{#if session.todoFile}
+{#if todoFile}
 	<ScrollArea bind:viewportRef={viewport} class="h-96">
 		<TodoList
 			scrollElement={viewport}
-			todoFile={session.todoFile}
+			{todoFile}
 			disabled={session.isOperating}
 			onDelete={remove}
 			onToggleComplete={toggleComplete}

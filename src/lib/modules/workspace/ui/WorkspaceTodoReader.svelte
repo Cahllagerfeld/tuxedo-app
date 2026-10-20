@@ -10,7 +10,8 @@
 	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { WorkspaceData } from "../state/workspace-data.svelte";
+	import type { Workspace } from "../domain/workspace";
+	import type { TodoFile } from "$lib/shared/desktop/todo";
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import * as Resizable from "$lib/shared/ui/resizable";
 	import * as Sheet from "$lib/shared/ui/sheet";
@@ -22,12 +23,14 @@
 	import type { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	let {
 		workspace,
+		todoFile,
 		commands,
 		todoFilter,
 		filteredTodoItems,
 		bulkSelection,
 	}: {
-		workspace: WorkspaceData;
+		workspace: Workspace | null;
+		todoFile: TodoFile | null;
 		commands: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
@@ -45,6 +48,9 @@
 		},
 		get workspace() {
 			return workspace;
+		},
+		get todoFile() {
+			return todoFile;
 		},
 		get fileOrder() {
 			return todoFilter.sortOrder === "file";
@@ -108,14 +114,14 @@
 	/>
 {/snippet}
 
-{#if workspace.todoFile}
-	{#key workspace.activeWorkspace?.id + ":" + workspace.todoFile.path}
+{#if todoFile}
+	{#key workspace?.id + ":" + todoFile.path}
 		{#if reader.editingTodo && !selectionMode}
 			<TodoEditorDialog
-				todoFile={workspace.todoFile}
+				{todoFile}
 				todoToEdit={reader.editingTodo}
 				saveTodoItem={reader.saveEdit}
-				workspaceName={workspace.activeWorkspace?.name ?? ""}
+				workspaceName={workspace?.name ?? ""}
 				showDeferred={todoFilter.showDeferred}
 				disabled={commands.isOperating}
 				onClose={reader.closeEdit}
@@ -134,8 +140,8 @@
 					aria-label="Todo item results"
 					viewportTabIndex={-1}
 				>
-					{#if workspace.todoFile}
-						{#if filteredTodoItems.length === 0 && workspace.todoFile.items.length > 0}
+					{#if todoFile}
+						{#if filteredTodoItems.length === 0 && todoFile.items.length > 0}
 							<Empty.Root
 								aria-label="No matching Todo items"
 								class="min-h-full rounded-none border-0"
@@ -187,12 +193,12 @@
 						{/if}
 						<TodoList
 							today={todoFilter.today}
-							showEmpty={workspace.todoFile.items.length === 0}
+							showEmpty={todoFile.items.length === 0}
 							bind:this={todoList}
 							fallback={todoViewport}
-							workspaceId={workspace.activeWorkspace?.id ?? ""}
+							workspaceId={workspace?.id ?? ""}
 							scrollElement={todoViewport}
-							todoFile={workspace.todoFile}
+							{todoFile}
 							items={filteredTodoItems}
 							disabled={commands.isOperating}
 							onToggleComplete={selectionMode ? () => {} : toggleTodoCompletion}
@@ -213,9 +219,9 @@
 				</ScrollArea>
 			</div>
 		</Resizable.Pane>
-		{#if !selectionMode && reader.selectedTodo && wide.current && workspace.todoFile}
+		{#if !selectionMode && reader.selectedTodo && wide.current && todoFile}
 			{@const todo = reader.selectedTodo}
-			{@const path = workspace.todoFile.path}
+			{@const path = todoFile.path}
 			<Resizable.Handle aria-label="Resize Todo item details" />
 			<Resizable.Pane defaultSize={42} minSize={35} maxSize={65}>
 				{#snippet child({ props })}
@@ -249,8 +255,8 @@
 			<Sheet.Description class="sr-only"
 				>Full description, attributes, and raw line.</Sheet.Description
 			>
-			{#if reader.selectedTodo && workspace.todoFile}
-				{@render details(reader.selectedTodo, workspace.todoFile.path)}
+			{#if reader.selectedTodo && todoFile}
+				{@render details(reader.selectedTodo, todoFile.path)}
 			{/if}
 		</Sheet.Content>
 	</Sheet.Root>

@@ -5,10 +5,10 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import WorkspaceHome from "./WorkspaceHome.svelte";
-	import type { WorkspaceData } from "../state/workspace-data.svelte";
+	import type { ConfirmedSession } from "$lib/shared/desktop/contract";
 
 	type Props = {
-		session: WorkspaceData["session"];
+		session: ConfirmedSession["session"];
 		disabled: boolean;
 		warning?: string;
 		retry?: () => Promise<void>;

@@ -6,19 +6,36 @@ import { on } from "svelte/events";
 import { toast } from "svelte-sonner";
 import { invalidate } from "$app/navigation";
 import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
+import type { CreateQueryResult } from "@tanstack/svelte-query";
+import type { DesktopResponse } from "$lib/shared/desktop/contract";
+import { workspaceQueryKeys } from "$lib/modules/workspace/state/workspace-queries";
 import type { DesktopRequest } from "$lib/shared/desktop/contract";
 import { clearEntryFailure } from "./workspace-entry";
 import { unavailableWorkspaceUrl } from "./workspace-home";
 
-export function createWorkspaceNavigation(commands: WorkspaceCommands) {
-	const workspace = commands.data;
+export function createWorkspaceNavigation(
+	commands: WorkspaceCommands,
+	sessionQuery: CreateQueryResult<DesktopResponse<"readSession">>
+) {
+	const confirmation = () =>
+		commands.queryClient.getQueryData<DesktopResponse<"readSession">>(workspaceQueryKeys.session);
+	const ready = () => confirmation()?.session.status === "ready";
+	const activeId = () => {
+		const session = confirmation()?.session;
+		return session?.status === "ready" ? session.catalogue.active_workspace_id : undefined;
+	};
+	const readError = () =>
+		sessionQuery.error?.message ??
+		(sessionQuery.data?.session.status === "unavailable" ? sessionQuery.data.session.error : "");
 	let failure = $state("");
 	let admittedHref: string | undefined;
 	const busy = () => commands.isOperating;
 	async function recover() {
 		if (
 			!page.params.id ||
-			(workspace.session.status === "ready" && workspace.todoFile && !workspace.error)
+			(ready() &&
+				!commands.queryClient.getQueryState(workspaceQueryKeys.session)?.error &&
+				!commands.queryClient.getQueryState(workspaceQueryKeys.destination(page.params.id))?.error)
 		)
 			return;
 		const recovery = new URL(unavailableWorkspaceUrl(page.params.id), page.url);
@@ -75,7 +92,7 @@ export function createWorkspaceNavigation(commands: WorkspaceCommands) {
 		}
 		clearEntryFailure();
 		const id = event.to?.params?.id;
-		if (id && (id !== workspace.activeWorkspace?.id || !workspace.todoFile)) {
+		if (id && (id !== activeId() || !ready())) {
 			// Kit restores a canceled traversal before we can safely repeat its original delta.
 			const restored =
 				event.type === "popstate"
@@ -132,14 +149,14 @@ export function createWorkspaceNavigation(commands: WorkspaceCommands) {
 		selectWorkspace(id: string) {
 			if (busy()) return;
 			const url = new URL(resolve("/workspaces/[id]", { id }), page.url);
-			if (workspace.activeWorkspace?.id === id && workspace.todoFile) void goto(url);
+			if (activeId() === id && ready()) void goto(url);
 			else void visit(id, url);
 		},
 		get busy() {
 			return busy();
 		},
 		get error() {
-			return failure || workspace.error || commands.refreshError;
+			return failure || readError() || commands.refreshError;
 		},
 		async retry() {
 			if (busy()) return;
@@ -148,10 +165,10 @@ export function createWorkspaceNavigation(commands: WorkspaceCommands) {
 			const requestedId = page.url.searchParams.get("unavailable");
 			const outcome = await commands.restore();
 			if (outcome.status !== "applied") return;
-			const id = requestedId || workspace.activeWorkspace?.id;
+			const id = requestedId || activeId();
 			if (!id) return;
 			const url = new URL(resolve("/workspaces/[id]", { id }), page.url);
-			if (workspace.activeWorkspace?.id === id && workspace.todoFile)
+			if (activeId() === id && ready())
 				await goto(url, { invalidate: [`workspace:destination:${id}`] });
 			else await visit(id, url);
 		},

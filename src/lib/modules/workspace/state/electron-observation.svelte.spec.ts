@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { WorkspaceCommands as LoadedWorkspaceCommands } from "./workspace-commands.svelte";
-import { WorkspaceData } from "./workspace-data.svelte";
-import { createWorkspaceQueryClient, workspaceQueryKeys } from "./workspace-queries";
+import { createFixtureQueryClient, workspaceFixtureData } from "./workspace-session-fixture.svelte";
+import { workspaceQueryKeys } from "./workspace-queries";
 import { WorkspaceSessionFixture as WorkspaceCommands } from "./workspace-session-fixture.svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFileChange } from "$lib/shared/desktop/contract";
 
@@ -75,8 +75,6 @@ test.each(["current", "stale", "stopped"])(
 		let restores = 0;
 		let finishRestore!: () => void;
 		let refreshes = 0;
-		const queryClient = createWorkspaceQueryClient();
-		queryClient.setQueryData(workspaceQueryKeys.session, initial);
 		const desktop: DesktopAPI = {
 			...adapter(async () => {
 				restores++;
@@ -98,8 +96,10 @@ test.each(["current", "stale", "stopped"])(
 				return backend;
 			},
 		};
-		const data = new WorkspaceData(desktop, queryClient);
-		const session = new LoadedWorkspaceCommands(desktop, data, queryClient);
+		const queryClient = createFixtureQueryClient(desktop);
+		queryClient.setQueryData(workspaceQueryKeys.session, initial);
+		const data = workspaceFixtureData(queryClient);
+		const session = new LoadedWorkspaceCommands(desktop, queryClient);
 		let notify!: (event: TodoFileChange) => void;
 		const stop = session.observe(
 			{
@@ -130,7 +130,6 @@ test.each(["current", "stale", "stopped"])(
 		expect(data.session.status).toBe(kind === "current" ? "empty" : "ready");
 		stop();
 		session.destroy();
-		data.destroy();
 		queryClient.clear();
 	}
 );

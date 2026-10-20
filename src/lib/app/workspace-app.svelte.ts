@@ -1,43 +1,27 @@
-import { afterNavigate } from "$app/navigation";
 import { navigating, page } from "$app/state";
 import { onDestroy } from "svelte";
-import type { QueryClient } from "@tanstack/svelte-query";
+import type { QueryClient, CreateQueryResult } from "@tanstack/svelte-query";
+import type { DesktopResponse } from "$lib/shared/desktop/contract";
 import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
-import { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
 import { setWorkspaceContext } from "./app-context";
-import { createReaderState } from "./reader-state.svelte";
 import { createWorkspaceNavigation } from "./workspace-navigation.svelte";
 
 export function createWorkspaceApp(
 	queryClient: QueryClient,
+	sessionQuery: CreateQueryResult<DesktopResponse<"readSession">>,
 	openWorkspaceCreationDialog: () => void
 ) {
-	const workspace = new WorkspaceData(window.desktop, queryClient, () => page.params.id);
-	// Connect route identity to the external Query subscription.
-	$effect(() => workspace.observeDestination(page.params.id));
 	const commands = new WorkspaceCommands(
 		window.desktop,
-		workspace,
 		queryClient,
+		() => page.params.id,
 		() => !!navigating.to,
 		async (dependency) => {
-			reader.todoFilter.reconcileSource();
 			if (dependency !== "views") await navigation.recover();
 		}
 	);
-	const reader = createReaderState(workspace, commands);
-	const navigation = createWorkspaceNavigation(commands);
-	onDestroy(() => {
-		commands.destroy();
-		workspace.destroy();
-	});
-	afterNavigate((event) => {
-		if (event.from?.params?.id !== event.to?.params?.id)
-			void event.complete.then(() => {
-				reader.creationOpen = false;
-				reader.bulkSelection.exit();
-			});
-	});
-	setWorkspaceContext({ workspace, commands, reader, navigation, openWorkspaceCreationDialog });
+	const navigation = createWorkspaceNavigation(commands, sessionQuery);
+	onDestroy(() => commands.destroy());
+	setWorkspaceContext({ sessionQuery, commands, navigation, openWorkspaceCreationDialog });
 	return navigation;
 }

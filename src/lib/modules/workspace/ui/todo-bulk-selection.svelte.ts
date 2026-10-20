@@ -15,10 +15,12 @@ function cell<T>(initial: T) {
 	};
 }
 
-import type { WorkspaceData } from "../state/workspace-data.svelte";
+import type { Workspace } from "../domain/workspace";
+import type { TodoFile } from "$lib/shared/desktop/todo";
 
 type Inputs = {
-	readonly getWorkspace: () => WorkspaceData;
+	readonly getWorkspace: () => Workspace | null;
+	readonly getTodoFile: () => TodoFile | null;
 	readonly getCommands: () => WorkspaceCommands;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
@@ -26,9 +28,9 @@ type Inputs = {
 
 export function createTodoBulkSelection(inputs: Inputs) {
 	const workspaceKey = $derived(
-		`${inputs.getWorkspace().activeWorkspace?.id ?? ""}:${inputs.getWorkspace().todoFile?.path ?? ""}`
+		`${inputs.getWorkspace()?.id ?? ""}:${inputs.getTodoFile()?.path ?? ""}`
 	);
-	const fileSignature = $derived(JSON.stringify(inputs.getWorkspace().todoFile));
+	const fileSignature = $derived(JSON.stringify(inputs.getTodoFile()));
 	const filterSignature = $derived(inputs.getFilterSignature());
 	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
 	const mode = $derived.by(() => {

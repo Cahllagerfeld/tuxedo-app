@@ -10,9 +10,9 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { useSidebar } from "$lib/shared/ui/sidebar";
 	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
-	import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
+	import type { TodoFile } from "$lib/shared/desktop/todo";
 	let {
-		workspace,
+		todoFile,
 		commands,
 		bulkSelectionActive,
 		openWorkspaceSwitcher,
@@ -21,7 +21,7 @@
 		readerShown,
 		workspaceShown,
 	}: {
-		workspace: WorkspaceData;
+		todoFile: TodoFile | null;
 		commands: WorkspaceCommands;
 		bulkSelectionActive: boolean;
 		openWorkspaceSwitcher: () => void;
@@ -63,8 +63,7 @@
 						(idle &&
 							id !== "sidebar" &&
 							(id !== "workspace" || workspaceShown) &&
-							(id !== "createTodo" ||
-								(readerShown && !!workspace.todoFile && !bulkSelectionActive)))),
+							(id !== "createTodo" || (readerShown && !!todoFile && !bulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

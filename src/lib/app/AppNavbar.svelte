@@ -2,7 +2,7 @@
 	import * as Sidebar from "$lib/shared/ui/sidebar";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
-	import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
+	import type { TodoFile } from "$lib/shared/desktop/todo";
 	import { Button } from "$lib/shared/ui/button";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import { toast } from "svelte-sonner";
@@ -10,7 +10,8 @@
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
 	let {
-		workspace,
+		todoFile,
+		undoLabel,
 		commands,
 		bulkSelectionActive,
 		openWorkspaceSwitcher,
@@ -19,7 +20,8 @@
 		readerShown = true,
 		workspaceShown = readerShown,
 	}: {
-		workspace: WorkspaceData;
+		todoFile: TodoFile | null;
+		undoLabel?: string;
 		commands: WorkspaceCommands;
 		bulkSelectionActive: boolean;
 		openWorkspaceSwitcher: () => void;
@@ -29,9 +31,7 @@
 		workspaceShown?: boolean;
 	} = $props();
 	const shortcutScope = getShortcutScope();
-	const canUndo = $derived(
-		readerShown && !!workspace.undoLabel && !commands.isOperating && !bulkSelectionActive
-	);
+	const canUndo = $derived(!!undoLabel && !commands.isOperating && !bulkSelectionActive);
 	async function undo() {
 		if (!canUndo) return;
 		const outcome = await commands.undoTodo();
@@ -60,8 +60,8 @@
 			variant="ghost"
 			size="icon-sm"
 			class="[app-region:no-drag]"
-			aria-label={workspace.undoLabel ?? "Undo last change"}
-			title={`${workspace.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
+			aria-label={undoLabel ?? "Undo last change"}
+			title={`${undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
 			disabled={!canUndo}
 			onclick={undo}><Undo2 aria-hidden="true" /></Button
 		>
@@ -69,7 +69,7 @@
 		<span class="pl-2 text-xs font-semibold tracking-wide">Tuxedo</span>
 	{/if}
 	<AppShortcuts
-		{workspace}
+		{todoFile}
 		{commands}
 		{bulkSelectionActive}
 		{readerShown}

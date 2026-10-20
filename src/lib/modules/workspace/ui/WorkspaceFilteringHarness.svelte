@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { createQuery } from "@tanstack/svelte-query";
+	import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
 	import { onDestroy, onMount } from "svelte";
 	import { createReaderState } from "$lib/app/reader-state.svelte";
 	import type { DesktopAPI } from "$lib/shared/desktop/contract";
@@ -12,18 +14,37 @@
 	const session: WorkspaceCommands = new WorkspaceCommands(desktop, () =>
 		reader.todoFilter.reconcileSource()
 	);
-	const reader = createReaderState(session.data, session);
+	const sessionQuery = createQuery(
+		() => workspaceSessionQuery(session.desktop),
+		() => session.queryClient
+	);
+	const catalogue = $derived(
+		sessionQuery.data?.session.status === "ready" || sessionQuery.data?.session.status === "empty"
+			? sessionQuery.data.session.catalogue
+			: null
+	);
+	const workspace = $derived(
+		catalogue?.workspaces.find((item) => item.id === catalogue.active_workspace_id) ?? null
+	);
+	const todoFile = $derived(
+		sessionQuery.data?.session.status === "ready" ? sessionQuery.data.session.todo_file : null
+	);
+	const reader = createReaderState(
+		() => workspace,
+		() => todoFile,
+		session
+	);
 	onDestroy(() => session.destroy());
 	onMount(() => void session.initialize());
 </script>
 
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">
 	<WorkspaceSidebar
-		workspaces={session.catalogue?.workspaces ?? []}
-		activeWorkspaceId={session.activeWorkspace?.id ?? null}
+		workspaces={catalogue?.workspaces ?? []}
+		activeWorkspaceId={workspace?.id ?? null}
 		todoSummary={reader.todos}
 		todoFilter={reader.todoFilter}
-		todoFileLoaded={session.todoFile !== null}
+		todoFileLoaded={todoFile !== null}
 		collapsible="none"
 		disabled={session.isOperating}
 		pendingOperation={session.pendingOperation}
@@ -34,7 +55,8 @@
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
 			bulkSelection={reader.bulkSelection}
-			workspace={session.data}
+			{workspace}
+			{todoFile}
 			commands={session}
 			todoFilter={reader.todoFilter}
 			filteredTodoItems={reader.filteredTodoItems}

@@ -1,12 +1,104 @@
 import { WorkspaceCommands } from "./workspace-commands.svelte";
-import { WorkspaceData } from "./workspace-data.svelte";
-import { createWorkspaceQueryClient, workspaceViewsQuery } from "./workspace-queries";
-import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "$lib/shared/desktop/contract";
+import {
+	createWorkspaceQueryClient,
+	workspaceViewsQuery,
+	workspaceSessionQuery,
+	workspaceQueryKeys,
+	type WorkspaceDestination,
+} from "./workspace-queries";
+import type { QueryClient } from "@tanstack/svelte-query";
+import type {
+	ConfirmedSession,
+	ConfirmedTodo,
+	DesktopAPI,
+	SavedView,
+} from "$lib/shared/desktop/contract";
+
+export function createFixtureQueryClient(desktop: DesktopAPI) {
+	const client = createWorkspaceQueryClient();
+	client.setQueryDefaults(workspaceQueryKeys.session, {
+		queryFn: () => desktop.readSession({}),
+	});
+	client.setQueryDefaults(workspaceQueryKeys.views, {
+		queryFn: async () => {
+			const response = await desktop.readSavedViews({});
+			if (response.status !== "applied") throw Error(response.message);
+			return response.views;
+		},
+	});
+	return client;
+}
+
+export function workspaceFixtureData(
+	queryClient: QueryClient,
+	getWorkspaceId: () => string | undefined = () => undefined
+) {
+	const confirmed = () => queryClient.getQueryData<ConfirmedSession>(workspaceQueryKeys.session);
+	const session = () =>
+		confirmed()?.session ?? {
+			status: "unavailable" as const,
+			error: queryClient.getQueryState(workspaceQueryKeys.session)?.error?.message ?? "",
+		};
+	const catalogue = () => {
+		const current = session();
+		return current.status === "ready" || current.status === "empty" ? current.catalogue : null;
+	};
+	return {
+		get confirmed() {
+			return confirmed();
+		},
+		get session() {
+			return session();
+		},
+		get catalogue() {
+			return catalogue();
+		},
+		get activeWorkspace() {
+			const current = catalogue();
+			return (
+				current?.workspaces.find(
+					(workspace) => workspace.id === (getWorkspaceId() ?? current.active_workspace_id)
+				) ?? null
+			);
+		},
+		get todoFile() {
+			const id = getWorkspaceId();
+			if (id)
+				return (
+					queryClient.getQueryData<WorkspaceDestination>(workspaceQueryKeys.destination(id))
+						?.todo_file ?? null
+				);
+			const current = session();
+			return current.status === "ready" ? current.todo_file : null;
+		},
+		get undoLabel() {
+			return confirmed()?.undoLabel;
+		},
+		get error() {
+			const current = session();
+			return (
+				queryClient.getQueryState(workspaceQueryKeys.session)?.error?.message ??
+				(current.status === "unavailable" ? current.error : "")
+			);
+		},
+		get warning() {
+			const current = session();
+			return current.status === "empty" ? (current.warning ?? "") : "";
+		},
+		get savedViews() {
+			return queryClient.getQueryData<readonly SavedView[]>(workspaceQueryKeys.views) ?? [];
+		},
+		get savedViewsError() {
+			return queryClient.getQueryState(workspaceQueryKeys.views)?.error?.message ?? "";
+		},
+	};
+}
 
 // Model backend confirmations for isolated renderer tests.
 export class WorkspaceSessionFixture extends WorkspaceCommands {
 	initialize: WorkspaceCommands["restore"];
 	private readonly clearQueries: () => void;
+	readonly data: ReturnType<typeof workspaceFixtureData>;
 	constructor(desktop: DesktopAPI, onRefreshed: () => void = () => {}) {
 		let backend: ConfirmedSession | undefined;
 		const adapter = new Proxy(desktop, {
@@ -33,18 +125,20 @@ export class WorkspaceSessionFixture extends WorkspaceCommands {
 				};
 			},
 		});
-		const queryClient = createWorkspaceQueryClient();
+		const queryClient = createFixtureQueryClient(adapter);
 		const viewsLoaded = queryClient.query(workspaceViewsQuery(adapter)).catch(() => undefined);
-		const data = new WorkspaceData(adapter, queryClient);
+		const sessionLoaded = queryClient.query(workspaceSessionQuery(adapter)).catch(() => undefined);
 		super(
 			adapter,
-			data,
 			queryClient,
+			() => undefined,
 			() => false,
 			async () => onRefreshed()
 		);
+		this.data = workspaceFixtureData(queryClient);
 		this.clearQueries = () => queryClient.clear();
 		this.initialize = async () => {
+			await sessionLoaded;
 			const outcome = await this.restore();
 			await viewsLoaded;
 			return outcome;
@@ -52,7 +146,6 @@ export class WorkspaceSessionFixture extends WorkspaceCommands {
 	}
 	override destroy() {
 		super.destroy();
-		this.data.destroy();
 		this.clearQueries();
 	}
 	get session() {

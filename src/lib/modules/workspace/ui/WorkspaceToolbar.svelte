@@ -20,7 +20,8 @@
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { WorkspaceData } from "../state/workspace-data.svelte";
+	import type { Workspace } from "../domain/workspace";
+	import type { TodoFile } from "$lib/shared/desktop/todo";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -28,7 +29,8 @@
 	type Props = {
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		workspace: WorkspaceData;
+		workspace: Workspace | null;
+		todoFile: TodoFile | null;
 		commands: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
@@ -40,6 +42,7 @@
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
+		todoFile,
 		commands,
 		todoFilter,
 		filteredTodoItems,
@@ -221,7 +224,7 @@
 		})
 	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
-		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !commands.isOperating,
+		enabled: (shortcutScope?.available ?? true) && !!todoFile && !commands.isOperating,
 		ignoreInputs: false,
 		preventDefault: true,
 		requireReset: true,
@@ -269,7 +272,7 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-{#if workspace.todoFile}
+{#if todoFile}
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 		<div>
 			{#if bulkSelection.active}
@@ -435,7 +438,7 @@
 					</DropdownMenu.RadioGroup>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<SavedViews {workspace} {commands} {todoFilter} />
+			<SavedViews {workspace} {todoFile} {commands} {todoFilter} />
 			<Button
 				bind:ref={searchButton}
 				variant="ghost"
@@ -451,9 +454,9 @@
 			{#if !bulkSelection.active}
 				<TodoEditorDialog
 					bind:open={creationOpen}
-					todoFile={workspace.todoFile}
+					{todoFile}
 					saveTodoItem={commands.createTodo}
-					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					workspaceName={workspace?.name ?? ""}
 					showDeferred={todoFilter.showDeferred}
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}

@@ -7,17 +7,22 @@ class CreationState {
 	open = $state(false);
 }
 
-import type { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
+import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+import type { TodoFile } from "$lib/shared/desktop/todo";
 
-export function createReaderState(workspace: WorkspaceData, commands: WorkspaceCommands) {
-	const workspaceId = $derived(workspace.activeWorkspace?.id);
-	const todos = $derived(summarizeTodoFile(workspace.todoFile));
+export function createReaderState(
+	getWorkspace: () => Workspace | null,
+	getTodoFile: () => TodoFile | null,
+	commands: WorkspaceCommands
+) {
+	const workspaceId = $derived(getWorkspace()?.id);
+	const todos = $derived(summarizeTodoFile(getTodoFile()));
 	const todoFilter = $derived.by(() => {
 		workspaceId;
 		return new TodoFilterState(() => ({
 			items: todos.items,
-			sortOrder: workspace.activeWorkspace?.sort_order ?? "file",
-			showDeferred: workspace.activeWorkspace?.show_deferred ?? false,
+			sortOrder: getWorkspace()?.sort_order ?? "file",
+			showDeferred: getWorkspace()?.show_deferred ?? false,
 		}));
 	});
 	const filteredTodoItems = $derived(todoFilter.filterItems(todos.items));
@@ -26,7 +31,8 @@ export function createReaderState(workspace: WorkspaceData, commands: WorkspaceC
 		return new CreationState();
 	});
 	const bulkSelection = createTodoBulkSelection({
-		getWorkspace: () => workspace,
+		getWorkspace,
+		getTodoFile,
 		getCommands: () => commands,
 		getMatchingItems: () => filteredTodoItems,
 		getFilterSignature: () => JSON.stringify(todoFilter.snapshot()),
