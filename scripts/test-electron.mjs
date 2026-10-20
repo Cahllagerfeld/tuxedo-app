@@ -1593,12 +1593,9 @@ try {
 	await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	assert.equal(new URL(page.url()).pathname, "/workspaces");
 	await page
-		.getByText(
-			"This Todo file couldn’t be found. It may have been moved or deleted.",
-			{
-				exact: true,
-			}
-		)
+		.getByText("This Todo file couldn’t be found. It may have been moved or deleted.", {
+			exact: true,
+		})
 		.waitFor();
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
 	await reopen();

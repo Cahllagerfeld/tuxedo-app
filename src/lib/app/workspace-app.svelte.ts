@@ -4,7 +4,6 @@ import { onDestroy } from "svelte";
 import type { QueryClient } from "@tanstack/svelte-query";
 import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 import { WorkspaceData } from "$lib/modules/workspace/state/workspace-data.svelte";
-import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
 import { setWorkspaceContext } from "./app-context";
 import { createReaderState } from "./reader-state.svelte";
 import { createWorkspaceNavigation } from "./workspace-navigation.svelte";
@@ -23,11 +22,7 @@ export function createWorkspaceApp(
 		() => !!navigating.to,
 		async (dependency) => {
 			reader.todoFilter.reconcileSource();
-			if (dependency === "session") await navigation.recover();
-			if (commands.pendingOperation === "delete_workspace") {
-				const confirmed = queryClient.getQueryData(workspaceSessionQuery(window.desktop).queryKey);
-				if (confirmed?.session.status !== "ready") await navigation.recover(true);
-			}
+			if (dependency !== "views") await navigation.recover();
 		}
 	);
 	const reader = createReaderState(workspace, commands);

@@ -163,6 +163,11 @@ test("real links and history preserve the reader during a write and block overla
 							: confirmed;
 					},
 					readWorkspace: async ({ workspaceId }) => {
+						await window.holdSessionRead();
+						if (failReads) {
+							failReads--;
+							throw Error("Follow-up read unavailable");
+						}
 						reads.push(workspaceId);
 						const confirmed = snapshot();
 						if (confirmed.session.status !== "ready") throw Error("Expected Ready");
@@ -282,7 +287,7 @@ test("real links and history preserve the reader during a write and block overla
 		expect(afterPreload.revision).toBe(beforePreload.revision);
 		expect(afterPreload.switches).toBe(beforePreload.switches);
 		expect(afterPreload.restores).toBe(beforePreload.restores);
-		expect(afterPreload.reads.every((id) => id === first)).toBe(true);
+		expect(afterPreload.reads).toContain(second);
 		await page.getByRole("link", { name: "Work", exact: true }).click();
 		await item.waitFor();
 		await page.getByRole("button", { name: "Navigate Navigation item", exact: true }).click();

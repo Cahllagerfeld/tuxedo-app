@@ -1,5 +1,5 @@
 import { QueryClient, queryOptions } from "@tanstack/svelte-query";
-import type { DesktopAPI } from "$lib/shared/desktop/contract";
+import type { DesktopAPI, DesktopResponse } from "$lib/shared/desktop/contract";
 
 const all = ["workspace"] as const;
 const destinations = [...all, "destination"] as const;
@@ -44,16 +44,14 @@ export const workspaceViewsQuery = (desktop: DesktopAPI) =>
 		},
 	});
 
+export type WorkspaceDestination = Extract<DesktopResponse<"readWorkspace">, { status: "loaded" }>;
+
 export const workspaceDestinationQuery = (desktop: DesktopAPI, workspaceId: string) =>
 	queryOptions({
 		queryKey: workspaceQueryKeys.destination(workspaceId),
-		queryFn: async () => {
-			const confirmed = await desktop.readSession({});
-			if (
-				confirmed.session.status === "ready" &&
-				confirmed.session.catalogue.active_workspace_id !== workspaceId
-			)
-				throw Error("The requested Workspace is not active.");
-			return confirmed;
+		queryFn: async (): Promise<WorkspaceDestination> => {
+			const outcome = await desktop.readWorkspace({ workspaceId });
+			if (outcome.status !== "loaded") throw Error(outcome.message);
+			return outcome;
 		},
 	});

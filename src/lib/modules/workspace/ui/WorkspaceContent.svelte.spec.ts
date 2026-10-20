@@ -235,8 +235,8 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 		await expect.element(panel.getByText("Not a valid date", { exact: true })).toBeVisible();
 		expect(panel.element().querySelector("code")?.textContent).toBe(rich.raw);
 		await panel.getByRole("button", { name: "Copy raw line", exact: true }).click();
-		expect(clipboard).toHaveBeenCalledWith({ text: rich.raw });
 		await expect.element(panel.getByRole("status")).toHaveTextContent("Raw line copied");
+		expect(clipboard).toHaveBeenCalledWith({ text: rich.raw });
 		clipboard.mockRejectedValueOnce(Error("Clipboard unavailable"));
 		const errorToast = vi.spyOn(toast, "error");
 		try {

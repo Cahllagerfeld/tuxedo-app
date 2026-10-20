@@ -212,10 +212,11 @@ test("failed destination reads preserve confirmed data and persisted catalogue",
 test("destination reads do not refresh authoritative state; external events still restore changed disk contents", async () => {
 	const { backend, firstId, secondId, secondPath, subscriptions, changes } = await setup();
 	const before = await backend.readSession({});
+	if (before.session.status !== "ready") throw Error("Expected Ready fixture");
 	await writeFile(secondPath, "External\n");
 	expect(await backend.readWorkspace({ workspaceId: secondId })).toMatchObject({
 		status: "loaded",
-		todo_file: { items: [{ raw: "External" }] },
+		todo_file: before.session.todo_file,
 	});
 	expect(await backend.readSession({})).toEqual(before);
 	await backend.readWorkspace({ workspaceId: firstId });
@@ -233,4 +234,8 @@ test("destination reads do not refresh authoritative state; external events stil
 	});
 	expect(refreshed.revision).toBeGreaterThan(before.revision);
 	expect(refreshed.undoLabel).toBeUndefined();
+	expect(await backend.readWorkspace({ workspaceId: secondId })).toMatchObject({
+		status: "loaded",
+		todo_file: { items: [{ raw: "External" }] },
+	});
 });

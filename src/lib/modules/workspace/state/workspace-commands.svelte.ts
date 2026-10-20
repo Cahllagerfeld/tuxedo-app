@@ -68,26 +68,38 @@ export class WorkspaceCommands {
 				refetchType: "none",
 			});
 		try {
+			const sessionRefresh =
+				dependency !== "views"
+					? this.queryClient.invalidateQueries(
+							{ queryKey: workspaceQueryKeys.session },
+							{ throwOnError: true }
+						)
+					: Promise.resolve();
+			const routeId = this.data.routeWorkspaceId;
+			const restoring = this.pendingOperation === "restore";
+			const refreshDestination = (workspaceId: string) =>
+				this.queryClient.invalidateQueries(
+					{
+						queryKey: workspaceQueryKeys.destination(workspaceId),
+						exact: true,
+						refetchType: "all",
+					},
+					{ throwOnError: true }
+				);
 			const results = await Promise.allSettled([
-				...((dependency === "session" || this.pendingOperation === "delete_workspace") &&
-				this.data.routeWorkspaceId
+				sessionRefresh,
+				...(routeId && dependency === "session" && !restoring ? [refreshDestination(routeId)] : []),
+				...(routeId &&
+				(restoring || (dependency === "lifecycle" && this.pendingOperation === "delete_workspace"))
 					? [
-							this.queryClient.invalidateQueries(
-								{
-									queryKey: workspaceQueryKeys.destination(this.data.routeWorkspaceId),
-									exact: true,
-									refetchType: "all",
-								},
-								{ throwOnError: true }
-							),
-						]
-					: []),
-				...(dependency !== "views"
-					? [
-							this.queryClient.invalidateQueries(
-								{ queryKey: workspaceQueryKeys.session },
-								{ throwOnError: true }
-							),
+							sessionRefresh.then(() => {
+								const session = this.data.confirmed?.session;
+								if (
+									session?.status === "ready" &&
+									session.catalogue.active_workspace_id === routeId
+								)
+									return refreshDestination(routeId);
+							}),
 						]
 					: []),
 				...(dependency !== "session"
@@ -192,7 +204,9 @@ export class WorkspaceCommands {
 			this.refreshFailed ||
 			!confirmed ||
 			confirmed.session.status !== "ready" ||
-			!confirmed.session.catalogue.active_workspace_id
+			!confirmed.session.catalogue.active_workspace_id ||
+			(this.data.routeWorkspaceId !== undefined &&
+				this.data.routeWorkspaceId !== confirmed.session.catalogue.active_workspace_id)
 		)
 			throw Error("No Active workspace Todo file is loaded.");
 		return {

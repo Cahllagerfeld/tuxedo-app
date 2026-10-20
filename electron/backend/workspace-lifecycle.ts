@@ -109,13 +109,23 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		});
 	});
 	return {
-		readWorkspace: (request: DesktopRequest<"readWorkspace">) =>
+		readWorkspace: (request: DesktopRequest<"readWorkspace">, confirmed?: ConfirmedSession) =>
 			Effect.gen(function* () {
 				const { workspaceId } = yield* attempt(() => readWorkspaceRequestSchema.parse(request));
 				const catalogue = yield* WorkspaceCatalogue.use((store) => store.read);
 				const workspace = catalogue.workspaces.find((w) => w.id === workspaceId);
 				if (!workspace)
 					return yield* new OperationFailure({ message: "Workspace does not exist." });
+				if (
+					confirmed?.session.status === "ready" &&
+					confirmed.session.catalogue.active_workspace_id === workspaceId &&
+					confirmed.session.todo_file.path === workspace.todo_path
+				)
+					return {
+						status: "loaded" as const,
+						workspace,
+						todo_file: confirmed.session.todo_file,
+					};
 				const contents = yield* readWorkspaceContents(workspace.todo_path);
 				return {
 					status: "loaded" as const,

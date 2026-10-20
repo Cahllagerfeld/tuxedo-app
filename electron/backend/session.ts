@@ -268,7 +268,14 @@ export function sessionLayer(
 				deleteView: (request) =>
 					operation("deleteView", "Cannot delete view: ", views.delete(request)),
 				readWorkspace: (request) =>
-					operation("readWorkspace", "Cannot read Workspace: ", workspace.readWorkspace(request)),
+					operation(
+						"readWorkspace",
+						"Cannot read Workspace: ",
+						Effect.gen(function* () {
+							// Read the confirmation only after acquiring session admission.
+							return yield* workspace.readWorkspace(request, confirmed);
+						})
+					),
 				readSession: () => read("readSession"),
 				restoreSession: () => read("restoreSession"),
 				createWorkspace: (request) =>

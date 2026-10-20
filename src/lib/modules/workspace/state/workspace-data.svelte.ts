@@ -5,6 +5,7 @@ import {
 	workspaceViewsQuery,
 	workspaceQueryKeys,
 	workspaceDestinationQuery,
+	type WorkspaceDestination,
 } from "./workspace-queries";
 
 export class WorkspaceData {
@@ -12,7 +13,7 @@ export class WorkspaceData {
 	private viewsResult = $state.raw<QueryObserverResult<readonly SavedView[]>>();
 	private destinationResult = $state.raw<{
 		id: string;
-		result: QueryObserverResult<ConfirmedSession>;
+		result: QueryObserverResult<WorkspaceDestination>;
 	}>();
 	private readonly unsubscribe: (() => void)[];
 
@@ -58,18 +59,14 @@ export class WorkspaceData {
 		return this.getWorkspaceId();
 	}
 	get confirmed() {
+		return this.sessionResult?.data;
+	}
+	private get destination() {
 		const id = this.routeWorkspaceId;
-		if (!id) return this.sessionResult?.data;
-		const destination =
-			this.destinationResult?.id === id
-				? this.destinationResult.result.data
-				: this.queryClient.getQueryData<ConfirmedSession>(workspaceQueryKeys.destination(id));
-		if (destination) return destination;
-		const fallback = this.sessionResult?.data;
-		return fallback?.session.status === "ready" &&
-			fallback.session.catalogue.active_workspace_id === id
-			? fallback
-			: undefined;
+		if (!id) return;
+		return this.destinationResult?.id === id
+			? this.destinationResult.result.data
+			: this.queryClient.getQueryData<WorkspaceDestination>(workspaceQueryKeys.destination(id));
 	}
 	get session() {
 		return this.confirmed?.session ?? { status: "unavailable" as const, error: this.error };
@@ -82,15 +79,21 @@ export class WorkspaceData {
 	get activeWorkspace() {
 		return (
 			this.catalogue?.workspaces.find(
-				(workspace) => workspace.id === this.catalogue?.active_workspace_id
+				(workspace) =>
+					workspace.id === (this.routeWorkspaceId ?? this.catalogue?.active_workspace_id)
 			) ?? null
 		);
 	}
 	get todoFile() {
+		if (this.routeWorkspaceId) return this.destination?.todo_file ?? null;
 		return this.session.status === "ready" ? this.session.todo_file : null;
 	}
 	get undoLabel() {
-		return this.session.status === "ready" ? this.confirmed?.undoLabel : undefined;
+		return this.session.status === "ready" &&
+			(!this.routeWorkspaceId ||
+				this.session.catalogue.active_workspace_id === this.routeWorkspaceId)
+			? this.confirmed?.undoLabel
+			: undefined;
 	}
 	get error() {
 		const id = this.routeWorkspaceId;

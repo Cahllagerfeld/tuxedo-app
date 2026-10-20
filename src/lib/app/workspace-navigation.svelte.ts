@@ -15,8 +15,12 @@ export function createWorkspaceNavigation(commands: WorkspaceCommands) {
 	let failure = $state("");
 	let admittedHref: string | undefined;
 	const busy = () => commands.isOperating;
-	async function recover(force = false) {
-		if (!page.params.id || (!force && workspace.todoFile && !workspace.error)) return;
+	async function recover() {
+		if (
+			!page.params.id ||
+			(workspace.session.status === "ready" && workspace.todoFile && !workspace.error)
+		)
+			return;
 		const recovery = new URL(unavailableWorkspaceUrl(page.params.id), page.url);
 		admittedHref = recovery.href;
 		await goto(recovery, { replaceState: true });

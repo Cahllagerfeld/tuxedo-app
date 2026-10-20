@@ -2,7 +2,10 @@ import { entryFailure } from "$lib/app/workspace-entry";
 import { unavailableWorkspaceUrl } from "$lib/app/workspace-home";
 import { resolve } from "$app/paths";
 import { redirect } from "@sveltejs/kit";
-import { workspaceSessionQuery } from "$lib/modules/workspace/state/workspace-queries";
+import {
+	workspaceSessionQuery,
+	workspaceDestinationQuery,
+} from "$lib/modules/workspace/state/workspace-queries";
 import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ url, parent }) => {
@@ -24,6 +27,10 @@ export const load: PageLoad = async ({ url, parent }) => {
 				? entryFailure.message
 				: undefined) ||
 			queryClient.getQueryState(query.queryKey)?.error?.message ||
+			(id
+				? queryClient.getQueryState(workspaceDestinationQuery(window.desktop, id).queryKey)?.error
+						?.message
+				: undefined) ||
 			(session?.status === "unavailable" ? session.error : undefined) ||
 			(session?.status === "empty" ? session.warning : undefined) ||
 			undefined,
