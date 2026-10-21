@@ -519,12 +519,7 @@ export class WorkspaceCommands {
 			"bulk_set_todo_item_completion",
 			async () => {
 				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
+				this.validateCurrentItems(items);
 				return this.todoOutcome(
 					await this.desktop.bulkSetTodoCompletion({
 						...target,
@@ -543,12 +538,7 @@ export class WorkspaceCommands {
 			"bulk_delete_todo_items",
 			async () => {
 				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
+				this.validateCurrentItems(items);
 				return this.todoOutcome(
 					await this.desktop.bulkDeleteTodos({
 						...target,
@@ -561,6 +551,12 @@ export class WorkspaceCommands {
 			},
 			this.todoOperationTarget()
 		);
+	private validateCurrentItems(items: readonly TodoItem[]) {
+		const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+		if (items.some((item) => current.get(item.line_number) !== item.raw))
+			throw Error("The Todo file changed. Try again with its current Todo items.");
+	}
+
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
 		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
 	}
@@ -598,12 +594,7 @@ export class WorkspaceCommands {
 			"reorder_todo_items",
 			async () => {
 				const target = this.todoTarget();
-				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
-				if (items.some((item) => current.get(item.line_number) !== item.raw))
-					return {
-						status: "rejected",
-						message: "The Todo file changed. Try again with its current Todo items.",
-					};
+				this.validateCurrentItems(items);
 				return this.todoOutcome(
 					await this.desktop.reorderTodo({
 						...target,
