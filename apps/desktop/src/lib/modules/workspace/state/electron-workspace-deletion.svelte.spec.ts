@@ -30,6 +30,12 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
+		readWorkspaceCatalogue: async () => {
+			throw Error("unused");
+		},
+		readWorkspace: async () => {
+			throw Error("unused");
+		},
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),

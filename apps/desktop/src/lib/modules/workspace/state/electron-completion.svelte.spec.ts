@@ -47,6 +47,12 @@ const initial: ConfirmedSession = {
 };
 function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 	return {
+		readWorkspaceCatalogue: async () => {
+			throw Error("unused");
+		},
+		readWorkspace: async () => {
+			throw Error("unused");
+		},
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),

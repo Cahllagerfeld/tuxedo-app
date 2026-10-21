@@ -234,6 +234,8 @@ const startup = Effect.gen(function* () {
 		)
 	);
 	yield* register("readSession", backend.readSession);
+	yield* register("readWorkspaceCatalogue", backend.readWorkspaceCatalogue);
+	yield* register("readWorkspace", backend.readWorkspace);
 	yield* register("setWorkspaceSortOrder", backend.setWorkspaceSortOrder);
 	yield* register("setWorkspaceShowDeferred", backend.setWorkspaceShowDeferred);
 	yield* register("undoTodo", backend.undoTodo);

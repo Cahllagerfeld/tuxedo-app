@@ -606,3 +606,76 @@ test("completion transport carries validated recurrence feedback for checkbox, e
 			expect(() => desktopContract[operation].response.parse({ ...response, notice })).toThrow();
 	}
 });
+
+test("Workspace reads validate identity, provenance and both transport directions", async () => {
+	const response = {
+		status: "ready",
+		workspace: catalogue.workspaces[0],
+		todo_file,
+		provenance: { status: "speculative" },
+	};
+	const calls: unknown[] = [];
+	const client = createDesktopClient(async (channel, input) => {
+		calls.push({ channel, input });
+		return channel === "tuxedo:read-workspace"
+			? response
+			: { status: "ready", catalogue, selection: null };
+	});
+	expect(await client.readWorkspace({ workspaceId })).toEqual(response);
+	expect(await client.readWorkspaceCatalogue({})).toEqual({
+		status: "ready",
+		catalogue,
+		selection: null,
+	});
+	expect(calls).toEqual([
+		{ channel: "tuxedo:read-workspace", input: { workspaceId } },
+		{ channel: "tuxedo:read-workspace-catalogue", input: {} },
+	]);
+	for (const request of [{ workspaceId: "bad" }, { workspaceId, todoPath: "/etc/passwd" }, {}]) {
+		await expect(client.readWorkspace(request as never)).rejects.toThrow();
+	}
+	await expect(client.readWorkspaceCatalogue({ path: "/etc/passwd" } as never)).rejects.toThrow();
+	expect(calls).toHaveLength(2);
+	const selection = {
+		scope,
+		revision: 2,
+		workspaceId,
+		todoPath: todo_file.path,
+		undoLabel: "Undo edit",
+	};
+	const confirmed = { ...response, provenance: { status: "confirmed", selection } };
+	expect(await createDesktopClient(async () => confirmed).readWorkspace({ workspaceId })).toEqual(
+		confirmed
+	);
+	for (const malformed of [
+		{ ...response, workspace: { ...response.workspace, todo_path: "/tmp/other" } },
+		{ ...response, provenance: { status: "speculative", selection } },
+		{
+			...confirmed,
+			provenance: { status: "confirmed", selection: { ...selection, revision: -1 } },
+		},
+		{
+			...confirmed,
+			provenance: { status: "confirmed", selection: { ...selection, workspaceId: scope } },
+		},
+		{
+			...confirmed,
+			provenance: { status: "confirmed", selection: { ...selection, todoPath: "/tmp/other" } },
+		},
+		{ status: "rejected", reason: "unknown", message: "Failure" },
+		{ status: "rejected", reason: "todo-file", message: "" },
+	]) {
+		await expect(
+			createDesktopClient(async () => malformed).readWorkspace({ workspaceId })
+		).rejects.toThrow();
+	}
+	for (const malformed of [
+		{ status: "ready", catalogue, selection: { ...selection, todoPath: null } },
+		{ status: "ready", catalogue, selection: { ...selection, undoLabel: "Undo everything" } },
+		{ status: "ready", catalogue: { ...catalogue, version: 2 }, selection: null },
+	]) {
+		await expect(
+			createDesktopClient(async () => malformed).readWorkspaceCatalogue({})
+		).rejects.toThrow();
+	}
+});

@@ -735,6 +735,91 @@ try {
 		"Saved-view route loads retain data on failure, share admission through publication, and recover with read-only Retry across real IPC, reload, and Workspace switches."
 	);
 
+	// Pure IPC reads keep the mounted controller's mutation and observation target intact.
+	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).click();
+	await page.getByRole("button", { name: "Undo completion", exact: true }).waitFor();
+	const beforeReads = await page.evaluate(() => window.desktop.readSession({}));
+	const catalogueBytes = await readFile(join(directory, "workspaces.json"), "utf8");
+	const inactiveId = beforeReads.session.catalogue.workspaces.find(
+		(workspace) => workspace.name === "Second"
+	).id;
+	for (let n = 0; n < 2; n++) {
+		const inactive = await page.evaluate(
+			(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
+			inactiveId
+		);
+		assert.equal(inactive.status, "ready");
+		assert.equal(inactive.workspace.id, inactiveId);
+		assert.equal(inactive.todo_file.items[0].description, "Second item");
+		assert.deepEqual(inactive.provenance, { status: "speculative" });
+		const catalogueRead = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
+		assert.equal(catalogueRead.status, "ready");
+		assert.equal(catalogueRead.selection.revision, beforeReads.revision);
+		assert.equal(
+			catalogueRead.selection.workspaceId,
+			beforeReads.session.catalogue.active_workspace_id
+		);
+		assert.equal(catalogueRead.selection.undoLabel, "Undo completion");
+	}
+	assert.deepEqual(
+		await page.evaluate(() =>
+			window.desktop.readWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
+		),
+		{ status: "rejected", reason: "workspace", message: "Workspace does not exist." }
+	);
+	await rm(secondPath);
+	try {
+		const failedRead = await page.evaluate(
+			(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
+			inactiveId
+		);
+		assert.equal(failedRead.status, "rejected");
+		assert.equal(failedRead.reason, "todo-file");
+	} finally {
+		await writeFile(secondPath, "Second item");
+	}
+	await writeFile(join(directory, "workspaces.json"), "corrupt");
+	try {
+		const failedCatalogue = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
+		assert.equal(failedCatalogue.status, "rejected");
+		assert.equal(failedCatalogue.reason, "catalogue");
+		assert.equal(await readFile(join(directory, "workspaces.json"), "utf8"), "corrupt");
+	} finally {
+		await writeFile(join(directory, "workspaces.json"), catalogueBytes);
+	}
+	assert.deepEqual(await page.evaluate(() => window.desktop.readSession({})), beforeReads);
+	assert.equal(await readFile(join(directory, "workspaces.json"), "utf8"), catalogueBytes);
+	const activeRead = await page.evaluate(
+		(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
+		beforeReads.session.catalogue.active_workspace_id
+	);
+	assert.equal(activeRead.provenance.status, "confirmed");
+	assert.equal(activeRead.provenance.selection.revision, beforeReads.revision);
+	await assert.rejects(
+		page.evaluate(
+			(workspaceId) => window.desktop.readWorkspace({ workspaceId, todoPath: "/etc/passwd" }),
+			inactiveId
+		)
+	);
+	await assert.rejects(
+		page.evaluate(() => window.desktop.readWorkspaceCatalogue({ path: "/etc/passwd" }))
+	);
+	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).waitFor();
+	await page.getByRole("button", { name: "Actions for Call Mom", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+	await page.getByRole("textbox", { name: /Description/ }).fill("Read-safe Call Mom");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await page.getByRole("dialog").waitFor({ state: "hidden" });
+	await page.getByText("Read-safe Call Mom", { exact: true }).waitFor();
+	assert.match(await readFile(todoPath, "utf8"), /Read-safe Call Mom/);
+	assert.equal(await readFile(secondPath, "utf8"), "Second item");
+	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	console.log(
+		"Repeated inactive preload/IPC reads preserve selection, revision, Undo and the original editing target."
+	);
+
 	// Real observation signals cross preload/IPC and use the mounted controller.
 	await writeFile(
 		todoPath,
@@ -1376,6 +1461,29 @@ try {
 		"Show from calendar editing replaces repeated thresholds, explains hidden items, and undoes exact bytes through preload/IPC."
 	);
 
+	const untrustedReadErrors = await application.evaluate(async ({ BrowserWindow, app }) => {
+		const untrusted = new BrowserWindow({
+			show: false,
+			webPreferences: {
+				preload: `${app.getAppPath()}/${app.isPackaged ? "dist-electron/" : ""}preload.cjs`,
+				sandbox: true,
+				contextIsolation: true,
+				nodeIntegration: false,
+			},
+		});
+		try {
+			await untrusted.loadURL("about:blank");
+			return await untrusted.webContents.executeJavaScript(`Promise.all([
+				window.desktop.readWorkspaceCatalogue({}),
+				window.desktop.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" })
+			].map((request) => request.then(() => "accepted", (error) => error.message)))`);
+		} finally {
+			untrusted.destroy();
+		}
+	});
+	assert.equal(untrustedReadErrors.length, 2);
+	for (const error of untrustedReadErrors) assert.match(error, /Untrusted desktop sender/);
+
 	// Exercise the sandboxed preload's response and event validators with main-supplied data.
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:select-todo-file");
@@ -1392,6 +1500,24 @@ try {
 		}),
 		true
 	);
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:read-workspace");
+		ipcMain.handle("tuxedo:read-workspace", () => ({
+			status: "ready",
+			provenance: { status: "confirmed" },
+		}));
+		ipcMain.removeHandler("tuxedo:read-workspace-catalogue");
+		ipcMain.handle("tuxedo:read-workspace-catalogue", () => ({
+			status: "ready",
+			selection: { revision: -1 },
+		}));
+	});
+	await assert.rejects(
+		page.evaluate(() =>
+			window.desktop.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" })
+		)
+	);
+	await assert.rejects(page.evaluate(() => window.desktop.readWorkspaceCatalogue({})));
 	const signal = {
 		scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
 		revision: 0,
