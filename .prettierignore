@@ -14,3 +14,6 @@ node_modules
 /apps/desktop/dist-electron/
 /apps/desktop/out/
 /apps/desktop/.svelte-kit/
+
+# Turborepo local cache and task logs
+.turbo

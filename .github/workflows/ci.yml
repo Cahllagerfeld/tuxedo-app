@@ -56,7 +56,7 @@ jobs:
         run: pnpm test:backend
 
       - name: Test real Electron preload and IPC
-        run: pnpm test:electron
+        run: env -u ELECTRON_RUN_AS_NODE pnpm test:electron
 
       - name: Package and test local macOS application
-        run: pnpm test:package
+        run: env -u ELECTRON_RUN_AS_NODE pnpm test:package

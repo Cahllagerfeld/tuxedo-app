@@ -24,3 +24,6 @@ reference
 /apps/desktop/dist-electron
 
 /apps/desktop/out
+
+# Turborepo local cache and task logs
+.turbo

@@ -1,0 +1,41 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"remoteCache": { "enabled": false },
+	"globalDependencies": [
+		"devenv.nix",
+		"devenv.yaml",
+		"devenv.lock",
+		"pnpm-workspace.yaml",
+		"scripts/**"
+	],
+	"globalEnv": ["TUXEDO_TASK_CONTEXT", "NODE_ENV", "NODE_OPTIONS"],
+	"tasks": {
+		"source": { "dependsOn": ["^source"] },
+		"build": {
+			"dependsOn": ["^source"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*", "$TURBO_ROOT$/.env*"],
+			"env": ["VITE_*", "PUBLIC_*", "VITEST", "CI", "TZ", "LANG", "LC_*"],
+			"outputs": ["build/**", "dist-electron/**", ".svelte-kit/**"]
+		},
+		"check": { "dependsOn": ["^check"], "cache": false },
+		"check:electron": { "dependsOn": ["^source"], "cache": false },
+		"check:boundaries": { "cache": false },
+		"test:unit": { "dependsOn": ["^source"], "cache": false },
+		"test:backend": { "dependsOn": ["^source"], "cache": false },
+		"dev": { "cache": false, "persistent": true, "passThroughEnv": ["*"] },
+		"preview": {
+			"dependsOn": ["build"],
+			"cache": false,
+			"persistent": true,
+			"passThroughEnv": ["*"]
+		},
+		"check:watch": { "cache": false, "persistent": true },
+		"test:unit:watch": { "cache": false, "persistent": true },
+		"test:electron": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
+		"test:electron:visible": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
+		"test:electron:dev": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
+		"package:macos": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
+		"test:package": { "dependsOn": ["package:macos"], "cache": false, "passThroughEnv": ["*"] },
+		"//#format:check": { "cache": false }
+	}
+}
