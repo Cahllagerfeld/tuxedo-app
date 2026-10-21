@@ -69,7 +69,8 @@ export default defineConfig(async ({ mode }) => ({
 					api: { port: Number(process.env.TUXEDO_TEST_PORT ?? 63315) },
 					browser: {
 						enabled: true,
-						provider: playwright(),
+						// Motion-specific tests explicitly exercise both preferences.
+						provider: playwright({ contextOptions: { reducedMotion: "reduce" } }),
 						instances: [{ browser: "chromium", headless: true }],
 					},
 					include: ["src/**/*.svelte.{test,spec}.{js,ts}"],
