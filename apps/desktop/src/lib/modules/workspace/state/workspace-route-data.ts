@@ -41,10 +41,12 @@ export async function readWorkspace(
 			throw Error("Workspace read returned a different destination.");
 		const previous = current();
 		if (
-			value.provenance.status === "speculative" &&
 			previous?.workspaceId === workspaceId &&
 			previous.value?.provenance.status === "confirmed" &&
-			previous.value.todo_file.path === value.todo_file.path
+			previous.value.todo_file.path === value.todo_file.path &&
+			(value.provenance.status === "speculative" ||
+				(previous.value.provenance.selection.scope === value.provenance.selection.scope &&
+					previous.value.provenance.selection.revision > value.provenance.selection.revision))
 		) {
 			return {
 				workspaceId,

@@ -27,32 +27,42 @@ test("a failed destination read never retains another Workspace's route value", 
 	expect(result).toEqual({ workspaceId: "two", value: null, error: "Read failed" });
 });
 
-test("an unaccepted disk read retains the current matching confirmed route resource", async () => {
-	const value: NonNullable<import("./workspace-route-data").WorkspaceData["value"]> = {
-		status: "ready",
-		workspace: {
-			id: "one",
-			name: "Work",
-			color: "blue",
-			todo_path: "/tmp/todo.txt",
-			created_at: "2026-10-21T00:00:00Z",
-		},
-		todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
-		provenance: {
-			status: "confirmed",
-			selection: { scope: "scope", revision: 5, workspaceId: "one", todoPath: "/tmp/todo.txt" },
-		},
-	};
-	const incoming = {
-		...value,
-		provenance: { status: "speculative" as const },
-		todo_file: { ...value.todo_file, skipped: [{ line_number: 1, raw: "x", reason: "Invalid" }] },
-	};
-	const result = await readWorkspace({ readWorkspace: async () => incoming }, "one", () => ({
-		workspaceId: "one",
-		value,
-		error: "",
-	}));
-	expect(result.value).toBe(value);
-	expect(result.error).toContain("confirmed");
-});
+test.each(["speculative", "older"] as const)(
+	"a %s read retains the current matching confirmed route resource",
+	async (kind) => {
+		const value: NonNullable<import("./workspace-route-data").WorkspaceData["value"]> = {
+			status: "ready",
+			workspace: {
+				id: "one",
+				name: "Work",
+				color: "blue",
+				todo_path: "/tmp/todo.txt",
+				created_at: "2026-10-21T00:00:00Z",
+			},
+			todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
+			provenance: {
+				status: "confirmed",
+				selection: { scope: "scope", revision: 5, workspaceId: "one", todoPath: "/tmp/todo.txt" },
+			},
+		};
+		if (value.provenance.status !== "confirmed") throw Error("fixture");
+		const incoming = {
+			...value,
+			provenance:
+				kind === "speculative"
+					? { status: "speculative" as const }
+					: {
+							status: "confirmed" as const,
+							selection: { ...value.provenance.selection, revision: 4 },
+						},
+			todo_file: { ...value.todo_file, skipped: [{ line_number: 1, raw: "x", reason: "Invalid" }] },
+		};
+		const result = await readWorkspace({ readWorkspace: async () => incoming }, "one", () => ({
+			workspaceId: "one",
+			value,
+			error: "",
+		}));
+		expect(result.value).toBe(value);
+		expect(result.error).toContain("confirmed");
+	}
+);

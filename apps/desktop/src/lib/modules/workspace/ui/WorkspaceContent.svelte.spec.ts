@@ -1002,7 +1002,7 @@ test("external reload updates search results while preserving the query", async 
 	await expect.element(page.getByText("Different content", { exact: true })).toBeVisible();
 });
 
-test("row menu opens a prefilled edit form and saves through the scoped session controller", async () => {
+test("row menu opens a prefilled edit form and saves through scoped Workspace commands", async () => {
 	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["editTodo"]>>) => void;
 	render(Harness, {
