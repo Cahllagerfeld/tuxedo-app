@@ -241,3 +241,55 @@ test("a stale same-Workspace publication revalidates its receipt without activat
 	expect({ reads, activations }).toEqual({ reads: 2, activations: 0 });
 	expect(commands.canMutate).toBe(true);
 });
+
+test("a relevant observation queued during navigation refreshes before the committed reader unlocks", async () => {
+	let current: WorkspaceData = { workspaceId, value: contents(5), error: "" };
+	let navigating = true;
+	let signal!: (event: import("@tuxedo/contracts").TodoFileChange) => void;
+	let reads = 0;
+	let notices = 0;
+	const commands = new WorkspaceCommands(
+		createDesktopClient(async () => {
+			throw Error("Unexpected write");
+		}),
+		{
+			catalogue: () => ({
+				value: {
+					status: "ready",
+					catalogue: { version: 1, active_workspace_id: workspaceId, workspaces: [workspace] },
+					selection: selection(6),
+				},
+				error: "",
+			}),
+			workspace: () => current,
+			destination: () => workspaceId,
+			navigating: () => navigating,
+			refresh: async () => {
+				reads++;
+				current = { workspaceId, value: contents(6), error: "" };
+			},
+			navigate: async () => {},
+		}
+	);
+	const stop = commands.observe(
+		{
+			onTodoFileChanged: (listener) => {
+				signal = listener;
+				return () => {};
+			},
+		},
+		() => {
+			notices++;
+		}
+	);
+	signal({ scope, revision: 6, workspaceId, todoPath: workspace.todo_path });
+	expect(reads).toBe(0);
+	const committed = commands.committedDestination(workspaceId);
+	navigating = false;
+	await committed;
+	expect(reads).toBe(1);
+	expect(commands.todoFile?.items[0].completed).toBe(true);
+	expect(commands.canMutate).toBe(true);
+	expect(notices).toBe(1);
+	stop();
+});

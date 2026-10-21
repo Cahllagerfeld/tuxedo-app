@@ -266,17 +266,14 @@ export class WorkspaceCommands {
 				return;
 			}
 		}
-		if (!workspaceId) {
-			this.drainObservation();
-			return;
-		}
+		if (!workspaceId) return this.drainObservation(true);
 		if (!this.current) {
 			this.destinationError = "Workspace could not be loaded. Try opening it again.";
 			await this.navigate(null, true);
 			return;
 		}
 		// Creation already committed activation. Same-Workspace reads and Home preserve Undo.
-		if (this.ready) return;
+		if (this.ready) return this.drainObservation(true);
 		if (this.required?.workspaceId === workspaceId) {
 			if (this.pending) return;
 			return this.runAction(
@@ -457,14 +454,20 @@ export class WorkspaceCommands {
 			unsubscribe();
 		};
 	};
-	private drainObservation() {
-		if (this.isOperating || !this.dirty) return;
+	private drainObservation(committed = false) {
+		if (
+			this.pending ||
+			this.navigationPending ||
+			(!committed && this.routes.navigating()) ||
+			!this.dirty
+		)
+			return;
 		const { event, notify } = this.dirty;
 		this.dirty = undefined;
 		if (event.workspaceId !== this.routes.destination() || event.todoPath !== this.todoFile?.path)
 			return;
 		const before = JSON.stringify({ items: this.todoFile.items, skipped: this.todoFile.skipped });
-		void this.runAction(
+		return this.runAction(
 			"restore",
 			async () => {
 				this.required = {
@@ -491,7 +494,8 @@ export class WorkspaceCommands {
 					notify();
 				return outcome;
 			},
-			{ workspaceId: event.workspaceId }
+			{ workspaceId: event.workspaceId },
+			committed
 		);
 	}
 	setCompletion = (todo: TodoItem) =>

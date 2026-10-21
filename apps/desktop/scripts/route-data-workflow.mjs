@@ -178,6 +178,40 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		assert.equal((await counts()).writes, homeRecoveryWrites);
 		assert.deepEqual((await counts()).activations, []);
 
+		// A same-Workspace navigation can commit a captured old read after a relevant event was queued.
+		await navigate(null);
+		await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+		await page.evaluate((id) => {
+			window.navigationObservation = new Promise((resolve) => {
+				const stop = window.desktop.onTodoFileChanged((event) => {
+					if (event.workspaceId === id) {
+						stop();
+						resolve();
+					}
+				});
+			});
+		}, ids["Receipt A"]);
+		await arm(ids["Receipt A"]);
+		await navigate(ids["Receipt A"]);
+		await entered(ids["Receipt A"]);
+		const navigationReads = (await counts()).savedReads;
+		await writeFile(join(directory, "Receipt A.txt"), "Navigation external item\n");
+		await page.evaluate(async () => {
+			await window.navigationObservation;
+		});
+		await release(ids["Receipt A"]);
+		const navigationItem = page.getByRole("checkbox", {
+			name: "Mark Navigation external item complete",
+			exact: true,
+		});
+		await enabled(navigationItem);
+		assert.deepEqual((await counts()).activations, []);
+		assert.equal((await counts()).savedReads, navigationReads);
+		await navigationItem.click();
+		await enabled(
+			page.getByRole("checkbox", { name: "Mark Navigation external item incomplete", exact: true })
+		);
+
 		// Hover reads B while A and its Undo remain selected. The cached speculative result cannot authorize B.
 		await navigate(null);
 		await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
