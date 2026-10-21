@@ -2,6 +2,7 @@
 	import { getAppState } from "$lib/app/app-context";
 	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
 	import WorkspaceLoading from "$lib/modules/workspace/ui/WorkspaceLoading.svelte";
+	import { navigating } from "$app/state";
 	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import type { PageProps } from "./$types";
@@ -12,7 +13,12 @@
 
 	// Navigation is external to Svelte state: failed or lost destinations recover through Home.
 	$effect(() => {
-		if (!workspace.isOperating && !workspace.isLoading && !appState.showsDestination(params.id)) {
+		if (
+			!navigating.to &&
+			!workspace.isOperating &&
+			!workspace.isLoading &&
+			!appState.showsDestination(params.id)
+		) {
 			void goto(resolve("/"), { replaceState: true });
 		}
 	});

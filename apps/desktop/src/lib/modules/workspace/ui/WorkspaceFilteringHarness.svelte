@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { SavedViewsResource, setSavedViews } from "../state/saved-views-resource.svelte";
+	import { readSavedViews, type SavedViewsData } from "../state/saved-views";
 	import { onMount } from "svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
@@ -10,7 +12,18 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
-	onMount(() => void app.workspace.initialize());
+	let routeData = $state.raw<SavedViewsData>();
+	async function refreshViews(workspaceId: string) {
+		routeData = await readSavedViews(desktop, workspaceId, () => routeData);
+	}
+	// svelte-ignore state_referenced_locally
+	setSavedViews(new SavedViewsResource(desktop, app.workspace, () => routeData, refreshViews));
+	onMount(() => {
+		void app.workspace.initialize().then(() => {
+			const id = app.workspace.activeWorkspace?.id;
+			if (id) return refreshViews(id);
+		});
+	});
 </script>
 
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">

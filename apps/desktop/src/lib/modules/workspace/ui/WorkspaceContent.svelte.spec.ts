@@ -1677,6 +1677,7 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 			},
 			deleteView: async (request) => {
 				expect(request).toEqual({ workspaceId, viewId: scope });
+				views.splice(0);
 				return { status: "applied", views: [] };
 			},
 		}),
@@ -1705,6 +1706,130 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Delete saved view Release work" }).click();
 	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
+});
+
+test("a saved-view write holds all commands until refreshed views reach the screen", async () => {
+	let refresh = false;
+	let release!: (value: Awaited<ReturnType<DesktopAPI["readSavedViews"]>>) => void;
+	const refreshed = new Promise<Awaited<ReturnType<DesktopAPI["readSavedViews"]>>>((resolve) => {
+		release = resolve;
+	});
+	render(Harness, {
+		desktop: adapter({
+			readSavedViews: async () => (refresh ? refreshed : { status: "applied", views: [] }),
+			saveView: async () => {
+				refresh = true;
+				return {
+					status: "applied",
+					views: [
+						{
+							id: scope,
+							workspace_id: workspaceId,
+							name: "Release work",
+							filters: {
+								status: "all",
+								search: "",
+								project: null,
+								context: null,
+								priority: null,
+								due: null,
+							},
+						},
+					],
+				};
+			},
+		}),
+	});
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Save current view", exact: true }).click();
+	await page.getByRole("textbox", { name: "View name" }).fill("Release work");
+	await page.getByRole("button", { name: "Save view", exact: true }).click();
+	await expect.element(page.getByRole("button", { name: "Save view", exact: true })).toBeDisabled();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Plan release complete", exact: true }))
+		.toBeDisabled();
+	release({
+		status: "applied",
+		views: [
+			{
+				id: scope,
+				workspace_id: workspaceId,
+				name: "Release work",
+				filters: {
+					status: "all",
+					search: "",
+					project: null,
+					context: null,
+					priority: null,
+					due: null,
+				},
+			},
+		],
+	});
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Release work", exact: true }))
+		.toBeVisible();
+});
+
+test("a committed view survives a failed refresh and Retry only reads", async () => {
+	const filters = {
+		status: "all" as const,
+		search: "",
+		project: null,
+		context: null,
+		priority: null,
+		due: null,
+	};
+	const first = { id: scope, workspace_id: workspaceId, name: "Existing view", filters };
+	const added = { ...first, id: workspaceId, name: "New view" };
+	let persisted = [first];
+	let failRead = false;
+	let wrote = false;
+	render(Harness, {
+		desktop: adapter({
+			readSavedViews: async () => {
+				if (failRead) throw Error("Saved-view disk is unavailable");
+				return { status: "applied", views: [...persisted] };
+			},
+			saveView: async () => {
+				if (wrote) throw Error("The committed save must not be repeated");
+				wrote = true;
+				persisted = [first, added];
+				failRead = true;
+				return { status: "applied", views: [...persisted] };
+			},
+		}),
+	});
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Save current view", exact: true }).click();
+	await page.getByRole("textbox", { name: "View name" }).fill("New view");
+	await page.getByRole("button", { name: "Save view", exact: true }).click();
+	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+	await expect
+		.element(page.getByText(/View saved, but saved views could not be refreshed/))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("checkbox", { name: "Mark Plan release complete", exact: true }))
+		.toBeEnabled();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Existing view", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeDisabled();
+	await expect
+		.element(page.getByRole("button", { name: "Delete saved view Existing view", exact: true }))
+		.toBeDisabled();
+	failRead = false;
+	await page.getByRole("button", { name: "Retry saved views", exact: true }).click();
+	await expect.element(page.getByRole("button", { name: "New view", exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Save current view", exact: true }))
+		.toBeEnabled();
+	expect(persisted.map((view) => view.name)).toEqual(["Existing view", "New view"]);
 });
 
 test("a failed saved-view read warns while the confirmed Todo file remains usable", async () => {
