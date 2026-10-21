@@ -11,11 +11,11 @@ const getWindow = () => window;
 api.readFile("/etc/passwd");
 // @ts-expect-error Catalogue requests cannot carry arbitrary filesystem paths.
 api.readWorkspaceCatalogue({ path: "/etc/passwd" });
-// @ts-expect-error Main cannot register an unknown operation/channel.
 registerDesktopOperation(
 	ipc,
 	getWindow,
 	() => true,
+	// @ts-expect-error Main cannot register an unknown operation/channel.
 	"arbitraryChannel",
 	api.readWorkspaceCatalogue
 );
