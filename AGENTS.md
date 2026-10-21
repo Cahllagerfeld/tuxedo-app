@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. A Svelte session controller holds confirmed renderer data. The complete app lives in `apps/desktop`; browser-safe schemas and DTOs live in `packages/contracts` (`@tuxedo/contracts`).
+Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. A Svelte session controller holds confirmed renderer data. The desktop host and renderer live in `apps/desktop`; Effect-native domain services live in `packages/backend` (`@tuxedo/backend`); browser-safe schemas and DTOs live in `packages/contracts` (`@tuxedo/contracts`).
 
 Run tools via devenv: `devenv shell -- pnpm|gh|node ...`.
 

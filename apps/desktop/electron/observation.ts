@@ -1,10 +1,9 @@
 import { watch, watchFile, unwatchFile } from "node:fs";
 import { basename, dirname } from "node:path";
-import { Effect, type Scope } from "effect";
+import { Effect } from "effect";
 
-export type TodoFileObservationAdapter = {
-	observe: (path: string, changed: () => void) => Effect.Effect<void, unknown, Scope.Scope>;
-};
+import type { TodoFileObservationAdapter } from "@tuxedo/backend";
+export type { TodoFileObservationAdapter } from "@tuxedo/backend";
 
 // Observe the directory entry, so atomic replacement does not strand observation
 // on the old inode. The session owns the quiet interval for missing-file save flickers.

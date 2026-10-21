@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend, type SessionDependencies } from "./session-runtime";
+import { createSessionBackend, type SessionDependencies } from "../session-runtime";
 
 const directories: string[] = [];
 const backends: ReturnType<typeof createSessionBackend>[] = [];

@@ -1,15 +1,12 @@
 import { expect, layer } from "@effect/vitest";
-import { Effect, Fiber } from "effect";
+import { Context, Effect, Fiber, Layer } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import * as PlatformError from "effect/PlatformError";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { join } from "node:path";
-import {
-	createSessionRuntime,
-	desktopSessionBackend,
-	type SessionDependencies,
-} from "./session-runtime";
-import { WorkspaceSession } from "./session";
+import { WorkspaceSession, workspaceSessionLayer, Identity, identityLayer } from "@tuxedo/backend";
+
+type SessionDependencies = { filesystem?: FileSystem; identity?: Identity["Service"] };
 
 const setup = (dependencies: SessionDependencies = {}) =>
 	Effect.gen(function* () {
@@ -17,15 +14,16 @@ const setup = (dependencies: SessionDependencies = {}) =>
 		const directory = yield* fs.makeTempDirectoryScoped();
 		const todoPath = join(directory, "todo.txt");
 		yield* fs.writeFileString(todoPath, "First\r\nLast");
-		const runtime = createSessionRuntime(join(directory, "workspaces.json"), undefined, undefined, {
-			filesystem: fs,
-			...dependencies,
-		});
-		const backend = desktopSessionBackend(runtime);
-		yield* Effect.addFinalizer(() => Effect.promise(() => backend.dispose()));
-		const created = yield* Effect.promise(() =>
-			backend.createWorkspace({ name: "Work", color: "blue", todoPath })
+		const services = yield* Layer.build(
+			workspaceSessionLayer(join(directory, "workspaces.json")).pipe(
+				Layer.provide(Layer.succeed(FileSystem, dependencies.filesystem ?? fs)),
+				Layer.provide(
+					dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
+				)
+			)
 		);
+		const session = Context.get(services, WorkspaceSession);
+		const created = yield* session.createWorkspace({ name: "Work", color: "blue", todoPath });
 		if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 			throw Error(JSON.stringify(created));
 		const target = {
@@ -49,14 +47,14 @@ const setup = (dependencies: SessionDependencies = {}) =>
 		};
 		const save = (operation: "createTodo" | "editTodo") =>
 			operation === "createTodo"
-				? backend.createTodo(createRequest)
-				: backend.editTodo(editRequest);
+				? session.createTodo(createRequest)
+				: session.editTodo(editRequest);
 		return {
 			fs,
 			directory,
 			todoPath,
-			backend,
-			runtime,
+			session,
+			services,
 			confirmed: created.confirmed,
 			target,
 			createRequest,
@@ -68,28 +66,29 @@ const setup = (dependencies: SessionDependencies = {}) =>
 layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item editor", (it) => {
 	it.effect("creation uses the injected local date only when Creation date is omitted", () =>
 		Effect.gen(function* () {
-			const { fs, todoPath, backend, target } = yield* setup({
+			const { fs, todoPath, session, target } = yield* setup({
 				identity: {
 					uuid: () => crypto.randomUUID(),
 					now: () => new Date(2020, 4, 24, 12).toISOString(),
 				},
 			});
-			const first = yield* Effect.promise(() =>
-				backend.createTodo({ ...target, description: "Added", projects: [], contexts: [] })
-			);
+			const first = yield* session.createTodo({
+				...target,
+				description: "Added",
+				projects: [],
+				contexts: [],
+			});
 			expect(first.status).toBe("applied");
 			expect(yield* fs.readFileString(todoPath)).toBe("First\r\nLast\r\n2020-05-24 Added");
 			if (first.status !== "applied") throw Error("creation failed");
-			const second = yield* Effect.promise(() =>
-				backend.createTodo({
-					...target,
-					revision: first.confirmed.revision,
-					description: "Undated",
-					projects: [],
-					contexts: [],
-					creationDate: null,
-				})
-			);
+			const second = yield* session.createTodo({
+				...target,
+				revision: first.confirmed.revision,
+				description: "Undated",
+				projects: [],
+				contexts: [],
+				creationDate: null,
+			});
 			expect(second.status).toBe("applied");
 			expect(yield* fs.readFileString(todoPath)).toBe(
 				"First\r\nLast\r\n2020-05-24 Added\r\nUndated"
@@ -129,26 +128,24 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item edi
 							},
 						});
 						fail = true;
-						expect(yield* Effect.promise(() => fixture.save(operation))).toMatchObject({
+						expect(yield* fixture.save(operation)).toMatchObject({
 							status: "rejected",
 							message: expect.stringContaining(`${method} denied`),
 						});
 						expect(yield* fs.readFileString(fixture.todoPath)).toBe("First\r\nLast");
-						expect(yield* Effect.promise(() => fixture.backend.readSession({}))).toEqual(
-							fixture.confirmed
-						);
+						expect(yield* fixture.session.readSession({})).toEqual(fixture.confirmed);
 						expect((yield* fs.readDirectory(fixture.directory)).sort()).toEqual([
 							"todo.txt",
 							"workspaces.json",
 						]);
 						fail = false;
-						const outcome = yield* Effect.promise(() => fixture.save(operation));
+						const outcome = yield* fixture.save(operation);
 						expect(outcome.status).toBe("applied");
 						if (outcome.status !== "applied") throw Error(outcome.message);
 						expect(yield* fs.readFileString(fixture.todoPath)).toBe(
 							operation === "createTodo" ? "First\r\nLast\r\nAdded" : "Added\r\nLast"
 						);
-						expect((yield* Effect.promise(() => fixture.backend.readSession({}))).revision).toBe(
+						expect((yield* fixture.session.readSession({})).revision).toBe(
 							outcome.confirmed.revision
 						);
 					})
@@ -180,18 +177,21 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item edi
 									: fs.rename(from, to),
 						},
 					});
-					const saving = fixture.runtime.runFork(
+					const saving = yield* Effect.forkScoped(
 						WorkspaceSession.use((session) =>
 							operation === "createTodo"
 								? session.createTodo(fixture.createRequest)
 								: session.editTodo(fixture.editRequest)
-						)
+						).pipe(Effect.provideContext(fixture.services)),
+						{ startImmediately: true }
 					);
 					yield* Effect.promise(() => replacing);
-					const interrupted = Effect.runPromise(Fiber.interrupt(saving));
+					const interrupted = yield* Effect.forkChild(Fiber.interrupt(saving), {
+						startImmediately: true,
+					});
 					release();
-					yield* Effect.promise(() => interrupted);
-					const confirmed = yield* Effect.promise(() => fixture.backend.readSession({}));
+					yield* Fiber.join(interrupted);
+					const confirmed = yield* fixture.session.readSession({});
 					expect(confirmed.revision).toBeGreaterThan(fixture.confirmed.revision);
 					expect(confirmed.session).toMatchObject({
 						status: "ready",

@@ -5,8 +5,8 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, mkdir, rm, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSessionBackend } from "./session-runtime";
-import { createTodoFileObservation, type TodoFileObservationAdapter } from "./observation";
+import { createSessionBackend } from "../session-runtime";
+import { createTodoFileObservation, type TodoFileObservationAdapter } from "../observation";
 import type { TodoFileChange } from "@tuxedo/contracts";
 import { rename } from "node:fs/promises";
 

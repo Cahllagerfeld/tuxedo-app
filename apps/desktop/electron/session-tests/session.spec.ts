@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, realpath, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend } from "./session-runtime";
+import { createSessionBackend } from "../session-runtime";
 const directories: string[] = [];
 afterEach(async () => {
 	await Promise.all(
@@ -212,7 +212,10 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 	const backend = createSessionBackend(path);
 	const created = await backend.createWorkspace({ name: "Parser", color: "cyan", todoPath });
 	if (created.status !== "applied") throw Error(created.message);
-	await writeFile(todoPath, await readFile("electron/backend/fixtures/mixed_real_world.todo.txt"));
+	await writeFile(
+		todoPath,
+		await readFile(new URL("./fixtures/mixed_real_world.todo.txt", import.meta.url))
+	);
 	const restored = await backend.restoreSession({});
 	expect(restored.session.status).toBe("ready");
 	if (restored.session.status !== "ready") throw Error("No file");
@@ -245,7 +248,10 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 		contexts: ["only"],
 		metadata: { due: "2026-05-25" },
 	});
-	await writeFile(todoPath, await readFile("electron/backend/fixtures/spec_examples.todo.txt"));
+	await writeFile(
+		todoPath,
+		await readFile(new URL("./fixtures/spec_examples.todo.txt", import.meta.url))
+	);
 	const examples = await backend.restoreSession({});
 	if (examples.session.status !== "ready") throw Error("No examples");
 	expect(examples.session.todo_file.items).toHaveLength(18);

@@ -18,8 +18,8 @@
 		"test:electron:dev": "pnpm --filter @tuxedo/desktop test:electron:dev",
 		"package:macos": "pnpm --filter @tuxedo/desktop package:macos",
 		"test:package": "pnpm --filter @tuxedo/desktop test:package",
-		"check": "pnpm --filter @tuxedo/contracts check && pnpm --filter @tuxedo/desktop check",
-		"test:backend": "pnpm --filter @tuxedo/contracts test && pnpm --filter @tuxedo/desktop test:backend",
+		"check": "pnpm --filter @tuxedo/contracts check && pnpm --filter @tuxedo/backend check && pnpm --filter @tuxedo/desktop check",
+		"test:backend": "pnpm --filter @tuxedo/contracts test && pnpm --filter @tuxedo/backend test && pnpm --filter @tuxedo/desktop test:backend",
 		"lint": "prettier --check .",
 		"format": "prettier --write ."
 	},

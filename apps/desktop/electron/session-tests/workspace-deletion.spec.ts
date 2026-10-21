@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend } from "./session-runtime";
+import { createSessionBackend } from "../session-runtime";
 const directories: string[] = [];
 afterEach(async () => {
 	await Promise.all(

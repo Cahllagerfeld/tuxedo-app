@@ -2,17 +2,18 @@ import { Cause, Effect, Layer, ManagedRuntime } from "effect";
 import { createApplicationRuntime } from "./application-runtime";
 import { FileSystem } from "effect/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
-import { Identity, identityLayer } from "./identity";
-import { workspaceCatalogueLayer } from "./workspace-catalogue";
 import {
+	Identity,
+	identityLayer,
 	WorkspaceSession,
-	sessionLayer,
-	type SessionBackend,
+	workspaceSessionLayer,
 	type SessionOperation,
 	type SessionEffects,
-} from "./session";
-import type { TodoFileObservationAdapter } from "./observation";
-import type { DesktopRequest, TodoFileChange } from "@tuxedo/contracts";
+	type TodoFileObservationAdapter,
+} from "@tuxedo/backend";
+import type { DesktopAPI, DesktopRequest, TodoFileChange } from "@tuxedo/contracts";
+
+type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
 export type SessionDependencies = {
 	filesystem?: FileSystem;
 	identity?: Identity["Service"];
@@ -31,12 +32,12 @@ export function createSessionRuntime(
 			: NodeFileSystem.layer,
 		dependencies.identity ? Layer.succeed(Identity, dependencies.identity) : identityLayer
 	);
-	const layer = sessionLayer(
+	const layer = workspaceSessionLayer(
 		cataloguePath,
 		observation,
 		onTodoFileChanged,
 		() => shuttingDown
-	).pipe(Layer.provide(workspaceCatalogueLayer(cataloguePath)), Layer.provide(capabilities));
+	).pipe(Layer.provide(capabilities));
 	const runtime: ManagedRuntime.ManagedRuntime<WorkspaceSession, never> =
 		ManagedRuntime.make(layer);
 	return Object.assign(runtime, {

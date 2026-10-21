@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionBackend } from "./session-runtime";
+import { createSessionBackend } from "../session-runtime";
 import type { SavedViewFilterValues } from "@tuxedo/contracts";
 const directories: string[] = [];
 const backends: ReturnType<typeof createSessionBackend>[] = [];

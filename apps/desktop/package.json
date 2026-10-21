@@ -66,6 +66,7 @@
 	"main": "dist-electron/main.js",
 	"private": true,
 	"dependencies": {
-		"@tuxedo/contracts": "workspace:*"
+		"@tuxedo/contracts": "workspace:*",
+		"@tuxedo/backend": "workspace:*"
 	}
 }

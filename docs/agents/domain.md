@@ -20,7 +20,8 @@ Single-context repo (this repo):
 ├── docs/adr/
 │   ├── 0003-replace-tauri-and-rust-with-electron.md
 │   └── 0004-own-domain-operations-in-the-electron-main-process.md
-├── apps/desktop/              ← renderer, Electron, backend implementation
+├── apps/desktop/              ← renderer, Electron host, runtime and Promise bridge
+├── packages/backend/          ← Effect-native domain services and scoped Layers
 └── packages/contracts/        ← browser-safe schemas and desktop DTOs
 ```
 

@@ -6,7 +6,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createSessionBackend } from "./session-runtime";
+import { createSessionBackend } from "../session-runtime";
 let nodeFileSystem: FileSystem.FileSystem;
 beforeAll(async () => {
 	nodeFileSystem = await Effect.runPromise(

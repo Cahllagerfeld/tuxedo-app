@@ -178,6 +178,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@tuxedo/backend':
+        specifier: workspace:*
+        version: link:../../packages/backend
       '@tuxedo/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -296,6 +299,34 @@ importers:
       vitest-browser-svelte:
         specifier: 3.1.0
         version: 3.1.0(svelte@5.57.2)(vitest@5.0.4)
+
+  packages/backend:
+    dependencies:
+      '@internationalized/date':
+        specifier: 3.12.4
+        version: 3.12.4
+      '@tuxedo/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      effect:
+        specifier: 4.0.4
+        version: 4.0.4
+    devDependencies:
+      '@effect/platform-node':
+        specifier: 4.0.4
+        version: 4.0.4(effect@4.0.4)(redis@6.3.0)
+      '@effect/vitest':
+        specifier: 4.0.4
+        version: 4.0.4(effect@4.0.4)(vitest@5.0.4)
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.4
+        version: 5.0.4(@types/node@24.19.2)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0))
 
   packages/contracts:
     dependencies:

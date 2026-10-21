@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 const repository = resolve(desktop, "../..");
 const contracts = join(repository, "packages/contracts");
+const backend = join(repository, "packages/backend");
 const visited = new Set();
 const options = {
 	moduleResolution: ts.ModuleResolutionKind.Bundler,
@@ -55,6 +56,10 @@ async function check(path, boundary) {
 			value === "electron" ||
 			value.startsWith("electron/") ||
 			value.startsWith("@tauri-apps/") ||
+			(boundary === "renderer" &&
+				(value === "@tuxedo/backend" ||
+					value.startsWith("@tuxedo/backend/") ||
+					value.startsWith("@effect/platform-node"))) ||
 			(boundary !== "backend" && (builtinModules.includes(value) || value.startsWith("node:")))
 		)
 			forbidden();
@@ -76,8 +81,13 @@ async function check(path, boundary) {
 		const target = await realpath(resolved);
 		if (!inside(target, repository) || target.includes(`${sep}node_modules${sep}`)) continue;
 		if (boundary === "contracts" && !inside(target, contracts)) forbidden();
-		if (boundary === "renderer" && inside(target, join(desktop, "electron"))) forbidden();
-		if (boundary === "backend" && inside(target, join(desktop, "src"))) forbidden();
+		if (
+			boundary === "renderer" &&
+			(inside(target, join(desktop, "electron")) || inside(target, backend))
+		)
+			forbidden();
+		if (boundary === "backend" && !inside(target, backend) && !inside(target, contracts))
+			forbidden();
 		await check(target, boundary);
 	}
 }
@@ -90,5 +100,5 @@ async function checkTree(directory, boundary) {
 	}
 }
 await checkTree(join(desktop, "src"), "renderer");
-await checkTree(join(desktop, "electron/backend"), "backend");
+await checkTree(join(backend, "src"), "backend");
 await checkTree(join(contracts, "src"), "contracts");

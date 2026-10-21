@@ -1,12 +1,11 @@
 import { expect, layer } from "@effect/vitest";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { Deferred, Effect, Fiber } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as PlatformError from "effect/PlatformError";
-import { WorkspaceSession } from "./session";
-import { createSessionRuntime, desktopSessionBackend } from "./session-runtime";
+import { WorkspaceSession, workspaceSessionLayer, Identity } from "@tuxedo/backend";
 import type { DesktopRequest } from "@tuxedo/contracts";
 
 const cases = [
@@ -46,26 +45,23 @@ const setup = (initial: string, filesystem: FileSystem) =>
 		const cataloguePath = join(directory, "workspaces.json");
 		yield* fs.writeFileString(todoPath, initial.replace("2026-13-01 Invalid", "Valid"));
 		yield* fs.chmod(todoPath, 0o664);
-		const runtime = yield* Effect.acquireRelease(
-			Effect.sync(() =>
-				createSessionRuntime(cataloguePath, undefined, undefined, {
-					filesystem,
-					identity: {
+		const services = yield* Layer.build(
+			workspaceSessionLayer(cataloguePath).pipe(
+				Layer.provide(Layer.succeed(FileSystem, filesystem)),
+				Layer.provide(
+					Layer.succeed(Identity, {
 						uuid: randomUUID,
 						now: () => new Date(2030, 0, 2, 0, 30).toISOString(),
-					},
-				})
-			),
-			(runtime) => Effect.promise(() => runtime.dispose())
+					})
+				)
+			)
 		);
-		const backend = desktopSessionBackend(runtime);
-		const created = yield* Effect.promise(() =>
-			backend.createWorkspace({ name: "Work", color: "blue", todoPath })
-		);
+		const session = Context.get(services, WorkspaceSession);
+		const created = yield* session.createWorkspace({ name: "Work", color: "blue", todoPath });
 		if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 			throw Error(`setup failed: ${JSON.stringify(created)}`);
 		yield* fs.writeFileString(todoPath, initial);
-		const restored = yield* Effect.promise(() => backend.restoreSession({}));
+		const restored = yield* session.restoreSession({});
 		if (restored.session.status !== "ready") throw Error("restoration failed");
 		const confirmed = { ...restored, session: restored.session };
 		const target = {
@@ -75,7 +71,7 @@ const setup = (initial: string, filesystem: FileSystem) =>
 			lineNumber: 1,
 			expectedRaw: confirmed.session.todo_file.items[0].raw,
 		};
-		return { directory, todoPath, cataloguePath, runtime, backend, confirmed, target };
+		return { directory, todoPath, cataloguePath, services, session, confirmed, target };
 	});
 
 function mutation(
@@ -118,7 +114,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			Effect.gen(function* () {
 				const fs = yield* FileSystem;
 				let fail = false;
-				const { directory, todoPath, cataloguePath, backend, target } = yield* setup(
+				const { directory, todoPath, cataloguePath, session, target } = yield* setup(
 					"First\r\nLast",
 					{
 						...fs,
@@ -136,27 +132,27 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					}
 				);
 				const catalogue = yield* fs.readFile(cataloguePath);
-				const deleted = yield* Effect.promise(() => backend.deleteTodo(target));
+				const deleted = yield* session.deleteTodo(target);
 				if (deleted.status !== "applied") throw Error("Deletion failed");
 				const undoTarget = {
 					scope: deleted.confirmed.scope,
 					revision: deleted.confirmed.revision,
 					workspaceId: target.workspaceId,
 				};
-				const before = yield* Effect.promise(() => backend.readSession({}));
+				const before = yield* session.readSession({});
 				fail = true;
-				expect(yield* Effect.promise(() => backend.undoTodo(undoTarget))).toMatchObject({
+				expect(yield* session.undoTodo(undoTarget)).toMatchObject({
 					status: "rejected",
 					message: expect.stringContaining("replacement denied"),
 				});
-				expect(yield* Effect.promise(() => backend.readSession({}))).toEqual(before);
+				expect(yield* session.readSession({})).toEqual(before);
 				expect(yield* fs.readFileString(todoPath)).toBe("Last");
 				expect((yield* fs.readDirectory(directory)).sort()).toEqual([
 					"todo.txt",
 					"workspaces.json",
 				]);
 				fail = false;
-				expect(yield* Effect.promise(() => backend.undoTodo(undoTarget))).toMatchObject({
+				expect(yield* session.undoTodo(undoTarget)).toMatchObject({
 					status: "applied",
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe("First\r\nLast");
@@ -170,7 +166,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			const entered = yield* Deferred.make<void>();
 			const release = yield* Deferred.make<void>();
 			let block = false;
-			const { todoPath, runtime, backend, target } = yield* setup("First\r\nLast", {
+			const { todoPath, services, session, target } = yield* setup("First\r\nLast", {
 				...fs,
 				rename: (from, to) =>
 					block && to.endsWith("todo.txt")
@@ -180,7 +176,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 							)
 						: fs.rename(from, to),
 			});
-			const deleted = yield* Effect.promise(() => backend.deleteTodo(target));
+			const deleted = yield* session.deleteTodo(target);
 			if (deleted.status !== "applied") throw Error("Deletion failed");
 			block = true;
 			const effect = WorkspaceSession.use((session) =>
@@ -191,17 +187,21 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				})
 			);
 			yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
-			const writing = runtime.runFork(effect);
+			const writing = yield* Effect.forkScoped(effect.pipe(Effect.provideContext(services)), {
+				startImmediately: true,
+			});
 			yield* Deferred.await(entered);
-			const queued = runtime.runPromise(effect);
+			const queued = yield* Effect.forkScoped(effect.pipe(Effect.provideContext(services)), {
+				startImmediately: true,
+			});
 			const interrupting = yield* Effect.forkChild(Fiber.interrupt(writing), {
 				startImmediately: true,
 			});
 			yield* Deferred.succeed(release, undefined);
 			yield* Fiber.join(interrupting);
-			expect(yield* Effect.promise(() => queued)).toMatchObject({ status: "rejected" });
+			expect(yield* Fiber.join(queued)).toMatchObject({ status: "rejected" });
 			expect(yield* fs.readFileString(todoPath)).toBe("First\r\nLast");
-			const confirmed = yield* Effect.promise(() => backend.readSession({}));
+			const confirmed = yield* session.readSession({});
 			expect(confirmed.undoLabel).toBeUndefined();
 			expect(confirmed.revision).toBeGreaterThan(deleted.confirmed.revision);
 		})
@@ -211,11 +211,11 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 		(row) =>
 			Effect.gen(function* () {
 				const fs = yield* FileSystem;
-				const { directory, todoPath, cataloguePath, runtime, backend, target, confirmed } =
+				const { directory, todoPath, cataloguePath, services, session, target, confirmed } =
 					yield* setup(row.initial, fs);
 				const catalogue = yield* fs.readFile(cataloguePath);
-				const outcome = yield* Effect.promise(() =>
-					runtime.runPromise(mutation(row.operation, target, row.initial.split("\n").length))
+				const outcome = yield* mutation(row.operation, target, row.initial.split("\n").length).pipe(
+					Effect.provideContext(services)
 				);
 				expect(outcome.status).toBe("applied");
 				if (outcome.status !== "applied") throw Error("mutation failed");
@@ -226,7 +226,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					"todo.txt",
 					"workspaces.json",
 				]);
-				expect(yield* Effect.promise(() => backend.readSession({}))).toEqual({
+				expect(yield* session.readSession({})).toEqual({
 					...confirmed,
 					revision: outcome.confirmed.revision,
 					undoLabel: outcome.confirmed.undoLabel,
@@ -246,7 +246,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			Effect.gen(function* () {
 				const fs = yield* FileSystem;
 				let fail = false;
-				const { directory, todoPath, runtime, backend, target, confirmed } = yield* setup(
+				const { directory, todoPath, services, session, target, confirmed } = yield* setup(
 					row.initial,
 					{
 						...fs,
@@ -265,18 +265,18 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				);
 				const effect = mutation(row.operation, target, row.initial.split("\n").length);
 				fail = true;
-				expect(yield* Effect.promise(() => runtime.runPromise(effect))).toMatchObject({
+				expect(yield* effect.pipe(Effect.provideContext(services))).toMatchObject({
 					status: "rejected",
 					message: expect.stringContaining("replacement denied"),
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe(row.initial);
-				expect(yield* Effect.promise(() => backend.readSession({}))).toEqual(confirmed);
+				expect(yield* session.readSession({})).toEqual(confirmed);
 				expect((yield* fs.readDirectory(directory)).sort()).toEqual([
 					"todo.txt",
 					"workspaces.json",
 				]);
 				fail = false;
-				expect(yield* Effect.promise(() => runtime.runPromise(effect))).toMatchObject({
+				expect(yield* effect.pipe(Effect.provideContext(services))).toMatchObject({
 					status: "applied",
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe(row.expected);
@@ -286,7 +286,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 	it.effect.each(cases)("$operation rejects an externally changed Workspace path", (row) =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
-			const { directory, todoPath, cataloguePath, runtime, backend, target, confirmed } =
+			const { directory, todoPath, cataloguePath, services, session, target, confirmed } =
 				yield* setup(row.initial, fs);
 			const otherPath = join(directory, "other.txt");
 			yield* fs.writeFileString(otherPath, row.initial);
@@ -299,8 +299,8 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			};
 			yield* fs.writeFileString(cataloguePath, JSON.stringify(catalogue));
 			expect(
-				yield* Effect.promise(() =>
-					runtime.runPromise(mutation(row.operation, target, row.initial.split("\n").length))
+				yield* mutation(row.operation, target, row.initial.split("\n").length).pipe(
+					Effect.provideContext(services)
 				)
 			).toMatchObject({
 				status: "rejected",
@@ -308,7 +308,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			});
 			expect(yield* fs.readFileString(todoPath)).toBe(row.initial);
 			expect(yield* fs.readFileString(otherPath)).toBe(row.initial);
-			expect(yield* Effect.promise(() => backend.readSession({}))).toEqual(confirmed);
+			expect(yield* session.readSession({})).toEqual(confirmed);
 		})
 	);
 
@@ -317,14 +317,14 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 		(failure) =>
 			Effect.gen(function* () {
 				const fs = yield* FileSystem;
-				const { todoPath, cataloguePath, backend, target, confirmed } = yield* setup("First\n", fs);
+				const { todoPath, cataloguePath, session, target, confirmed } = yield* setup("First\n", fs);
 				if (failure === "missing") yield* fs.remove(cataloguePath);
 				else yield* fs.writeFileString(cataloguePath, "invalid");
-				expect(yield* Effect.promise(() => backend.deleteTodo(target))).toMatchObject({
+				expect(yield* session.deleteTodo(target)).toMatchObject({
 					status: "rejected",
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
-				expect(yield* Effect.promise(() => backend.readSession({}))).toEqual(confirmed);
+				expect(yield* session.readSession({})).toEqual(confirmed);
 				if (failure === "missing") expect(yield* fs.exists(cataloguePath)).toBe(false);
 				else expect(yield* fs.readFileString(cataloguePath)).toBe("invalid");
 			})
@@ -337,7 +337,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				const fs = yield* FileSystem;
 				const entered = yield* Deferred.make<void>();
 				const release = yield* Deferred.make<void>();
-				const { directory, todoPath, runtime, backend, target, confirmed } = yield* setup(
+				const { directory, todoPath, services, session, target, confirmed } = yield* setup(
 					row.initial,
 					{
 						...fs,
@@ -352,17 +352,21 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				);
 				const effect = mutation(row.operation, target, row.initial.split("\n").length);
 				yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
-				const writing = runtime.runFork(effect);
+				const writing = yield* Effect.forkScoped(effect.pipe(Effect.provideContext(services)), {
+					startImmediately: true,
+				});
 				yield* Deferred.await(entered);
-				const queued = runtime.runPromise(effect);
+				const queued = yield* Effect.forkScoped(effect.pipe(Effect.provideContext(services)), {
+					startImmediately: true,
+				});
 				const interrupting = yield* Effect.forkChild(Fiber.interrupt(writing), {
 					startImmediately: true,
 				});
 				yield* Deferred.succeed(release, undefined);
 				yield* Fiber.join(interrupting);
-				expect(yield* Effect.promise(() => queued)).toMatchObject({ status: "rejected" });
+				expect(yield* Fiber.join(queued)).toMatchObject({ status: "rejected" });
 				expect(yield* fs.readFile(todoPath)).toEqual(Buffer.from(row.expected));
-				const accepted = yield* Effect.promise(() => backend.readSession({}));
+				const accepted = yield* session.readSession({});
 				expect(accepted.revision).toBeGreaterThan(confirmed.revision);
 				expect(accepted.session).toMatchObject({
 					status: "ready",

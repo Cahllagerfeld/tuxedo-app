@@ -5,8 +5,8 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApplicationRuntime } from "./application-runtime";
-import { createSessionBackend } from "./session-runtime";
+import { createApplicationRuntime } from "../application-runtime";
+import { createSessionBackend } from "../session-runtime";
 
 describe("application shutdown", () => {
 	it("stops admission synchronously and drains admitted work before releasing resources", async () => {

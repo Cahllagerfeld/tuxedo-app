@@ -10,14 +10,13 @@ import { WorkspaceCatalogue } from "./workspace-catalogue";
 import type { TodoFileObservationAdapter } from "./observation";
 import type {
 	ConfirmedSession,
-	DesktopAPI,
+	DesktopOperation,
 	DesktopRequest,
 	DesktopResponse,
 	TodoFileChange,
 	UndoLabel,
 } from "@tuxedo/contracts";
-export type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
-export type SessionOperation = keyof SessionBackend;
+export type SessionOperation = Exclude<DesktopOperation, "selectTodoFile" | "writeClipboardText">;
 export type SessionEffects = {
 	[K in SessionOperation]: (request: DesktopRequest<K>) => Effect.Effect<DesktopResponse<K>>;
 };

@@ -14,10 +14,10 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Effect, Exit, Scope } from "effect";
-import { WorkspaceSession } from "./backend/session";
-import { createSessionRuntime, desktopSessionBackend } from "./backend/session-runtime";
+import { WorkspaceSession } from "@tuxedo/backend";
+import { createSessionRuntime, desktopSessionBackend } from "./session-runtime";
 import { registerDesktopOperation } from "./ipc";
-import { createTodoFileObservation } from "./backend/observation";
+import { createTodoFileObservation } from "./observation";
 import {
 	todoFileChangeEvent,
 	type DesktopOperation,
