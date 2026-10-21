@@ -40,6 +40,12 @@ const changed: ConfirmedSession = {
 function adapter(restore: DesktopAPI["restoreSession"]): DesktopAPI {
 	return {
 		restoreSession: restore,
+		readWorkspaceCatalogue: async () => {
+			throw Error("unused");
+		},
+		readWorkspace: async () => {
+			throw Error("unused");
+		},
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),

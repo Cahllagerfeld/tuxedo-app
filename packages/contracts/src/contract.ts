@@ -142,6 +142,7 @@ export const sessionOutcomeSchema = effectValidator(
 );
 export const switchWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
 export const deleteWorkspaceRequestSchema = switchWorkspaceRequestSchema;
+export const readWorkspaceRequestSchema = switchWorkspaceRequestSchema;
 const TodoMutationRequest = Schema.Struct({
 	scope: UUID,
 	revision: Revision,
@@ -305,7 +306,74 @@ export const setWorkspaceShowDeferredRequestSchema = effectValidator(
 		showDeferred: Schema.Boolean,
 	})
 );
+// Selection metadata is a receipt, never a second loaded session.
+const WorkspaceSelection = Schema.Struct({
+	scope: UUID,
+	revision: Revision,
+	workspaceId: Schema.NullOr(UUID),
+	todoPath: Schema.NullOr(TodoPath),
+	undoLabel: Schema.optional(UndoLabel),
+}).check(
+	Schema.makeFilter((value) =>
+		(value.workspaceId === null) !== (value.todoPath === null)
+			? "Selection requires both Workspace and Todo-file identity"
+			: undefined
+	)
+);
+export type WorkspaceSelection = typeof WorkspaceSelection.Type;
+const WorkspaceReadFailure = Schema.Struct({
+	status: Schema.Literal("rejected"),
+	reason: Schema.Literals(["catalogue", "workspace", "todo-file", "unexpected"]),
+	message: Schema.NonEmptyString,
+});
+export const workspaceCatalogueReadSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({
+			status: Schema.Literal("ready"),
+			catalogue: CatalogueSchema,
+			selection: Schema.NullOr(WorkspaceSelection),
+		}),
+		WorkspaceReadFailure,
+	])
+);
+export const workspaceReadSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({
+			status: Schema.Literal("ready"),
+			workspace: WorkspaceSchema,
+			todo_file: TodoFileSchema,
+			provenance: Schema.Union([
+				Schema.Struct({ status: Schema.Literal("speculative") }),
+				Schema.Struct({ status: Schema.Literal("confirmed"), selection: WorkspaceSelection }),
+			]),
+		}).check(
+			Schema.makeFilter((value) => {
+				if (value.workspace.todo_path !== value.todo_file.path)
+					return "Todo file must belong to the requested Workspace";
+				if (
+					value.provenance.status === "confirmed" &&
+					(value.provenance.selection.workspaceId !== value.workspace.id ||
+						value.provenance.selection.todoPath !== value.todo_file.path)
+				)
+					return "Confirmation must identify the requested Workspace and Todo file";
+			})
+		),
+		WorkspaceReadFailure,
+	])
+);
+export type WorkspaceRead = ReturnType<typeof workspaceReadSchema.parse>;
+export type WorkspaceCatalogueRead = ReturnType<typeof workspaceCatalogueReadSchema.parse>;
 export const desktopContract = {
+	readWorkspaceCatalogue: {
+		channel: "tuxedo:read-workspace-catalogue",
+		request: emptyRequestSchema,
+		response: workspaceCatalogueReadSchema,
+	},
+	readWorkspace: {
+		channel: "tuxedo:read-workspace",
+		request: readWorkspaceRequestSchema,
+		response: workspaceReadSchema,
+	},
 	setWorkspaceShowDeferred: {
 		channel: "tuxedo:set-workspace-show-deferred",
 		request: setWorkspaceShowDeferredRequestSchema,
@@ -445,6 +513,8 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		readWorkspaceCatalogue: (request) => call("readWorkspaceCatalogue", request),
+		readWorkspace: (request) => call("readWorkspace", request),
 		setWorkspaceShowDeferred: (request) => call("setWorkspaceShowDeferred", request),
 		setWorkspaceSortOrder: (request) => call("setWorkspaceSortOrder", request),
 		undoTodo: (request) => call("undoTodo", request),

@@ -27,24 +27,26 @@ function todoFileReadMessage(error: PlatformError): string {
 	return "This Todo file couldn’t be opened. Check that it’s a readable plain-text file and try again.";
 }
 
-const readWorkspaceContents = (path: string) =>
+export const readWorkspaceContents = (path: string) =>
 	readContents(path).pipe(
 		Effect.mapError((error) => new OperationFailure({ message: todoFileReadMessage(error) }))
 	);
 
+const unavailableCatalogue = (cataloguePath: string) => ({
+	status: "unavailable" as const,
+	error: `Cannot read Workspace catalogue at ${cataloguePath}. Check its permissions or restore a valid version-1 backup. The file has been preserved.`,
+});
+export const readWorkspaceCatalogue = (cataloguePath: string) =>
+	WorkspaceCatalogue.use((catalogue) => catalogue.read).pipe(
+		Effect.catch((error) =>
+			error._tag === "PlatformError" && error.reason._tag === "NotFound"
+				? Effect.succeed({ version: 1 as const, workspaces: [], active_workspace_id: null })
+				: Effect.fail(new OperationFailure({ message: unavailableCatalogue(cataloguePath).error }))
+		)
+	);
+
 export function createWorkspaceLifecycle(cataloguePath: string) {
-	const unavailable = () => ({
-		status: "unavailable" as const,
-		error: `Cannot read Workspace catalogue at ${cataloguePath}. Check its permissions or restore a valid version-1 backup. The file has been preserved.`,
-	});
-	const readCatalogue = () =>
-		WorkspaceCatalogue.use((catalogue) => catalogue.read).pipe(
-			Effect.catch((error) =>
-				error._tag === "PlatformError" && error.reason._tag === "NotFound"
-					? Effect.succeed({ version: 1 as const, workspaces: [], active_workspace_id: null })
-					: Effect.fail(new OperationFailure({ message: unavailable().error }))
-			)
-		);
+	const readCatalogue = () => readWorkspaceCatalogue(cataloguePath);
 	const projectCatalogue = (
 		catalogue: Catalogue
 	): Effect.Effect<LoadedSession, never, FileSystem> =>
@@ -131,7 +133,9 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		load: () =>
 			readCatalogue().pipe(
 				Effect.flatMap(projectCatalogue),
-				Effect.catchTag("OperationFailure", () => Effect.succeed({ session: unavailable() }))
+				Effect.catchTag("OperationFailure", () =>
+					Effect.succeed({ session: unavailableCatalogue(cataloguePath) })
+				)
 			),
 		createWorkspace: (request: DesktopRequest<"createWorkspace">) =>
 			Effect.gen(function* () {
