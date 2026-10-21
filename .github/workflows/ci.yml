@@ -47,7 +47,7 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright browser
-        run: pnpm exec playwright install chromium
+        run: pnpm --filter @tuxedo/desktop exec playwright install chromium
 
       - name: Test renderer
         run: pnpm test:unit

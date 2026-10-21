@@ -2,6 +2,8 @@
 
 Use Effect 4 for Electron main-process orchestration, retaining the Electron-independent backend in ADR-0004 and the Svelte Workspace session controller in ADR-0005. The desktop API remains narrow, plain-data, and Promise-based. Todo files and the version-1 JSON Workspace catalogue keep their existing formats; this adoption requires no user-data migration. The specification is [issue #91](https://github.com/Cahllagerfeld/tuxedo-app/issues/91).
 
+The complete desktop implementation and its runtime/bridge remain in `apps/desktop/electron`. Browser-safe schemas, DTOs, validation, and form constraints live in the private source package `packages/contracts`, consumed through `@tuxedo/contracts` by all desktop layers. This relocation preserves the runtime, ownership, and shutdown decisions below.
+
 ## Validation and failures
 
 Effect Schema is the canonical definition for desktop requests, responses, observation events, persisted catalogue data, and forms. Desktop and persistence boundaries decode synchronously with strict excess-property checks through `effectValidator`; main and preload validate both transport directions. Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1`, explicit defaults, and shared constraints. Form strings remain distinct from nullable/optional desktop dates, and refinements retain field error paths. Superforms' Effect 3 adapters are not used.

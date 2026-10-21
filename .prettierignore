@@ -7,5 +7,10 @@ bun.lockb
 node_modules
 
 # Miscellaneous
-/static/
+/apps/desktop/static/
 /.repos/
+
+/apps/desktop/build/
+/apps/desktop/dist-electron/
+/apps/desktop/out/
+/apps/desktop/.svelte-kit/

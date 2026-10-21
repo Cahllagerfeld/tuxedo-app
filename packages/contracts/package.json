@@ -1,0 +1,23 @@
+{
+	"name": "@tuxedo/contracts",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/contract.ts",
+		"./todo": "./src/todo.ts",
+		"./todo-creation": "./src/todo-creation.ts",
+		"./effect-validation": "./src/effect-validation.ts"
+	},
+	"scripts": {
+		"check": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"effect": "4.0.4"
+	},
+	"devDependencies": {
+		"typescript": "5.9.3",
+		"vitest": "5.0.4"
+	}
+}

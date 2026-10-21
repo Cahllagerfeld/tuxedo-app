@@ -1,0 +1,411 @@
+import {
+	confirmedSessionSchema,
+	confirmedTodoSchema,
+	type SavedView,
+	type TodoSortOrder,
+	type SavedViewFilterValues,
+	type ConfirmedTodo,
+	type ConfirmedSession,
+	type DesktopAPI,
+	type DesktopRequest,
+	type TodoFileObservation,
+	todoFileChangeEvent,
+} from "@tuxedo/contracts";
+import type {
+	WorkspaceSessionActionResult,
+	PendingWorkspaceSessionOperation,
+	WorkspaceSessionOperation,
+	WorkspaceSessionOperationTarget,
+} from "./workspace-session-types";
+import type { TodoItem } from "$lib/modules/todo/domain/todo";
+
+type CreateTodoRequest = DesktopRequest<"createTodo">;
+export type CreateTodoDraft = Omit<CreateTodoRequest, "scope" | "revision" | "workspaceId">;
+
+export function reconcileConfirmedSession(
+	previous: ConfirmedSession | undefined,
+	incoming: ConfirmedSession
+): ConfirmedSession {
+	const parsed = confirmedSessionSchema.parse(incoming);
+	if (previous && (previous.scope !== parsed.scope || previous.revision > parsed.revision))
+		return previous;
+	return parsed;
+}
+export function reconcileConfirmedTodo(
+	previous: ConfirmedSession | undefined,
+	incoming: ConfirmedTodo
+): ConfirmedSession | undefined {
+	const parsed = confirmedTodoSchema.parse(incoming);
+	if (
+		!previous ||
+		previous.scope !== parsed.scope ||
+		previous.revision > parsed.revision ||
+		previous.session.status !== "ready" ||
+		previous.session.catalogue.active_workspace_id !== parsed.workspaceId ||
+		previous.session.todo_file.path !== parsed.todo_file.path
+	)
+		return previous;
+	return {
+		...previous,
+		revision: parsed.revision,
+		undoLabel: parsed.undoLabel,
+		session: { ...previous.session, todo_file: parsed.todo_file },
+	};
+}
+export class ElectronWorkspaceSessionState {
+	savedViews = $state.raw<readonly SavedView[]>([]);
+	savedViewsError = $state("");
+	private confirmed = $state.raw<ConfirmedSession>();
+	private readError = $state<string | null>(null);
+	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
+	private initialization: Promise<WorkspaceSessionActionResult> | undefined;
+
+	constructor(private readonly desktop: DesktopAPI) {}
+
+	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
+		let listening = true;
+		const unsubscribe = observation.onTodoFileChanged((event) => {
+			const parsed = todoFileChangeEvent.payload.safeParse(event);
+			const previous = this.confirmed;
+			if (
+				!listening ||
+				!parsed.success ||
+				this.isOperating ||
+				!previous ||
+				previous.session.status !== "ready" ||
+				previous.scope !== parsed.data.scope ||
+				previous.revision !== parsed.data.revision ||
+				previous.session.catalogue.active_workspace_id !== parsed.data.workspaceId ||
+				previous.session.todo_file.path !== parsed.data.todoPath
+			)
+				return;
+			const before = JSON.stringify({
+				items: previous.session.todo_file.items,
+				skipped: previous.session.todo_file.skipped,
+			});
+			void this.restore().then((outcome) => {
+				const file = this.todoFile;
+				if (
+					listening &&
+					outcome.status === "applied" &&
+					file &&
+					before !== JSON.stringify({ items: file.items, skipped: file.skipped })
+				)
+					onSummaryChanged();
+			});
+		});
+		return () => {
+			listening = false;
+			unsubscribe();
+		};
+	};
+
+	initialize = () =>
+		(this.initialization ??= this.restore().then((outcome) => {
+			if (outcome.status !== "applied" && !this.confirmed) this.readError = outcome.message;
+			return outcome;
+		}));
+
+	private acceptSession(incoming: ConfirmedSession) {
+		this.confirmed = reconcileConfirmedSession(this.confirmed, incoming);
+		this.readError = null;
+	}
+
+	private applySessionOutcome(outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) {
+		if (outcome.status === "applied") this.acceptSession(outcome.confirmed);
+		return outcome;
+	}
+
+	private applyTodoOutcome(outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) {
+		if (outcome.status !== "rejected")
+			this.confirmed = reconcileConfirmedTodo(this.confirmed, outcome.confirmed);
+		return outcome;
+	}
+
+	private todoTarget(): Pick<CreateTodoRequest, "scope" | "revision" | "workspaceId"> {
+		const confirmed = this.confirmed;
+		if (
+			!confirmed ||
+			confirmed.session.status !== "ready" ||
+			!confirmed.session.catalogue.active_workspace_id
+		)
+			throw Error("No Active workspace Todo file is loaded.");
+		return {
+			scope: confirmed.scope,
+			revision: confirmed.revision,
+			workspaceId: confirmed.session.catalogue.active_workspace_id,
+		};
+	}
+
+	get session() {
+		return (
+			this.confirmed?.session ??
+			(this.readError !== null
+				? { status: "unavailable" as const, error: this.readError }
+				: { status: "loading" as const })
+		);
+	}
+	get isLoading() {
+		return this.session.status === "loading";
+	}
+	get undoLabel() {
+		return this.session.status === "ready" ? this.confirmed?.undoLabel : undefined;
+	}
+	undoTodo = () =>
+		this.runAction(
+			"undo_todo_change",
+			async () => this.applyTodoOutcome(await this.desktop.undoTodo(this.todoTarget())),
+			this.todoOperationTarget()
+		);
+	setSortOrder = (sortOrder: TodoSortOrder) =>
+		this.runAction(
+			"set_workspace_sort_order",
+			async () =>
+				this.applySessionOutcome(
+					await this.desktop.setWorkspaceSortOrder({ ...this.todoTarget(), sortOrder })
+				),
+			this.todoOperationTarget()
+		);
+	setShowDeferred = (showDeferred: boolean) =>
+		this.runAction(
+			"set_workspace_show_deferred",
+			async () =>
+				this.applySessionOutcome(
+					await this.desktop.setWorkspaceShowDeferred({ ...this.todoTarget(), showDeferred })
+				),
+			this.todoOperationTarget()
+		);
+	get pendingOperation(): WorkspaceSessionOperation | null {
+		return this.pending?.operation ?? null;
+	}
+	get pendingTarget(): WorkspaceSessionOperationTarget | null {
+		return this.pending?.target ?? null;
+	}
+	get isOperating() {
+		return this.pending !== null;
+	}
+	get catalogue() {
+		return this.session.status === "empty" || this.session.status === "ready"
+			? this.session.catalogue
+			: null;
+	}
+	get activeWorkspace() {
+		return (
+			this.catalogue?.workspaces.find((w) => w.id === this.catalogue?.active_workspace_id) ?? null
+		);
+	}
+	get todoFile() {
+		return this.session.status === "ready" ? this.session.todo_file : null;
+	}
+	get error() {
+		return this.session.status === "unavailable" ? this.session.error : "";
+	}
+	get warning() {
+		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
+	}
+	private async runAction(
+		operation: WorkspaceSessionOperation,
+		action: () => Promise<WorkspaceSessionActionResult>,
+		target: WorkspaceSessionOperationTarget | null = null
+	): Promise<WorkspaceSessionActionResult> {
+		if (this.isOperating)
+			return { status: "rejected", message: "A Workspace session operation is already running." };
+		// Admission and pending UI share one synchronous state transition.
+		this.pending = { operation, target };
+		try {
+			const outcome = await action();
+			return outcome.status === "applied"
+				? { status: "applied", ...(outcome.notice ? { notice: outcome.notice } : {}) }
+				: { status: outcome.status, message: outcome.message };
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: error instanceof Error ? error.message : String(error),
+			};
+		} finally {
+			this.pending = null;
+		}
+	}
+	restore = () =>
+		this.runAction("restore", async () => {
+			this.acceptSession(await this.desktop.restoreSession({}));
+			try {
+				const views = await this.desktop.readSavedViews({});
+				if (views.status === "applied") {
+					this.savedViews = views.views;
+					this.savedViewsError = "";
+				} else this.savedViewsError = views.message;
+			} catch (error) {
+				this.savedViewsError = error instanceof Error ? error.message : String(error);
+			}
+			return { status: "applied" };
+		});
+	saveView = (name: string, filters: SavedViewFilterValues) =>
+		this.runAction(
+			"save_view",
+			async () => {
+				const workspaceId = this.activeWorkspace?.id;
+				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
+				const outcome = await this.desktop.saveView({ workspaceId, name, filters });
+				if (outcome.status === "applied") {
+					this.savedViews = outcome.views;
+					this.savedViewsError = "";
+				}
+				return outcome;
+			},
+			this.todoOperationTarget()
+		);
+	deleteView = (viewId: string) =>
+		this.runAction(
+			"delete_view",
+			async () => {
+				const workspaceId = this.activeWorkspace?.id;
+				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
+				const outcome = await this.desktop.deleteView({ workspaceId, viewId });
+				if (outcome.status === "applied") {
+					this.savedViews = outcome.views;
+					this.savedViewsError = "";
+				}
+				return outcome;
+			},
+			this.todoOperationTarget()
+		);
+
+	create = (input: DesktopRequest<"createWorkspace">) =>
+		this.runAction(
+			"create_workspace",
+			async () => this.applySessionOutcome(await this.desktop.createWorkspace(input)),
+			{ todoPath: input.todoPath }
+		);
+	open = (workspaceId: string) =>
+		this.runAction(
+			"open_workspace",
+			async () => this.applySessionOutcome(await this.desktop.switchWorkspace({ workspaceId })),
+			{ workspaceId }
+		);
+	deleteWorkspace = (workspaceId: string) =>
+		this.runAction(
+			"delete_workspace",
+			async () => this.applySessionOutcome(await this.desktop.deleteWorkspace({ workspaceId })),
+			{ workspaceId }
+		);
+	setCompletion = (todo: TodoItem) =>
+		this.runAction(
+			"set_todo_item_completion",
+			async () => {
+				const input = this.todoMutationTarget(todo);
+				return this.applyTodoOutcome(
+					await this.desktop.setTodoCompletion({ ...input, completed: !todo.completed })
+				);
+			},
+			this.todoOperationTarget(todo)
+		);
+	bulkSetCompletion = (items: readonly TodoItem[], completed: boolean) =>
+		this.runAction(
+			"bulk_set_todo_item_completion",
+			async () => {
+				const target = this.todoTarget();
+				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+				if (items.some((item) => current.get(item.line_number) !== item.raw))
+					return {
+						status: "rejected",
+						message: "The Todo file changed. Try again with its current Todo items.",
+					};
+				return this.applyTodoOutcome(
+					await this.desktop.bulkSetTodoCompletion({
+						...target,
+						completed,
+						targets: items.map((item) => ({
+							lineNumber: item.line_number,
+							expectedRaw: item.raw,
+						})),
+					})
+				);
+			},
+			this.todoOperationTarget()
+		);
+	bulkDeleteTodos = (items: readonly TodoItem[]) =>
+		this.runAction(
+			"bulk_delete_todo_items",
+			async () => {
+				const target = this.todoTarget();
+				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+				if (items.some((item) => current.get(item.line_number) !== item.raw))
+					return {
+						status: "rejected",
+						message: "The Todo file changed. Try again with its current Todo items.",
+					};
+				return this.applyTodoOutcome(
+					await this.desktop.bulkDeleteTodos({
+						...target,
+						targets: items.map((item) => ({
+							lineNumber: item.line_number,
+							expectedRaw: item.raw,
+						})),
+					})
+				);
+			},
+			this.todoOperationTarget()
+		);
+	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {
+		return { ...this.todoTarget(), lineNumber: todo.line_number, expectedRaw: todo.raw };
+	}
+	private todoOperationTarget(todo?: TodoItem): WorkspaceSessionOperationTarget | null {
+		const workspaceId = this.catalogue?.active_workspace_id;
+		return workspaceId ? { workspaceId, ...(todo ? { lineNumber: todo.line_number } : {}) } : null;
+	}
+	editTodo = (todo: TodoItem, draft: CreateTodoDraft) =>
+		this.runAction(
+			"edit_todo_item",
+			async () => {
+				const target = this.todoMutationTarget(todo);
+				return this.applyTodoOutcome(
+					await this.desktop.editTodo({
+						...draft,
+						...target,
+						creationDate: draft.creationDate ?? null,
+						completed: draft.completed ?? todo.completed,
+					})
+				);
+			},
+			this.todoOperationTarget(todo)
+		);
+	deleteTodo = (todo: TodoItem) =>
+		this.runAction(
+			"delete_todo_item",
+			async () => {
+				const input = this.todoMutationTarget(todo);
+				return this.applyTodoOutcome(await this.desktop.deleteTodo(input));
+			},
+			this.todoOperationTarget(todo)
+		);
+	reorderTodo = (items: readonly TodoItem[]) =>
+		this.runAction(
+			"reorder_todo_items",
+			async () => {
+				const target = this.todoTarget();
+				const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
+				if (items.some((item) => current.get(item.line_number) !== item.raw))
+					return {
+						status: "rejected",
+						message: "The Todo file changed. Try again with its current Todo items.",
+					};
+				return this.applyTodoOutcome(
+					await this.desktop.reorderTodo({
+						...target,
+						lineNumbers: items.map((item) => item.line_number),
+					})
+				);
+			},
+			this.todoOperationTarget()
+		);
+	createTodo = (draft: CreateTodoDraft) =>
+		this.runAction(
+			"create_todo_item",
+			async () => {
+				const target = this.todoTarget();
+				return this.applyTodoOutcome(await this.desktop.createTodo({ ...target, ...draft }));
+			},
+			this.todoOperationTarget()
+		);
+}

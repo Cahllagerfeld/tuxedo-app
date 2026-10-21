@@ -20,7 +20,8 @@ Single-context repo (this repo):
 ├── docs/adr/
 │   ├── 0003-replace-tauri-and-rust-with-electron.md
 │   └── 0004-own-domain-operations-in-the-electron-main-process.md
-└── src/
+├── apps/desktop/              ← renderer, Electron, backend implementation
+└── packages/contracts/        ← browser-safe schemas and desktop DTOs
 ```
 
 Multi-context repo (presence of `GLOSSARY-MAP.md` at the root):

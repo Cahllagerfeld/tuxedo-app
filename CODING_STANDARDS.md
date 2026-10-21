@@ -2,9 +2,11 @@
 
 ## Layering
 
-- `src/lib`: `app` (wiring) → `modules/<name>` (domain, state, UI, tests together) → `shared` (feature-free).
+- `apps/desktop/src/lib`: `app` (wiring) → `modules/<name>` (domain, state, UI, tests together) → `shared` (feature-free).
 - Modules import only themselves and `shared`; cross-module imports mark real domain coupling.
 - Routes stay thin: compose app, module UI, shared UI.
+
+- Private `@tuxedo/desktop` owns renderer, Electron integration, backend implementation, and app tooling. `@tuxedo/contracts` exports browser-safe TypeScript schemas, DTOs, validation, desktop client types, and form constraints; it cannot depend on Node, Electron, Svelte, or desktop code. Consume its explicit package exports, never desktop-relative contract copies. Workspace imports must remain bundled in the shipped app.
 
 ## Svelte
 
@@ -18,14 +20,14 @@
 
 ## Desktop contract and ownership
 
-- Electron-independent domain operations in `electron/backend` own filesystem access, persistence validation, todo.txt parsing, operation serialization, and atomic writes. Electron main supplies platform integration and IPC transport.
-- The renderer uses only the narrow `window.desktop` preload API. Shared channel/request/response types and runtime schemas in `src/lib/shared/desktop/contract.ts` validate both transport directions; change main, preload, renderer, and contract tests together.
+- Electron-independent domain operations in `apps/desktop/electron/backend` own filesystem access, persistence validation, todo.txt parsing, operation serialization, and atomic writes. Electron main supplies platform integration and IPC transport.
+- The renderer uses only the narrow `window.desktop` preload API. Shared channel/request/response types and runtime schemas in `packages/contracts/src/contract.ts` (imported through `@tuxedo/contracts`) validate both transport directions; change main, preload, renderer, and contract tests together.
 - One Svelte session controller holds confirmed backend data and the current operation and target, and reports errors. Startup read errors remain session state; action outcomes report operation errors for contextual UI notifications. Admission is synchronous: Workspace session operations do not overlap, and confirmed data remains visible until a result is accepted. Lifecycle results replace one coherent session; scoped Todo-item results require the matching Workspace, backend scope, and revision. Counts and facets derive from the confirmed Todo file; dialogs and form inputs remain ephemeral Svelte state.
 - Test backend public operations with real temporary files, controller behavior through typed desktop adapters, reactive UI integration with Svelte harnesses, and preload/IPC through real Electron. Renderer imports cannot expose Node/Electron capabilities; backend domain modules remain Electron-independent.
 
 ## Shared Schema validation
 
-- Effect 4 Schema is canonical for desktop requests, responses, observation events, persisted catalogues, and forms. Reuse shared constraints in `src/lib/shared/desktop`; do not add parallel validator definitions.
+- Effect 4 Schema is canonical for desktop requests, responses, observation events, persisted catalogues, and forms. Reuse shared constraints from `@tuxedo/contracts`; do not add parallel validator definitions.
 - Forms use Superforms `standard`/`standardClient` with `Schema.toStandardSchemaV1` and explicit defaults. Keep form strings distinct from nullable/optional desktop dates and preserve field error paths.
 - Decode Effect desktop payloads synchronously with strict excess-property checks, retaining plain DTOs and Promise-based operations. Use `effectValidator` at desktop and persisted-data boundaries. Empty requests use `Schema.Record(Schema.String, Schema.Never)` because an empty `Struct` accepts excess properties.
 
