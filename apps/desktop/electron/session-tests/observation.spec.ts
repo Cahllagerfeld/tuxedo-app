@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { Effect } from "effect";
 import { FileSystem } from "effect/FileSystem";
@@ -73,7 +74,7 @@ test("retargeting cancels debounce work and rejects released callbacks, includin
 	expect(changes).toEqual([]);
 	subscriptions[2].signal();
 	await expect.poll(() => changes.length).toBe(1);
-	const restored = await backend.restoreSession({});
+	const restored = await readConfirmation(backend);
 	expect(restored.session).toMatchObject({
 		status: "ready",
 		todo_file: { items: [{ description: "Latest first" }] },
@@ -130,14 +131,14 @@ test.each(["failure", "defect"])(
 		});
 		expect(outcome.status).toBe("applied");
 		expect(subscriptions).toBe(0);
-		expect((await backend.restoreSession({})).session).toMatchObject({
+		expect((await readConfirmation(backend)).session).toMatchObject({
 			status: "ready",
 			todo_file: { items: [{ description: "First" }, { description: "Second" }] },
 		});
 	}
 );
 
-test("debounced signals are suppressed while restoration is busy and release in unavailable", async () => {
+test("debounced signals are suppressed while a resource read holds admission and release in unavailable", async () => {
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
 	directories.push(directory);
 	const path = join(directory, "active.todo");
@@ -183,10 +184,13 @@ test("debounced signals are suppressed while restoration is busy and release in 
 		}
 	);
 	backends.push(backend);
-	await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("setup");
+	const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
 	await writeFile(path, "External edit");
 	pause = true;
-	const restore = backend.restoreSession({});
+	const restore = backend.readWorkspace({ workspaceId });
 	try {
 		await expect.poll(() => reading).toBe(true);
 		signal();
@@ -195,16 +199,23 @@ test("debounced signals are suppressed while restoration is busy and release in 
 	} finally {
 		resume();
 	}
-	expect((await restore).session).toMatchObject({
+	expect(await restore).toMatchObject({
 		status: "ready",
 		todo_file: { items: [{ description: "External edit" }] },
 	});
+	await expect.poll(() => changes.length).toBe(1);
 	await writeFile(cataloguePath, "invalid");
-	expect((await backend.restoreSession({})).session.status).toBe("unavailable");
-	expect(subscribed).toBe(false);
+	await writeFile(path, "External after catalogue failure");
+	signal();
+	await expect.poll(() => subscribed).toBe(false);
+	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
+	});
+	const settled = changes.length;
 	signal();
 	await new Promise((resolve) => setTimeout(resolve, 350));
-	expect(changes).toEqual([]);
+	expect(changes).toHaveLength(settled);
 });
 
 test("observation release defects do not reject successful Workspace switches", async () => {
@@ -231,7 +242,7 @@ test("observation release defects do not reject successful Workspace switches", 
 	});
 });
 
-test("disposal releases observation resources when admitted restoration finishes", async () => {
+test("disposal releases observation resources when an admitted resource read finishes", async () => {
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
 	directories.push(directory);
 	const path = join(directory, "active.todo");
@@ -273,9 +284,13 @@ test("disposal releases observation resources when admitted restoration finishes
 		}
 	);
 	backends.push(backend);
-	await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("setup");
 	pause = true;
-	const restore = backend.restoreSession({});
+	const restore = backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
 	let disposal: Promise<void> | undefined;
 	let stopping: Promise<void> | undefined;
 	try {
@@ -357,11 +372,13 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
 	directories.push(directory);
 	const paths = new Set<string>();
+	let signal!: () => void;
 	const observation: TodoFileObservationAdapter = {
-		observe: (path) =>
+		observe: (path, changed) =>
 			Effect.acquireRelease(
 				Effect.sync(() => {
 					paths.add(path);
+					signal = changed;
 				}),
 				() =>
 					Effect.sync(() => {
@@ -371,7 +388,7 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	};
 	const backend = createSessionBackend(join(directory, "workspaces.json"), observation);
 	backends.push(backend);
-	await backend.restoreSession({});
+	await backend.readWorkspaceCatalogue({});
 	expect([...paths]).toEqual([]);
 	const firstPath = join(directory, "first.todo");
 	const secondPath = join(directory, "second.todo");
@@ -392,7 +409,9 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	});
 	expect([...paths]).toEqual([firstPath]);
 	await rm(firstPath);
-	const refreshed = await backend.restoreSession({});
+	signal();
+	await expect.poll(() => paths.size).toBe(0);
+	const refreshed = await readConfirmation(backend);
 	expect(refreshed.session).toMatchObject({
 		status: "empty",
 		warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
@@ -402,7 +421,7 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 });
 
 test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
-	"native observation refreshes through restoration after %s",
+	"native observation accepts authoritative changes after %s",
 	async (change) => {
 		const directory = await realpath(await mkdtemp(join(tmpdir(), "tuxedo-observation-")));
 		directories.push(directory);
@@ -449,7 +468,7 @@ test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
 				revision: expect.any(Number),
 				todoPath: path,
 			});
-			const refreshed = await backend.restoreSession({});
+			const refreshed = await readConfirmation(backend);
 			if (change === "deletion") {
 				expect(refreshed.session).toMatchObject({
 					status: "empty",
@@ -498,7 +517,7 @@ test.each([1, 10])(
 					await backend.createWorkspace({ name: "Work", color: "blue", todoPath: path });
 					await rename(containingDirectory, join(directory, "moved"));
 					await expect.poll(() => changes > 0, { timeout: 3000 }).toBe(true);
-					const refreshed = await backend.restoreSession({});
+					const refreshed = await readConfirmation(backend);
 					expect(refreshed.session).toMatchObject({
 						status: "empty",
 						warning: "This Todo file couldn’t be found. It may have been moved or deleted.",

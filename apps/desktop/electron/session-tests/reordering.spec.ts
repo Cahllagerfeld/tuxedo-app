@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -38,8 +39,10 @@ test("reordering persists displayed Todo items in their existing slots across re
 	});
 	expect(result.status).toBe("applied");
 	expect(await readFile(todoPath, "utf8")).toBe("Last\r\nx 2026-07-10 Hidden\n\r\nFirst");
-	const restored = await createSessionBackend(join(directory, "workspaces.json")).restoreSession(
-		{}
+	const restarted = createSessionBackend(join(directory, "workspaces.json"));
+	const restored = await activateWorkspace(
+		restarted,
+		confirmed.session.catalogue.active_workspace_id!
 	);
 	expect(restored.session).toMatchObject({
 		todo_file: {
@@ -85,7 +88,7 @@ test.each(["scope", "revision", "workspace", "duplicate", "unknown"])(
 		if (failure === "unknown") request.lineNumbers = [3, 1];
 		expect((await backend.reorderTodo(request)).status).toBe("rejected");
 		expect(await readFile(todoPath, "utf8")).toBe("First\nLast");
-		expect(await backend.readSession({})).toEqual(confirmed);
+		expect(await readConfirmation(backend)).toEqual(confirmed);
 	}
 );
 test("a failed atomic reorder preserves the file and confirmed session", async () => {
@@ -106,6 +109,6 @@ test("a failed atomic reorder preserves the file and confirmed session", async (
 		await chmod(directory, 0o700);
 	}
 	expect(await readFile(todoPath, "utf8")).toBe("First\nLast");
-	expect(await backend.readSession({})).toEqual(confirmed);
+	expect(await readConfirmation(backend)).toEqual(confirmed);
 	expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 });

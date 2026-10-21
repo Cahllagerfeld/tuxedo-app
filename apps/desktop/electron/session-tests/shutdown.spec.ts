@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { describe, expect, it, vi } from "vitest";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { FileSystem } from "effect/FileSystem";
@@ -96,13 +97,13 @@ describe("application shutdown", () => {
 				creationDate: null,
 			});
 			await replacing;
-			const queued = backend.readSession({});
+			const queued = backend.readWorkspaceCatalogue({});
 			const workspaceRead = backend.readWorkspace({
 				workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
 			});
 			const catalogueRead = backend.readWorkspaceCatalogue({});
 			const quitting = backend.shutdown();
-			await expect(backend.readSession({})).rejects.toThrow("shutting down");
+			await expect(readConfirmation(backend)).rejects.toThrow("shutting down");
 			await expect(backend.stopObservation()).rejects.toThrow("shutting down");
 			await expect(backend.readWorkspaceCatalogue({})).rejects.toThrow("shutting down");
 			expect(observers).toBe(1);
@@ -111,7 +112,10 @@ describe("application shutdown", () => {
 			const result = await mutation;
 			expect(result.status).toBe("applied");
 			if (result.status !== "applied") throw Error("mutation failed");
-			expect((await queued).revision).toBe(result.confirmed.revision);
+			expect(await queued).toMatchObject({
+				status: "ready",
+				selection: { revision: result.confirmed.revision },
+			});
 			expect(await workspaceRead).toMatchObject({
 				status: "ready",
 				provenance: { status: "confirmed", selection: { revision: result.confirmed.revision } },

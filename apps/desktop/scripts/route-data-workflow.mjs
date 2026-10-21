@@ -1,3 +1,4 @@
+import { readConfirmation } from "./read-confirmation.mjs";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -117,7 +118,7 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		}));
 	const selection = () =>
 		page.evaluate(
-			async () => (await window.desktop.readSession({})).session.catalogue.active_workspace_id
+			async () => (await window.desktop.readWorkspaceCatalogue({})).selection?.workspaceId
 		);
 	try {
 		// An RPC response cannot publish contents or release admission before the loader reaches the screen.
@@ -215,15 +216,12 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		// Hover reads B while A and its Undo remain selected. The cached speculative result cannot authorize B.
 		await navigate(null);
 		await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
-		const undo = await page.evaluate(async () => (await window.desktop.readSession({})).undoLabel);
+		const undo = (await readConfirmation(page)).undoLabel;
 		await arm(ids["Receipt B"]);
 		await page.getByRole("link", { name: "Receipt B", exact: true }).hover();
 		await entered(ids["Receipt B"]);
 		assert.equal(await selection(), ids["Receipt A"]);
-		assert.equal(
-			await page.evaluate(async () => (await window.desktop.readSession({})).undoLabel),
-			undo
-		);
+		assert.equal((await readConfirmation(page)).undoLabel, undo);
 		assert.deepEqual((await counts()).activations, []);
 		await release(ids["Receipt B"]);
 		await page.getByRole("link", { name: "Receipt B", exact: true }).click();
@@ -276,10 +274,7 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		);
 		assert.equal((await counts()).writes, observationCounts.writes + 1);
 		assert.equal((await counts()).savedReads, observationCounts.savedReads);
-		assert.equal(
-			await page.evaluate(async () => (await window.desktop.readSession({})).undoLabel),
-			undefined
-		);
+		assert.equal((await readConfirmation(page)).undoLabel, undefined);
 
 		// Activation rejection and committed activation/refresh failure have different recovery semantics.
 		await application.evaluate(() => {
@@ -307,6 +302,61 @@ export async function routeDataWorkflow(application, page, directory, developmen
 			activated,
 			"Retry never repeats a committed activation"
 		);
+
+		// Retained modals protect admitted refreshes, then let recovery remain reachable.
+		for (const modal of ["edit", "create", "bulk-delete"]) {
+			if (modal === "edit") {
+				await page.getByRole("button", { name: "Actions for Receipt B item", exact: true }).click();
+				await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+			} else if (modal === "create") {
+				await page.getByRole("button", { name: "Add Todo item", exact: true }).click();
+			} else {
+				await page.getByRole("button", { name: "Select items", exact: true }).click();
+				await page.getByRole("checkbox", { name: "Select Receipt B item", exact: true }).click();
+				await page.getByRole("button", { name: "Delete", exact: true }).click();
+			}
+			const dialog = page.getByRole(modal === "bulk-delete" ? "alertdialog" : "dialog");
+			await dialog.waitFor();
+			await page.evaluate((id) => {
+				window.modalObservation = new Promise((resolve) => {
+					const stop = window.desktop.onTodoFileChanged((event) => {
+						if (event.workspaceId === id) {
+							stop();
+							resolve();
+						}
+					});
+				});
+			}, ids["Receipt B"]);
+			await arm(ids["Receipt B"], true);
+			await writeFile(join(directory, "Receipt B.txt"), `Receipt B item\nExternal ${modal}\n`);
+			await page.evaluate(async () => await window.modalObservation);
+			await entered(ids["Receipt B"]);
+			const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+			assert.equal(await cancel.isEnabled(), false, "Admitted refresh protects retained dialogs");
+			await release(ids["Receipt B"]);
+			await enabled(cancel);
+			assert.equal(
+				await dialog
+					.getByRole("button", {
+						name:
+							modal === "bulk-delete"
+								? "Delete Todo items"
+								: modal === "edit"
+									? "Save changes"
+									: "Add Todo item",
+						exact: true,
+					})
+					.isEnabled(),
+				false,
+				"Terminal refresh failure still blocks mutations"
+			);
+			await cancel.click();
+			await dialog.waitFor({ state: "hidden" });
+			await retry.click();
+			if (modal === "bulk-delete")
+				await page.getByRole("button", { name: "Exit selection mode", exact: true }).click();
+			await enabled(item("Receipt B"));
+		}
 
 		// UI creation commits activation once and transfers its admission/receipt to the new route.
 		await navigate(null);

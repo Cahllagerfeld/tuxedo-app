@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,7 +60,7 @@ test.each(["x 2026-07-10 Finished", "x 2026-07-10 Finished\n", "x 2026-07-10 Fin
 			todo_file: { items: [], skipped: [] },
 		});
 		expect(await readFile(todoPath, "utf8")).toBe("");
-		expect(await backend.readSession({})).toMatchObject({
+		expect(await readConfirmation(backend)).toMatchObject({
 			revision: outcome.confirmed.revision,
 			session: { todo_file: outcome.confirmed.todo_file },
 		});
@@ -106,7 +107,7 @@ test.each(["Changed target\nOther", "Other"])(
 		expect(result.status).toBe("conflict");
 		expect(await readFile(todoPath, "utf8")).toBe(contents);
 		if (result.status === "rejected") throw Error(result.message);
-		expect((await backend.readSession({})).session).toMatchObject({
+		expect((await readConfirmation(backend)).session).toMatchObject({
 			todo_file: result.confirmed.todo_file,
 		});
 		expect(result.confirmed.todo_file.items.map((item) => item.raw)).toEqual(contents.split("\n"));
@@ -132,7 +133,7 @@ test("an atomic replacement failure preserves file bytes and the prior confirmed
 		message: expect.stringContaining("Cannot delete Todo item"),
 	});
 	expect(await readFile(todoPath, "utf8")).toBe("Keep\nDelete me\n");
-	expect(await backend.readSession({})).toEqual(confirmed);
+	expect(await readConfirmation(backend)).toEqual(confirmed);
 	expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 });
 
@@ -153,7 +154,7 @@ test.each(["scope", "revision", "workspace", "invalid-target"])(
 		if (failure === "invalid-target") request.expectedRaw = "2026-13-01 Invalid";
 		expect((await backend.deleteTodo(request)).status).toBe("rejected");
 		expect(await readFile(todoPath, "utf8")).toBe("Delete me\nKeep");
-		expect(await backend.readSession({})).toEqual(confirmed);
+		expect(await readConfirmation(backend)).toEqual(confirmed);
 	}
 );
 test("serialized switching rejects a queued deletion bound to the previous Workspace", async () => {

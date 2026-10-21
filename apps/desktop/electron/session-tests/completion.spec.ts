@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -169,7 +170,7 @@ test.each([
 			message: expect.stringContaining("priority"),
 		});
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(session);
+		expect(await readConfirmation(backend)).toEqual(session);
 	}
 );
 
@@ -184,7 +185,7 @@ test.each(["x ", "x \t\u0085\u00a0", "x 2026-01-01", "x 2026-01-01   "])(
 			message: "Cannot uncomplete a Todo item without remaining content. Edit the Todo file first.",
 		});
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(session);
+		expect(await readConfirmation(backend)).toEqual(session);
 	}
 );
 
@@ -222,7 +223,7 @@ test.each(["changed", "missing"])(
 		expect(result.status).toBe("conflict");
 		expect(await readFile(path, "utf8")).toBe(contents);
 		if (result.status !== "conflict") throw Error("No conflict");
-		expect((await backend.readSession({})).revision).toBe(result.confirmed.revision);
+		expect((await readConfirmation(backend)).revision).toBe(result.confirmed.revision);
 	}
 );
 test.each([
@@ -251,7 +252,7 @@ test.each([
 	if (kind === "write-failure") await chmod(directory, 0o700);
 	expect(result.status).toBe("rejected");
 	expect(await readFile(path, "utf8")).toBe("Buy milk\n");
-	expect(await backend.readSession({})).toEqual(session);
+	expect(await readConfirmation(backend)).toEqual(session);
 	expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 });
 test("serialized duplicate intents cannot apply twice", async () => {

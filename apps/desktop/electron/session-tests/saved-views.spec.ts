@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -83,7 +84,7 @@ test.each(["{broken", '{"version":2,"views":[]}', '{"version":1,"views":[],"extr
 		expect(await backend.saveView({ workspaceId, name: "Today", filters })).toMatchObject({
 			status: "rejected",
 		});
-		expect(await backend.restoreSession({})).toMatchObject({ session: { status: "ready" } });
+		expect(await readConfirmation(backend)).toMatchObject({ session: { status: "ready" } });
 		expect(await readFile(path, "utf8")).toBe(contents);
 	}
 );

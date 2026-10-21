@@ -35,7 +35,7 @@ test.each([true, false])(
 
 test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
-	await expect(desktop.readSession({})).rejects.toThrow();
+	await expect(desktop.switchWorkspace({ workspaceId })).rejects.toThrow();
 });
 test("sort-order transport validates requests and confirmed Workspace preferences", async () => {
 	let forwarded: unknown;
@@ -145,7 +145,7 @@ test("desktop transport rejects unsupported request fields before invoking IPC",
 		invoked = true;
 		throw Error("should not invoke");
 	});
-	await expect(desktop.readSession({ path: "/etc/passwd" } as never)).rejects.toThrow();
+	await expect(desktop.readWorkspaceCatalogue({ path: "/etc/passwd" } as never)).rejects.toThrow();
 	expect(invoked).toBe(false);
 });
 
@@ -191,8 +191,11 @@ test.each([
 	{ status: "unavailable", error: "Cannot read catalogue" },
 ])("desktop transport accepts coherent session $status", async (session) => {
 	const response = { scope, revision: 1, session };
-	const desktop = createDesktopClient(async () => response);
-	expect(await desktop.readSession({})).toEqual(response);
+	const desktop = createDesktopClient(async () => ({ status: "applied", confirmed: response }));
+	expect(await desktop.switchWorkspace({ workspaceId })).toEqual({
+		status: "applied",
+		confirmed: response,
+	});
 });
 test.each([
 	{ status: "ready", catalogue },
@@ -202,8 +205,11 @@ test.each([
 	{ status: "empty", catalogue, warning: null, todo_file },
 	{ status: "unavailable", error: "" },
 ])("desktop transport rejects malformed/coherently mismatched session %#", async (session) => {
-	const desktop = createDesktopClient(async () => ({ scope, revision: 1, session }));
-	await expect(desktop.readSession({})).rejects.toThrow();
+	const desktop = createDesktopClient(async () => ({
+		status: "applied",
+		confirmed: { scope, revision: 1, session },
+	}));
+	await expect(desktop.switchWorkspace({ workspaceId })).rejects.toThrow();
 });
 
 const createTodoRequest = {
@@ -348,7 +354,7 @@ test.each([null, [], "", 1, { unexpected: true }])(
 			invoked = true;
 			return { scope, revision: 1, session: { status: "unavailable", error: "Unavailable" } };
 		});
-		await expect(desktop.readSession(input as never)).rejects.toThrow();
+		await expect(desktop.readWorkspaceCatalogue(input as never)).rejects.toThrow();
 		expect(invoked).toBe(false);
 	}
 );
@@ -395,11 +401,11 @@ test.each([
 	].map((fields) => ({ ...catalogue, workspaces: [{ ...catalogue.workspaces[0], ...fields }] })),
 ])("desktop responses reject malformed catalogue data %#", async (invalidCatalogue) => {
 	const desktop = createDesktopClient(async () => ({
-		scope,
-		revision: 1,
-		session: { status: "empty", catalogue: invalidCatalogue, warning: null },
+		status: "ready",
+		catalogue: invalidCatalogue,
+		selection: null,
 	}));
-	await expect(desktop.readSession({})).rejects.toThrow();
+	await expect(desktop.readWorkspaceCatalogue({})).rejects.toThrow();
 });
 
 test.each(["2024-02-29T10:00:00Z", "2026-10-12T10:00:00.123+02:00", "2026-10-12T10:00:00-05:30"])(
@@ -414,7 +420,12 @@ test.each(["2024-02-29T10:00:00Z", "2026-10-12T10:00:00.123+02:00", "2026-10-12T
 				warning: null,
 			},
 		};
-		expect(await createDesktopClient(async () => response).readSession({})).toEqual(response);
+		expect(
+			await createDesktopClient(async () => ({
+				status: "applied",
+				confirmed: response,
+			})).switchWorkspace({ workspaceId })
+		).toEqual({ status: "applied", confirmed: response });
 	}
 );
 
@@ -435,11 +446,10 @@ test.each([-1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])(
 	"desktop responses reject invalid revisions %s",
 	async (revision) => {
 		const desktop = createDesktopClient(async () => ({
-			scope,
-			revision,
-			session: { status: "unavailable", error: "Unavailable" },
+			status: "applied",
+			confirmed: { scope, revision, session: { status: "unavailable", error: "Unavailable" } },
 		}));
-		await expect(desktop.readSession({})).rejects.toThrow();
+		await expect(desktop.switchWorkspace({ workspaceId })).rejects.toThrow();
 	}
 );
 

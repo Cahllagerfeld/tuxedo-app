@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, realpath, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,16 +10,14 @@ afterEach(async () => {
 		directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
 	);
 });
-test("a fresh catalogue exposes an empty confirmed session without creating metadata", async () => {
+test("a fresh catalogue is a repeatable read without confirmation or metadata", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
 	const backend = createSessionBackend(join(directory, "workspaces.json"));
-	expect(await backend.readSession({})).toMatchObject({
-		revision: 0,
-		session: {
-			status: "empty",
-			catalogue: { version: 1, workspaces: [], active_workspace_id: null },
-		},
+	expect(await backend.readWorkspaceCatalogue({})).toEqual({
+		status: "ready",
+		catalogue: { version: 1, workspaces: [], active_workspace_id: null },
+		selection: null,
 	});
 	await expect(readFile(join(directory, "workspaces.json"))).rejects.toMatchObject({
 		code: "ENOENT",
@@ -33,24 +32,27 @@ test.each([
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
 	await writeFile(path, content);
-	expect(await createSessionBackend(path).restoreSession({})).toMatchObject({
-		session: { status: "unavailable", error: expect.stringContaining(path) },
+	expect(await createSessionBackend(path).readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
+		message: expect.stringContaining(path),
 	});
 	expect(await readFile(path, "utf8")).toBe(content);
 });
-test("read-only session queries retain confirmed data while explicit restoration advances revisions", async () => {
+test("repeated reads leave confirmation untouched and recover after catalogue read failure", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
 	const backend = createSessionBackend(path);
-	const first = await backend.readSession({});
+	const first = await backend.readWorkspaceCatalogue({});
 	await writeFile(path, "invalid");
-	expect(await backend.readSession({})).toEqual(first);
-	expect(await backend.restoreSession({})).toMatchObject({
-		scope: first.scope,
-		revision: 1,
-		session: { status: "unavailable" },
+	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
 	});
+	expect(await readFile(path, "utf8")).toBe("invalid");
+	await rm(path);
+	expect(await backend.readWorkspaceCatalogue({})).toEqual(first);
 });
 test.each([
 	"duplicate-name",
@@ -101,16 +103,18 @@ test.each([
 			];
 	const content = JSON.stringify({ version: 1, active_workspace_id: null, workspaces });
 	await writeFile(path, content);
-	expect(await createSessionBackend(path).readSession({})).toMatchObject({
-		session: { status: "unavailable" },
+	expect(await createSessionBackend(path).readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
 	});
 	expect(await readFile(path, "utf8")).toBe(content);
 });
 test("an unreadable catalogue remains unavailable without replacing its location", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
-	expect(await createSessionBackend(directory).readSession({})).toMatchObject({
-		session: { status: "unavailable", error: expect.stringContaining("Check its permissions") },
+	expect(await createSessionBackend(directory).readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		message: expect.stringContaining("Check its permissions"),
 	});
 });
 test("creation reads and parses the Todo file before atomically saving an active Workspace", async () => {
@@ -151,10 +155,11 @@ test("creation reads and parses the Todo file before atomically saving an active
 	});
 	const saved = JSON.parse(await readFile(cataloguePath, "utf8"));
 	expect(saved.active_workspace_id).toBe(saved.workspaces[0].id);
-	expect(await backend.readSession({})).toEqual(outcome.confirmed);
-	expect((await createSessionBackend(cataloguePath).restoreSession({})).session).toEqual(
-		outcome.confirmed.session
-	);
+	expect(await readConfirmation(backend)).toEqual(outcome.confirmed);
+	expect(
+		(await activateWorkspace(createSessionBackend(cataloguePath), saved.active_workspace_id))
+			.session
+	).toEqual(outcome.confirmed.session);
 });
 test.each([
 	"invalid-date",
@@ -197,13 +202,13 @@ test.each([
 	});
 	if (failure === "save-failure") await chmod(directory, 0o700);
 	expect(result.status).toBe("rejected");
-	expect(await backend.readSession({})).toEqual(first.confirmed);
+	expect(await readConfirmation(backend)).toEqual(first.confirmed);
 	expect(await readFile(path, "utf8")).toBe(before);
 	await expect((await import("node:fs/promises")).readdir(directory)).resolves.not.toContain(
 		expect.stringMatching(/\.tmp$/)
 	);
 });
-test("restoration preserves todo.txt fixtures, skipped lines, and exact source values", async () => {
+test("resource reads preserve todo.txt fixtures, skipped lines, and exact source values", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-parser-"));
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
@@ -211,16 +216,19 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 	await writeFile(todoPath, "Seed");
 	const backend = createSessionBackend(path);
 	const created = await backend.createWorkspace({ name: "Parser", color: "cyan", todoPath });
-	if (created.status !== "applied") throw Error(created.message);
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("Expected Ready");
 	await writeFile(
 		todoPath,
 		await readFile(new URL("./fixtures/mixed_real_world.todo.txt", import.meta.url))
 	);
-	const restored = await backend.restoreSession({});
-	expect(restored.session.status).toBe("ready");
-	if (restored.session.status !== "ready") throw Error("No file");
-	expect(restored.session.todo_file.items).toHaveLength(6);
-	expect(restored.session.todo_file.items[0]).toMatchObject({
+	const restored = await backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
+	expect(restored.status).toBe("ready");
+	if (restored.status !== "ready") throw Error("No file");
+	expect(restored.todo_file.items).toHaveLength(6);
+	expect(restored.todo_file.items[0]).toMatchObject({
 		line_number: 1,
 		priority: "A",
 		creation_date: "2026-05-24",
@@ -229,7 +237,7 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 		contexts: ["computer"],
 		metadata: { due: "2026-05-25", pri: "A" },
 	});
-	expect(restored.session.todo_file.skipped).toEqual([
+	expect(restored.todo_file.skipped).toEqual([
 		{
 			line_number: 4,
 			raw: "2026-13-01 Impossible creation date +Broken",
@@ -241,7 +249,7 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 			reason: "date must use YYYY-MM-DD format",
 		},
 	]);
-	expect(restored.session.todo_file.items[2]).toMatchObject({
+	expect(restored.todo_file.items[2]).toMatchObject({
 		line_number: 6,
 		description: "+OnlyMetadata @only due:2026-05-25",
 		projects: ["OnlyMetadata"],
@@ -252,31 +260,37 @@ test("restoration preserves todo.txt fixtures, skipped lines, and exact source v
 		todoPath,
 		await readFile(new URL("./fixtures/spec_examples.todo.txt", import.meta.url))
 	);
-	const examples = await backend.restoreSession({});
-	if (examples.session.status !== "ready") throw Error("No examples");
-	expect(examples.session.todo_file.items).toHaveLength(18);
-	expect(examples.session.todo_file.skipped).toEqual([]);
-	expect(examples.session.todo_file.items[11]).toMatchObject({
+	const examples = await backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
+	if (examples.status !== "ready") throw Error("No examples");
+	expect(examples.todo_file.items).toHaveLength(18);
+	expect(examples.todo_file.skipped).toEqual([]);
+	expect(examples.todo_file.items[11]).toMatchObject({
 		completed: true,
 		completion_date: "2011-03-02",
 		creation_date: "2011-03-01",
 	});
 });
-test("restoration keeps physical lines, marker grammar, and exact repeated facets", async () => {
+test("resource reads keep physical lines, marker grammar, and exact repeated facets", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-grammar-"));
 	directories.push(directory);
 	const path = join(directory, "workspaces.json"),
 		todoPath = join(directory, "todo.txt");
 	await writeFile(todoPath, "Seed");
 	const backend = createSessionBackend(path);
-	await backend.createWorkspace({ name: "Grammar", color: "pink", todoPath });
+	const created = await backend.createWorkspace({ name: "Grammar", color: "pink", todoPath });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("setup");
 	await writeFile(
 		todoPath,
 		"\n  (C) Call   Mom +Work +work +Work @Phone @phone key:first key:last key:value:extra + @  \r\nxylophone\nX 2012-01-01 Make resolutions\n(A) x Find tickets\nx\tNo marker\n(B)->No priority\n(b) Lowercase\nx 2000-02-29 (A) 1999-01-01 Finished\n1900-02-29 Invalid\n+Only @tag\n"
 	);
-	const result = await backend.restoreSession({});
-	if (result.session.status !== "ready") throw Error("No grammar");
-	const file = result.session.todo_file;
+	const result = await backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
+	if (result.status !== "ready") throw Error("No grammar");
+	const file = result.todo_file;
 	expect(file.items[0]).toMatchObject({
 		line_number: 2,
 		raw: "  (C) Call   Mom +Work +work +Work @Phone @phone key:first key:last key:value:extra + @  ",
@@ -304,11 +318,12 @@ test("restoration keeps physical lines, marker grammar, and exact repeated facet
 	});
 	expect(file.skipped.map((line) => line.line_number)).toEqual([10]);
 	await rm(todoPath);
-	const missing = await backend.restoreSession({});
-	expect(missing.session).toMatchObject({
-		status: "empty",
-		warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
-		catalogue: { active_workspace_id: expect.any(String) },
+	const missing = await backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
+	expect(missing).toMatchObject({
+		status: "rejected",
+		message: "This Todo file couldn’t be found. It may have been moved or deleted.",
 	});
 });
 
@@ -354,7 +369,7 @@ test("switching persists selection, keeps creation order, and restores on startu
 		},
 	});
 	expect(switched.confirmed.revision).toBeGreaterThan(second.confirmed.revision);
-	expect((await createSessionBackend(path).restoreSession({})).session).toEqual(
+	expect((await activateWorkspace(createSessionBackend(path), workspaceId)).session).toEqual(
 		switched.confirmed.session
 	);
 });
@@ -398,8 +413,15 @@ test.each(["missing-file", "save-failure", "unknown-id", "invalid-catalogue"])(
 		});
 		if (failure === "save-failure") await chmod(directory, 0o700);
 		expect(outcome.status).toBe("rejected");
-		expect(await backend.readSession({})).toEqual(second.confirmed);
 		expect(await readFile(path, "utf8")).toBe(before);
+		if (failure === "invalid-catalogue")
+			await writeFile(
+				path,
+				JSON.stringify(
+					second.confirmed.session.status !== "unavailable" && second.confirmed.session.catalogue
+				)
+			);
+		expect(await readConfirmation(backend)).toEqual(second.confirmed);
 	}
 );
 
@@ -416,7 +438,7 @@ test("concurrent Workspace creations retain both entries in creation order", asy
 		backend.createWorkspace({ name: "Second", color: "green", todoPath: secondPath }),
 	]);
 	expect(results.map((result) => result.status)).toEqual(["applied", "applied"]);
-	const session = await backend.readSession({});
+	const session = await readConfirmation(backend);
 	if (session.session.status !== "ready") throw Error("No session");
 	expect(session.session.catalogue.workspaces.map((workspace) => workspace.name)).toEqual([
 		"First",
@@ -582,18 +604,22 @@ test("Unicode date-like descriptions remain readable when creating a Workspace",
 	expect(await readFile(todoPath, "utf8")).toBe(contents);
 });
 
-test("restoration keeps non-ASCII date-like descriptions intact", async () => {
+test("resource reads keep non-ASCII date-like descriptions intact", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-unicode-date-"));
 	directories.push(directory);
 	const todoPath = join(directory, "todo.txt");
 	const backend = createSessionBackend(join(directory, "workspaces.json"));
 	await writeFile(todoPath, "Seed");
-	await backend.createWorkspace({ name: "Unicode", color: "cyan", todoPath });
+	const created = await backend.createWorkspace({ name: "Unicode", color: "cyan", todoPath });
+	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+		throw Error("setup");
 	await writeFile(todoPath, "éab-12-34 Invalid date\n");
-	const outcome = await backend.restoreSession({});
-	if (outcome.session.status !== "ready") throw Error("No restored Todo file");
-	expect(outcome.session.todo_file.skipped).toEqual([]);
-	expect(outcome.session.todo_file.items).toMatchObject([
+	const outcome = await backend.readWorkspace({
+		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+	});
+	if (outcome.status !== "ready") throw Error("No restored Todo file");
+	expect(outcome.todo_file.skipped).toEqual([]);
+	expect(outcome.todo_file.items).toMatchObject([
 		{ line_number: 1, description: "éab-12-34 Invalid date" },
 	]);
 });
@@ -609,7 +635,7 @@ test.each([
 		"This Todo file couldn’t be opened. Check that it’s a readable plain-text file and try again.",
 	],
 ])(
-	"Todo-file %s errors are friendly during switching and restoration",
+	"Todo-file %s errors are friendly during activation and resource reads",
 	async (failure, message) => {
 		const directory = await mkdtemp(join(tmpdir(), "tuxedo-friendly-error-"));
 		directories.push(directory);
@@ -629,10 +655,18 @@ test.each([
 				status: "rejected",
 				message,
 			});
-			expect(await backend.readSession({})).toEqual(created.confirmed);
-			expect((await backend.restoreSession({})).session).toMatchObject({
-				status: "empty",
-				warning: message,
+			expect(await backend.readWorkspace({ workspaceId })).toMatchObject({
+				status: "rejected",
+				reason: "todo-file",
+				message,
+			});
+			expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
+				status: "ready",
+				selection: {
+					scope: created.confirmed.scope,
+					revision: created.confirmed.revision,
+					workspaceId,
+				},
 			});
 		} finally {
 			if (failure === "permission") await chmod(todoPath, 0o600);

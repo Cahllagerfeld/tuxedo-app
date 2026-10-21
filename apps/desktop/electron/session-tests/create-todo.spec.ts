@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -137,7 +138,7 @@ test.each([
 
 	expect(outcome.status).toBe("rejected");
 	expect(await readFile(todoPath, "utf8")).toBe(initial);
-	expect(await backend.readSession({})).toEqual(confirmed);
+	expect(await readConfirmation(backend)).toEqual(confirmed);
 });
 
 test("allows description tokens that the parser keeps as description text", async () => {
@@ -165,7 +166,7 @@ test("returns a conflict and confirms externally changed contents without append
 	if (outcome.status !== "conflict") throw Error("Expected conflict");
 	expect(await readFile(todoPath, "utf8")).toBe(changed);
 	expect(outcome.confirmed.todo_file.items[0].description).toBe("Changed externally");
-	expect((await backend.readSession({})).revision).toBe(outcome.confirmed.revision);
+	expect((await readConfirmation(backend)).revision).toBe(outcome.confirmed.revision);
 });
 
 test("serializes duplicate creation intents so only one is applied", async () => {
@@ -189,7 +190,7 @@ test.each(["scope", "revision", "workspace"] as const)(
 
 		expect((await backend.createTodo(input)).status).toBe("rejected");
 		expect(await readFile(todoPath, "utf8")).toBe("Existing");
-		expect(await backend.readSession({})).toEqual(confirmed);
+		expect(await readConfirmation(backend)).toEqual(confirmed);
 	}
 );
 
@@ -208,7 +209,7 @@ test("retains the confirmed snapshot and cleans temporary files when atomic repl
 		message: expect.stringContaining("Cannot create Todo item"),
 	});
 	expect(await readFile(todoPath, "utf8")).toBe("Existing\n");
-	expect(await backend.readSession({})).toEqual(confirmed);
+	expect(await readConfirmation(backend)).toEqual(confirmed);
 	expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 });
 
@@ -293,7 +294,7 @@ test.each([
 	const outcome = await backend.createTodo({ ...request(confirmed, workspaceId), ...values });
 	expect(outcome.status).toBe("rejected");
 	expect(await readFile(todoPath, "utf8")).toBe("Keep");
-	expect(await backend.readSession({})).toEqual(confirmed);
+	expect(await readConfirmation(backend)).toEqual(confirmed);
 });
 
 test("preserves repeated Metadata in the Todo file and confirms its last value", async () => {

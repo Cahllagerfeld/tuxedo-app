@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +28,10 @@ async function setup(contents: string) {
 	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 		throw Error("setup failed");
 	await writeFile(path, contents);
-	const confirmed = await backend.restoreSession({});
+	const confirmed = await activateWorkspace(
+		backend,
+		created.confirmed.session.catalogue.active_workspace_id!
+	);
 	if (confirmed.session.status !== "ready") throw Error("restoration failed");
 	const target = {
 		scope: confirmed.scope,
@@ -123,7 +127,7 @@ test.each(["changed", "missing", "shifted"])(
 		expect(result.confirmed.todo_file.items.map((item) => item.raw)).toEqual(
 			changed.trim().split("\n")
 		);
-		const confirmed = await backend.readSession({});
+		const confirmed = await readConfirmation(backend);
 		expect(confirmed.revision).toBe(result.confirmed.revision);
 		expect(confirmed.undoLabel).toBeUndefined();
 	}
@@ -137,7 +141,7 @@ test("invalid, duplicate, empty and stale-session batches write nothing and pres
 	const current = { ...target, revision: completed.confirmed.revision };
 	const valid = targets[1];
 	const before = await readFile(path, "utf8");
-	const confirmed = await backend.readSession({});
+	const confirmed = await readConfirmation(backend);
 	for (const request of [
 		{ ...current, targets: [] },
 		{ ...current, targets: [valid, valid] },
@@ -156,7 +160,7 @@ test("invalid, duplicate, empty and stale-session batches write nothing and pres
 	]) {
 		expect((await backend.bulkDeleteTodos(request)).status).toBe("rejected");
 		expect(await readFile(path, "utf8")).toBe(before);
-		expect(await backend.readSession({})).toEqual(confirmed);
+		expect(await readConfirmation(backend)).toEqual(confirmed);
 	}
 	expect((await backend.undoTodo(current)).status).toBe("applied");
 	expect(await readFile(path, "utf8")).toBe(initial);

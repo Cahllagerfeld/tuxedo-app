@@ -1,3 +1,4 @@
+import { resourceDesktop } from "$lib/modules/workspace/state/testing/resource-desktop";
 import { expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -62,12 +63,14 @@ const created = {
 };
 
 function adapter(undo: DesktopAPI["undoTodo"]): DesktopAPI {
-	return createDesktopClient(async (channel, input) => {
-		if (channel === "tuxedo:restore-session") return initial;
-		if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
-		if (channel === "tuxedo:create-todo") return { status: "applied", confirmed: created };
-		if (channel === "tuxedo:undo-todo") return undo(undoTodoRequestSchema.parse(input));
-		throw Error(`Unexpected ${channel}`);
+	return resourceDesktop({
+		resourceState: async () => initial,
+		...createDesktopClient(async (channel, input) => {
+			if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
+			if (channel === "tuxedo:create-todo") return { status: "applied", confirmed: created };
+			if (channel === "tuxedo:undo-todo") return undo(undoTodoRequestSchema.parse(input));
+			throw Error(`Unexpected ${channel}`);
+		}),
 	});
 }
 

@@ -228,12 +228,12 @@
 <AlertDialog.Root
 	open={deleteOpen}
 	onOpenChange={(open) => {
-		if (!open && !workspace.writesBlocked && !deleting) confirmation = null;
+		if (!open && !workspace.isOperating && !deleting) confirmation = null;
 	}}
 >
 	<AlertDialog.Content
 		onEscapeKeydown={(event) => {
-			if (workspace.writesBlocked || deleting) event.preventDefault();
+			if (workspace.isOperating || deleting) event.preventDefault();
 		}}
 		onCloseAutoFocus={restoreDeleteFocus}
 	>
@@ -251,7 +251,7 @@
 			<p role="alert" class="text-sm text-destructive">{deletionError}</p>
 		{/if}
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={workspace.writesBlocked || deleting}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel disabled={workspace.isOperating || deleting}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				variant="destructive"
 				disabled={workspace.writesBlocked || deleting}
@@ -453,6 +453,7 @@
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}
 					disabled={workspace.writesBlocked}
+					dismissalBlocked={workspace.isOperating}
 				/>
 			{/if}
 		</div>

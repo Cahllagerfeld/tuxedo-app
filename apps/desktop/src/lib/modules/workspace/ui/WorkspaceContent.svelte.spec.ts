@@ -1,3 +1,4 @@
+import { resourceDesktop, type ResourceFixture } from "../state/testing/resource-desktop";
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -51,8 +52,8 @@ const initial: ConfirmedSession = {
 		todo_file: { path: "/tmp/work.todo", items: [todo], skipped: [] },
 	},
 };
-function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
-	return {
+function adapter(overrides: ResourceFixture = {}): DesktopAPI {
+	return resourceDesktop({
 		readWorkspaceCatalogue: async () => {
 			throw Error("unused");
 		},
@@ -62,8 +63,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		readSession: async () => initial,
-		restoreSession: async () => initial,
+		resourceState: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -80,7 +80,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
-	};
+	});
 }
 function confirmedTodo(items: TodoFile["items"]) {
 	return {
@@ -108,7 +108,7 @@ test("Due-date sorting changes only the view and restores reordering in File ord
 		.mockResolvedValue({ status: "rejected", message: "unused" });
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					session: {
@@ -165,7 +165,7 @@ test("restores the Workspace sort choice and retains it when saving fails", asyn
 	const ready = initial.session;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				session: {
 					...ready,
@@ -216,7 +216,7 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 	try {
 		render(Harness, {
 			desktop: adapter({
-				restoreSession: async () =>
+				resourceState: async () =>
 					({
 						...initial,
 						session: {
@@ -325,7 +325,7 @@ test("an external replacement clears details and cannot reopen a reused physical
 	let notify!: (change: TodoFileChange) => void;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -366,7 +366,7 @@ test("empty-query search stays open across Ready → Empty → Ready without rem
 	render(Harness, {
 		restoration: true,
 		desktop: adapter({
-			restoreSession: async () => {
+			resourceState: async () => {
 				loads += 1;
 				return loads === 2
 					? {
@@ -403,7 +403,7 @@ test("an unreadable external reload transfers detail focus to the Empty-state vi
 	let notify!: (change: TodoFileChange) => void;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				loads++
 					? {
 							scope,
@@ -497,7 +497,7 @@ test("idle observation updates the list, counts, facets, and skipped lines with 
 	let loads = 0;
 	let notify!: (event: TodoFileChange) => void;
 	render(Harness, {
-		desktop: adapter({ restoreSession: async () => (loads++ ? refreshed : initial) }),
+		desktop: adapter({ resourceState: async () => (loads++ ? refreshed : initial) }),
 		observation: {
 			onTodoFileChanged(listener) {
 				notify = listener;
@@ -530,7 +530,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 	let loads = 0;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => (loads++ ? refreshed : initial),
+			resourceState: async () => (loads++ ? refreshed : initial),
 			setTodoCompletion: async () => {
 				notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
 				return { status: "conflict", message: "changed", confirmed: latest };
@@ -553,7 +553,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
 });
 test("loading is a non-actionable Workspace session", async () => {
-	render(Harness, { desktop: adapter({ restoreSession: () => new Promise(() => {}) }) });
+	render(Harness, { desktop: adapter({ resourceState: () => new Promise(() => {}) }) });
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
@@ -636,7 +636,7 @@ test("rejected deletion preserves confirmed content and reports its contextual e
 test("an unavailable catalogue offers no actions", async () => {
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "unavailable", error: "invalid catalogue" },
@@ -651,7 +651,7 @@ test("Empty state retains restoration warnings", async () => {
 	const catalogue = initial.session.catalogue;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "empty", catalogue, warning: "Could not open /tmp/work.todo" },
@@ -749,7 +749,7 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => loaded,
+			resourceState: async () => loaded,
 			createTodo: async (input) => {
 				request = input;
 				return { status: "applied", confirmed: confirmedTodo([...items, created]) };
@@ -901,7 +901,7 @@ test("a keyboard drop keeps confirmed order while saving and follows selected de
 	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["reorderTodo"]>>) => void;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => snapshot,
+			resourceState: async () => snapshot,
 			reorderTodo: (request) => {
 				input = request;
 				return new Promise((resolve) => {
@@ -975,7 +975,7 @@ test("external reload updates search results while preserving the query", async 
 	const changed = { ...todo, raw: "Different content", description: "Different content" };
 	await render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				revision: ++loads,
 				session: {
@@ -1085,7 +1085,7 @@ test("editing a completed token-only item prefills empty Description and retains
 	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => snapshot,
+			resourceState: async () => snapshot,
 			editTodo: async (input) => {
 				request = input;
 				return { status: "rejected", message: "Read only" };
@@ -1192,7 +1192,7 @@ test.each(["next", "previous", "empty"])(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				restoreSession: async () =>
+				resourceState: async () =>
 					({
 						...initial,
 						session: {
@@ -1262,7 +1262,7 @@ test("external refresh retains unchanged row focus and sends uncertain identity 
 	const changed = { ...todo, raw: "Different content", description: "Different content" };
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -1295,7 +1295,7 @@ test("deleting through Actions focuses the next physical-line neighbor", async (
 	const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					session: {
@@ -1371,7 +1371,7 @@ test("loading suspends mutations, help remains available, and held sidebar keys 
 	let ready!: (session: ConfirmedSession) => void;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: () =>
+			resourceState: () =>
 				new Promise((resolve) => {
 					ready = resolve;
 				}),
@@ -1430,7 +1430,7 @@ test("editing a row out of a Project filter returns focus to its visible neighbo
 	render(Harness, {
 		shell: true,
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					session: {
@@ -1531,7 +1531,7 @@ test("Workspace switching clears old navigation focus even when both files have 
 	render(Harness, {
 		shell: true,
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({ ...initial, session: { ...initial.session, catalogue } }) as ConfirmedSession,
 			switchWorkspace: async () => ({
 				status: "applied",
@@ -1582,7 +1582,7 @@ test("Tab reenters row navigation after leaving and scrolling to another virtual
 			},
 		},
 		desktop: adapter({
-			restoreSession: async () =>
+			resourceState: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -1623,7 +1623,7 @@ test.each([false, true])(
 			const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
 			render(Harness, {
 				desktop: adapter({
-					restoreSession: async () =>
+					resourceState: async () =>
 						({
 							...initial,
 							session: {
@@ -1983,7 +1983,7 @@ test("a future Show from successor stays hidden until Show deferred", async () =
 	};
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => current,
+			resourceState: async () => current,
 			setTodoCompletion: async () => {
 				if (current.session.status !== "ready") throw Error("not ready");
 				current = {
@@ -2056,7 +2056,7 @@ test("a successor is shown on its Show from date", async () => {
 	const ready = initial.session;
 	render(Harness, {
 		desktop: adapter({
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				session: {
 					...ready,
@@ -2116,7 +2116,7 @@ test.each(["mixed", "completed remaining", "completed empty"])(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				restoreSession: async () => ({
+				resourceState: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2206,7 +2206,7 @@ test.each([
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				restoreSession: async () => ({
+				resourceState: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2265,7 +2265,7 @@ test.each(["rejected", "conflict"] as const)(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				restoreSession: async () => ({
+				resourceState: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2339,14 +2339,7 @@ test("selection mode completes selected open Todo items through one bulk operati
 	render(Harness, {
 		desktop: adapter({
 			bulkSetTodoCompletion,
-			readSession: async () => ({
-				...initial,
-				session: {
-					...initial.session,
-					todo_file: { path: "/tmp/work.todo", items: [todo, second], skipped: [] },
-				},
-			}),
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				session: {
 					...initial.session,
@@ -2379,7 +2372,7 @@ test.each(["rejected", "conflict"] as const)(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				restoreSession: async () => ({ ...initial, undoLabel: "Undo edit" }),
+				resourceState: async () => ({ ...initial, undoLabel: "Undo edit" }),
 				bulkSetTodoCompletion: bulk,
 				createTodo,
 				undoTodo,
@@ -2460,7 +2453,7 @@ test.each(["rejected", "applied"] as const)(
 					}),
 		}));
 		render(Harness, {
-			desktop: adapter({ restoreSession: async () => session, bulkSetTodoCompletion: bulk }),
+			desktop: adapter({ resourceState: async () => session, bulkSetTodoCompletion: bulk }),
 		});
 		await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
 		const search = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
@@ -2566,7 +2559,7 @@ test.each(["middle", "last", "all"] as const)(
 		const deleteTodo = vi.fn<DesktopAPI["deleteTodo"]>();
 		render(Harness, {
 			desktop: adapter({
-				restoreSession: async () => ({
+				resourceState: async () => ({
 					...initial,
 					session: {
 						...initial.session,
@@ -2718,7 +2711,7 @@ test("unchanged refresh preserves deletion confirmation; changed contents dismis
 	render(Harness, {
 		desktop: adapter({
 			bulkDeleteTodos,
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				revision: ++loads,
 				session: {
@@ -2779,7 +2772,7 @@ test("an unchanged refresh allows the same confirmation to delete using the curr
 	render(Harness, {
 		desktop: adapter({
 			bulkDeleteTodos,
-			restoreSession: async () => ({
+			resourceState: async () => ({
 				...initial,
 				revision: ++revision,
 				session: { ...ready, todo_file: { ...ready.todo_file, items: [todo, second] } },
@@ -2830,7 +2823,7 @@ test("unchanged refresh retains selection and a skipped-line edit clears it with
 	const ready = initial.session;
 	let notify!: (change: TodoFileChange) => void;
 	let loads = 0;
-	const restoreSession = vi.fn<DesktopAPI["restoreSession"]>(async () => ({
+	const resourceState = vi.fn<NonNullable<ResourceFixture["resourceState"]>>(async () => ({
 		...initial,
 		revision: ++loads,
 		session: {
@@ -2842,7 +2835,7 @@ test("unchanged refresh retains selection and a skipped-line edit clears it with
 		},
 	}));
 	render(Harness, {
-		desktop: adapter({ restoreSession }),
+		desktop: adapter({ resourceState }),
 		observation: {
 			onTodoFileChanged(listener) {
 				notify = listener;
@@ -2878,7 +2871,7 @@ test.each(["focus", "visibilitychange", "midnight"])(
 		render(Harness, {
 			desktop: adapter({
 				bulkDeleteTodos,
-				restoreSession: async () => ({
+				resourceState: async () => ({
 					...initial,
 					session: {
 						...initial.session,
@@ -3002,7 +2995,7 @@ test.each(["completion", "deletion"] as const)(
 		);
 		render(Harness, {
 			desktop: adapter({
-				restoreSession: async () => current,
+				resourceState: async () => current,
 				bulkSetTodoCompletion: bulk,
 				bulkDeleteTodos: bulk,
 				setWorkspaceShowDeferred: async ({ showDeferred }) => {

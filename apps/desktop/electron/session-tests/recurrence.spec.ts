@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -94,12 +95,12 @@ test.each(["999999999999999999999d", "9999y", "999999m", "999999999999999w"])(
 	async (rule) => {
 		const initial = `Clean rec:${rule}`;
 		const { backend, path, target } = await setup(initial);
-		const before = await backend.readSession({});
+		const before = await readConfirmation(backend);
 		expect((await backend.setTodoCompletion({ ...target, completed: true })).status).toBe(
 			"rejected"
 		);
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(before);
+		expect(await readConfirmation(backend)).toEqual(before);
 	}
 );
 
@@ -147,7 +148,7 @@ test("editor completion uses saved content and backdated leap day, then a durabl
 	});
 	await backend.dispose();
 	const restarted = createSessionBackend(catalogue);
-	const restored = await restarted.restoreSession({});
+	const restored = await activateWorkspace(restarted, target.workspaceId);
 	if (restored.session.status !== "ready") throw Error("restore failed");
 	const original = restored.session.todo_file.items[0];
 	const reopened = await restarted.setTodoCompletion({
@@ -265,7 +266,7 @@ test.each(["target conflict", "write failure"])(
 		const { dirname } = await import("node:path");
 		const initial = "Clean rec:1d";
 		const { backend, path, target } = await setup(initial);
-		const before = await backend.readSession({});
+		const before = await readConfirmation(backend);
 		if (kind === "target conflict") await writeFile(path, "External change rec:1d");
 		else await chmod(dirname(path), 0o500);
 		let result;
@@ -278,7 +279,7 @@ test.each(["target conflict", "write failure"])(
 		expect(await readFile(path, "utf8")).toBe(
 			kind === "target conflict" ? "External change rec:1d" : initial
 		);
-		if (kind === "write failure") expect(await backend.readSession({})).toEqual(before);
+		if (kind === "write failure") expect(await readConfirmation(backend)).toEqual(before);
 	}
 );
 
@@ -411,21 +412,21 @@ test.each(["Mow rec:1d due:2028-01-31 t:9999-12-31", "Mow rec:1d due:9999-12-31 
 	"Show from outside the supported range rejects %s with no write",
 	async (initial) => {
 		const { backend, path, target } = await setup(initial);
-		const before = await backend.readSession({});
+		const before = await readConfirmation(backend);
 		const result = await backend.setTodoCompletion({ ...target, completed: true });
 		expect(result).toMatchObject({
 			status: "rejected",
 			message: "The next Show from date is outside the supported date range.",
 		});
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(before);
+		expect(await readConfirmation(backend)).toEqual(before);
 	}
 );
 
 test("editor completion rejects an out-of-range Show from with no write", async () => {
 	const initial = "Mow rec:1d due:2028-01-31 t:9999-12-31";
 	const { backend, path, target } = await setup(initial);
-	const before = await backend.readSession({});
+	const before = await readConfirmation(backend);
 	const result = await backend.editTodo({
 		...target,
 		description: "Mow",
@@ -442,7 +443,7 @@ test("editor completion rejects an out-of-range Show from with no write", async 
 		message: "Cannot edit Todo item: The next Show from date is outside the supported date range.",
 	});
 	expect(await readFile(path, "utf8")).toBe(initial);
-	expect(await backend.readSession({})).toEqual(before);
+	expect(await readConfirmation(backend)).toEqual(before);
 });
 
 test("unsupported recurrence keeps Show from metadata and generates nothing", async () => {

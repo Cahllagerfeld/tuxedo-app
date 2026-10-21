@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -123,7 +124,7 @@ test.each(["unknown", "invalid", "write-failure"])(
 		} finally {
 			if (failure === "write-failure") await chmod(f.directory, 0o700);
 		}
-		expect(await f.backend.readSession({})).toEqual(f.confirmed);
+		expect(await readConfirmation(f.backend)).toEqual(f.confirmed);
 		expect(await readFile(f.path, "utf8")).toBe(before);
 	}
 );
@@ -134,7 +135,7 @@ test("removes an unavailable inactive Workspace after a failed switch and persis
 	expect(await f.backend.switchWorkspace({ workspaceId: f.firstId })).toMatchObject({
 		status: "rejected",
 	});
-	expect(await f.backend.readSession({})).toEqual(f.confirmed);
+	expect(await readConfirmation(f.backend)).toEqual(f.confirmed);
 	expect(await f.backend.deleteWorkspace({ workspaceId: f.firstId })).toMatchObject({
 		status: "applied",
 		confirmed: {
@@ -150,7 +151,7 @@ test("removes an unavailable inactive Workspace after a failed switch and persis
 	expect(await readFile(f.secondPath, "utf8")).toBe("Second\n");
 	const restarted = createSessionBackend(f.path);
 	try {
-		expect(await restarted.restoreSession({})).toMatchObject({
+		expect(await activateWorkspace(restarted, f.secondId)).toMatchObject({
 			session: {
 				status: "ready",
 				catalogue: { active_workspace_id: f.secondId, workspaces: [{ id: f.secondId }] },

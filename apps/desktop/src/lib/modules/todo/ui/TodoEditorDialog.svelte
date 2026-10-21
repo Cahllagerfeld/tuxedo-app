@@ -29,6 +29,7 @@
 		saveTodoItem: SaveTodoItem;
 		workspaceName?: string;
 		disabled?: boolean;
+		dismissalBlocked?: boolean;
 		showDeferred?: boolean;
 		todoToEdit?: TodoItem;
 		initialProject?: string | null;
@@ -41,6 +42,7 @@
 		saveTodoItem,
 		workspaceName = "",
 		disabled = false,
+		dismissalBlocked = disabled,
 		showDeferred = false,
 		todoToEdit,
 		initialProject = null,
@@ -104,6 +106,7 @@
 	const todoFileName = $derived(todoFile.path.split(/[\\/]/u).at(-1) ?? todoFile.path);
 	const targetLabel = $derived(workspaceName ? `${workspaceName} · ${todoFileName}` : todoFileName);
 	const controlsDisabled = $derived(disabled || isSubmitting);
+	const closeDisabled = $derived(dismissalBlocked || isSubmitting);
 
 	function uniqueSuggestions(values: readonly string[]) {
 		return [...new Set(values)].sort((left, right) => left.localeCompare(right));
@@ -172,7 +175,7 @@
 	}
 
 	function handleOpenChange(nextOpen: boolean) {
-		if (!nextOpen && controlsDisabled) {
+		if (!nextOpen && closeDisabled) {
 			open = true;
 			return;
 		}
@@ -185,7 +188,7 @@
 	}
 
 	function cancel() {
-		if (controlsDisabled) return;
+		if (closeDisabled) return;
 		resetForm();
 		open = false;
 		onClose?.();
@@ -261,7 +264,7 @@
 	{/if}
 	<Dialog.Content
 		class="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
-		closeButtonDisabled={controlsDisabled}
+		closeButtonDisabled={closeDisabled}
 		onOpenAutoFocus={handleOpenAutoFocus}
 	>
 		<Dialog.Header class="shrink-0">
@@ -517,7 +520,7 @@
 				</Form.Field>
 			</div>
 			<Dialog.Footer class="shrink-0 border-t pt-4">
-				<Button type="button" variant="secondary" disabled={controlsDisabled} onclick={cancel}
+				<Button type="button" variant="secondary" disabled={closeDisabled} onclick={cancel}
 					>Cancel</Button
 				>
 				<Form.Button disabled={controlsDisabled}

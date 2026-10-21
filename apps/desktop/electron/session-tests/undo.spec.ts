@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+import type { TodoFileObservationAdapter } from "../observation";
+import type { TodoFileChange } from "@tuxedo/contracts";
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,12 +14,16 @@ afterEach(async () => {
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function setup(contents = "(A) 2026-01-01 First +Work\r\n\nLast") {
+async function setup(
+	contents = "(A) 2026-01-01 First +Work\r\n\nLast",
+	observation?: TodoFileObservationAdapter,
+	changed?: (event: TodoFileChange) => void
+) {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-undo-"));
 	cleanups.push(() => rm(directory, { recursive: true, force: true }));
 	const todoPath = join(directory, "todo.txt");
 	await writeFile(todoPath, contents);
-	const backend = createSessionBackend(join(directory, "workspaces.json"));
+	const backend = createSessionBackend(join(directory, "workspaces.json"), observation, changed);
 	cleanups.push(() => backend.dispose());
 	const created = await backend.createWorkspace({ name: "Work", color: "blue", todoPath });
 	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
@@ -150,8 +158,22 @@ test("Undo preserves unrelated external edits incorporated by the last mutation"
 	expect(await readFile(todoPath, "utf8")).toBe(external);
 });
 
-test("refresh preserves Undo for unchanged contents and clears it after an external edit", async () => {
-	const { backend, target, todoPath } = await setup();
+test("repeatable reads preserve Undo and authoritative observation clears it after an external edit", async () => {
+	let signal!: () => void;
+	let received!: () => void;
+	const observed = new Promise<void>((resolve) => {
+		received = resolve;
+	});
+	const { backend, target, todoPath } = await setup(
+		undefined,
+		{
+			observe: (_path, changed) =>
+				Effect.sync(() => {
+					signal = changed;
+				}),
+		},
+		() => received()
+	);
 	const created = await backend.createTodo({
 		...target,
 		description: "New",
@@ -159,9 +181,11 @@ test("refresh preserves Undo for unchanged contents and clears it after an exter
 		contexts: [],
 	});
 	if (created.status !== "applied") throw Error("Creation failed");
-	expect((await backend.restoreSession({})).undoLabel).toBe("Undo creation");
+	expect((await readConfirmation(backend)).undoLabel).toBe("Undo creation");
 	await writeFile(todoPath, "External");
-	expect((await backend.restoreSession({})).undoLabel).toBeUndefined();
+	signal();
+	await observed;
+	expect((await readConfirmation(backend)).undoLabel).toBeUndefined();
 });
 
 test("Workspace switching and restarting clear Undo; a failed switch keeps it", async () => {
@@ -176,10 +200,10 @@ test("Workspace switching and restarting clear Undo; a failed switch keeps it", 
 	expect(
 		(await backend.switchWorkspace({ workspaceId: "00000000-0000-4000-8000-000000000000" })).status
 	).toBe("rejected");
-	expect((await backend.readSession({})).undoLabel).toBe("Undo creation");
+	expect((await readConfirmation(backend)).undoLabel).toBe("Undo creation");
 	const restarted = createSessionBackend(join(todoPath, "..", "workspaces.json"));
 	cleanups.push(() => restarted.dispose());
-	expect((await restarted.restoreSession({})).undoLabel).toBeUndefined();
+	expect((await activateWorkspace(restarted, target.workspaceId)).undoLabel).toBeUndefined();
 	const switched = await backend.switchWorkspace({ workspaceId: target.workspaceId });
 	if (switched.status !== "applied") throw Error("Switch failed");
 	expect(switched.confirmed.undoLabel).toBeUndefined();

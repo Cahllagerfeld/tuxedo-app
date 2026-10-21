@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { expect, layer } from "@effect/vitest";
 import { TestClock } from "effect/testing";
 import { Deferred, Effect, Layer, Fiber } from "effect";
@@ -38,7 +39,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("authoritative observ
 					todo_file: { items: [{ description: "External" }] },
 					provenance: { status: "confirmed", selection: { revision: event.revision } },
 				});
-				expect((yield* session.readSession({})).undoLabel).toBeUndefined();
+				expect((yield* readConfirmation(session)).undoLabel).toBeUndefined();
 			}).pipe(
 				Effect.provide(
 					workspaceSessionLayer(
@@ -76,7 +77,7 @@ layer(NodeFileSystem.layer)("observation during admitted work", (it) => {
 					throw Error("setup");
 				const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
 				pause = true;
-				const operation = yield* session.restoreSession({}).pipe(Effect.forkChild);
+				const operation = yield* session.readWorkspace({ workspaceId }).pipe(Effect.forkChild);
 				yield* Deferred.await(reading);
 				yield* fs.writeFileString(todoPath, "External during work\n");
 				signal();

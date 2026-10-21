@@ -9,16 +9,22 @@ declare const window: BrowserWindow;
 const getWindow = () => window;
 // @ts-expect-error No generic filesystem operation is exposed.
 api.readFile("/etc/passwd");
-// @ts-expect-error Read-session requests cannot carry arbitrary filesystem paths.
-api.readSession({ path: "/etc/passwd" });
+// @ts-expect-error Catalogue requests cannot carry arbitrary filesystem paths.
+api.readWorkspaceCatalogue({ path: "/etc/passwd" });
 // @ts-expect-error Main cannot register an unknown operation/channel.
-registerDesktopOperation(ipc, getWindow, () => true, "arbitraryChannel", api.readSession);
 registerDesktopOperation(
 	ipc,
 	getWindow,
 	() => true,
-	"readSession",
-	// @ts-expect-error Main results must be serialized confirmed outcomes.
+	"arbitraryChannel",
+	api.readWorkspaceCatalogue
+);
+registerDesktopOperation(
+	ipc,
+	getWindow,
+	() => true,
+	"readWorkspaceCatalogue",
+	// @ts-expect-error Main results must be serialized resource outcomes.
 	async () => ({ revision: "invalid" })
 );
 
@@ -30,7 +36,7 @@ registerDesktopOperation(
 	() => true,
 	"createWorkspace",
 	// @ts-expect-error Creation must return a serialized domain outcome, not a session.
-	api.readSession
+	api.readWorkspaceCatalogue
 );
 api.createTodo({
 	scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
@@ -49,7 +55,7 @@ registerDesktopOperation(
 	() => true,
 	"createTodo",
 	// @ts-expect-error Creation must return a serialized Todo mutation outcome.
-	api.readSession
+	api.readWorkspaceCatalogue
 );
 
 registerDesktopOperation(ipc, getWindow, () => true, "bulkDeleteTodos", api.bulkDeleteTodos);

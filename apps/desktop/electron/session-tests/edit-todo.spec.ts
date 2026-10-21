@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -81,7 +82,7 @@ test("editing cannot clear an existing Completion date", async () => {
 	const { backend, todoPath, request } = await setup();
 	const raw = "x 2026-10-09 Old";
 	await writeFile(todoPath, raw);
-	const restored = await backend.restoreSession({});
+	const restored = await activateWorkspace(backend, request.workspaceId);
 	const outcome = await backend.editTodo({
 		...request,
 		revision: restored.revision,
@@ -92,26 +93,26 @@ test("editing cannot clear an existing Completion date", async () => {
 	});
 	expect(outcome.status).toBe("rejected");
 	expect(await readFile(todoPath, "utf8")).toBe(raw);
-	expect(await backend.readSession({})).toEqual(restored);
+	expect(await readConfirmation(backend)).toEqual(restored);
 });
 test("invalid edits and stale session targets preserve disk and confirmed data", async () => {
 	const { backend, todoPath, request } = await setup();
 	const before = await readFile(todoPath, "utf8");
-	const confirmed = await backend.readSession({});
+	const confirmed = await readConfirmation(backend);
 	for (const input of [
 		{ ...request, description: "Wrong +token" },
 		{ ...request, revision: request.revision + 1 },
 	]) {
 		expect((await backend.editTodo(input)).status).toBe("rejected");
 		expect(await readFile(todoPath, "utf8")).toBe(before);
-		expect(await backend.readSession({})).toEqual(confirmed);
+		expect(await readConfirmation(backend)).toEqual(confirmed);
 	}
 });
 
 test("editing legacy completed items keeps their completion state without inventing dates", async () => {
 	const { backend, todoPath, request } = await setup();
 	await writeFile(todoPath, "x +Work custom:first custom:last");
-	const restored = await backend.restoreSession({});
+	const restored = await activateWorkspace(backend, request.workspaceId);
 	if (restored.session.status !== "ready") throw Error("setup");
 	expect(restored.session.todo_file.items[0].edit).toEqual({
 		description: "",
@@ -158,7 +159,7 @@ test.each([
 	async (raw, expected, completionDate, creationDate, metadata, description) => {
 		const { backend, todoPath, request } = await setup();
 		await writeFile(todoPath, raw);
-		const restored = await backend.restoreSession({});
+		const restored = await activateWorkspace(backend, request.workspaceId);
 		const outcome = await backend.editTodo({
 			...request,
 			revision: restored.revision,

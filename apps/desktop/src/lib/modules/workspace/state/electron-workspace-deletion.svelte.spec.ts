@@ -1,3 +1,4 @@
+import { resourceDesktop } from "./testing/resource-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -20,7 +21,7 @@ const initial: ConfirmedSession = {
 	},
 };
 function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
-	return {
+	return resourceDesktop({
 		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -39,15 +40,14 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		readSession: async () => initial,
-		restoreSession: async () => initial,
+		resourceState: async () => initial,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace,
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
-	};
+	});
 }
 async function confirm() {
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
@@ -179,8 +179,7 @@ test.each(["ready", "empty"] as const)(
 				},
 			};
 		});
-		desktop.readSession = async () => confirmed;
-		desktop.restoreSession = async () => confirmed;
+		Object.assign(desktop, resourceDesktop({ ...desktop, resourceState: async () => confirmed }));
 		desktop.switchWorkspace = async () => {
 			throw Error("Options must not switch Workspace");
 		};
@@ -226,8 +225,7 @@ test("removes the last unavailable Active workspace from Empty", async () => {
 			},
 		},
 	}));
-	desktop.readSession = async () => empty;
-	desktop.restoreSession = async () => empty;
+	Object.assign(desktop, resourceDesktop({ ...desktop, resourceState: async () => empty }));
 	render(ElectronDeletionHarness, { desktop });
 	await confirm();
 	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("0");

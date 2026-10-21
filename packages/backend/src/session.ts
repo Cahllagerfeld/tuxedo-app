@@ -219,54 +219,34 @@ export function sessionLayer(
 					);
 				}
 			);
-			const operation = <A>(
+			const operationResult = <A>(
 				name: string,
 				prefix: string,
 				effect: Effect.Effect<A, OperationError, FileSystem | Identity | WorkspaceCatalogue>
 			) =>
-				serialize(
-					name,
-					effect.pipe(
-						Effect.catch((error) =>
-							Effect.succeed({ status: "rejected" as const, message: prefix + error.message })
-						),
-						Effect.catchDefect((cause) =>
-							Effect.sync(() => {
-								diagnostic(name, cause);
-								return {
-									status: "rejected" as const,
-									message: prefix + "An unexpected error occurred. Try again.",
-								};
-							})
-						)
+				effect.pipe(
+					Effect.catch((error) =>
+						Effect.succeed({ status: "rejected" as const, message: prefix + error.message })
+					),
+					Effect.catchDefect((cause) =>
+						Effect.sync(() => {
+							diagnostic(name, cause);
+							return {
+								status: "rejected" as const,
+								message: prefix + "An unexpected error occurred. Try again.",
+							};
+						})
 					)
 				);
+			const operation = <A>(
+				name: string,
+				prefix: string,
+				effect: Effect.Effect<A, OperationError, FileSystem | Identity | WorkspaceCatalogue>
+			) => serialize(name, operationResult(name, prefix, effect));
 			const applied = (loaded: LoadedSession) => ({
 				status: "applied" as const,
 				confirmed: state.accept(loaded, null),
 			});
-			const read = (operation: "readSession" | "restoreSession") =>
-				serialize(
-					operation,
-					(operation === "readSession"
-						? state.read
-						: workspace.load().pipe(Effect.map(state.accept))
-					).pipe(
-						Effect.catchDefect((cause) =>
-							Effect.sync(() => {
-								diagnostic(operation, cause);
-								if (confirmed) return confirmed;
-								return state.accept({
-									session: {
-										status: "unavailable",
-										error:
-											"Cannot restore the Workspace session. An unexpected error occurred. Try again.",
-									},
-								});
-							})
-						)
-					)
-				);
 			const reads = createWorkspaceReads(cataloguePath, () => ({ confirmed, todoContents }));
 			const repeatableRead = <A, E>(
 				name: string,
@@ -318,12 +298,17 @@ export function sessionLayer(
 						})
 					),
 				stopObservation: semaphore.withPermit(closeObservation),
-				readSavedViews: () => operation("readSavedViews", "", views.read()),
+				readSavedViews: () =>
+					semaphore
+						.withPermit(
+							operationResult("readSavedViews", "", views.read()).pipe(
+								Effect.withSpan("WorkspaceSession.readSavedViews")
+							)
+						)
+						.pipe(Effect.provideContext(dependencies)),
 				saveView: (request) => operation("saveView", "Cannot save view: ", views.save(request)),
 				deleteView: (request) =>
 					operation("deleteView", "Cannot delete view: ", views.delete(request)),
-				readSession: () => read("readSession"),
-				restoreSession: () => read("restoreSession"),
 				createWorkspace: (request) =>
 					operation(
 						"createWorkspace",

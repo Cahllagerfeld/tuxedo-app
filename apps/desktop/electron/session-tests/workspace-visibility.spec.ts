@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -65,7 +66,7 @@ test("Show deferred preferences survive Workspace switches and a backend restart
 	await backend.dispose();
 	const restarted = createSessionBackend(path);
 	cleanups.push(() => restarted.dispose());
-	expect(await restarted.restoreSession({})).toMatchObject({
+	expect(await activateWorkspace(restarted, target(current).workspaceId)).toMatchObject({
 		session: {
 			catalogue: {
 				active_workspace_id: target(current).workspaceId,
@@ -77,7 +78,7 @@ test("Show deferred preferences survive Workspace switches and a backend restart
 		},
 	});
 	const reset = await restarted.setWorkspaceShowDeferred({
-		...target(await restarted.readSession({})),
+		...target(await readConfirmation(restarted)),
 		showDeferred: false,
 	});
 	expect(reset.status).toBe("applied");
@@ -94,7 +95,7 @@ test("saving Show deferred preserves Undo and rejects stale targets without chan
 	});
 	if (created.status !== "applied") throw Error("Expected creation");
 	const outcome = await backend.setWorkspaceShowDeferred({
-		...target(await backend.readSession({})),
+		...target(await readConfirmation(backend)),
 		showDeferred: true,
 	});
 	expect(outcome).toMatchObject({ status: "applied", confirmed: { undoLabel: "Undo creation" } });
@@ -103,18 +104,24 @@ test("saving Show deferred preserves Undo and rejects stale targets without chan
 		await backend.setWorkspaceShowDeferred({ ...target(current), showDeferred: false })
 	).toMatchObject({ status: "rejected" });
 	expect(await readFile(path, "utf8")).toBe(contents);
-	expect(await backend.undoTodo(target(await backend.readSession({})))).toMatchObject({
+	expect(await backend.undoTodo(target(await readConfirmation(backend)))).toMatchObject({
 		status: "applied",
 	});
 });
 test("a corrupt catalogue is preserved and a failed save leaves confirmed visibility unchanged", async () => {
 	const { path, backend, current } = await fixture();
+	const original = await readFile(path, "utf8");
 	await writeFile(path, "{broken");
 	expect(
 		await backend.setWorkspaceShowDeferred({ ...target(current), showDeferred: true })
 	).toMatchObject({ status: "rejected" });
-	expect(await backend.readSession({})).toEqual(current);
+	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
+	});
 	expect(await readFile(path, "utf8")).toBe("{broken");
+	await writeFile(path, original);
+	expect(await readConfirmation(backend)).toEqual(current);
 });
 
 test("invalid Workspace visibility values preserve the catalogue and confirmed session", async () => {
@@ -125,13 +132,16 @@ test("invalid Workspace visibility values preserve the catalogue and confirmed s
 			await backend.setWorkspaceShowDeferred({ ...target(current), showDeferred } as never)
 		).toMatchObject({ status: "rejected" });
 		expect(await readFile(path, "utf8")).toBe(original);
-		expect(await backend.readSession({})).toEqual(current);
+		expect(await readConfirmation(backend)).toEqual(current);
 	}
 	const invalid = JSON.parse(original);
 	invalid.workspaces[0].show_deferred = "true";
 	await writeFile(path, JSON.stringify(invalid));
 	const restarted = createSessionBackend(path);
 	cleanups.push(() => restarted.dispose());
-	expect(await restarted.restoreSession({})).toMatchObject({ session: { status: "unavailable" } });
+	expect(await restarted.readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
+	});
 	expect(await readFile(path, "utf8")).toBe(JSON.stringify(invalid));
 });

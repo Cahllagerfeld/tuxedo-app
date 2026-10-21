@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { Effect } from "effect";
 import * as FileSystem from "effect/FileSystem";
@@ -60,7 +61,9 @@ test("injected identity and date persist through Workspace creation and restart"
 	const restarted = createSessionBackend(cataloguePath);
 	backends.push(restarted);
 	if (created.status !== "applied") throw Error("creation failed");
-	expect((await restarted.restoreSession({})).session).toMatchObject({
+	expect(
+		(await activateWorkspace(restarted, "9426bd98-a6dd-48eb-b1ab-037d82983ae1")).session
+	).toMatchObject({
 		status: "ready",
 		catalogue: { workspaces: [{ name: "Work" }] },
 		todo_file: { items: [{ raw: "First" }] },
@@ -99,7 +102,7 @@ test("failed replacement preserves disk and confirmed data, cleans temporary fil
 		status: "rejected",
 		message: expect.stringContaining("replacement denied"),
 	});
-	expect(await backend.readSession({})).toEqual(first.confirmed);
+	expect(await readConfirmation(backend)).toEqual(first.confirmed);
 	expect(await readFile(cataloguePath, "utf8")).toBe(before);
 	expect((await readdir(directory)).sort()).toEqual(["todo.txt", "workspaces.json"]);
 	fail = false;
@@ -150,12 +153,12 @@ test("failed synchronization preserves the catalogue and closes and cleans the t
 			workspaceId: first.confirmed.session.catalogue.active_workspace_id!,
 		})
 	).toMatchObject({ status: "rejected", message: expect.stringContaining("sync denied") });
-	expect(await backend.readSession({})).toEqual(first.confirmed);
+	expect(await readConfirmation(backend)).toEqual(first.confirmed);
 	expect(await readFile(cataloguePath, "utf8")).toBe(before);
 	expect((await readdir(directory)).sort()).toEqual(["todo.txt", "workspaces.json"]);
 });
 
-test("legacy Todo-item writes and Workspace lifecycle commands share ordering and recover after rejection", async () => {
+test("Todo-item writes and Workspace lifecycle commands share ordering and recover after rejection", async () => {
 	const { todoPath, cataloguePath } = await setup();
 	const backend = createSessionBackend(cataloguePath);
 	backends.push(backend);
@@ -171,18 +174,20 @@ test("legacy Todo-item writes and Workspace lifecycle commands share ordering an
 	};
 	const completed = backend.setTodoCompletion({ ...target, completed: true });
 	const failed = backend.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
-	const restored = backend.restoreSession({});
+	const resource = backend.readWorkspace({ workspaceId: target.workspaceId });
 	const stale = backend.deleteTodo(target);
-	const read = backend.readSession({});
+	const read = readConfirmation(backend);
 	expect(await completed).toMatchObject({ status: "applied" });
 	expect(await failed).toMatchObject({ status: "rejected" });
-	const confirmed = await restored;
-	expect(confirmed.session).toMatchObject({
+	const confirmed = await resource;
+	expect(confirmed).toMatchObject({
 		status: "ready",
 		todo_file: { items: [{ completed: true }] },
 	});
 	expect(await stale).toMatchObject({ status: "rejected" });
-	expect(await read).toEqual(confirmed);
+	if (confirmed.status !== "ready" || confirmed.provenance.status !== "confirmed")
+		throw Error("Expected confirmed Workspace contents");
+	expect((await read).revision).toBe(confirmed.provenance.selection.revision);
 	expect(await readFile(todoPath, "utf8")).toMatch(/^x \d{4}-\d{2}-\d{2} First\n$/);
 });
 
@@ -199,7 +204,7 @@ test("unexpected lifecycle defects are diagnosed with operation context and safe
 	});
 	backends.push(backend);
 	try {
-		const before = await backend.readSession({});
+		const before = await backend.readWorkspaceCatalogue({});
 		fail = true;
 		expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toEqual({
 			status: "rejected",
@@ -207,7 +212,7 @@ test("unexpected lifecycle defects are diagnosed with operation context and safe
 		});
 		expect(diagnostic.mock.calls.flat().join(" ")).toContain("createWorkspace");
 		expect(diagnostic.mock.calls.flat().join(" ")).toContain("private diagnostic detail");
-		expect(await backend.readSession({})).toEqual(before);
+		expect(await backend.readWorkspaceCatalogue({})).toEqual(before);
 		await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
 		fail = false;
 		expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
@@ -248,7 +253,12 @@ test("runtime disposal lets an admitted catalogue replacement finish before rele
 	await disposed;
 	const restarted = createSessionBackend(cataloguePath);
 	backends.push(restarted);
-	expect((await restarted.restoreSession({})).session).toMatchObject({
+	const catalogue = await restarted.readWorkspaceCatalogue({});
+	if (catalogue.status !== "ready" || !catalogue.catalogue.active_workspace_id)
+		throw Error("Expected remembered workspace");
+	expect(
+		(await activateWorkspace(restarted, catalogue.catalogue.active_workspace_id)).session
+	).toMatchObject({
 		status: "ready",
 		catalogue: { workspaces: [{ name: "Work" }] },
 		todo_file: { items: [{ raw: "First" }] },
@@ -327,6 +337,6 @@ test("Todo-item writes use injected filesystem metadata and preserve confirmed d
 			expectedRaw: "First",
 		})
 	).toMatchObject({ status: "rejected", message: expect.stringContaining("PermissionDenied") });
-	expect(await backend.readSession({})).toEqual(created.confirmed);
+	expect(await readConfirmation(backend)).toEqual(created.confirmed);
 	expect(await readFile(todoPath, "utf8")).toBe("First\n");
 });

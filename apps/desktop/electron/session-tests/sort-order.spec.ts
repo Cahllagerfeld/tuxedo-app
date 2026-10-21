@@ -1,3 +1,4 @@
+import { activateWorkspace, readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -62,7 +63,7 @@ test("sort choices survive Workspace switches and a backend restart without rewr
 	await backend.dispose();
 	const restarted = createSessionBackend(path);
 	cleanups.push(() => restarted.dispose());
-	expect(await restarted.restoreSession({})).toMatchObject({
+	expect(await activateWorkspace(restarted, target(current).workspaceId)).toMatchObject({
 		session: {
 			catalogue: {
 				active_workspace_id: target(current).workspaceId,
@@ -74,7 +75,7 @@ test("sort choices survive Workspace switches and a backend restart without rewr
 		},
 	});
 	const reset = await restarted.setWorkspaceSortOrder({
-		...target(await restarted.readSession({})),
+		...target(await readConfirmation(restarted)),
 		sortOrder: "file",
 	});
 	expect(reset.status).toBe("applied");
@@ -91,7 +92,7 @@ test("saving sort order preserves Undo and rejects stale targets without changin
 	});
 	if (created.status !== "applied") throw Error("Expected creation");
 	const outcome = await backend.setWorkspaceSortOrder({
-		...target(await backend.readSession({})),
+		...target(await readConfirmation(backend)),
 		sortOrder: "due",
 	});
 	expect(outcome).toMatchObject({ status: "applied", confirmed: { undoLabel: "Undo creation" } });
@@ -100,16 +101,22 @@ test("saving sort order preserves Undo and rejects stale targets without changin
 		await backend.setWorkspaceSortOrder({ ...target(current), sortOrder: "file" })
 	).toMatchObject({ status: "rejected" });
 	expect(await readFile(path, "utf8")).toBe(contents);
-	expect(await backend.undoTodo(target(await backend.readSession({})))).toMatchObject({
+	expect(await backend.undoTodo(target(await readConfirmation(backend)))).toMatchObject({
 		status: "applied",
 	});
 });
 test("a corrupt catalogue is preserved and a failed save leaves confirmed sort order unchanged", async () => {
 	const { path, backend, current } = await fixture();
+	const original = await readFile(path, "utf8");
 	await writeFile(path, "{broken");
 	expect(
 		await backend.setWorkspaceSortOrder({ ...target(current), sortOrder: "due" })
 	).toMatchObject({ status: "rejected" });
-	expect(await backend.readSession({})).toEqual(current);
+	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
+		status: "rejected",
+		reason: "catalogue",
+	});
 	expect(await readFile(path, "utf8")).toBe("{broken");
+	await writeFile(path, original);
+	expect(await readConfirmation(backend)).toEqual(current);
 });

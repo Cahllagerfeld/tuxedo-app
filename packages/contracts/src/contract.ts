@@ -464,16 +464,6 @@ export const desktopContract = {
 		request: createWorkspaceRequestSchema,
 		response: sessionOutcomeSchema,
 	},
-	readSession: {
-		channel: "tuxedo:read-session",
-		request: emptyRequestSchema,
-		response: confirmedSessionSchema,
-	},
-	restoreSession: {
-		channel: "tuxedo:restore-session",
-		request: emptyRequestSchema,
-		response: confirmedSessionSchema,
-	},
 } as const;
 export type DesktopOperation = keyof typeof desktopContract;
 export type DesktopRequest<K extends DesktopOperation> = ReturnType<
@@ -533,8 +523,6 @@ export function createDesktopClient(
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),
-		readSession: (request) => call("readSession", request),
-		restoreSession: (request) => call("restoreSession", request),
 	};
 }
 declare global {

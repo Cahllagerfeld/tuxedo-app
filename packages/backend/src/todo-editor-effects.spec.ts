@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { expect, layer } from "@effect/vitest";
 import { Context, Effect, Fiber, Layer } from "effect";
 import { FileSystem } from "effect/FileSystem";
@@ -133,7 +134,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item edi
 							message: expect.stringContaining(`${method} denied`),
 						});
 						expect(yield* fs.readFileString(fixture.todoPath)).toBe("First\r\nLast");
-						expect(yield* fixture.session.readSession({})).toEqual(fixture.confirmed);
+						expect(yield* readConfirmation(fixture.session)).toEqual(fixture.confirmed);
 						expect((yield* fs.readDirectory(fixture.directory)).sort()).toEqual([
 							"todo.txt",
 							"workspaces.json",
@@ -145,7 +146,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item edi
 						expect(yield* fs.readFileString(fixture.todoPath)).toBe(
 							operation === "createTodo" ? "First\r\nLast\r\nAdded" : "Added\r\nLast"
 						);
-						expect((yield* fixture.session.readSession({})).revision).toBe(
+						expect((yield* readConfirmation(fixture.session)).revision).toBe(
 							outcome.confirmed.revision
 						);
 					})
@@ -191,7 +192,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Effect Todo-item edi
 					});
 					release();
 					yield* Fiber.join(interrupted);
-					const confirmed = yield* fixture.session.readSession({});
+					const confirmed = yield* readConfirmation(fixture.session);
 					expect(confirmed.revision).toBeGreaterThan(fixture.confirmed.revision);
 					expect(confirmed.session).toMatchObject({
 						status: "ready",

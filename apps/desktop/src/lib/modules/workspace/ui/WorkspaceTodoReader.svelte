@@ -116,6 +116,7 @@
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
 				showDeferred={todoFilter.showDeferred}
 				disabled={workspace.writesBlocked}
+				dismissalBlocked={workspace.isOperating}
 				onClose={reader.closeEdit}
 			/>
 		{/if}

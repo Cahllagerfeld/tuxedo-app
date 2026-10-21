@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { afterEach, expect, test } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, chmod, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -121,7 +122,7 @@ test("a failed bulk uncompletion write preserves disk and confirmed data and per
 	try {
 		expect((await backend.bulkSetTodoCompletion(request)).status).toBe("rejected");
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(session);
+		expect(await readConfirmation(backend)).toEqual(session);
 		expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 	} finally {
 		await chmod(directory, 0o700);
@@ -314,7 +315,7 @@ test.each([
 		});
 		expect(result).toMatchObject({ status: "rejected", message: expect.stringContaining(message) });
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(session);
+		expect(await readConfirmation(backend)).toEqual(session);
 	}
 );
 
@@ -330,7 +331,7 @@ test("a recurring batch write failure leaves no completions, markers, successors
 		});
 		expect(result.status).toBe("rejected");
 		expect(await readFile(path, "utf8")).toBe(initial);
-		expect(await backend.readSession({})).toEqual(session);
+		expect(await readConfirmation(backend)).toEqual(session);
 		expect((await readdir(directory)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 	} finally {
 		await chmod(directory, 0o700);
@@ -360,7 +361,7 @@ test("bulk uncompletion and reopening preserve generation markers and never dupl
 		(item) => item.metadata["tuxedo-generated"]
 	);
 	expect(originals).toHaveLength(2);
-	const restored = await backend.restoreSession({});
+	const restored = await readConfirmation(backend);
 	const recompleted = await backend.bulkSetTodoCompletion({
 		...target,
 		revision: restored.revision,

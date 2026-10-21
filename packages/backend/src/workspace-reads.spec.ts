@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { expect, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { FileSystem } from "effect/FileSystem";
@@ -8,6 +9,34 @@ import { WorkspaceSession, workspaceSessionLayer, identityLayer } from "@tuxedo/
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("repeatable Workspace reads", (it) => {
+	it.effect("saved-view reads never retry failed observation acquisition", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const directory = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
+			const todoPath = join(directory, "todo.txt");
+			yield* fs.writeFileString(todoPath, "First\n");
+			let attempts = 0;
+			yield* Effect.gen(function* () {
+				const session = yield* WorkspaceSession;
+				const created = yield* session.createWorkspace({ name: "Work", color: "blue", todoPath });
+				expect(created.status).toBe("applied");
+				expect(attempts).toBe(1);
+				for (let n = 0; n < 2; n++)
+					expect(yield* session.readSavedViews({})).toEqual({ status: "applied", views: [] });
+				expect(attempts).toBe(1);
+			}).pipe(
+				Effect.provide(
+					workspaceSessionLayer(join(directory, "workspaces.json"), {
+						observe: () =>
+							Effect.suspend(() => {
+								attempts++;
+								return Effect.fail(new Error("Watcher unavailable"));
+							}),
+					}).pipe(Layer.provide(identityLayer))
+				)
+			);
+		})
+	);
 	it.effect("initial reads return disk data without initializing selection or observation", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
@@ -48,8 +77,8 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("repeatable Workspace
 				expect(yield* session.readWorkspaceCatalogue({})).toMatchObject({ selection: null });
 				expect(observed).toEqual([]);
 				expect(yield* fs.readFileString(cataloguePath)).toBe(JSON.stringify(catalogue));
-				const restored = yield* session.readSession({});
-				expect(restored.revision).toBe(0);
+				const activated = yield* session.switchWorkspace({ workspaceId });
+				expect(activated).toMatchObject({ status: "applied", confirmed: { revision: 0 } });
 				expect(observed).toEqual([todoPath]);
 			}).pipe(
 				Effect.provide(
@@ -99,7 +128,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("repeatable Workspace
 						completed: true,
 					});
 					if (completed.status !== "applied") throw Error("completion");
-					const before = yield* session.readSession({});
+					const before = yield* readConfirmation(session);
 					const persisted = yield* fs.readFileString(cataloguePath);
 					expect(
 						yield* session.deleteTodo({
@@ -166,7 +195,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("repeatable Workspace
 					});
 					expect(yield* fs.readFileString(cataloguePath)).toBe("corrupt");
 					yield* fs.writeFileString(cataloguePath, persisted);
-					expect(yield* session.readSession({})).toEqual(before);
+					expect(yield* readConfirmation(session)).toEqual(before);
 					expect(yield* fs.readFileString(cataloguePath)).toBe(persisted);
 					expect(observed).toEqual(acquisitions);
 					expect(released).toEqual(releases);
@@ -177,13 +206,13 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("repeatable Workspace
 						todo_file: { items: [{ raw: "External change" }, { raw: "Last" }] },
 						provenance: { status: "speculative" },
 					});
-					expect(yield* session.readSession({})).toEqual(before);
+					expect(yield* session.readWorkspaceCatalogue({})).toMatchObject({ selection });
 					yield* fs.remove(aPath);
 					expect(yield* session.readWorkspace({ workspaceId: aId })).toMatchObject({
 						status: "rejected",
 						reason: "todo-file",
 					});
-					expect(yield* session.readSession({})).toEqual(before);
+					expect(yield* session.readWorkspaceCatalogue({})).toMatchObject({ selection });
 					yield* fs.writeFileString(aPath, acceptedBytes);
 					expect(
 						yield* session.undoTodo({

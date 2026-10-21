@@ -1,3 +1,4 @@
+import { resourceDesktop } from "./testing/resource-desktop";
 import { expect, test, vi } from "vitest";
 import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
 import { page } from "vitest/browser";
@@ -51,7 +52,7 @@ const initial: ConfirmedSession = {
 	},
 };
 function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
-	return {
+	return resourceDesktop({
 		readWorkspaceCatalogue: async () => {
 			throw Error("unused");
 		},
@@ -61,8 +62,7 @@ function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 		readSavedViews: async () => ({ status: "applied", views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		readSession: async () => initial,
-		restoreSession: async () => initial,
+		resourceState: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -78,7 +78,7 @@ function desktop(deleteTodo: DesktopAPI["deleteTodo"]): DesktopAPI {
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
-	};
+	});
 }
 test("row deletion is bound to the confirmed Workspace and keeps controls and summaries pending until confirmation", async () => {
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) => void;
@@ -190,11 +190,14 @@ test("batch deletion sends one scoped request, blocks duplicate and lifecycle ad
 		status: "rejected",
 		message: "unused",
 	}));
-	const fixture = workspaceRouteFixture({
-		...desktop(deleteTodo),
-		bulkDeleteTodos,
-		switchWorkspace,
-	});
+	const fixture = workspaceRouteFixture(
+		resourceDesktop({
+			resourceState: async () => initial,
+			...desktop(deleteTodo),
+			bulkDeleteTodos,
+			switchWorkspace,
+		})
+	);
 	const state = fixture.commands;
 	await fixture.start();
 	const before = state.todoFile;
@@ -248,10 +251,13 @@ test.each(["rejected", "transport", "conflict"] as const)(
 				},
 			};
 		});
-		const fixture = workspaceRouteFixture({
-			...desktop(async () => ({ status: "rejected", message: "unused" })),
-			bulkDeleteTodos,
-		});
+		const fixture = workspaceRouteFixture(
+			resourceDesktop({
+				resourceState: async () => initial,
+				...desktop(async () => ({ status: "rejected", message: "unused" })),
+				bulkDeleteTodos,
+			})
+		);
 		const state = fixture.commands;
 		await fixture.start();
 		const before = state.todoFile;
@@ -268,10 +274,13 @@ test.each(["rejected", "transport", "conflict"] as const)(
 
 test("batch deletion rejects stale renderer targets before calling desktop", async () => {
 	const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>();
-	const fixture = workspaceRouteFixture({
-		...desktop(async () => ({ status: "rejected", message: "unused" })),
-		bulkDeleteTodos,
-	});
+	const fixture = workspaceRouteFixture(
+		resourceDesktop({
+			resourceState: async () => initial,
+			...desktop(async () => ({ status: "rejected", message: "unused" })),
+			bulkDeleteTodos,
+		})
+	);
 	const state = fixture.commands;
 	await fixture.start();
 	expect((await state.bulkDeleteTodos([open, { ...completed, raw: "Old contents" }])).status).toBe(

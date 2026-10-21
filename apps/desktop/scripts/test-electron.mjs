@@ -1,3 +1,4 @@
+import { readConfirmation, activateWorkspace } from "./read-confirmation.mjs";
 import { routeDataWorkflow } from "./route-data-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
@@ -84,10 +85,11 @@ try {
 	// Loading the entry route resumes the backend's Active workspace, like a fresh launch.
 	const reopen = () => page.goto(new URL("/", page.url()).href);
 	await assertWindowState(page);
-	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
-	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
-	assert.equal(confirmed.session.status, "empty");
-	assert.deepEqual(confirmed.session.catalogue.workspaces, []);
+	await page.waitForFunction(() => typeof window.desktop?.readWorkspaceCatalogue === "function");
+	const confirmed = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
+	assert.equal(confirmed.status, "ready");
+	assert.equal(confirmed.selection, null);
+	assert.deepEqual(confirmed.catalogue.workspaces, []);
 	await application.evaluate(({ dialog }) => {
 		globalThis.originalOpenDialog = dialog.showOpenDialog;
 		dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
@@ -112,7 +114,7 @@ try {
 	assert.equal(
 		await page.evaluate(async () => {
 			try {
-				await window.desktop.readSession({ path: "/etc/passwd" });
+				await window.desktop.readWorkspaceCatalogue({ path: "/etc/passwd" });
 				return false;
 			} catch {
 				return true;
@@ -231,10 +233,7 @@ try {
 	assert.equal(created.confirmed.session.status, "ready");
 	assert.equal(created.confirmed.session.todo_file.items.length, 2);
 	assert.equal(created.confirmed.session.todo_file.items[0].description, "Call Mom");
-	assert.deepEqual(
-		(await page.evaluate(() => window.desktop.readSession({}))).session,
-		created.confirmed.session
-	);
+	assert.deepEqual((await readConfirmation(page)).session, created.confirmed.session);
 	const beforeUndo = await readFile(todoPath, "utf8");
 	const sorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
 		scope: created.confirmed.scope,
@@ -345,7 +344,7 @@ try {
 		await page.getByRole("button", { name: "Sort Todo items", exact: true }).getAttribute("title"),
 		"Sort: Due date"
 	);
-	const restoredSort = await page.evaluate(() => window.desktop.readSession({}));
+	const restoredSort = await readConfirmation(page);
 	const unsorted = await page.evaluate((input) => window.desktop.setWorkspaceSortOrder(input), {
 		scope: restoredSort.scope,
 		revision: restoredSort.revision,
@@ -378,7 +377,7 @@ try {
 	assert.equal(await readFile(todoPath, "utf8"), beforeUndo);
 	created = {
 		status: "applied",
-		confirmed: await page.evaluate(() => window.desktop.readSession({})),
+		confirmed: await readConfirmation(page),
 	};
 	await assert.rejects(
 		page.evaluate((input) => window.desktop.undoTodo({ ...input, contents: "overwrite" }), {
@@ -468,10 +467,7 @@ try {
 		}
 	}, createdTodo.confirmed);
 	assert.equal(invalidCreationRejected, true);
-	assert.equal(
-		(await page.evaluate(() => window.desktop.readSession({}))).revision,
-		createdTodo.confirmed.revision
-	);
+	assert.equal((await readConfirmation(page)).revision, createdTodo.confirmed.revision);
 
 	const rejected = await page.evaluate((input) => window.desktop.createWorkspace(input), {
 		name: "Personal",
@@ -511,7 +507,11 @@ try {
 	const beforeBulk = await readFile(todoPath, "utf8");
 	const bulkSource = `${beforeBulk}Another open item\r\n`;
 	await writeFile(todoPath, bulkSource);
-	const bulkSession = await page.evaluate(() => window.desktop.restoreSession({}));
+	const bulkSession = await activateWorkspace(
+		page,
+		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+			.active_workspace_id
+	);
 	const bulkTarget = {
 		completed: true,
 		scope: bulkSession.scope,
@@ -570,7 +570,11 @@ try {
 	assert.equal(reopeningUndone.status, "applied");
 	assert.equal(await readFile(todoPath, "utf8"), bulkSource);
 	await writeFile(todoPath, beforeBulk);
-	switched.confirmed = await page.evaluate(() => window.desktop.restoreSession({}));
+	switched.confirmed = await activateWorkspace(
+		page,
+		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+			.active_workspace_id
+	);
 
 	const completionTarget = {
 		scope: switched.confirmed.scope,
@@ -606,7 +610,11 @@ try {
 	assert.equal(conflict.status, "conflict");
 	assert.equal(conflict.confirmed.todo_file.items[0].raw, "Externally changed");
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
-	await page.evaluate(() => window.desktop.restoreSession({}));
+	await activateWorkspace(
+		page,
+		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+			.active_workspace_id
+	);
 	const missing = await page.evaluate(() =>
 		window.desktop.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
 	);
@@ -618,7 +626,7 @@ try {
 	page = await application.firstWindow();
 	await assertWindowState(page);
 	await page.getByText("Call Mom", { exact: true }).waitFor();
-	const restored = await page.evaluate(() => window.desktop.readSession({}));
+	const restored = await readConfirmation(page);
 	assert.equal(
 		restored.session.catalogue.active_workspace_id,
 		created.confirmed.session.catalogue.active_workspace_id
@@ -740,7 +748,7 @@ try {
 	// Pure IPC reads keep the mounted controller's mutation and observation target intact.
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).click();
 	await page.getByRole("button", { name: "Undo completion", exact: true }).waitFor();
-	const beforeReads = await page.evaluate(() => window.desktop.readSession({}));
+	const beforeReads = await readConfirmation(page);
 	const catalogueBytes = await readFile(join(directory, "workspaces.json"), "utf8");
 	const inactiveId = beforeReads.session.catalogue.workspaces.find(
 		(workspace) => workspace.name === "Second"
@@ -789,7 +797,7 @@ try {
 	} finally {
 		await writeFile(join(directory, "workspaces.json"), catalogueBytes);
 	}
-	assert.deepEqual(await page.evaluate(() => window.desktop.readSession({})), beforeReads);
+	assert.deepEqual(await readConfirmation(page), beforeReads);
 	assert.equal(await readFile(join(directory, "workspaces.json"), "utf8"), catalogueBytes);
 	const activeRead = await page.evaluate(
 		(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
@@ -846,14 +854,15 @@ try {
 		savedViewReadsBeforeObservation,
 		"External Todo-file refresh must not reread saved views"
 	);
-	const observed = await page.evaluate(() => window.desktop.readSession({}));
+	const observed = await readConfirmation(page);
 	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
 	await writeFile(
 		todoPath,
 		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n\n"
 	);
 	await page.waitForFunction(
-		async (revision) => (await window.desktop.readSession({})).revision > revision,
+		async (revision) =>
+			(await window.desktop.readWorkspaceCatalogue({})).selection?.revision > revision,
 		observed.revision
 	);
 	assert.equal(
@@ -1030,7 +1039,11 @@ try {
 	const bulkDeletionSource =
 		"Before +Hidden\r\n(A) 2026-10-01 Batch one +Batch @desk custom:keep\n\n2026-13-01 Invalid\r\nx 2026-10-12 2026-10-02 Batch two +Batch\tcustom:value\r\nAfter +Hidden";
 	await writeFile(deletionPath, bulkDeletionSource);
-	const bulkDeletionSession = await page.evaluate(() => window.desktop.restoreSession({}));
+	const bulkDeletionSession = await activateWorkspace(
+		page,
+		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+			.active_workspace_id
+	);
 	const bulkDeletionTarget = {
 		scope: bulkDeletionSession.scope,
 		revision: bulkDeletionSession.revision,
@@ -1080,7 +1093,7 @@ try {
 	await page.waitForFunction(
 		() => document.activeElement?.getAttribute("aria-label") === "Exit selection mode"
 	);
-	const afterBulkDeletion = await page.evaluate(() => window.desktop.readSession({}));
+	const afterBulkDeletion = await readConfirmation(page);
 	assert.equal(afterBulkDeletion.undoLabel, "Undo deletion");
 	assert.equal(await page.getByText("0 selected", { exact: true }).count(), 1);
 	assert.equal(
@@ -1318,7 +1331,7 @@ try {
 	);
 	await reopen();
 	await addTodo.waitFor();
-	const metadataSession = await page.evaluate(() => window.desktop.readSession({}));
+	const metadataSession = await readConfirmation(page);
 	assert.equal(metadataSession.session.status, "ready");
 	assert.equal(metadataSession.session.todo_file.items.at(-1).priority, "Z");
 	assert.deepEqual(metadataSession.session.todo_file.items.at(-1).metadata, {
@@ -1392,7 +1405,7 @@ try {
 		"Show deferred survives renderer reload"
 	);
 	await page.getByRole("button", { name: "Priority A", exact: true }).click();
-	const persistedVisibility = await page.evaluate(() => window.desktop.readSession({}));
+	const persistedVisibility = await readConfirmation(page);
 	assert.equal(
 		persistedVisibility.session.catalogue.workspaces.find(
 			(w) => w.id === thresholdWorkspace.confirmed.session.catalogue.active_workspace_id
@@ -1551,7 +1564,7 @@ try {
 	await reopen();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).click();
 	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
-	let recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
+	let recurrenceState = await readConfirmation(page);
 	assert.equal(recurrenceState.session.todo_file.items.length, 3);
 	assert.equal(recurrenceState.session.todo_file.items[0].metadata["tuxedo-generated"], "1");
 	assert.equal(recurrenceState.session.todo_file.items[1].priority, "A");
@@ -1565,7 +1578,7 @@ try {
 	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await page.getByRole("dialog").waitFor({ state: "hidden" });
-	recurrenceState = await page.evaluate(() => window.desktop.readSession({}));
+	recurrenceState = await readConfirmation(page);
 	assert.equal(recurrenceState.session.todo_file.items.length, 3);
 	assert.equal(recurrenceState.session.todo_file.items[1].description, "Edited chore");
 	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
@@ -1600,7 +1613,7 @@ try {
 		.getByText("Generated 2 next occurrences. Skipped 1 unsupported Repeat rule.", { exact: true })
 		.waitFor();
 	await page.getByText("0 selected", { exact: true }).waitFor();
-	const recurringBatchState = await page.evaluate(() => window.desktop.readSession({}));
+	const recurringBatchState = await readConfirmation(page);
 	const batchItems = recurringBatchState.session.todo_file.items;
 	assert.equal(batchItems.length, 7);
 	assert.deepEqual(
@@ -1645,7 +1658,7 @@ try {
 	await page
 		.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\. Show from \d{4}-\d{2}-\d{2}\.$/)
 		.waitFor();
-	const leadState = await page.evaluate(() => window.desktop.readSession({}));
+	const leadState = await readConfirmation(page);
 	assert.equal(leadState.session.todo_file.items[0].metadata.t, "2020-01-07");
 	const leadSuccessor = leadState.session.todo_file.items[1];
 	const day = 24 * 60 * 60 * 1000;
@@ -1725,7 +1738,7 @@ try {
 		await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	};
 	const activeId = async () =>
-		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
+		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
 			.active_workspace_id;
 	const expectRoute = async (name, item) => {
 		await page.waitForURL(routeUrl(`/workspaces/${routeIds[name]}`));

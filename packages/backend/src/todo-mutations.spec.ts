@@ -1,3 +1,4 @@
+import { readConfirmation } from "./testing/read-confirmation";
 import { expect, layer } from "@effect/vitest";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -61,7 +62,11 @@ const setup = (initial: string, filesystem: FileSystem) =>
 		if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 			throw Error(`setup failed: ${JSON.stringify(created)}`);
 		yield* fs.writeFileString(todoPath, initial);
-		const restored = yield* session.restoreSession({});
+		const activated = yield* session.switchWorkspace({
+			workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
+		});
+		if (activated.status !== "applied") throw Error("activation failed");
+		const restored = activated.confirmed;
 		if (restored.session.status !== "ready") throw Error("restoration failed");
 		const confirmed = { ...restored, session: restored.session };
 		const target = {
@@ -139,13 +144,13 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					revision: deleted.confirmed.revision,
 					workspaceId: target.workspaceId,
 				};
-				const before = yield* session.readSession({});
+				const before = yield* readConfirmation(session);
 				fail = true;
 				expect(yield* session.undoTodo(undoTarget)).toMatchObject({
 					status: "rejected",
 					message: expect.stringContaining("replacement denied"),
 				});
-				expect(yield* session.readSession({})).toEqual(before);
+				expect(yield* readConfirmation(session)).toEqual(before);
 				expect(yield* fs.readFileString(todoPath)).toBe("Last");
 				expect((yield* fs.readDirectory(directory)).sort()).toEqual([
 					"todo.txt",
@@ -201,7 +206,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			yield* Fiber.join(interrupting);
 			expect(yield* Fiber.join(queued)).toMatchObject({ status: "rejected" });
 			expect(yield* fs.readFileString(todoPath)).toBe("First\r\nLast");
-			const confirmed = yield* session.readSession({});
+			const confirmed = yield* readConfirmation(session);
 			expect(confirmed.undoLabel).toBeUndefined();
 			expect(confirmed.revision).toBeGreaterThan(deleted.confirmed.revision);
 		})
@@ -226,7 +231,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					"todo.txt",
 					"workspaces.json",
 				]);
-				expect(yield* session.readSession({})).toEqual({
+				expect(yield* readConfirmation(session)).toEqual({
 					...confirmed,
 					revision: outcome.confirmed.revision,
 					undoLabel: outcome.confirmed.undoLabel,
@@ -270,7 +275,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					message: expect.stringContaining("replacement denied"),
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe(row.initial);
-				expect(yield* session.readSession({})).toEqual(confirmed);
+				expect(yield* readConfirmation(session)).toEqual(confirmed);
 				expect((yield* fs.readDirectory(directory)).sort()).toEqual([
 					"todo.txt",
 					"workspaces.json",
@@ -308,7 +313,8 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			});
 			expect(yield* fs.readFileString(todoPath)).toBe(row.initial);
 			expect(yield* fs.readFileString(otherPath)).toBe(row.initial);
-			expect(yield* session.readSession({})).toEqual(confirmed);
+			yield* fs.writeFileString(cataloguePath, JSON.stringify(confirmed.session.catalogue));
+			expect(yield* readConfirmation(session)).toEqual(confirmed);
 		})
 	);
 
@@ -324,9 +330,10 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 					status: "rejected",
 				});
 				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
-				expect(yield* session.readSession({})).toEqual(confirmed);
 				if (failure === "missing") expect(yield* fs.exists(cataloguePath)).toBe(false);
 				else expect(yield* fs.readFileString(cataloguePath)).toBe("invalid");
+				yield* fs.writeFileString(cataloguePath, JSON.stringify(confirmed.session.catalogue));
+				expect(yield* readConfirmation(session)).toEqual(confirmed);
 			})
 	);
 
@@ -366,7 +373,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				yield* Fiber.join(interrupting);
 				expect(yield* Fiber.join(queued)).toMatchObject({ status: "rejected" });
 				expect(yield* fs.readFile(todoPath)).toEqual(Buffer.from(row.expected));
-				const accepted = yield* session.readSession({});
+				const accepted = yield* readConfirmation(session);
 				expect(accepted.revision).toBeGreaterThan(confirmed.revision);
 				expect(accepted.session).toMatchObject({
 					status: "ready",
