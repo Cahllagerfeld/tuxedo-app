@@ -23,7 +23,10 @@ export class AppState {
 	constructor(workspace: WorkspaceCommands) {
 		this.workspace = workspace;
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
-		this.todoFilter = new TodoFilterState(() => this.todos.items);
+		this.todoFilter = new TodoFilterState(
+			() => this.todos.items,
+			() => this.workspace.activeWorkspace ?? {}
+		);
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
 		this.bulkSelection = createTodoBulkSelection({
 			getWorkspace: () => this.workspace,
@@ -37,11 +40,7 @@ export class AppState {
 			const id = this.workspace.activeWorkspace?.id ?? null;
 			if (id !== previousWorkspace) this.isTodoCreationOpen = false;
 			previousWorkspace = id;
-			this.todoFilter.sync(
-				id,
-				this.workspace.activeWorkspace?.sort_order ?? "file",
-				this.workspace.activeWorkspace?.show_deferred ?? false
-			);
+			this.todoFilter.sync(id);
 		});
 	}
 

@@ -16,13 +16,23 @@ export type TodoFilterFacets = Readonly<{
 export class TodoFilterState {
 	private preserveSelections = false;
 	private workspaceKey: string | null | undefined;
-	constructor(private readonly getItems: () => readonly TodoItem[]) {}
+	constructor(
+		private readonly getItems: () => readonly TodoItem[],
+		private readonly getPreferences: () => {
+			readonly sort_order?: TodoSortOrder;
+			readonly show_deferred?: boolean;
+		}
+	) {}
 	private get items() {
 		return this.getItems();
 	}
 	status = $state<TodoFilterStatus>("all");
-	sortOrder = $state<TodoSortOrder>("file");
-	showDeferred = $state(false);
+	get sortOrder() {
+		return this.getPreferences().sort_order ?? "file";
+	}
+	get showDeferred() {
+		return this.getPreferences().show_deferred ?? false;
+	}
 	deferredCount = $derived(
 		this.items.filter((item) => this.matchesFilters(item) && isDeferred(item, this.today)).length
 	);
@@ -110,18 +120,14 @@ export class TodoFilterState {
 
 	reset = () => {
 		this.status = "all";
-		this.sortOrder = "file";
-		this.showDeferred = false;
 		this.clear();
 	};
 
-	sync = (workspaceKey: string | null, sortOrder?: TodoSortOrder, showDeferred?: boolean) => {
+	sync = (workspaceKey: string | null) => {
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();
 		}
-		if (sortOrder !== undefined) this.sortOrder = sortOrder;
-		if (showDeferred !== undefined) this.showDeferred = showDeferred;
 		if (!this.preserveSelections && this.selectedDue === "invalid" && this.invalidDueCount === 0)
 			this.clearDue();
 		this.reconcile(this.availableFacets);

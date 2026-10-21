@@ -41,19 +41,19 @@ describe("TodoFilterState", () => {
 			{ ...open, line_number: 4, metadata: { due: "2026-02-30" } },
 			{ ...open, line_number: 5, metadata: { due: "2026-10-14" } },
 		];
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", items);
 		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5]);
-		filter.sortOrder = "due";
+		setPreferences({ sort_order: "due" });
 		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([3, 5, 2, 1, 4]);
 		expect(items.map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5]);
 		filter.setStatus("open");
 		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([5, 2, 1, 4]);
 		publish("work", items);
 		expect(filter.sortOrder).toBe("due");
-		filter.sortOrder = "file";
+		setPreferences({ sort_order: "file" });
 		expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 4, 5]);
-		filter.sortOrder = "due";
+		setPreferences({ sort_order: "due" });
 		publish("personal", items);
 		expect(filter.sortOrder).toBe("file");
 	});
@@ -65,7 +65,7 @@ describe("TodoFilterState", () => {
 		};
 		const other = { ...completed, description: "Client follow-up" };
 		const items = [release, other];
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", items);
 		filter.searchText = "  CLIENT\t release  ";
 		expect(filter.filterItems(items)).toEqual([release]);
@@ -82,7 +82,7 @@ describe("TodoFilterState", () => {
 	it("combines search with other filters, retains it on reload, and resets it on Workspace switch", () => {
 		const dated = { ...open, metadata: { due: "2026-10-14" } };
 		const items = [dated, completed];
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", items);
 		filter.today = "2026-10-14";
 		filter.searchText = "home";
@@ -121,7 +121,7 @@ describe("TodoFilterState", () => {
 			{ ...open, line_number: 5, metadata: {} },
 			{ ...completed, line_number: 6, metadata: { due: "2026-10-13" } },
 		];
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", items);
 		filter.today = "2026-10-14";
 		filter.toggleDue("overdue");
@@ -161,7 +161,7 @@ describe("TodoFilterState", () => {
 			const datedOpen: TodoItem = { ...open, metadata: due ? { due } : {} };
 			const datedCompleted = { ...completed, metadata: datedOpen.metadata };
 			const items = [datedOpen, datedCompleted];
-			const { filter, publish } = filterFixture();
+			const { filter, publish, setPreferences } = filterFixture();
 			publish("work", items);
 			filter.today = "2026-10-14";
 			filter.toggleDue(category);
@@ -183,7 +183,7 @@ describe("TodoFilterState", () => {
 	);
 	it("clears the repair filter when the last invalid open Due date is repaired or completed", () => {
 		const invalid = { ...open, metadata: { due: "broken" } };
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", [invalid, { ...completed, metadata: invalid.metadata }]);
 		expect(filter.invalidDueCount).toBe(1);
 		filter.toggleDue("invalid");
@@ -198,7 +198,7 @@ describe("TodoFilterState", () => {
 	it("defaults to All and filters both completion states and their combined facets", () => {
 		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
 		const items = [open, completedOnly];
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		expect(filter.status).toBe("all");
 		publish("work", items);
 		expect(filter.status).toBe("all");
@@ -219,7 +219,7 @@ describe("TodoFilterState", () => {
 	});
 
 	it("combines exact selections and clears Priority in Completed", () => {
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", [open, completed]);
 		filter.toggleProject("Work");
 		filter.toggleContext("Home");
@@ -234,7 +234,7 @@ describe("TodoFilterState", () => {
 	});
 
 	it("resets status and selections for another Workspace and reconciles obsolete values", () => {
-		const { filter, publish } = filterFixture();
+		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", [open, completed]);
 		filter.setStatus("completed");
 		filter.toggleProject("Work");
@@ -248,7 +248,7 @@ describe("TodoFilterState", () => {
 });
 
 it("saved views retain absent facets across reloads and resolve Today against the current calendar", () => {
-	const { filter, publish } = filterFixture();
+	const { filter, publish, setPreferences } = filterFixture();
 	publish("work", [open]);
 	filter.applyView({
 		status: "open",
@@ -295,13 +295,13 @@ it("hides only future open thresholds and reveals them in the existing sort orde
 		{ ...open, line_number: 6 },
 		{ ...completed, line_number: 7, metadata: { t: "2026-10-15" } },
 	];
-	const { filter, publish } = filterFixture();
+	const { filter, publish, setPreferences } = filterFixture();
 	publish("work", items);
 	filter.today = "2026-10-14";
 	expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([2, 3, 4, 5, 6, 7]);
 	expect(filter.deferredCount).toBe(1);
-	filter.showDeferred = true;
-	filter.sortOrder = "due";
+	setPreferences({ show_deferred: true });
+	setPreferences({ sort_order: "due" });
 	expect(filter.filterItems(items).map((item) => item.line_number)).toEqual([1, 2, 3, 4, 5, 6, 7]);
 	filter.setStatus("completed");
 	expect(filter.deferredCount).toBe(0);
@@ -311,12 +311,12 @@ it("hides only future open thresholds and reveals them in the existing sort orde
 	filter.clear();
 	expect(filter.showDeferred).toBe(true);
 	expect(filter.hasFilters).toBe(false);
-	filter.showDeferred = false;
+	setPreferences({ show_deferred: false });
 	filter.today = "2026-10-15";
 	expect(filter.filterItems(items)).toEqual(items);
 	filter.today = "2026-10-16";
 	expect(filter.deferredCount).toBe(0);
-	filter.showDeferred = true;
+	setPreferences({ show_deferred: true });
 	publish("personal", items);
 	expect(filter.showDeferred).toBe(false);
 	filter.today = "2026-10-14";
@@ -332,7 +332,7 @@ it("counts deferred matches before threshold exclusion while preserving completi
 		{ ...open, line_number: 2, projects: ["Other"], contexts: ["Away"], priority: "B" },
 		completed,
 	];
-	const { filter, publish } = filterFixture();
+	const { filter, publish, setPreferences } = filterFixture();
 	publish("work", items);
 	filter.today = "2026-10-14";
 	filter.setStatus("open");
@@ -346,7 +346,7 @@ it("counts deferred matches before threshold exclusion while preserving completi
 	expect(filter.availableFacets.counts.projects.get("Work")).toBe(1);
 	expect(filter.availableFacets.counts.contexts.get("Home")).toBe(1);
 	expect(filter.availableFacets.counts.priorities.get("A")).toBe(1);
-	filter.showDeferred = true;
+	setPreferences({ show_deferred: true });
 	expect(filter.filterItems(items)).toEqual([deferred]);
 	for (const change of [
 		() => {
@@ -372,7 +372,7 @@ it("counts deferred matches before threshold exclusion while preserving completi
 });
 
 it("syncs Workspace visibility independently of clearing filters and applying saved views", () => {
-	const { filter, publish } = filterFixture();
+	const { filter, publish, setPreferences } = filterFixture();
 	publish("work", [open], "file", true);
 	expect(filter.showDeferred).toBe(true);
 	expect(filter.hasFilters).toBe(false);
@@ -391,5 +391,14 @@ it("syncs Workspace visibility independently of clearing filters and applying sa
 	publish("personal", [open], "file", false);
 	expect(filter.showDeferred).toBe(false);
 	publish("work", [open], "due", true);
+	expect(filter.showDeferred).toBe(true);
+});
+
+it("reads published Workspace preferences without a copied filter preference snapshot", () => {
+	const { filter, setPreferences } = filterFixture();
+	expect(filter.sortOrder).toBe("file");
+	expect(filter.showDeferred).toBe(false);
+	setPreferences({ sort_order: "due", show_deferred: true });
+	expect(filter.sortOrder).toBe("due");
 	expect(filter.showDeferred).toBe(true);
 });
