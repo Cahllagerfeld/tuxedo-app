@@ -63,3 +63,18 @@ api.reorderTodo({ lineNumbers: [2, 1] });
 registerDesktopOperation(ipc, getWindow, () => true, "editTodo", api.editTodo);
 // @ts-expect-error Editing needs the original physical line and raw content.
 api.editTodo({ description: "Updated", projects: [], contexts: [] });
+
+registerDesktopOperation(ipc, getWindow, () => true, "readWorkspace", api.readWorkspace);
+registerDesktopOperation(
+	ipc,
+	getWindow,
+	() => true,
+	"readWorkspaceCatalogue",
+	api.readWorkspaceCatalogue
+);
+// @ts-expect-error Destination reads take a saved Workspace ID, never a filesystem path.
+api.readWorkspace({ todoPath: "/etc/passwd" });
+// @ts-expect-error Repeatable reads return provenance, never an activated session.
+const activated: Promise<import("@tuxedo/contracts").ConfirmedSession> = api.readWorkspace({
+	workspaceId: "550e8400-e29b-41d4-a716-446655440000",
+});

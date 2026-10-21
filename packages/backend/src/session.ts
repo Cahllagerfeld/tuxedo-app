@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import { dirname, join } from "node:path";
+import { createWorkspaceReads } from "./workspace-reads";
 import { createSavedViewOperations } from "./saved-views";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
@@ -249,12 +250,36 @@ export function sessionLayer(
 						)
 					)
 				);
+			const reads = createWorkspaceReads(cataloguePath, () => ({ confirmed, todoContents }));
+			const repeatableRead = <A, E>(
+				name: string,
+				effect: Effect.Effect<A, E, FileSystem | WorkspaceCatalogue>
+			) =>
+				semaphore
+					.withPermit(
+						effect.pipe(
+							Effect.catchDefect((cause) =>
+								Effect.sync(() => {
+									diagnostic(name, cause);
+									return {
+										status: "rejected" as const,
+										reason: "unexpected" as const,
+										message: "Cannot read Workspace data. An unexpected error occurred. Try again.",
+									};
+								})
+							),
+							Effect.withSpan(`WorkspaceSession.${name}`)
+						)
+					)
+					.pipe(Effect.provideContext(dependencies));
 			const todos = createTodoOperations(state);
 			const views = createSavedViewOperations(
 				join(dirname(cataloguePath), "saved-views.json"),
 				state
 			);
 			return WorkspaceSession.of({
+				readWorkspaceCatalogue: () => repeatableRead("readWorkspaceCatalogue", reads.catalogue()),
+				readWorkspace: (request) => repeatableRead("readWorkspace", reads.workspace(request)),
 				setWorkspaceSortOrder: (request) =>
 					operation(
 						"setWorkspaceSortOrder",
