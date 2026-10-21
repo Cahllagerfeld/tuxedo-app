@@ -45,6 +45,7 @@ export function sessionLayer(
 		WorkspaceSession,
 		Effect.gen(function* () {
 			const identity = yield* Identity;
+			const sessionScope = yield* Effect.scope;
 			const dependencies = Context.make(FileSystem, yield* FileSystem).pipe(
 				Context.add(Identity, identity),
 				Context.add(WorkspaceCatalogue, yield* WorkspaceCatalogue)
@@ -58,7 +59,6 @@ export function sessionLayer(
 			let confirmed: ConfirmedSession | undefined;
 			let todoContents: string | undefined;
 			let undo: UndoChange | undefined;
-			let busy = false;
 			const state: SessionState = {
 				get undo() {
 					return undo;
@@ -97,16 +97,8 @@ export function sessionLayer(
 			): Effect.Effect<A, E> =>
 				semaphore
 					.withPermit(
-						Effect.gen(function* () {
-							busy = true;
-							return yield* effect;
-						}).pipe(
-							Effect.ensuring(
-								Effect.gen(function* () {
-									yield* syncObservation;
-									busy = false;
-								})
-							),
+						effect.pipe(
+							Effect.ensuring(syncObservation),
 							Effect.uninterruptible,
 							Effect.withSpan(`WorkspaceSession.${operation}`)
 						)
@@ -137,46 +129,71 @@ export function sessionLayer(
 						observed?.current === confirmed
 					)
 						return;
+					const previous = observed?.current.session;
+					if (
+						previous?.status === "ready" &&
+						confirmed?.session.status === "ready" &&
+						previous.catalogue.active_workspace_id ===
+							confirmed.session.catalogue.active_workspace_id &&
+						previous.todo_file.path === confirmed.session.todo_file.path
+					) {
+						observed!.current = confirmed;
+						return;
+					}
 					yield* closeObservation;
 					const current = confirmed;
 					if (!current || current.session.status !== "ready") return;
 					const ready = current.session;
 					const targetScope = yield* Scope.make();
 					observed = { current, scope: targetScope };
+					let dirty = false;
+					let refreshing = false;
+					const matchesTarget = () =>
+						!isShuttingDown() &&
+						observed?.scope === targetScope &&
+						confirmed?.session.status === "ready" &&
+						confirmed.session.catalogue.active_workspace_id ===
+							ready.catalogue.active_workspace_id &&
+						confirmed.session.todo_file.path === ready.todo_file.path;
 					const refresh = Effect.suspend(() => {
-						if (
-							isShuttingDown() ||
-							busy ||
-							current !== confirmed ||
-							observed?.scope !== targetScope
-						)
-							return Effect.void;
-						return serialize(
-							"observe",
-							Effect.gen(function* () {
-								if (isShuttingDown() || current !== confirmed || observed?.scope !== targetScope)
-									return;
-								const contents = yield* readContents(ready.todo_file.path).pipe(
-									Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
+						if (!matchesTarget()) return Effect.void;
+						dirty = true;
+						if (refreshing) return Effect.void;
+						refreshing = true;
+						// Work belongs to the session Scope: entering Empty can close its own observer Scope.
+						return Effect.gen(function* () {
+							while (dirty && matchesTarget()) {
+								yield* serialize(
+									"observe",
+									Effect.gen(function* () {
+										if (!matchesTarget()) return;
+										dirty = false;
+										const contents = yield* readContents(ready.todo_file.path).pipe(
+											Effect.catchTag("PlatformError", () => Effect.succeed(undefined))
+										);
+										if (!matchesTarget() || contents === todoContents) return;
+										const accepted = state.accept(yield* workspace.load());
+										if (isShuttingDown() || observed?.scope !== targetScope) return;
+										onTodoFileChanged({
+											scope: accepted.scope,
+											revision: accepted.revision,
+											workspaceId: ready.catalogue.active_workspace_id!,
+											todoPath: ready.todo_file.path,
+										});
+									})
 								);
-								if (
-									isShuttingDown() ||
-									contents === todoContents ||
-									current !== confirmed ||
-									observed?.scope !== targetScope
-								)
-									return;
-								onTodoFileChanged({
-									scope: current.scope,
-									revision: current.revision,
-									workspaceId: ready.catalogue.active_workspace_id!,
-									todoPath: ready.todo_file.path,
-								});
-							})
-						).pipe(
+							}
+						}).pipe(
 							Effect.catchCause((cause) =>
 								Effect.sync(() => diagnostic("observe", Cause.pretty(cause)))
-							)
+							),
+							Effect.ensuring(
+								Effect.sync(() => {
+									refreshing = false;
+								})
+							),
+							Effect.forkIn(sessionScope),
+							Effect.asVoid
 						);
 					});
 					yield* Effect.gen(function* () {

@@ -1,6 +1,6 @@
 import { createContext, tick } from "svelte";
 import type { DesktopAPI, SavedView, SavedViewFilterValues } from "@tuxedo/contracts";
-import type { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+import type { WorkspaceCommands } from "./workspace-commands.svelte";
 import type { SavedViewsData } from "./saved-views";
 
 async function fingerprint(views: readonly SavedView[]) {
@@ -18,7 +18,7 @@ export class SavedViewsResource {
 
 	constructor(
 		private readonly desktop: Pick<DesktopAPI, "saveView" | "deleteView">,
-		private readonly session: ElectronWorkspaceSessionState,
+		private readonly session: WorkspaceCommands,
 		private readonly getCurrent: () => SavedViewsData | undefined,
 		private readonly refresh: (workspaceId: string) => Promise<void>
 	) {}
@@ -37,7 +37,7 @@ export class SavedViewsResource {
 		);
 	}
 	get canWrite() {
-		return !!this.current && !this.error && !!this.session.todoFile && !this.session.isOperating;
+		return !!this.current && !this.error && this.session.canMutate;
 	}
 
 	private async revalidate(workspaceId: string) {
@@ -85,7 +85,7 @@ export class SavedViewsResource {
 			operation,
 			async () => {
 				// runAction owns admission by this point, so check data readiness without isOperating.
-				if (!workspaceId || this.error || !this.session.todoFile)
+				if (!workspaceId || this.error || !this.session.ready)
 					return { status: "rejected", message: "Refresh saved views before changing them." };
 				const outcome = await command(workspaceId);
 				if (outcome.status !== "applied") return outcome;

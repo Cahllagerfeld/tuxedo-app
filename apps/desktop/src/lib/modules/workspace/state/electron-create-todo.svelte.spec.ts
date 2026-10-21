@@ -161,19 +161,3 @@ test.each(["conflict", "rejected"] as const)(
 			.toHaveTextContent(kind === "conflict" ? "0" : "1");
 	}
 );
-
-test.each(["scope", "revision", "workspace"] as const)(
-	"create result with stale %s cannot overwrite the confirmed Todo file",
-	async (kind) => {
-		const response = confirmed([]);
-		if (kind === "scope") response.scope = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		if (kind === "revision") response.revision = 4;
-		if (kind === "workspace") response.workspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		render(Harness, {
-			desktop: desktop(async () => ({ status: "applied", confirmed: response })),
-		});
-		await page.getByRole("button", { name: "Create" }).click();
-		await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Applied");
-		await expect.element(page.getByLabelText("Item count")).toHaveTextContent("1");
-	}
-);

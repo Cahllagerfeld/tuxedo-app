@@ -7,12 +7,13 @@
 	import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
 	import { summarizeTodoFilterFacets } from "$lib/modules/todo/domain/todo-filter-facets";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const session = new ElectronWorkspaceSessionState(desktop);
+	const fixture = workspaceRouteFixture(desktop);
+	const session = fixture.commands;
 	onMount(() => {
-		void session.initialize();
+		void fixture.start();
 	});
 	let result = $state("");
 	let viewport = $state<HTMLElement | null>(null);
@@ -38,10 +39,10 @@
 		/>
 	</ScrollArea>
 {/if}
-<button disabled={session.isOperating} onclick={() => session.restore()}>Restore</button>
+<button disabled={session.isOperating} onclick={() => fixture.reload()}>Restore</button>
 <button
 	disabled={session.isOperating}
-	onclick={() => session.open("550e8400-e29b-41d4-a716-446655440000")}>Switch</button
+	onclick={() => fixture.navigate("550e8400-e29b-41d4-a716-446655440000")}>Switch</button
 >
 <p aria-label="Total items">{summary.counts.total}</p>
 <p aria-label="Open count">{summary.counts.open}</p>

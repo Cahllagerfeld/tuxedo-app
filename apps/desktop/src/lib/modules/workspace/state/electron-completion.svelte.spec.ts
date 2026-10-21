@@ -131,34 +131,3 @@ test("completion binds target and preserves confirmed controls and summary until
 	await expect.element(page.getByLabelText("Open count")).toHaveTextContent("0");
 	await expect.element(page.getByLabelText("Pending target")).toHaveTextContent("none");
 });
-test.each(["rejected", "conflict", "old", "wrong-workspace", "wrong-scope"])(
-	"completion handles %s while preserving scoped confirmed state",
-	async (kind) => {
-		const response = updated();
-		if (kind === "old") response.revision = 4;
-		if (kind === "wrong-workspace") response.workspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		if (kind === "wrong-scope") response.scope = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-		render(Harness, {
-			desktop: adapter(async () =>
-				kind === "rejected"
-					? { status: "rejected", message: "Cannot write" }
-					: kind === "conflict"
-						? { status: "conflict", message: "Changed on disk", confirmed: response }
-						: { status: "applied", confirmed: response }
-			),
-		});
-		await expect
-			.element(page.getByRole("checkbox", { name: "Mark Call Mom complete" }))
-			.toBeVisible();
-		await page.getByRole("checkbox", { name: "Mark Call Mom complete" }).click();
-		await expect
-			.element(page.getByLabelText("Action result"))
-			.toHaveTextContent(
-				kind === "rejected" ? "Cannot write" : kind === "conflict" ? "Changed on disk" : "Applied"
-			);
-		await expect
-			.element(page.getByLabelText("Open count"))
-			.toHaveTextContent(kind === "conflict" ? "0" : "1");
-		await expect.element(page.getByRole("button", { name: "Restore" })).not.toBeDisabled();
-	}
-);

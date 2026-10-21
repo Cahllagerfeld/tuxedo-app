@@ -66,6 +66,7 @@ export default defineConfig(async ({ mode }) => ({
 				extends: "./vite.config.ts",
 				test: {
 					name: "client",
+					api: { port: Number(process.env.TUXEDO_TEST_PORT ?? 63315) },
 					browser: {
 						enabled: true,
 						provider: playwright(),

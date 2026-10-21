@@ -1,20 +1,21 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
 	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const session = new ElectronWorkspaceSessionState(desktop);
+	const fixture = workspaceRouteFixture(desktop);
+	const session = fixture.commands;
 	onMount(() => {
-		void session.initialize();
+		void fixture.start();
 	});
 </script>
 
 <WorkspaceSwitcher
 	workspaces={session.catalogue?.workspaces ?? []}
 	activeWorkspaceId={session.catalogue?.active_workspace_id ?? null}
-	selectWorkspace={session.open}
+	selectWorkspace={fixture.navigate}
 	deleteWorkspace={session.deleteWorkspace}
 	openCreationDialog={() => {}}
 	disabled={session.isOperating}

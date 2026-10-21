@@ -16,13 +16,11 @@
 	import { Button } from "$lib/shared/ui/button";
 	import { Input } from "$lib/shared/ui/input";
 	import { toast } from "svelte-sonner";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
-	let {
-		workspace,
-		todoFilter,
-	}: { workspace: ElectronWorkspaceSessionState; todoFilter: TodoFilterState } = $props();
+	let { workspace, todoFilter }: { workspace: WorkspaceCommands; todoFilter: TodoFilterState } =
+		$props();
 	let menuOpen = $state(false);
 	let saveOpen = $state(false);
 	let error = $state("");

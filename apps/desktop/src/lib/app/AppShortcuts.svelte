@@ -51,7 +51,7 @@
 							id !== "sidebar" &&
 							(id !== "workspace" || workspaceShown) &&
 							(id !== "createTodo" ||
-								(readerShown && !!app.workspace.todoFile && !app.todoBulkSelectionActive)))),
+								(readerShown && app.workspace.canMutate && !app.todoBulkSelectionActive)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

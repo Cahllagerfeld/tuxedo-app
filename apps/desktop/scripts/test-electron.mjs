@@ -1,3 +1,4 @@
+import { routeDataWorkflow } from "./route-data-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import electronPath from "electron";
@@ -15,6 +16,7 @@ if (development && packagedExecutable) throw Error("Development tests require un
 const directory = await mkdtemp(join(tmpdir(), "tuxedo-electron-"));
 let application;
 let vite;
+delete process.env.ELECTRON_RUN_AS_NODE;
 const environment = {
 	...process.env,
 	TUXEDO_USER_DATA: directory,
@@ -1501,6 +1503,10 @@ try {
 		true
 	);
 	await application.evaluate(({ ipcMain }) => {
+		globalThis.originalWorkspaceRead = ipcMain._invokeHandlers.get("tuxedo:read-workspace");
+		globalThis.originalCatalogueRead = ipcMain._invokeHandlers.get(
+			"tuxedo:read-workspace-catalogue"
+		);
 		ipcMain.removeHandler("tuxedo:read-workspace");
 		ipcMain.handle("tuxedo:read-workspace", () => ({
 			status: "ready",
@@ -1518,6 +1524,14 @@ try {
 		)
 	);
 	await assert.rejects(page.evaluate(() => window.desktop.readWorkspaceCatalogue({})));
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:read-workspace");
+		ipcMain.handle("tuxedo:read-workspace", globalThis.originalWorkspaceRead);
+		ipcMain.removeHandler("tuxedo:read-workspace-catalogue");
+		ipcMain.handle("tuxedo:read-workspace-catalogue", globalThis.originalCatalogueRead);
+		delete globalThis.originalWorkspaceRead;
+		delete globalThis.originalCatalogueRead;
+	});
 	const signal = {
 		scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
 		revision: 0,
@@ -1687,6 +1701,8 @@ try {
 	console.log(
 		"Sandboxed preload rejects malformed responses and discards malformed observation events."
 	);
+
+	await routeDataWorkflow(application, page, directory, development);
 
 	const routeIds = {};
 	for (const [name, item] of [

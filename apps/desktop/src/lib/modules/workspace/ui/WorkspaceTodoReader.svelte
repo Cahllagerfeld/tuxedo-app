@@ -9,7 +9,7 @@
 	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
 	import { createTodoReaderInteraction } from "./todo-reader-interaction.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import * as Resizable from "$lib/shared/ui/resizable";
 	import * as Sheet from "$lib/shared/ui/sheet";
 	import * as Empty from "$lib/shared/ui/empty";
@@ -24,7 +24,7 @@
 		filteredTodoItems,
 		bulkSelection,
 	}: {
-		workspace: ElectronWorkspaceSessionState;
+		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
@@ -98,7 +98,7 @@
 		{todo}
 		today={todoFilter.today}
 		{path}
-		disabled={workspace.isOperating}
+		disabled={workspace.writesBlocked}
 		onClose={reader.closeDetails}
 		onEdit={reader.startEdit}
 		onToggleComplete={toggleTodoCompletion}
@@ -115,7 +115,7 @@
 				saveTodoItem={reader.saveEdit}
 				workspaceName={workspace.activeWorkspace?.name ?? ""}
 				showDeferred={todoFilter.showDeferred}
-				disabled={workspace.isOperating}
+				disabled={workspace.writesBlocked}
 				onClose={reader.closeEdit}
 			/>
 		{/if}
@@ -149,7 +149,7 @@
 										</Empty.Description>
 									</Empty.Header>
 									<Button
-										disabled={workspace.isOperating}
+										disabled={workspace.writesBlocked}
 										onclick={() =>
 											void workspace.setShowDeferred(true).then((outcome) => {
 												if (outcome.status !== "applied")
@@ -174,7 +174,7 @@
 										</Empty.Description>
 									</Empty.Header>
 									{#if todoFilter.hasFilters}
-										<Button disabled={workspace.isOperating} onclick={todoFilter.clear}
+										<Button disabled={workspace.writesBlocked} onclick={todoFilter.clear}
 											>Clear filters</Button
 										>
 									{/if}
@@ -190,7 +190,7 @@
 							scrollElement={todoViewport}
 							todoFile={workspace.todoFile}
 							items={filteredTodoItems}
-							disabled={workspace.isOperating}
+							disabled={workspace.writesBlocked}
 							onToggleComplete={selectionMode ? () => {} : toggleTodoCompletion}
 							onDelete={selectionMode ? () => {} : deleteTodoItem}
 							onEdit={selectionMode ? undefined : reader.startEdit}

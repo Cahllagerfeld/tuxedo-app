@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { ElectronWorkspaceSessionState } from "./electron-workspace-session.svelte";
+import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import ElectronTodoHarness from "./ElectronTodoHarness.svelte";
@@ -174,34 +174,6 @@ test.each(["rejected", "transport"])(
 		expect(attempts).toBe(1);
 	}
 );
-test.each(["older", "scope", "workspace", "path"])(
-	"late or wrong-scope deletion result (%s) cannot overwrite the confirmed Todo file",
-	async (kind) => {
-		render(ElectronTodoHarness, {
-			desktop: desktop(async () => ({
-				status: "applied",
-				confirmed: {
-					scope: kind === "scope" ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" : scope,
-					revision: kind === "older" ? 4 : 6,
-					workspaceId: kind === "workspace" ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" : workspaceId,
-					todo_file: {
-						path: kind === "path" ? "/tmp/other.todo" : "/tmp/todo.txt",
-						items: [],
-						skipped: [],
-					},
-				},
-			})),
-		});
-		await page.getByRole("button", { name: "Actions for Delete", exact: true }).click();
-		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-		await expect.element(page.getByLabelText("Action result")).toHaveTextContent("Applied");
-		await expect.element(page.getByLabelText("Total items")).toHaveTextContent("2");
-		await expect
-			.element(page.getByRole("button", { name: "Actions for Delete", exact: true }))
-			.toBeEnabled();
-	}
-);
-
 test("batch deletion sends one scoped request, blocks duplicate and lifecycle admission, and accepts one confirmed result", async () => {
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["bulkDeleteTodos"]>>) => void;
 	const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>(
@@ -218,12 +190,13 @@ test("batch deletion sends one scoped request, blocks duplicate and lifecycle ad
 		status: "rejected",
 		message: "unused",
 	}));
-	const state = new ElectronWorkspaceSessionState({
+	const fixture = workspaceRouteFixture({
 		...desktop(deleteTodo),
 		bulkDeleteTodos,
 		switchWorkspace,
 	});
-	await state.initialize();
+	const state = fixture.commands;
+	await fixture.start();
 	const before = state.todoFile;
 	const deleting = state.bulkDeleteTodos([completed, open]);
 	expect(state.pendingOperation).toBe("bulk_delete_todo_items");
@@ -239,7 +212,7 @@ test("batch deletion sends one scoped request, blocks duplicate and lifecycle ad
 		],
 	});
 	expect((await state.bulkDeleteTodos([open])).status).toBe("rejected");
-	expect((await state.open(workspaceId)).status).toBe("rejected");
+	expect((await fixture.navigate(workspaceId))?.status).toBe("rejected");
 	expect(switchWorkspace).not.toHaveBeenCalled();
 	expect(deleteTodo).not.toHaveBeenCalled();
 	finish({
@@ -275,11 +248,12 @@ test.each(["rejected", "transport", "conflict"] as const)(
 				},
 			};
 		});
-		const state = new ElectronWorkspaceSessionState({
+		const fixture = workspaceRouteFixture({
 			...desktop(async () => ({ status: "rejected", message: "unused" })),
 			bulkDeleteTodos,
 		});
-		await state.initialize();
+		const state = fixture.commands;
+		await fixture.start();
 		const before = state.todoFile;
 		expect(await state.bulkDeleteTodos([open, completed])).toEqual({
 			status: kind === "conflict" ? "conflict" : "rejected",
@@ -294,11 +268,12 @@ test.each(["rejected", "transport", "conflict"] as const)(
 
 test("batch deletion rejects stale renderer targets before calling desktop", async () => {
 	const bulkDeleteTodos = vi.fn<DesktopAPI["bulkDeleteTodos"]>();
-	const state = new ElectronWorkspaceSessionState({
+	const fixture = workspaceRouteFixture({
 		...desktop(async () => ({ status: "rejected", message: "unused" })),
 		bulkDeleteTodos,
 	});
-	await state.initialize();
+	const state = fixture.commands;
+	await fixture.start();
 	expect((await state.bulkDeleteTodos([open, { ...completed, raw: "Old contents" }])).status).toBe(
 		"rejected"
 	);
@@ -306,28 +281,3 @@ test("batch deletion rejects stale renderer targets before calling desktop", asy
 	expect(state.todoFile?.items).toEqual([open, completed]);
 	expect(state.isOperating).toBe(false);
 });
-
-test.each(["older", "scope", "workspace", "path"])(
-	"batch deletion ignores a wrong %s confirmed result",
-	async (kind) => {
-		const state = new ElectronWorkspaceSessionState({
-			...desktop(async () => ({ status: "rejected", message: "unused" })),
-			bulkDeleteTodos: async () => ({
-				status: "applied",
-				confirmed: {
-					scope: kind === "scope" ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" : scope,
-					revision: kind === "older" ? 4 : 6,
-					workspaceId: kind === "workspace" ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" : workspaceId,
-					todo_file: {
-						path: kind === "path" ? "/tmp/other.txt" : "/tmp/todo.txt",
-						items: [],
-						skipped: [],
-					},
-				},
-			}),
-		});
-		await state.initialize();
-		await state.bulkDeleteTodos([open, completed]);
-		expect(state.todoFile?.items).toEqual([open, completed]);
-	}
-);

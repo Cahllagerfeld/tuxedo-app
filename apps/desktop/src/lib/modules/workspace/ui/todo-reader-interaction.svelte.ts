@@ -3,10 +3,10 @@ import type { TodoItem } from "$lib/modules/todo/domain/todo";
 import type TodoList from "$lib/modules/todo/ui/TodoList.svelte";
 import type { TodoItemDraft, SaveTodoItemResult } from "$lib/modules/todo/ui/todo-editor-types";
 import type { ShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
 type Inputs = {
-	readonly workspace: ElectronWorkspaceSessionState;
+	readonly workspace: WorkspaceCommands;
 	readonly fileOrder: boolean;
 	readonly wide: boolean;
 	readonly list: ReturnType<typeof TodoList> | undefined;

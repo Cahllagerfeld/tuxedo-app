@@ -5,10 +5,10 @@
 	import { ScrollArea } from "$lib/shared/ui/scroll-area";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import WorkspaceHome from "./WorkspaceHome.svelte";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
 	type Props = {
-		session: ElectronWorkspaceSessionState["session"];
+		session: WorkspaceCommands["session"];
 		disabled: boolean;
 		warning?: string;
 		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;

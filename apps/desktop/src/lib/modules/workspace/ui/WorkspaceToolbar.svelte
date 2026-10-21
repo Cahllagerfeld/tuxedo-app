@@ -19,7 +19,7 @@
 	import ListFilter from "@lucide/svelte/icons/list-filter";
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
-	import type { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -27,7 +27,7 @@
 	type Props = {
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-		workspace: ElectronWorkspaceSessionState;
+		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		closeDetails: () => void;
@@ -66,7 +66,7 @@
 	let previousSelection: typeof bulkSelection.context | undefined;
 	// Report invalidation to the external toast system; selection itself is derived.
 	$effect(() => {
-		if (workspace.isOperating) return;
+		if (workspace.writesBlocked) return;
 		const current = bulkSelection.context;
 		if (
 			previousSelection &&
@@ -77,7 +77,7 @@
 				previousSelection.filterSignature !== current.filterSignature ||
 				previousSelection.matchingSignature !== current.matchingSignature) &&
 			bulkSelection.active &&
-			!workspace.isOperating
+			!workspace.writesBlocked
 		) {
 			toast.info(
 				previousSelection.fileSignature !== current.fileSignature
@@ -100,20 +100,20 @@
 		!!confirmation &&
 			bulkSelection.active &&
 			(deleting ||
-				workspace.isOperating ||
+				workspace.writesBlocked ||
 				confirmation.context.selection === bulkSelection.context.selection)
 	);
 	let deletionError = $state<string | null>(null);
 	let deletionFocus: { workspaceKey: string; index: number } | null = null;
 	let deleteWorkspaceKey = "";
 	function openDeleteConfirmation() {
-		if (workspace.isOperating || !bulkSelection.count) return;
+		if (workspace.writesBlocked || !bulkSelection.count) return;
 		deletionError = null;
 		deleteWorkspaceKey = bulkSelection.context.workspaceKey;
 		confirmation = { context: bulkSelection.context, items: [...bulkSelection.selectedItems] };
 	}
 	async function deleteSelected() {
-		if (deleting || workspace.isOperating || !deleteOpen || !confirmation) return;
+		if (deleting || workspace.writesBlocked || !deleteOpen || !confirmation) return;
 		const { context, items } = confirmation;
 		const position = filteredTodoItems.findIndex(
 			(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
@@ -155,7 +155,7 @@
 		});
 	}
 	async function setSelectedCompletion(completed: boolean) {
-		if (workspace.isOperating) return;
+		if (workspace.writesBlocked) return;
 		const items = [...bulkSelection.selectedItems];
 		const count = items.filter((todo) => todo.completed !== completed).length;
 		if (!count) return;
@@ -211,14 +211,14 @@
 			enabled:
 				bulkSelection.active &&
 				!deleteOpen &&
-				!workspace.isOperating &&
+				!workspace.writesBlocked &&
 				(shortcutScope?.available ?? true),
 			ignoreInputs: true,
 			preventDefault: true,
 		})
 	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
-		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.isOperating,
+		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.writesBlocked,
 		ignoreInputs: false,
 		preventDefault: true,
 		requireReset: true,
@@ -228,12 +228,12 @@
 <AlertDialog.Root
 	open={deleteOpen}
 	onOpenChange={(open) => {
-		if (!open && !workspace.isOperating && !deleting) confirmation = null;
+		if (!open && !workspace.writesBlocked && !deleting) confirmation = null;
 	}}
 >
 	<AlertDialog.Content
 		onEscapeKeydown={(event) => {
-			if (workspace.isOperating || deleting) event.preventDefault();
+			if (workspace.writesBlocked || deleting) event.preventDefault();
 		}}
 		onCloseAutoFocus={restoreDeleteFocus}
 	>
@@ -251,10 +251,10 @@
 			<p role="alert" class="text-sm text-destructive">{deletionError}</p>
 		{/if}
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={workspace.isOperating || deleting}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel disabled={workspace.writesBlocked || deleting}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action
 				variant="destructive"
-				disabled={workspace.isOperating || deleting}
+				disabled={workspace.writesBlocked || deleting}
 				onclick={deleteSelected}
 			>
 				{deleting ? "Deleting…" : "Delete Todo items"}
@@ -286,33 +286,33 @@
 					<Button
 						variant="outline"
 						size="sm"
-						disabled={workspace.isOperating || filteredTodoItems.length === 0}
+						disabled={workspace.writesBlocked || filteredTodoItems.length === 0}
 						onclick={bulkSelection.selectAll}>Select all</Button
 					>
 					<Button
 						variant="outline"
 						size="sm"
-						disabled={workspace.isOperating || bulkSelection.count === 0}
+						disabled={workspace.writesBlocked || bulkSelection.count === 0}
 						onclick={bulkSelection.clear}>Clear selection</Button
 					>
 				</ButtonGroup.Root>
 				<Button
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.selectedOpenCount === 0}
+					disabled={workspace.writesBlocked || bulkSelection.selectedOpenCount === 0}
 					onclick={() => void setSelectedCompletion(true)}
 					><Check aria-hidden="true" />Complete</Button
 				>
 				<Button
 					variant="outline"
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.selectedCompletedCount === 0}
+					disabled={workspace.writesBlocked || bulkSelection.selectedCompletedCount === 0}
 					onclick={() => void setSelectedCompletion(false)}>Mark incomplete</Button
 				>
 				<Button
 					bind:ref={deleteButton}
 					variant="destructive"
 					size="sm"
-					disabled={workspace.isOperating || bulkSelection.count === 0}
+					disabled={workspace.writesBlocked || bulkSelection.count === 0}
 					onclick={openDeleteConfirmation}>Delete</Button
 				>
 				<Tooltip.Provider>
@@ -325,7 +325,7 @@
 									size="icon-sm"
 									bind:ref={doneButton}
 									aria-label="Exit selection mode"
-									disabled={workspace.isOperating}
+									disabled={workspace.writesBlocked}
 									onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
 								>
 							{/snippet}
@@ -343,7 +343,7 @@
 									variant="ghost"
 									size="icon-sm"
 									aria-label="Select items"
-									disabled={workspace.isOperating}
+									disabled={workspace.writesBlocked}
 									onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
 								>
 							{/snippet}
@@ -367,7 +367,7 @@
 								aria-describedby={deferredCountId}
 								class="relative aria-pressed:bg-accent aria-pressed:text-accent-foreground"
 								aria-pressed={todoFilter.showDeferred}
-								disabled={workspace.isOperating || todoFilter.status === "completed"}
+								disabled={workspace.writesBlocked || todoFilter.status === "completed"}
 								onclick={() =>
 									void workspace.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
 										await tick();
@@ -403,7 +403,7 @@
 							size="icon"
 							aria-label="Sort Todo items"
 							title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
-							disabled={workspace.isOperating}
+							disabled={workspace.writesBlocked}
 						>
 							<ListFilter class="size-4" aria-hidden="true" />
 						</Button>
@@ -415,7 +415,7 @@
 						value={todoFilter.sortOrder}
 						onValueChange={(value) => {
 							if (
-								!workspace.isOperating &&
+								!workspace.writesBlocked &&
 								(value === "file" || value === "due") &&
 								value !== todoFilter.sortOrder
 							)
@@ -438,7 +438,7 @@
 				aria-label="Toggle Todo-item search"
 				aria-expanded={searchOpen || todoFilter.hasSearch}
 				aria-controls={searchId}
-				disabled={workspace.isOperating}
+				disabled={workspace.writesBlocked}
 				onclick={toggleSearch}
 			>
 				<Search class="size-4" aria-hidden="true" />
@@ -452,7 +452,7 @@
 					showDeferred={todoFilter.showDeferred}
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}
-					disabled={workspace.isOperating}
+					disabled={workspace.writesBlocked}
 				/>
 			{/if}
 		</div>
@@ -470,7 +470,7 @@
 					bind:value={todoFilter.searchText}
 					aria-label="Search Todo items"
 					placeholder="Search Todo items…"
-					disabled={workspace.isOperating}
+					disabled={workspace.writesBlocked}
 					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
 				/>
 				{#if todoFilter.searchText}
@@ -479,7 +479,7 @@
 						size="icon-xs"
 						class="absolute top-1 right-1"
 						aria-label="Clear search"
-						disabled={workspace.isOperating}
+						disabled={workspace.writesBlocked}
 						onclick={todoFilter.clearSearch}
 					>
 						<X class="size-4" aria-hidden="true" />
@@ -488,5 +488,5 @@
 			</div>
 		</div>
 	{/if}
-	<ActiveTodoFilters {todoFilter} disabled={workspace.isOperating} />
+	<ActiveTodoFilters {todoFilter} disabled={workspace.writesBlocked} />
 {/if}

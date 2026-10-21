@@ -59,7 +59,7 @@ A saved Workspace preference that includes deferred open Todo items alongside ac
 A read-only projection of one parsed Todo file: its items and skipped lines, counts of total, open, and completed Todo items, and a Skipped-line count. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
 **Todo-file observation**:
-Observation of the Active workspace's loaded Todo file for external disk changes. While the Workspace session is idle, a debounced change signal restores confirmed data through the existing session reload path. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning. Own writes and mutation conflicts continue to return confirmed results directly.
+Observation of the Active workspace's loaded Todo file for external disk changes. Debounced change signals refresh confirmed data, including relevant signals received during another Workspace session operation. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning. Own writes and mutation conflicts continue to return confirmed results directly.
 
 **Facet**:
 A distinct, locale-sorted collection of exact parsed values for one Todo-item attribute, such as Projects, Contexts, or Priorities. Facets preserve source spelling and do not merge values that differ only by case.
@@ -86,7 +86,7 @@ The coherent state returned after a Workspace lifecycle operation: the persisted
 The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
 
 **Workspace session operation**:
-An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, or reordering. Workspace session operations do not overlap.
+An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, or reordering. Workspace session operations do not overlap; a saved change awaiting a usable screen refresh permits read-only recovery.
 
 **Workspace session restoration**:
 The startup attempt to return the Workspace session snapshot for the saved Active workspace. If its Todo file cannot open, the Workspace catalogue remains available and the app enters the Empty state with a warning.
@@ -107,7 +107,7 @@ The state with no active Todo file loaded. It prompts the user to open an existi
 The setup and recovery screen listing saved Workspaces to open, with Workspace creation. It appears when no Workspace is loaded or a Workspace cannot open. Visiting it never changes the Active workspace; everyday navigation uses the Workspace switcher.
 
 **Workspace destination**:
-The view of one Workspace, reachable through navigation history. It shows Todo items only after that Workspace is confirmed as the Active workspace; otherwise it is loading, or returns to Home with an explanation when unavailable. Navigation waits while a Workspace session operation runs.
+The view of one Workspace, reachable through navigation history. It shows Todo items only after that Workspace is confirmed as the Active workspace; otherwise it is loading, or returns to Home with an explanation when unavailable. Navigation waits while a Workspace session operation runs and its refreshed contents are confirmed.
 
 **Workspace creation**:
 The act of saving a new Workspace after its chosen Todo file has been successfully read and parsed. A successful creation opens and makes that Workspace active.

@@ -16,7 +16,10 @@ export type TodoFilterFacets = Readonly<{
 export class TodoFilterState {
 	private preserveSelections = false;
 	private workspaceKey: string | null | undefined;
-	private items = $state.raw<readonly TodoItem[]>([]);
+	constructor(private readonly getItems: () => readonly TodoItem[]) {}
+	private get items() {
+		return this.getItems();
+	}
 	status = $state<TodoFilterStatus>("all");
 	sortOrder = $state<TodoSortOrder>("file");
 	showDeferred = $state(false);
@@ -112,13 +115,7 @@ export class TodoFilterState {
 		this.clear();
 	};
 
-	sync = (
-		workspaceKey: string | null,
-		items: readonly TodoItem[],
-		sortOrder?: TodoSortOrder,
-		showDeferred?: boolean
-	) => {
-		this.items = items;
+	sync = (workspaceKey: string | null, sortOrder?: TodoSortOrder, showDeferred?: boolean) => {
 		if (this.workspaceKey !== workspaceKey) {
 			this.workspaceKey = workspaceKey;
 			this.reset();

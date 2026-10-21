@@ -14,6 +14,7 @@ const visible = process.argv.includes("--visible");
 const packageEnv = { ...process.env };
 delete packageEnv.NODE_PATH;
 delete packageEnv.NODE_OPTIONS;
+delete packageEnv.ELECTRON_RUN_AS_NODE;
 let application;
 try {
 	await cp(resolve(`out/Tuxedo-darwin-${process.arch}/Tuxedo.app`), bundle, {

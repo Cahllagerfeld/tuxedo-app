@@ -5,7 +5,7 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { workspaceRouteFixture } from "../state/testing/workspace-route-fixture.svelte";
 	import { AppState } from "$lib/app/app-state.svelte";
 	import ReaderStatusBar from "$lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
@@ -27,7 +27,8 @@
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const fixture = workspaceRouteFixture(desktop);
+	const app = new AppState(fixture.commands);
 	let routeData = $state.raw<SavedViewsData>();
 	async function refreshViews(workspaceId: string) {
 		routeData = await readSavedViews(desktop, workspaceId, () => routeData);
@@ -36,8 +37,9 @@
 	setSavedViews(new SavedViewsResource(desktop, app.workspace, () => routeData, refreshViews));
 	onMount(() => {
 		const stop =
-			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
-		void app.workspace.initialize().then(() => {
+			observation &&
+			app.workspace.observe(fixture.observe(observation), () => toast.info("Todo file reloaded"));
+		void fixture.start().then(() => {
 			const id = app.workspace.activeWorkspace?.id;
 			if (id) return refreshViews(id);
 		});
@@ -48,7 +50,7 @@
 <!-- Sonner only guards per-toast Infinity; an inherited Infinity becomes an immediate timer. -->
 <Toaster duration={60_000} />
 {#if restoration}
-	<button disabled={app.workspace.isOperating} onclick={() => void app.workspace.restore()}
+	<button disabled={app.workspace.isOperating} onclick={() => void fixture.reload()}
 		>Restore Workspace session</button
 	>
 {/if}
@@ -70,7 +72,7 @@
 				todoFilter={app.todoFilter}
 				todoFileLoaded={!!app.workspace.todoFile}
 				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				selectWorkspace={app.workspace.open}
+				selectWorkspace={fixture.navigate}
 				deleteWorkspace={app.workspace.deleteWorkspace}
 				openCreationDialog={app.openWorkspaceCreationDialog}
 			/>

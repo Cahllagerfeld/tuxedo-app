@@ -6,8 +6,8 @@ export type SavedViewsData = {
 	error: string;
 };
 
-export const savedViewsDependency = (workspaceId: string): `tuxedo:saved-views:${string}` =>
-	`tuxedo:saved-views:${workspaceId}`;
+export const savedViewsDependency = (workspaceId: string): `tuxedodata:saved-views:${string}` =>
+	`tuxedodata:saved-views:${workspaceId}`;
 
 // Reads are repeatable, including speculative navigation. Only route data retains a failed refresh.
 export async function readSavedViews(

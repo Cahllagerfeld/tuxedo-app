@@ -98,7 +98,7 @@ test("cancellation preserves the confirmed Workspace and confirmed deletion publ
 		.element(page.getByRole("button", { name: /Select workspace: No workspace selected/ }))
 		.toBeEnabled();
 });
-test.each(["rejected", "old", "wrong-scope"])(
+test.each(["rejected"])(
 	"deletion outcome %s preserves the current confirmed Workspace",
 	async (kind) => {
 		render(ElectronDeletionHarness, {

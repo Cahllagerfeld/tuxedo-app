@@ -14,17 +14,15 @@
 	import * as Sidebar from "@/shared/ui/sidebar/index";
 	import { Toaster } from "@/shared/ui/sonner";
 	import { ModeWatcher } from "mode-watcher";
-	import { onMount } from "svelte";
-	import { toast } from "svelte-sonner";
-	import { beforeNavigate, goto, invalidate } from "$app/navigation";
+	import { workspaceRouting } from "$lib/app/workspace-routing.svelte";
+	import { goto, invalidate } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page, navigating } from "$app/state";
-	import type { DesktopRequest } from "@tuxedo/contracts";
 	import "./layout.css";
 	let { children } = $props();
 
 	setShortcutScope();
-	const appState = new AppState();
+	const appState = new AppState(workspaceRouting());
 	setAppState(appState);
 	setSavedViews(
 		new SavedViewsResource(
@@ -34,38 +32,12 @@
 			(workspaceId) => invalidate(savedViewsDependency(workspaceId))
 		)
 	);
-	let starting = $state(true);
 	const busy = $derived(
 		appState.workspace.isOperating || appState.workspace.isLoading || !!navigating.to
 	);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const openWorkspace = (id: string, replaceState = false) =>
 		goto(resolve("/workspaces/[id]", { id }), { replaceState });
-
-	// Routing must not race an admitted operation; closing or reloading the window stays allowed.
-	// The switch is admitted here, synchronously, so nothing can start before the route commits.
-	beforeNavigate((navigation) => {
-		if (busy && navigation.type !== "leave") navigation.cancel();
-		else if (navigation.to?.params?.id) appState.visitWorkspace(navigation.to.params.id);
-	});
-
-	async function createWorkspace(input: DesktopRequest<"createWorkspace">) {
-		const outcome = await appState.workspace.create(input);
-		const created = appState.workspace.activeWorkspace;
-		if (outcome.status === "applied" && created) await openWorkspace(created.id);
-		return outcome;
-	}
-
-	onMount(() => {
-		const stop = appState.workspace.observe(window.desktop, () => toast.info("Todo file reloaded"));
-		void appState.workspace.initialize().then(async () => {
-			const active = appState.workspace.activeWorkspace;
-			if (page.params.id) appState.visitWorkspace(page.params.id);
-			else if (active && appState.workspace.todoFile) await openWorkspace(active.id, true);
-			starting = false;
-		});
-		return stop;
-	});
 </script>
 
 <!-- app.html sets the initial theme; ModeWatcher follows system changes after mount. -->
@@ -75,7 +47,7 @@
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
-	{#if starting}
+	{#if appState.workspace.isStarting}
 		<p role="status" class="sr-only">Loading Tuxedo…</p>
 	{:else}
 		<AppNavbar
@@ -118,6 +90,6 @@
 	<WorkspaceCreationDialog
 		bind:open={appState.isWorkspaceCreationDialogOpen}
 		disabled={busy}
-		{createWorkspace}
+		createWorkspace={appState.workspace.create}
 	/>
 </Sidebar.Provider>

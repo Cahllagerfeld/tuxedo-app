@@ -5,13 +5,14 @@
 	import { AppState } from "$lib/app/app-state.svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { ElectronWorkspaceSessionState } from "../state/electron-workspace-session.svelte";
+	import { workspaceRouteFixture } from "../state/testing/workspace-route-fixture.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import WorkspaceSidebar from "./sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	const fixture = workspaceRouteFixture(desktop);
+	const app = new AppState(fixture.commands);
 	let routeData = $state.raw<SavedViewsData>();
 	async function refreshViews(workspaceId: string) {
 		routeData = await readSavedViews(desktop, workspaceId, () => routeData);
@@ -19,7 +20,7 @@
 	// svelte-ignore state_referenced_locally
 	setSavedViews(new SavedViewsResource(desktop, app.workspace, () => routeData, refreshViews));
 	onMount(() => {
-		void app.workspace.initialize().then(() => {
+		void fixture.start().then(() => {
 			const id = app.workspace.activeWorkspace?.id;
 			if (id) return refreshViews(id);
 		});
@@ -36,7 +37,7 @@
 		collapsible="none"
 		disabled={app.workspace.isOperating || app.workspace.isLoading}
 		pendingOperation={app.workspace.pendingOperation}
-		selectWorkspace={app.workspace.open}
+		selectWorkspace={fixture.navigate}
 		deleteWorkspace={app.workspace.deleteWorkspace}
 		openCreationDialog={() => {}}
 	/>

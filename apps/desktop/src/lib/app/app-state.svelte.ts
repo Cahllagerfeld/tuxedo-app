@@ -4,13 +4,13 @@ import {
 } from "$lib/modules/todo/domain/todo-file-summary";
 import { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
 
-import { ElectronWorkspaceSessionState } from "$lib/modules/workspace/state/electron-workspace-session.svelte";
+import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
 import { createTodoBulkSelection } from "$lib/modules/workspace/ui/todo-bulk-selection.svelte";
 
 export class AppState {
-	workspace: ElectronWorkspaceSessionState;
+	workspace: WorkspaceCommands;
 	todos: TodoFileSummary;
-	todoFilter = new TodoFilterState();
+	todoFilter: TodoFilterState;
 	filteredTodoItems: ReturnType<TodoFilterState["filterItems"]>;
 	isWorkspaceCreationDialogOpen = $state(false);
 	isWorkspaceSwitcherOpen = $state(false);
@@ -20,42 +20,37 @@ export class AppState {
 		return this.bulkSelection.active;
 	}
 
-	constructor(
-		workspace: ElectronWorkspaceSessionState = new ElectronWorkspaceSessionState(window.desktop)
-	) {
+	constructor(workspace: WorkspaceCommands) {
 		this.workspace = workspace;
 		this.todos = $derived(summarizeTodoFile(this.workspace.todoFile));
+		this.todoFilter = new TodoFilterState(() => this.todos.items);
 		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
 		this.bulkSelection = createTodoBulkSelection({
 			getWorkspace: () => this.workspace,
 			getMatchingItems: () => this.filteredTodoItems,
 			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
 		});
-		$effect(() =>
+		let previousWorkspace: string | null = null;
+		// Route publication is external; only a confirmed reader reconciles ephemeral filters.
+		$effect(() => {
+			if (!this.workspace.todoFile) return;
+			const id = this.workspace.activeWorkspace?.id ?? null;
+			if (id !== previousWorkspace) this.isTodoCreationOpen = false;
+			previousWorkspace = id;
 			this.todoFilter.sync(
-				this.workspace.activeWorkspace?.id ?? null,
-				this.todos.items,
+				id,
 				this.workspace.activeWorkspace?.sort_order ?? "file",
 				this.workspace.activeWorkspace?.show_deferred ?? false
-			)
-		);
+			);
+		});
 	}
 
 	openWorkspaceCreationDialog = () => {
 		this.isWorkspaceCreationDialogOpen = true;
 	};
 
-	destinationError = $state("");
 	showsDestination = (workspaceId: string | undefined) =>
 		!!workspaceId &&
-		!this.destinationError &&
 		!!this.workspace.todoFile &&
 		this.workspace.activeWorkspace?.id === workspaceId;
-	visitWorkspace = (workspaceId: string) => {
-		this.destinationError = "";
-		if (this.workspace.activeWorkspace?.id === workspaceId && this.workspace.todoFile) return;
-		void this.workspace.open(workspaceId).then((outcome) => {
-			if (outcome.status !== "applied") this.destinationError = outcome.message;
-		});
-	};
 }

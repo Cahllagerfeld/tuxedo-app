@@ -728,7 +728,7 @@ test("preserves distinct Project spellings as separate choices", async () => {
 	await expect.element(page.getByText("Lowercase project", { exact: true })).toBeVisible();
 });
 
-test("preserves filters after a rejected Workspace switch", async () => {
+test("preserves filters when returning from a rejected Workspace switch through Home", async () => {
 	render(Harness, {
 		desktop: adapter({
 			switchWorkspace: async () => ({ status: "rejected", message: "Cannot open workspace" }),
@@ -740,6 +740,9 @@ test("preserves filters after a rejected Workspace switch", async () => {
 	await page.getByRole("button", { name: "+Work", exact: true }).click();
 	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
 	await page.getByRole("menuitem", { name: "Review" }).click();
+	await expect.element(page.getByLabelText("Workspace home", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
+	await page.getByRole("menuitem", { name: "Work, active", exact: true }).click();
 	await expect
 		.element(page.getByRole("button", { name: "+Work", exact: true }))
 		.toHaveAttribute("aria-pressed", "true");

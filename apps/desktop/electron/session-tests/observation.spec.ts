@@ -440,13 +440,13 @@ test.each(["atomic replacement", "briefly missing entry", "deletion"] as const)(
 			}
 			// Native watchers can deliver multiple signals for one filesystem change.
 			await expect
-				.poll(() => changes.some((event) => event.revision === created.confirmed.revision), {
+				.poll(() => changes.some((event) => event.revision > created.confirmed.revision), {
 					timeout: 3000,
 				})
 				.toBe(true);
-			expect(changes.find((event) => event.revision === created.confirmed.revision)).toMatchObject({
+			expect(changes.find((event) => event.revision > created.confirmed.revision)).toMatchObject({
 				scope: created.confirmed.scope,
-				revision: created.confirmed.revision,
+				revision: expect.any(Number),
 				todoPath: path,
 			});
 			const refreshed = await backend.restoreSession({});

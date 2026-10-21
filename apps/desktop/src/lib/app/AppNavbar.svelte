@@ -17,7 +17,7 @@
 	const canUndo = $derived(
 		readerShown &&
 			!!app.workspace.undoLabel &&
-			!app.workspace.isOperating &&
+			app.workspace.canMutate &&
 			!app.todoBulkSelectionActive
 	);
 	async function undo() {
