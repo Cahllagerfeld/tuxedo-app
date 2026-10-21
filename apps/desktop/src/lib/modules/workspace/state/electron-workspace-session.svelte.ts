@@ -1,9 +1,7 @@
 import {
 	confirmedSessionSchema,
 	confirmedTodoSchema,
-	type SavedView,
 	type TodoSortOrder,
-	type SavedViewFilterValues,
 	type ConfirmedTodo,
 	type ConfirmedSession,
 	type DesktopAPI,
@@ -53,8 +51,6 @@ export function reconcileConfirmedTodo(
 	};
 }
 export class ElectronWorkspaceSessionState {
-	savedViews = $state.raw<readonly SavedView[]>([]);
-	savedViewsError = $state("");
 	private confirmed = $state.raw<ConfirmedSession>();
 	private readError = $state<string | null>(null);
 	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
@@ -203,7 +199,7 @@ export class ElectronWorkspaceSessionState {
 	get warning() {
 		return this.session.status === "empty" ? (this.session.warning ?? "") : "";
 	}
-	private async runAction(
+	async runAction(
 		operation: WorkspaceSessionOperation,
 		action: () => Promise<WorkspaceSessionActionResult>,
 		target: WorkspaceSessionOperationTarget | null = null
@@ -229,47 +225,8 @@ export class ElectronWorkspaceSessionState {
 	restore = () =>
 		this.runAction("restore", async () => {
 			this.acceptSession(await this.desktop.restoreSession({}));
-			try {
-				const views = await this.desktop.readSavedViews({});
-				if (views.status === "applied") {
-					this.savedViews = views.views;
-					this.savedViewsError = "";
-				} else this.savedViewsError = views.message;
-			} catch (error) {
-				this.savedViewsError = error instanceof Error ? error.message : String(error);
-			}
 			return { status: "applied" };
 		});
-	saveView = (name: string, filters: SavedViewFilterValues) =>
-		this.runAction(
-			"save_view",
-			async () => {
-				const workspaceId = this.activeWorkspace?.id;
-				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
-				const outcome = await this.desktop.saveView({ workspaceId, name, filters });
-				if (outcome.status === "applied") {
-					this.savedViews = outcome.views;
-					this.savedViewsError = "";
-				}
-				return outcome;
-			},
-			this.todoOperationTarget()
-		);
-	deleteView = (viewId: string) =>
-		this.runAction(
-			"delete_view",
-			async () => {
-				const workspaceId = this.activeWorkspace?.id;
-				if (!workspaceId) return { status: "rejected", message: "Open a Workspace first." };
-				const outcome = await this.desktop.deleteView({ workspaceId, viewId });
-				if (outcome.status === "applied") {
-					this.savedViews = outcome.views;
-					this.savedViewsError = "";
-				}
-				return outcome;
-			},
-			this.todoOperationTarget()
-		);
 
 	create = (input: DesktopRequest<"createWorkspace">) =>
 		this.runAction(

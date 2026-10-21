@@ -634,11 +634,106 @@ try {
 		"Call"
 	);
 	await page.getByRole("button", { name: "Clear search", exact: true }).click();
-	const deletedView = await page.evaluate((input) => window.desktop.deleteView(input), {
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id,
-		viewId: savedView.views[0].id,
+	// Hold a real loader read after a real saved-view commit, across native route publication.
+	await application.evaluate(({ ipcMain }) => {
+		globalThis.savedViewReadHandler = ipcMain._invokeHandlers.get("tuxedo:read-saved-views");
+		globalThis.savedViewReads = 0;
+		globalThis.savedViewReadEntered = new Promise((resolve) => {
+			globalThis.enterSavedViewRead = resolve;
+		});
+		ipcMain.removeHandler("tuxedo:read-saved-views");
+		ipcMain.handle("tuxedo:read-saved-views", async (...args) => {
+			globalThis.savedViewReads++;
+			globalThis.enterSavedViewRead();
+			await new Promise((resolve) => {
+				globalThis.releaseSavedViewRead = resolve;
+			});
+			return globalThis.savedViewReadHandler(...args);
+		});
 	});
-	assert.deepEqual(deletedView, { status: "applied", views: [] });
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Save current view", exact: true }).click();
+	await page.getByRole("textbox", { name: "View name", exact: true }).fill("All personal");
+	await page.getByRole("button", { name: "Save view", exact: true }).click();
+	await application.evaluate(() => globalThis.savedViewReadEntered);
+	assert.equal(
+		await page.getByRole("button", { name: "Save view", exact: true }).isDisabled(),
+		true
+	);
+	assert.equal(
+		await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).isDisabled(),
+		true
+	);
+	await application.evaluate(() => globalThis.releaseSavedViewRead());
+	await page.getByRole("dialog").waitFor({ state: "hidden" });
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
+	await page.keyboard.press("Escape");
+
+	// Fail the next read after a committed delete. Native load error handling must retain route data.
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:read-saved-views");
+		ipcMain.handle("tuxedo:read-saved-views", () => ({
+			status: "rejected",
+			message: "Held saved-view refresh failed",
+		}));
+	});
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Delete saved view Calls", exact: true }).click();
+	await page.getByText(/View deleted, but saved views could not be refreshed/).waitFor();
+	await page.getByRole("button", { name: "Calls", exact: true }).waitFor();
+	assert.equal(
+		await page.getByRole("button", { name: "Delete saved view Calls", exact: true }).isDisabled(),
+		true
+	);
+	assert.equal(
+		await page.getByRole("button", { name: "Save current view", exact: true }).isDisabled(),
+		true
+	);
+	assert.equal(
+		await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).isEnabled(),
+		true
+	);
+	await application.evaluate(({ ipcMain }) => {
+		ipcMain.removeHandler("tuxedo:read-saved-views");
+		ipcMain.handle("tuxedo:read-saved-views", (...args) => {
+			globalThis.savedViewReads++;
+			return globalThis.savedViewReadHandler(...args);
+		});
+	});
+	await page.getByRole("button", { name: "Retry saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Calls", exact: true }).waitFor({ state: "hidden" });
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
+	assert.equal(
+		await page.getByRole("button", { name: "Save current view", exact: true }).isEnabled(),
+		true
+	);
+	await page.keyboard.press("Escape");
+	await page.reload();
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
+	assert.equal(await page.getByRole("button", { name: "Calls", exact: true }).count(), 0);
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Select workspace: Personal" }).click();
+	await page.getByRole("menuitem", { name: "Second", exact: true }).click();
+	await page.getByRole("button", { name: "Select workspace: Second" }).waitFor();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByText("No saved views yet.", { exact: true }).waitFor();
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Select workspace: Second" }).click();
+	await page.getByRole("menuitem", { name: "Personal", exact: true }).click();
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "Delete saved view All personal", exact: true }).click();
+	await page.getByText("No saved views yet.", { exact: true }).waitFor();
+	await page.keyboard.press("Escape");
+	const savedViewReadsBeforeObservation = await application.evaluate(
+		() => globalThis.savedViewReads
+	);
+	console.log(
+		"Saved-view route loads retain data on failure, share admission through publication, and recover with read-only Retry across real IPC, reload, and Workspace switches."
+	);
 
 	// Pure IPC reads keep the mounted controller's mutation and observation target intact.
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).click();
@@ -744,6 +839,11 @@ try {
 	);
 	assert.match(await page.getByRole("button", { name: "@desk", exact: true }).textContent(), /1/);
 	await page.getByRole("button", { name: "Priority B", exact: true }).waitFor();
+	assert.equal(
+		await application.evaluate(() => globalThis.savedViewReads),
+		savedViewReadsBeforeObservation,
+		"External Todo-file refresh must not reread saved views"
+	);
 	const observed = await page.evaluate(() => window.desktop.readSession({}));
 	assert.deepEqual(observed.session.todo_file.items[0].projects, ["Observed"]);
 	await writeFile(

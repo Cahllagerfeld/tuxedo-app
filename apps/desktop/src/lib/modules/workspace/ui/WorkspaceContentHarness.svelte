@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { SavedViewsResource, setSavedViews } from "../state/saved-views-resource.svelte";
+	import { readSavedViews, type SavedViewsData } from "../state/saved-views";
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
@@ -26,10 +28,19 @@
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const app = new AppState(new ElectronWorkspaceSessionState(desktop));
+	let routeData = $state.raw<SavedViewsData>();
+	async function refreshViews(workspaceId: string) {
+		routeData = await readSavedViews(desktop, workspaceId, () => routeData);
+	}
+	// svelte-ignore state_referenced_locally
+	setSavedViews(new SavedViewsResource(desktop, app.workspace, () => routeData, refreshViews));
 	onMount(() => {
 		const stop =
 			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
-		void app.workspace.initialize();
+		void app.workspace.initialize().then(() => {
+			const id = app.workspace.activeWorkspace?.id;
+			if (id) return refreshViews(id);
+		});
 		return stop;
 	});
 </script>

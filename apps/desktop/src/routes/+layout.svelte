@@ -1,4 +1,9 @@
 <script lang="ts">
+	import {
+		SavedViewsResource,
+		setSavedViews,
+	} from "$lib/modules/workspace/state/saved-views-resource.svelte";
+	import { savedViewsDependency } from "$lib/modules/workspace/state/saved-views";
 	import { setAppState } from "@/app/app-context";
 	import { AppState } from "@/app/app-state.svelte";
 	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
@@ -11,9 +16,9 @@
 	import { ModeWatcher } from "mode-watcher";
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
-	import { beforeNavigate, goto } from "$app/navigation";
+	import { beforeNavigate, goto, invalidate } from "$app/navigation";
 	import { resolve } from "$app/paths";
-	import { page } from "$app/state";
+	import { page, navigating } from "$app/state";
 	import type { DesktopRequest } from "@tuxedo/contracts";
 	import "./layout.css";
 	let { children } = $props();
@@ -21,8 +26,18 @@
 	setShortcutScope();
 	const appState = new AppState();
 	setAppState(appState);
+	setSavedViews(
+		new SavedViewsResource(
+			window.desktop,
+			appState.workspace,
+			() => page.data.savedViews,
+			(workspaceId) => invalidate(savedViewsDependency(workspaceId))
+		)
+	);
 	let starting = $state(true);
-	const busy = $derived(appState.workspace.isOperating || appState.workspace.isLoading);
+	const busy = $derived(
+		appState.workspace.isOperating || appState.workspace.isLoading || !!navigating.to
+	);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const openWorkspace = (id: string, replaceState = false) =>
 		goto(resolve("/workspaces/[id]", { id }), { replaceState });
