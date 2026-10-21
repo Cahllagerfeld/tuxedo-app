@@ -166,10 +166,15 @@ export class WorkspaceCommands {
 		};
 		const refreshed = await this.refresh(value.workspaceId);
 		if (refreshed.status !== "applied")
-			return {
-				status: "applied" as const,
-				notice: `Change saved, but the Workspace could not be refreshed. ${refreshed.message}`,
-			};
+			return outcome.status === "conflict"
+				? {
+						status: "conflict" as const,
+						message: `${outcome.message} The screen could not be refreshed. ${refreshed.message}`,
+					}
+				: {
+						status: "applied" as const,
+						notice: `Change saved, but the Workspace could not be refreshed. ${refreshed.message}`,
+					};
 		return outcome.status === "conflict"
 			? { status: "conflict" as const, message: outcome.message }
 			: { status: "applied" as const, ...(outcome.notice ? { notice: outcome.notice } : {}) };

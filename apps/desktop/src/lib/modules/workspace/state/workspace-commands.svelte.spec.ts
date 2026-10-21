@@ -293,3 +293,47 @@ test("a relevant observation queued during navigation refreshes before the commi
 	expect(notices).toBe(1);
 	stop();
 });
+
+test("a conflict whose confirmed disk refresh fails is never described as a saved change", async () => {
+	let current: WorkspaceData = { workspaceId, value: contents(5), error: "" };
+	let reads = 0;
+	let writes = 0;
+	const commands = new WorkspaceCommands(
+		createDesktopClient(async (channel) => {
+			if (channel !== "tuxedo:set-todo-completion") throw Error(`Unexpected ${channel}`);
+			writes++;
+			return {
+				status: "conflict",
+				message: "Changed on disk",
+				confirmed: { scope, revision: 6, workspaceId, todo_file: contents(6).todo_file },
+			};
+		}),
+		{
+			catalogue: () => ({
+				value: {
+					status: "ready",
+					catalogue: { version: 1, active_workspace_id: workspaceId, workspaces: [workspace] },
+					selection: selection(6),
+				},
+				error: "",
+			}),
+			workspace: () => current,
+			destination: () => workspaceId,
+			navigating: () => false,
+			refresh: async () => {
+				reads++;
+				if (reads > 1) current = { workspaceId, value: contents(6), error: "" };
+			},
+			navigate: async () => {},
+		}
+	);
+	expect(await commands.setCompletion(item)).toMatchObject({
+		status: "conflict",
+		message: expect.stringContaining("refresh"),
+	});
+	expect(commands.isOperating).toBe(false);
+	expect(commands.canMutate).toBe(false);
+	expect(await commands.retry()).toEqual({ status: "applied" });
+	expect(writes).toBe(1);
+	expect(commands.canMutate).toBe(true);
+});
