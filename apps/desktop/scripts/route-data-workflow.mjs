@@ -1,6 +1,6 @@
 import { readConfirmation } from "./read-confirmation.mjs";
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Controlled IPC boundaries exercise the shipped SvelteKit router, including its preload cache.
@@ -385,6 +385,35 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		);
 		await navigate(ids["Receipt B"]);
 		await enabled(item("Receipt B"));
+
+		// Home must retire activation confirmation when observation accepts a missing Todo file.
+		await navigate(null);
+		await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();
+		const missingPath = join(directory, "Receipt B.txt");
+		const retainedText = await readFile(missingPath, "utf8");
+		await page.evaluate((id) => {
+			window.homeObservation = new Promise((resolve) => {
+				const stop = window.desktop.onTodoFileChanged((event) => {
+					if (event.workspaceId === id) {
+						stop();
+						resolve();
+					}
+				});
+			});
+		}, ids["Receipt B"]);
+		const beforeMissing = (await counts()).activations;
+		try {
+			await rm(missingPath);
+			await page.evaluate(async () => await window.homeObservation);
+			assert.equal(await selection(), null, "Observation accepts Empty while Home stays open");
+			await enabled(page.getByRole("button", { name: "New workspace", exact: true }));
+			assert.deepEqual((await counts()).activations, beforeMissing);
+		} finally {
+			await writeFile(missingPath, retainedText);
+		}
+		await page.getByRole("link", { name: "Receipt B", exact: true }).click();
+		await enabled(item("Receipt B"));
+		assert.deepEqual((await counts()).activations, [...beforeMissing, ids["Receipt B"]]);
 
 		if (!development) {
 			// Demonstrate native thrown-load replacement against the actual installed router, then recover.

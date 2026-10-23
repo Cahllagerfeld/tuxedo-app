@@ -10,6 +10,7 @@
 	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
 	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-types";
 	import { cn } from "cn";
+	import { toast } from "svelte-sonner";
 
 	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
 	type Props = {
@@ -126,6 +127,7 @@
 				serverError = outcome.message;
 				return;
 			}
+			if (outcome.notice) toast.info(outcome.notice);
 			open = false;
 			resetForm();
 		} catch (error) {

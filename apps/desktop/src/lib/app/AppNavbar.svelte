@@ -23,6 +23,7 @@
 	async function undo() {
 		if (!canUndo) return;
 		const outcome = await app.workspace.undoTodo();
+		if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
 		if (outcome.status === "conflict") toast.warning(outcome.message);
 		else if (outcome.status === "rejected") toast.error(outcome.message);
 	}

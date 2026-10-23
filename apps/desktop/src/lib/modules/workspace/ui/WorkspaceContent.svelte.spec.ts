@@ -548,7 +548,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => loads).toBe(2);
-	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
+	await expect.element(page.getByText("Todo file changed")).toBeVisible();
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
 });
@@ -618,7 +618,7 @@ test("conflicts display current confirmed content and an external edit notice", 
 	});
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Plan release carefully")).toBeVisible();
-	await expect.element(page.getByText("Todo file reloaded")).toBeVisible();
+	await expect.element(page.getByText("Todo file changed")).toBeVisible();
 	await expect.element(page.getByLabelText("Filter projects")).toHaveTextContent("");
 });
 test("rejected deletion preserves confirmed content and reports its contextual error", async () => {
@@ -859,7 +859,7 @@ test.each(["conflict", "rejected"] as const)(
 		await expect.element(page.getByText("+Draft", { exact: true })).toBeVisible();
 		await expect
 			.element(
-				page.getByText(status === "conflict" ? "Todo file reloaded" : "Permission denied").last()
+				page.getByText(status === "conflict" ? "Todo file changed" : "Permission denied").last()
 			)
 			.toBeVisible();
 		if (status === "conflict") {
@@ -1497,7 +1497,7 @@ test.each(["applied", "conflict", "rejected"] as const)(
 		else if (status === "conflict") finish({ status, confirmed, message: "Changed externally" });
 		else finish({ status, confirmed });
 		if (status === "conflict") {
-			await expect.element(page.getByText("Todo file reloaded", { exact: true })).toBeVisible();
+			await expect.element(page.getByText("Todo file changed", { exact: true })).toBeVisible();
 			await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
 		} else {
 			await expect.element(row).toHaveFocus();
@@ -2691,7 +2691,7 @@ test.each(["rejected", "conflict"] as const)(
 			finish({ status, message: "Changed externally", confirmed: confirmedTodo([todo]) });
 			await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 			await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
-			await expect.element(page.getByText("Todo file reloaded", { exact: true })).toBeVisible();
+			await expect.element(page.getByText("Todo file changed", { exact: true })).toBeVisible();
 			await expect
 				.element(page.getByRole("button", { name: "Delete", exact: true }))
 				.toBeDisabled();
@@ -3108,5 +3108,52 @@ test.each(["create", "edit"] as const)(
 		await expect
 			.element(page.getByRole("button", { name: "Actions for Plan release", exact: true }))
 			.not.toBeInTheDocument();
+	}
+);
+
+test.each(["applied", "conflict"] as const)(
+	"row deletion reports %s honestly when the saved contents cannot be refreshed",
+	async (status) => {
+		const deleteTodo = vi.fn<DesktopAPI["deleteTodo"]>(async () =>
+			status === "applied"
+				? { status, confirmed: confirmedTodo([]) }
+				: { status, confirmed: confirmedTodo([]), message: "Changed externally" }
+		);
+		const desktop = adapter({ deleteTodo });
+		const readWorkspace = desktop.readWorkspace;
+		let reads = 0;
+		render(Harness, {
+			desktop: {
+				...desktop,
+				readWorkspace: (input) =>
+					reads++
+						? Promise.resolve({
+								status: "rejected",
+								reason: "todo-file",
+								message: "Refresh unavailable",
+							})
+						: readWorkspace(input),
+			},
+		});
+		await page.getByRole("button", { name: "Actions for Plan release" }).click();
+		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+		const notice =
+			status === "applied"
+				? "Change saved, but the Workspace could not be refreshed. Refresh unavailable"
+				: "Changed externally The screen could not be refreshed. Refresh unavailable";
+		await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
+		expect(
+			document.querySelectorAll(
+				`[data-sonner-toast][data-type="${status === "applied" ? "info" : "error"}"]`
+			)
+		).toHaveLength(1);
+		await expect
+			.element(page.getByText("Todo file reloaded", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
+			.toBeDisabled();
+		expect(deleteTodo).toHaveBeenCalledTimes(1);
 	}
 );

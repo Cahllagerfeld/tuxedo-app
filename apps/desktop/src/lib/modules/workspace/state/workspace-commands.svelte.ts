@@ -132,6 +132,15 @@ export class WorkspaceCommands {
 			await this.routes.refresh(workspaceId, catalogue);
 			await tick();
 			const selection = workspaceId ? this.selection : this.routes.catalogue()?.value?.selection;
+			// Home can confirm that observation retired the previously active Todo file.
+			if (
+				!this.routes.destination() &&
+				!this.routes.catalogue()?.error &&
+				selection?.workspaceId === null &&
+				this.required?.scope === selection.scope &&
+				selection.revision >= this.required.revision
+			)
+				this.required = selection;
 			if (
 				this.current?.error ||
 				(catalogue &&
@@ -434,7 +443,8 @@ export class WorkspaceCommands {
 		let listening = true;
 		const unsubscribe = observation.onTodoFileChanged((event) => {
 			const parsed = todoFileChangeEvent.payload.safeParse(event);
-			const selection = this.selection ?? this.required;
+			const selection =
+				this.selection ?? this.required ?? this.routes.catalogue()?.value?.selection;
 			if (
 				!listening ||
 				!parsed.success ||
@@ -469,9 +479,15 @@ export class WorkspaceCommands {
 			return;
 		const { event, notify } = this.dirty;
 		this.dirty = undefined;
-		if (event.workspaceId !== this.routes.destination() || event.todoPath !== this.todoFile?.path)
+		const selection = this.required ?? this.selection ?? this.routes.catalogue()?.value?.selection;
+		if (!selection || !this.matches(event, selection)) return;
+		const destination = this.routes.destination();
+		if (
+			destination &&
+			(event.workspaceId !== destination || event.todoPath !== this.todoFile?.path)
+		)
 			return;
-		const before = JSON.stringify({ items: this.todoFile.items, skipped: this.todoFile.skipped });
+		const before = JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped });
 		return this.runAction(
 			"restore",
 			async () => {
@@ -481,7 +497,8 @@ export class WorkspaceCommands {
 					workspaceId: event.workspaceId,
 					todoPath: event.todoPath,
 				};
-				const outcome = await this.refresh(event.workspaceId, true);
+				this.refreshCatalogue = true;
+				const outcome = await this.refresh(destination ? event.workspaceId : null, true);
 				// The authoritative session may now be Empty (an externally removed Todo file).
 				if (
 					this.routes.catalogue()?.value?.selection?.workspaceId === null &&
@@ -492,6 +509,7 @@ export class WorkspaceCommands {
 					this.refreshFailure = "";
 					await this.navigate(null, true);
 				} else if (
+					destination &&
 					outcome.status === "applied" &&
 					before !==
 						JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped })

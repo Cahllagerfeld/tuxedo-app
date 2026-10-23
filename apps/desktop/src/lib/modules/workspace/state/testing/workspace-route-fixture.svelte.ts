@@ -42,7 +42,7 @@ export function workspaceRouteFixture(desktop: DesktopAPI) {
 		observe: (observation: TodoFileObservation) => observation,
 		start: loadDestination,
 		reload: loadDestination,
-		navigate: async (id: string) => {
+		navigate: async (id: string | undefined) => {
 			if (commands.isOperating) return { status: "rejected" as const, message: "Busy" };
 			destination = id;
 			await publish();

@@ -220,7 +220,7 @@
 				return;
 			}
 			if (outcome.status === "conflict") {
-				toast.error("Todo file reloaded", { description: outcome.message });
+				toast.error("Todo file changed", { description: outcome.message });
 				if (todoToEdit) {
 					open = false;
 					onClose?.(true);
