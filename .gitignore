@@ -1,8 +1,8 @@
 .DS_Store
 node_modules
-/build
-/.svelte-kit
-/package
+/apps/desktop/build
+/apps/desktop/.svelte-kit
+/apps/desktop/package
 .env
 .env.*
 !.env.example
@@ -21,6 +21,9 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 reference
-/dist-electron
+/apps/desktop/dist-electron
 
-/out
+/apps/desktop/out
+
+# Turborepo local cache and task logs
+.turbo
