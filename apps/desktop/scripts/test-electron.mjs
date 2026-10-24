@@ -1463,7 +1463,7 @@ try {
 	await page.getByRole("button", { name: /^All/ }).click();
 	await page.getByRole("button", { name: "Actions for Actionable chore", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
-	const thresholdPicker = page.getByRole("button", { name: "Show from (optional)" });
+	const thresholdPicker = page.getByRole("button", { name: "Show from", exact: true });
 	assert.equal(await thresholdPicker.innerText(), "January 1, 2000");
 	await page.getByPlaceholder("Add key:value").fill("t:2099-01-01");
 	await page.getByPlaceholder("Add key:value").press("Enter");
