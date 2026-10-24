@@ -3,12 +3,12 @@
 	import { WorkspaceCreationRequest } from "@tuxedo/contracts";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
-	import { Button } from "$lib/shared/ui/button";
-	import * as Dialog from "$lib/shared/ui/dialog";
-	import * as Form from "$lib/shared/ui/form";
-	import { Input } from "$lib/shared/ui/input";
-	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
-	import type { WorkspaceSessionActionResult } from "$lib/modules/workspace/state/workspace-session-types";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Dialog from "#lib/shared/ui/dialog/index.js";
+	import * as Form from "#lib/shared/ui/form/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
+	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
+	import type { WorkspaceSessionActionResult } from "#lib/modules/workspace/state/workspace-session-types.js";
 	import { cn } from "cn";
 	import { toast } from "svelte-sonner";
 

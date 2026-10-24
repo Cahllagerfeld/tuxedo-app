@@ -1,8 +1,8 @@
 import { onDestroy, tick } from "svelte";
-import type { TodoItem } from "$lib/modules/todo/domain/todo";
-import type TodoList from "$lib/modules/todo/ui/TodoList.svelte";
-import type { TodoItemDraft, SaveTodoItemResult } from "$lib/modules/todo/ui/todo-editor-types";
-import type { ShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
+import type { TodoItemDraft, SaveTodoItemResult } from "#lib/modules/todo/ui/todo-editor-types.js";
+import type { ShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
 type Inputs = {

@@ -3,7 +3,7 @@
 	import MinusIcon from "@lucide/svelte/icons/minus";
 	import CheckIcon from "@lucide/svelte/icons/check";
 	import { cn } from "cn";
-	import { type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import type { Snippet } from "svelte";
 
 	let {

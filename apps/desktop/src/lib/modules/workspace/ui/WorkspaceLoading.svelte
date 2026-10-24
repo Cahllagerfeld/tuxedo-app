@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as Empty from "$lib/shared/ui/empty";
+	import * as Empty from "#lib/shared/ui/empty/index.js";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 </script>
 

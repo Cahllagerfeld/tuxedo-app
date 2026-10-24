@@ -2,11 +2,11 @@
 	import { onMount } from "svelte";
 	import { AppState } from "./app-state.svelte";
 	import AppNavbar from "./AppNavbar.svelte";
-	import { workspaceRouteFixture } from "$lib/modules/workspace/state/testing/workspace-route-fixture.svelte";
+	import { workspaceRouteFixture } from "#lib/modules/workspace/state/testing/workspace-route-fixture.svelte.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import { Toaster } from "$lib/shared/ui/sonner";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
+	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	import "../../routes/layout.css";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	setShortcutScope();

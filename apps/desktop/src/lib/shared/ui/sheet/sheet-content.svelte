@@ -3,12 +3,12 @@
 </script>
 
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { Dialog as SheetPrimitive } from "bits-ui";
 	import XIcon from "@lucide/svelte/icons/x";
-	import { Button } from "$lib/shared/ui/button/index.js";
-	import { cn, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import SheetOverlay from "./sheet-overlay.svelte";
 	import SheetPortal from "./sheet-portal.svelte";
 	import type { Snippet } from "svelte";

@@ -1,14 +1,14 @@
 <script lang="ts">
 	import TodoShowFrom from "./TodoShowFrom.svelte";
-	import type { TodoItem } from "$lib/modules/todo/domain/todo";
-	import { Badge, badgeVariants } from "$lib/shared/ui/badge";
+	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+	import { Badge, badgeVariants } from "#lib/shared/ui/badge/index.js";
 	import Repeat from "@lucide/svelte/icons/repeat";
 	import { recurrenceLabel } from "../domain/todo-recurrence";
-	import { Button } from "$lib/shared/ui/button";
-	import { Checkbox } from "$lib/shared/ui/checkbox";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Checkbox } from "#lib/shared/ui/checkbox/index.js";
 	import { cn } from "cn";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";

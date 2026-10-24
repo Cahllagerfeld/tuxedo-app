@@ -3,10 +3,10 @@
 	import { DateFormatter, getLocalTimeZone, parseDate } from "@internationalized/date";
 	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 	import X from "@lucide/svelte/icons/x";
-	import { Button } from "$lib/shared/ui/button";
-	import { Calendar } from "$lib/shared/ui/calendar";
-	import * as Popover from "$lib/shared/ui/popover";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Calendar } from "#lib/shared/ui/calendar/index.js";
+	import * as Popover from "#lib/shared/ui/popover/index.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
 
 	let {
 		value = $bindable(""),

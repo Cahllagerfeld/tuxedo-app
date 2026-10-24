@@ -1,11 +1,11 @@
 import {
 	summarizeTodoFile,
 	type TodoFileSummary,
-} from "$lib/modules/todo/domain/todo-file-summary";
-import { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+} from "#lib/modules/todo/domain/todo-file-summary.js";
+import { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 
-import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
-import { createTodoBulkSelection } from "$lib/modules/workspace/ui/todo-bulk-selection.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
+import { createTodoBulkSelection } from "#lib/modules/workspace/ui/todo-bulk-selection.svelte.js";
 
 export class AppState {
 	workspace: WorkspaceCommands;

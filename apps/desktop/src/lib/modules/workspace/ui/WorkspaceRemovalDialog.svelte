@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
+	import * as AlertDialog from "#lib/shared/ui/alert-dialog/index.js";
 	import { toast } from "svelte-sonner";
 	import type { Workspace } from "../domain/workspace";
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";

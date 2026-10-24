@@ -1,15 +1,15 @@
 <script lang="ts">
-	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
-	} from "$lib/modules/workspace/state/workspace-session-types";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
+	} from "#lib/modules/workspace/state/workspace-session-types.js";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
+	import type { TodoFileSummary } from "#lib/modules/todo/domain/todo-file-summary.js";
 	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
 	import SidebarFilters from "./SidebarFilters.svelte";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 
 	type Props = {
 		switcherOpen?: boolean;

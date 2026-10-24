@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import type { HTMLInputAttributes } from "svelte/elements";
-	import { Button } from "$lib/shared/ui/button";
-	import { Input } from "$lib/shared/ui/input";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
 
 	let {
 		value = $bindable("none"),

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Check from "@lucide/svelte/icons/check";
-	import { Button } from "$lib/shared/ui/button";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import FilterSection from "./FilterSection.svelte";
 
 	let {

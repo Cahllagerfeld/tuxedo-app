@@ -1,7 +1,7 @@
 import { tick, onMount, onDestroy } from "svelte";
 import { rowShortcuts } from "./shortcuts";
 import type { TodoItem, TodoFile } from "../domain/todo";
-import type { ShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+import type { ShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 
 type Inputs = {
 	readonly items: readonly TodoItem[];

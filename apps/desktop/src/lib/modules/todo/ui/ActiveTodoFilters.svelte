@@ -1,6 +1,6 @@
 <script lang="ts">
 	import X from "@lucide/svelte/icons/x";
-	import { Button } from "$lib/shared/ui/button";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import type { TodoFilterState } from "../state/todo-filter.svelte";
 	import { dueLabels } from "../domain/todo-due";
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
-	import { cn } from "$lib/shared/utils.js";
+	import { cn } from "#lib/shared/utils.js";
 	import type { TagsInputProps } from "./types";
 	import TagsInputSuggestion from "./tags-input-suggestion.svelte";
 	import TagsInputTag from "./tags-input-tag.svelte";

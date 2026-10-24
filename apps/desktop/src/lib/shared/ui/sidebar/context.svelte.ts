@@ -1,5 +1,5 @@
 import { getContext, setContext } from "svelte";
-import { IsMobile } from "$lib/shared/hooks/is-mobile.svelte.js";
+import { IsMobile } from "#lib/shared/hooks/is-mobile.svelte.js";
 
 type Getter<T> = () => T;
 

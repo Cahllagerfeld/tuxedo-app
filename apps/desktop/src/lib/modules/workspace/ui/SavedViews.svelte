@@ -4,22 +4,22 @@
 	import { SavedViewNameForm } from "@tuxedo/contracts";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
-	import * as Form from "$lib/shared/ui/form";
-	import * as Dialog from "$lib/shared/ui/dialog";
+	import * as Form from "#lib/shared/ui/form/index.js";
+	import * as Dialog from "#lib/shared/ui/dialog/index.js";
 	import Bookmark from "@lucide/svelte/icons/bookmark";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import { createHotkey } from "@tanstack/svelte-hotkeys";
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import ShortcutHint from "#lib/shared/shortcuts/ShortcutHint.svelte";
 	import { saveViewShortcut } from "./shortcuts";
 	import { mergeProps } from "bits-ui";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
-	import * as Popover from "$lib/shared/ui/popover";
-	import { Button } from "$lib/shared/ui/button";
-	import { Input } from "$lib/shared/ui/input";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import * as Popover from "#lib/shared/ui/popover/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
 	import { toast } from "svelte-sonner";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 
 	let { workspace, todoFilter }: { workspace: WorkspaceCommands; todoFilter: TodoFilterState } =
 		$props();

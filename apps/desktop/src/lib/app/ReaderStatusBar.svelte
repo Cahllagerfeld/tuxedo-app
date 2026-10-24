@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { TodoFile } from "$lib/modules/todo/domain/todo";
-	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
-	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
-	import type { WorkspaceSessionOperation } from "$lib/modules/workspace/state/workspace-session-types";
+	import type { TodoFile } from "#lib/modules/todo/domain/todo.js";
+	import type { TodoFileSummary } from "#lib/modules/todo/domain/todo-file-summary.js";
+	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
+	import type { WorkspaceSessionOperation } from "#lib/modules/workspace/state/workspace-session-types.js";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
 	type Props = {

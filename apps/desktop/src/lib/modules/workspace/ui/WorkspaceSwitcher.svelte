@@ -4,13 +4,13 @@
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import WorkspaceOptionsMenu from "./WorkspaceOptionsMenu.svelte";
 	import WorkspaceRemovalDialog from "./WorkspaceRemovalDialog.svelte";
-	import { Button } from "$lib/shared/ui/button";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
-	import type { Workspace } from "$lib/modules/workspace/domain/workspace";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
+	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
-	} from "$lib/modules/workspace/state/workspace-session-types";
+	} from "#lib/modules/workspace/state/workspace-session-types.js";
 
 	type Props = {
 		open?: boolean;

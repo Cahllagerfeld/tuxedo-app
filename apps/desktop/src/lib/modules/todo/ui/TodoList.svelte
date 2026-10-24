@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createTodoListFocus } from "./todo-list-focus.svelte";
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import type { TodoFile } from "$lib/modules/todo/domain/todo";
-	import { Button } from "$lib/shared/ui/button";
-	import * as Empty from "$lib/shared/ui/empty";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import type { TodoFile } from "#lib/modules/todo/domain/todo.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Empty from "#lib/shared/ui/empty/index.js";
 	import { dragHandle, dragHandleZone } from "svelte-dnd-action";
 	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import FileText from "@lucide/svelte/icons/file-text";

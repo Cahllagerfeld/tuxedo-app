@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { getAppState } from "$lib/app/app-context";
-	import WorkspaceContent from "$lib/modules/workspace/ui/WorkspaceContent.svelte";
-	import { Button } from "$lib/shared/ui/button";
+	import { getAppState } from "#lib/app/app-context.js";
+	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import { resolve } from "$app/paths";
-	import WorkspaceLoading from "$lib/modules/workspace/ui/WorkspaceLoading.svelte";
+	import WorkspaceLoading from "#lib/modules/workspace/ui/WorkspaceLoading.svelte";
 	import type { PageProps } from "./$types";
 
 	let { params }: PageProps = $props();

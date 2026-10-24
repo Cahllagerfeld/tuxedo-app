@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
-	import { Button } from "$lib/shared/ui/button";
-	import * as Collapsible from "$lib/shared/ui/collapsible";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Collapsible from "#lib/shared/ui/collapsible/index.js";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 
 	let { label, search, children }: { label: string; search: string; children: Snippet } = $props();
 	let open = $state(true);

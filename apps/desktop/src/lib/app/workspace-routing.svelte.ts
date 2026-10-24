@@ -3,11 +3,11 @@ import { page, navigating } from "$app/state";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
-import { WorkspaceCommands } from "$lib/modules/workspace/state/workspace-commands.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import {
 	catalogueDependency,
 	workspaceDependency,
-} from "$lib/modules/workspace/state/workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 export function workspaceRouting() {
 	const commands = new WorkspaceCommands(window.desktop, {
@@ -22,10 +22,12 @@ export function workspaceRouting() {
 					(!!id && dependency.href === workspaceDependency(id))
 			);
 		},
-		navigate: (id, replaceState = false) =>
-			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replaceState }),
+		navigate: (id, replace = false) =>
+			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replace }),
 	});
 	beforeNavigate((navigation) => {
+		if (navigation.shallow && navigation.type === "goto") return;
+
 		// Window lifecycle is independent of renderer command admission.
 		if (
 			navigation.type !== "leave" &&
@@ -34,6 +36,8 @@ export function workspaceRouting() {
 			navigation.cancel();
 	});
 	afterNavigate((navigation) => {
+		if (navigation.shallow && navigation.type === "goto") return;
+
 		void commands
 			.committedDestination(page.params.id, navigation.type === "enter")
 			.then((outcome) => {

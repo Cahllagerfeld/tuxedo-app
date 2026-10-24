@@ -1,6 +1,6 @@
 import type { SavedViewFilterValues, TodoSortOrder } from "@tuxedo/contracts";
 import { summarizeTodoFilterFacets } from "../domain/todo-filter-facets";
-import type { TodoItem } from "$lib/modules/todo/domain/todo";
+import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import { dueCategory, localToday, validDueDate, type TodoDueCategory } from "../domain/todo-due";
 
 import { isDeferred } from "../domain/todo-threshold";

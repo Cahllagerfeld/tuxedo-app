@@ -1,11 +1,11 @@
 <script lang="ts">
-	import type { TodoFileSummary } from "$lib/modules/todo/domain/todo-file-summary";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
-	import { Button } from "$lib/shared/ui/button";
+	import type { TodoFileSummary } from "#lib/modules/todo/domain/todo-file-summary.js";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import Circle from "@lucide/svelte/icons/circle";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import List from "@lucide/svelte/icons/list";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	let {
 		todoSummary,
 		todoFilter,

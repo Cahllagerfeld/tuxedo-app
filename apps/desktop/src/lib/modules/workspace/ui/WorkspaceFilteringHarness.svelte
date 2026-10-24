@@ -2,9 +2,9 @@
 	import { SavedViewsResource, setSavedViews } from "../state/saved-views-resource.svelte";
 	import { readSavedViews, type SavedViewsData } from "../state/saved-views";
 	import { onMount } from "svelte";
-	import { AppState } from "$lib/app/app-state.svelte";
+	import { AppState } from "#lib/app/app-state.svelte.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { workspaceRouteFixture } from "../state/testing/workspace-route-fixture.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import WorkspaceSidebar from "./sidebar/index.svelte";

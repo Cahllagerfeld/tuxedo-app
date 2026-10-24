@@ -27,8 +27,8 @@
 
 <script lang="ts">
 	import { mergeProps } from "bits-ui";
-	import * as Tooltip from "$lib/shared/ui/tooltip/index.js";
-	import { cn, type WithElementRef, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import { cn, type WithElementRef, type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import { useSidebar } from "./context.svelte.js";
 	import type { ComponentProps, Snippet } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
-	import * as Alert from "$lib/shared/ui/alert";
-	import * as Empty from "$lib/shared/ui/empty";
-	import { ScrollArea } from "$lib/shared/ui/scroll-area";
+	import * as Alert from "#lib/shared/ui/alert/index.js";
+	import * as Empty from "#lib/shared/ui/empty/index.js";
+	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import WorkspaceHome from "./WorkspaceHome.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";

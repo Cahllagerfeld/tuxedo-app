@@ -1,13 +1,13 @@
 <script lang="ts">
-	import * as Sidebar from "$lib/shared/ui/sidebar";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { AppState } from "./app-state.svelte";
-	import { Button } from "$lib/shared/ui/button";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import { toast } from "svelte-sonner";
 	import { createHotkey, formatForDisplay } from "@tanstack/svelte-hotkeys";
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import { undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import { undoTodoShortcut } from "#lib/modules/todo/ui/shortcuts.js";
 	let {
 		app,
 		readerShown = true,

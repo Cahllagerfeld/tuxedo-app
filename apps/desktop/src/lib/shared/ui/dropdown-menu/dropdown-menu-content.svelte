@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { cn } from "cn";
-	import { type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import DropdownMenuPortal from "./dropdown-menu-portal.svelte";
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import type { ComponentProps } from "svelte";
