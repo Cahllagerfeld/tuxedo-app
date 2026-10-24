@@ -1,41 +1,98 @@
-# Tuxedo
+<!-- Use a static Shields badge because pkg.pr.new's dynamic badge times out while counting this repository's releases. -->
 
-Tuxedo is a macOS Electron desktop application with a SvelteKit SPA. It organizes existing todo.txt files into saved Workspaces and supports Todo-item creation, editing, completion, uncompletion, reordering, and precise deletion.
+[![pkg.pr.new](https://img.shields.io/badge/pkg.pr.new-Effect--TS%2Feffect-black)](https://pkg.pr.new/~/Effect-TS/effect)
 
-## Development
+# Effect
 
-Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR.
+Effect is a library for building robust, maintainable, type-safe, and production grade applications in TypeScript. It helps you handle the hard problems at scale: typed errors, dependency injection, structured concurrency, scheduling, tracing, and unified schema validation.
 
-The Electron-independent TypeScript backend owns parsing, JSON catalogue persistence, atomic replacement, and operation serialization. The isolated preload exposes a runtime-validated typed desktop API. A Svelte session controller holds confirmed renderer data and tracks one operation at a time; counts and facets derive from its Todo file.
+> **Effect 4.x is a long-term support (LTS) release.** If you are upgrading from Effect 3.x, follow the [migration guide](MIGRATION.md).
 
-The Todo-file summary provides total, open, completed, and skipped-line counts. Filter facets and their counts derive from the selected completion view of the confirmed Todo file.
+## Installation
 
-The shared Todo-item editor supports Description, Priority, Creation date, Projects, Contexts, and `key:value` metadata; completed items also expose their Completion date. Completion records the local date and stores Priority as `pri:A` metadata; uncompletion restores a valid single-letter Priority. The parser also accepts legacy completed items with a leading Priority or no Completion date.
+```sh
+npm install effect
+```
 
-Configure recurrence in Metadata with `rec:1d`, `rec:2w`, `rec:1m`, or `rec:1y` (positive whole-number days, weeks, months, or years; the last `rec:` token wins). Checkbox completion and the editor's Completed control generate one open successor immediately after the original. Its Due date is relative to the recorded Completion date, month/year intervals clamp to month-end, and its Creation date is local today. Unsupported rules such as `rec:+1w` complete normally with a notice. Date overflow rejects the whole change. Completed-history edits and already-completed creation generate nothing.
+## Requirements
 
-Generation adds app-owned `tuxedo-generated:1` metadata to the original and excludes it from the successor. Any existing value of that key prevents regeneration. Tuxedo retains it through reopening and editing, even if removed from an editor draft; external tools must retain it for duplicate protection. Reopening the original leaves its successor alone, and deleting the successor does not reset the marker. One Undo last change restores the exact file before completion, marker insertion, and successor creation. When the source has valid effective Due and Show from dates, the successor's Show from keeps the same signed calendar-day lead time relative to its new Due date; with a valid Show from but no valid Due date, absolute Show from dates are omitted from the successor while malformed or unsupported `t:` tokens are copied unchanged. A calculated Show from outside the supported date range rejects the whole completion with no write. Structured Repeat controls and bulk recurrence remain separate features.
+- **TypeScript 5.9 or newer.** TypeScript 7 is recommended for the best performance and compatibility with [Effect's TypeScript tooling](https://github.com/Effect-TS/tsgo#installation).
+- **Node.js 18 or newer** is the general minimum for running Effect on Node.js. Some integration packages require newer runtimes; for example, `@effect/sql-sqlite-node` requires Node.js 22.16 or newer.
+- **Strict type-checking:** the `strict` flag must be enabled in your `tsconfig.json`.
 
-Creation checks the whole Todo file against confirmed contents; editing checks its targeted physical line, preserving external changes elsewhere. An omitted Creation date uses the current local calendar date; an explicit date or no date is preserved.
+## Links
 
-Drag the row handle to reorder the displayed Todo items within their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place. External edits reload the Active workspace's Todo file while the Workspace session is idle. Changed parsed contents show an info notice; a stably unreadable file enters the Empty state with a warning. Mutations check disk contents before writing and return confirmed data or a conflict.
+- [Website](https://effect.website): documentation, guides, and news
+- [Discord](https://discord.gg/effect-ts): ask questions, share what you're building, and talk to the core team
+- [Community](https://effect.website/community-hub): meetups and events, or bring Effect to your own
+- [Issues](https://github.com/Effect-TS/effect/issues): bug reports and feature requests
+- [Jobs](https://effect.website/effect-jobs): companies hiring Effect developers
+- Follow us on [X](https://x.com/EffectTS_), [Bluesky](https://bsky.app/profile/effect-ts.bsky.social), and [LinkedIn](https://www.linkedin.com/company/effect-ts)
 
-Metadata is stored in Electron's application-data directory as `workspaces.json`. The rewrite begins with a fresh JSON catalogue; existing legacy metadata and external Todo files are preserved. Catalogue-only Workspace deletion never deletes a Todo file. Setting `TUXEDO_USER_DATA` to a temporary directory isolates development/integration data.
+## Let's talk
 
-## Verification
+Whether your team is considering Effect, rolling it out, or already running it in production, we'd love to hear from you: what you're building, what works, and what you need from Effect next.
 
-Run these commands through `devenv shell --`: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, and `pnpm test:electron`. `check` covers Svelte/renderer types, backend/main/preload/contract types, and import restrictions. Unit tests include Chromium renderer behavior; install its browser with `pnpm exec playwright install chromium` when needed. Backend tests use real temporary files and preserve framework-independent todo.txt fixtures in `electron/backend/fixtures`.
+- **Talk to the maintainers.** Introduce your team on [Discord](https://discord.gg/effect-ts) or email [contact@effectful.co](mailto:contact@effectful.co). We're happy to connect privately on Slack or Discord for feedback and help with adoption.
+- **Production support.** We're exploring how to better support teams running Effect in production. If your organization has specific support needs, let's discuss them.
+- **Adoption help.** Our [adoption partners](https://effect.website/adoption-partners) offer implementation, consulting, team extension, training, and commercial support.
 
-`pnpm build` produces the static SPA in `build` and desktop bundles in `dist-electron`. `pnpm test:electron` builds and launches real Electron to exercise production protocol loading, trusted preload/IPC, runtime input validation, Workspace lifecycle, completion, conflicts, and deletion with temporary data. `pnpm test:electron:dev` runs the same workflow suite against the development renderer using its `--dev` option. macOS CI runs types, formatting, browser/backend tests, production build, and real Electron integration. `pnpm test:package` builds an unsigned Forge macOS app and launches its actual executable to repeat the same workflow suite, verify bundled assets, route fallback/reload, and reject protocol traversal. Development renderer origin configuration is ignored in packaged apps. Signed distribution, automatic updates, and Windows/Linux verification are deferred.
+Feedback from teams using and evaluating Effect directly shapes what we stabilize and build next.
 
-Electron integration and package tests keep windows hidden by default. Run `devenv shell -- pnpm test:electron:visible` to show the app and check that it opens maximized with native fullscreen off. Development and package tests also accept `--visible`: `devenv shell -- pnpm test:electron:dev --visible` or `devenv shell -- pnpm test:package --visible`. Hidden tests still use real Electron and exercise the renderer and preload/IPC; only visible mode checks maximization. Normal app launches are unchanged.
+## Long-term support
 
-The bow-tie application icon lives in `assets/icon.png`; `assets/icon.icns` contains the macOS sizes used for packaging. The renderer uses `static/favicon.png`. Unpackaged macOS launches also set the Dock icon from the PNG. The artwork fills the image without transparent padding.
+Teams depend on Effect for systems they expect to run for years. Effect 4.x is a long-term support (LTS) release with the following guarantees:
 
-## Local macOS application
+- At least three years of support, including bug and security fixes.
+- Bug fixes for one year after the next major version is released.
+- Security fixes for two years after the next major version is released.
 
-Run `devenv shell -- pnpm package:macos` on macOS. Forge packages the bundled ESM main/backend, sandboxed CommonJS preload, static SPA, and package metadata from a temporary allowlisted directory. Runtime dependencies are bundled; repository sources, tests, build tools, and pnpm's symlinked dependency tree are excluded. The resulting unsigned application is `out/Tuxedo-darwin-<host arch>/Tuxedo.app`. Launch it with `open out/Tuxedo-darwin-arm64/Tuxedo.app`, or run `Contents/MacOS/Tuxedo` with a temporary `TUXEDO_USER_DATA` directory for isolated checks.
+Stable APIs reserve breaking changes for major releases. APIs marked unstable may change in minor releases, and experimental APIs may change in patch releases.
 
-`devenv shell -- pnpm test:package` is the repeatable package verification command and runs in macOS CI. It copies the app outside the checkout and clears Node resolution overrides to verify operation without development dependencies. It verifies actual executable loading, security preferences and preload validation, JS/CSS/font assets, route reload, traversal rejection, Workspace ordering/switching and process-restart restoration, catalogue-only deletion, completion/uncompletion/deletion, and current-file conflicts using disposable data. Native file-dialog selection/cancellation should also be checked manually in the packaged app: create a temporary Todo file, choose Create workspace, choose the file in the native picker, enter name/color, create, restart, switch, and delete the Workspace while confirming the Todo file remains. Automated IPC tests do not claim native picker verification.
+## Effect v3
 
-Local package checks were performed on macOS 26.6.2 arm64 with Node 24.20.0. This is local unsigned delivery; Windows/Linux, signing, notarization, installers, and public distribution are unverified.
+The Effect v3 source code is available on the [`v3`](https://github.com/Effect-TS/effect/tree/v3) branch, which is also where issues and pull requests meant for Effect v3 should be targeted. To upgrade, see the [migration guide](MIGRATION.md).
+
+## Packages
+
+This monorepo contains the core `effect` package alongside integration packages that extend it. All packages listed below are released together with synchronized versions.
+
+| Package                                                               | Description                                              | API Reference                                                      |
+| --------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------ |
+| [`effect`](packages/effect)                                           | The core package                                         | [docs](https://effect.website/docs/v4/api/effect)                  |
+| [`@effect/platform-browser`](packages/platform/browser)               | Platform services for the browser                        | [docs](https://effect.website/docs/v4/api/platform-browser)        |
+| [`@effect/platform-bun`](packages/platform/bun)                       | Platform services for [Bun](https://bun.sh)              | [docs](https://effect.website/docs/v4/api/platform-bun)            |
+| [`@effect/platform-deno`](packages/platform/deno)                     | Platform services for [Deno](https://deno.com)           | [docs](https://effect.website/docs/v4/api/platform-deno)           |
+| [`@effect/platform-node`](packages/platform/node)                     | Platform services for [Node.js](https://nodejs.org)      | [docs](https://effect.website/docs/v4/api/platform-node)           |
+| [`@effect/platform-node-shared`](packages/platform/node-shared)       | Shared services for Node.js-compatible runtimes          | [docs](https://effect.website/docs/v4/api/platform-node-shared)    |
+| [`@effect/sql-clickhouse`](packages/sql/clickhouse)                   | SQL client for [ClickHouse](https://clickhouse.com)      | [docs](https://effect.website/docs/v4/api/sql-clickhouse)          |
+| [`@effect/sql-d1`](packages/sql/d1)                                   | SQL client for Cloudflare D1                             | [docs](https://effect.website/docs/v4/api/sql-d1)                  |
+| [`@effect/sql-libsql`](packages/sql/libsql)                           | SQL client for libSQL                                    | [docs](https://effect.website/docs/v4/api/sql-libsql)              |
+| [`@effect/sql-mssql`](packages/sql/mssql)                             | SQL client for Microsoft SQL Server                      | [docs](https://effect.website/docs/v4/api/sql-mssql)               |
+| [`@effect/sql-mysql2`](packages/sql/mysql2)                           | SQL client for MySQL                                     | [docs](https://effect.website/docs/v4/api/sql-mysql2)              |
+| [`@effect/sql-pg`](packages/sql/pg)                                   | SQL client for PostgreSQL                                | [docs](https://effect.website/docs/v4/api/sql-pg)                  |
+| [`@effect/sql-pglite`](packages/sql/pglite)                           | SQL client for [PGlite](https://pglite.dev)              | [docs](https://effect.website/docs/v4/api/sql-pglite)              |
+| [`@effect/sql-sqlite-bun`](packages/sql/sqlite-bun)                   | SQL client for SQLite via `bun:sqlite`                   | [docs](https://effect.website/docs/v4/api/sql-sqlite-bun)          |
+| [`@effect/sql-sqlite-do`](packages/sql/sqlite-do)                     | SQL client for Cloudflare Durable Objects SQLite         | [docs](https://effect.website/docs/v4/api/sql-sqlite-do)           |
+| [`@effect/sql-sqlite-node`](packages/sql/sqlite-node)                 | SQL client for SQLite via `node:sqlite`                  | [docs](https://effect.website/docs/v4/api/sql-sqlite-node)         |
+| [`@effect/sql-sqlite-react-native`](packages/sql/sqlite-react-native) | SQL client for SQLite in React Native                    | [docs](https://effect.website/docs/v4/api/sql-sqlite-react-native) |
+| [`@effect/sql-sqlite-wasm`](packages/sql/sqlite-wasm)                 | SQL client for SQLite compiled to WebAssembly            | [docs](https://effect.website/docs/v4/api/sql-sqlite-wasm)         |
+| [`@effect/ai-anthropic`](packages/ai/anthropic)                       | Anthropic provider for the Effect AI modules             | [docs](https://effect.website/docs/v4/api/ai-anthropic)            |
+| [`@effect/ai-openai`](packages/ai/openai)                             | OpenAI provider for the Effect AI modules                | [docs](https://effect.website/docs/v4/api/ai-openai)               |
+| [`@effect/ai-cloudflare`](packages/ai/cloudflare)                     | Cloudflare decision provider for the Effect AI modules   | [docs](https://effect.website/docs/v4/api/ai-cloudflare)           |
+| [`@effect/ai-typesafe`](packages/ai/typesafe)                         | TypeSafe decision provider for the Effect AI modules     | [docs](https://effect.website/docs/v4/api/ai-typesafe)             |
+| [`@effect/ai-openai-compat`](packages/ai/openai-compat)               | OpenAI-compatible API provider for the Effect AI modules | [docs](https://effect.website/docs/v4/api/ai-openai-compat)        |
+| [`@effect/ai-openrouter`](packages/ai/openrouter)                     | OpenRouter provider for the Effect AI modules            | [docs](https://effect.website/docs/v4/api/ai-openrouter)           |
+| [`@effect/atom-react`](packages/atom/react)                           | React bindings for Effect Atom                           | [docs](https://effect.website/docs/v4/api/atom-react)              |
+| [`@effect/atom-solid`](packages/atom/solid)                           | SolidJS bindings for Effect Atom                         | [docs](https://effect.website/docs/v4/api/atom-solid)              |
+| [`@effect/atom-vue`](packages/atom/vue)                               | Vue bindings for Effect Atom                             | [docs](https://effect.website/docs/v4/api/atom-vue)                |
+| [`@effect/opentelemetry`](packages/opentelemetry)                     | [OpenTelemetry](https://opentelemetry.io) integration    | [docs](https://effect.website/docs/v4/api/opentelemetry)           |
+| [`@effect/vitest`](packages/vitest)                                   | Helpers for testing with [Vitest](https://vitest.dev)    | [docs](https://effect.website/docs/v4/api/vitest)                  |
+| [`@effect/docgen`](packages/tools/docgen)                             | Documentation generator for Effect projects              | [docs](https://effect.website/docs/v4/api/docgen)                  |
+| [`@effect/doctest`](packages/tools/doctest)                           | Runs JSDoc examples as Vitest tests                      | [docs](https://effect.website/docs/v4/api/doctest)                 |
+| [`@effect/openapi-generator`](packages/tools/openapi-generator)       | Generate Effect code from OpenAPI specifications         | [docs](https://effect.website/docs/v4/api/openapi-generator)       |
+| [`@effect/graphql-generator`](packages/tools/graphql-generator)       | Generate Effect code from GraphQL documents              | [docs](https://effect.website/docs/v4/api/graphql-generator)       |
+
+## License
+
+MIT
