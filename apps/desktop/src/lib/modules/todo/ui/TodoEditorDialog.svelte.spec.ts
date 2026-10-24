@@ -88,6 +88,23 @@ test("Repeat rejects an invalid interval even when submission commits unrelated 
 	expect(calls).toEqual([]);
 });
 
+test("explicitly re-entering the same Repeat Metadata repairs an invalid interval draft", async () => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Weeks", exact: true }).click();
+	const interval = page.getByRole("textbox", { name: "Repeat interval", exact: true });
+	await interval.fill("");
+	await page.getByPlaceholder("Add key:value").fill("rec:1w");
+	await userEvent.keyboard("{Enter}");
+	await expect.element(interval).toHaveValue("1");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["rec:1w", "rec:1w"]);
+});
+
 test("creation defaults Repeat to Off, configures each unit and resets after saving", async () => {
 	const calls: TodoItemDraft[] = [];
 	renderDialog(async (input) => {

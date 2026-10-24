@@ -74,9 +74,10 @@
 			: { repeatInterval: "1", repeatUnit: value === undefined ? "off" : "unsupported" };
 	}
 	function setMetadata(metadata: string[]) {
+		const rules = metadata.filter((token) => token.startsWith("rec:"));
+		const previous = $formData.metadata.filter((token) => token.startsWith("rec:"));
 		const changed =
-			metadata.findLast((token) => token.startsWith("rec:")) !==
-			$formData.metadata.findLast((token) => token.startsWith("rec:"));
+			rules.length !== previous.length || rules.some((token, index) => token !== previous[index]);
 		$formData = { ...$formData, metadata, ...(changed ? repeatFields(metadata) : {}) };
 	}
 	function setRepeat(interval: string, unit: string) {
