@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 	import { resolve } from "$app/paths";
-	import { Button } from "$lib/shared/ui/button";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import WorkspaceOptionsMenu from "./WorkspaceOptionsMenu.svelte";
 	import WorkspaceRemovalDialog from "./WorkspaceRemovalDialog.svelte";
 	import ArrowUpRight from "@lucide/svelte/icons/arrow-up-right";

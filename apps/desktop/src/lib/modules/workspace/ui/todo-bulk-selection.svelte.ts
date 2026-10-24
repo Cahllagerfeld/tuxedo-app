@@ -1,4 +1,4 @@
-import type { TodoItem } from "$lib/modules/todo/domain/todo";
+import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 
 const todoKey = (todo: TodoItem) => `${todo.line_number}\0${todo.raw}`;

@@ -1,13 +1,13 @@
 <script lang="ts">
 	import Search from "@lucide/svelte/icons/search";
 	import X from "@lucide/svelte/icons/x";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
-	import { Button } from "$lib/shared/ui/button";
-	import { Input } from "$lib/shared/ui/input";
-	import { ScrollArea } from "$lib/shared/ui/scroll-area";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
+	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
 	import FacetFilter from "./FacetFilter.svelte";
 	import PriorityFilter from "./PriorityFilter.svelte";
-	import { dueLabels, type TodoDueCategory } from "$lib/modules/todo/domain/todo-due";
+	import { dueLabels, type TodoDueCategory } from "#lib/modules/todo/domain/todo-due.js";
 	import FilterSection from "./FilterSection.svelte";
 	const dueCategories: TodoDueCategory[] = ["overdue", "today", "upcoming", "none", "invalid"];
 

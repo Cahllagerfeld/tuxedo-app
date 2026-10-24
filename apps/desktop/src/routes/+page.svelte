@@ -1,7 +1,7 @@
 <script>
-	import { Button } from "$lib/shared/ui/button";
-	import { getAppState } from "$lib/app/app-context";
-	import WorkspaceEmptyState from "$lib/modules/workspace/ui/WorkspaceEmptyState.svelte";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { getAppState } from "#lib/app/app-context.js";
+	import WorkspaceEmptyState from "#lib/modules/workspace/ui/WorkspaceEmptyState.svelte";
 
 	const appState = getAppState();
 </script>

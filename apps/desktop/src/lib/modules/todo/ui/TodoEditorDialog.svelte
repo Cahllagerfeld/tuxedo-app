@@ -10,12 +10,12 @@
 	} from "@tuxedo/contracts/todo-creation";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
-	import type { TodoFile, TodoItem } from "$lib/modules/todo/domain/todo";
-	import { Button } from "$lib/shared/ui/button";
-	import * as Dialog from "$lib/shared/ui/dialog";
-	import * as Form from "$lib/shared/ui/form";
-	import { Checkbox } from "$lib/shared/ui/checkbox";
-	import { Input } from "$lib/shared/ui/input";
+	import type { TodoFile, TodoItem } from "#lib/modules/todo/domain/todo.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Dialog from "#lib/shared/ui/dialog/index.js";
+	import * as Form from "#lib/shared/ui/form/index.js";
+	import { Checkbox } from "#lib/shared/ui/checkbox/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
 	import { toast } from "svelte-sonner";
 	import type { SaveTodoItem } from "./todo-editor-types";
 	import TagsInput from "./tags-input/tags-input.svelte";

@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { Dialog as DialogPrimitive } from "bits-ui";
 	import DialogPortal from "./dialog-portal.svelte";
 	import type { Snippet } from "svelte";
 	import * as Dialog from "./index.js";
 	import { cn } from "cn";
-	import { type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import type { ComponentProps } from "svelte";
-	import { Button } from "$lib/shared/ui/button/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import XIcon from "@lucide/svelte/icons/x";
 
 	let {

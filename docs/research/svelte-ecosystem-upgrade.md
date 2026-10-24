@@ -1,6 +1,6 @@
 # Svelte ecosystem upgrade assessment
 
-Assessed 2026-10-24. This is an upgrade proposal; no migration or dependency changes have been applied.
+Assessed and implemented 2026-10-24. The proposal below records the upgrade rationale; implementation results follow at the end.
 
 ## Scope and compatible targets
 
@@ -70,4 +70,16 @@ For TypeScript 6, review changed defaults and explicit ambient types, and remove
 3. Complete manual follow-through and remove migration markers. Regenerate route/type metadata and inspect lockfile peer resolutions.
 4. Run all required structural checks through devenv: `pnpm check`, `pnpm test:unit`, `pnpm test:backend`, `pnpm lint`, `pnpm build`, `pnpm test:electron`, and `pnpm test:package` on macOS. Use the actual Electron router tests to verify preload, navigation supersession, delayed publication, refresh recovery and observation during commands. Verify the copied packaged app outside the checkout.
 
-Package metadata and migration documentation establish an available upgrade path; runtime compatibility remains unproven until implementation and those checks pass.
+## Implementation results
+
+Upgraded Kit to 3.1.0, adapter-static to 4.0.0, Superforms to 3.0.0, Formsnap to 2.1.0, and TypeScript to 6.0.3 across all three packages. Optional Vite, Bits UI and shadcn updates were left separate. Ran the official sv 1.1.1 migration, reviewed its manual findings, and removed the completed generated checklist.
+
+Migrated renderer aliases to `#lib/*` with explicit extensions, updated the import-boundary checker and shadcn configuration, and verified component generation with the existing shadcn 1.7.0 CLI in a temporary project. Backend Node ambient types are explicit under TypeScript 6. Desktop version polling remains disabled. The existing Standard Schema form bridge and route confirmation coordinator required no rewrite.
+
+Installed Kit 3.1.0 source confirms that supersession still skips `beforeNavigate`, `afterNavigate` still precedes clearing native navigation state, and an invalidation can complete without publishing its result. Existing admission and receipt checks remain necessary. The real-router suite now also holds a same-URL refresh and verifies command admission, unchanged activation/write counts, confirmation, and Undo.
+
+Validation passed: `pnpm check`, `pnpm test:unit` (297 tests), `pnpm test:backend` (462 tests), `pnpm lint`, `pnpm build`, `pnpm test:electron`, `pnpm test:package`, and `pnpm test:electron:dev`. The package suite launches a copied macOS app outside the checkout. Unit tests used `TUXEDO_TEST_PORT=63316` after a transient conflict on the default port. No product functionality changed, so the existing Todo-file examples remain applicable.
+
+Cold type generation also passed after removing `.svelte-kit` and the generated `node_modules/$app` package. A frozen-lockfile install succeeded without resolution changes.
+
+One transitive peer warning remains: `runed@0.35.1`, used by Bits UI and svelte-toolbelt, declares an optional Kit 2 peer for its `runed/kit` entry point. Neither the app nor those consumers import that entry point; their Svelte-only imports passed the full suites. No incompatible 0.x override was introduced. Superforms' optional native Effect 3 peer remains a pre-existing constraint; the app uses Standard Schema with Effect 4. Vite also warns while analysing the unused Vine 4 adapter's Node DNS import; the emitted browser JavaScript contains no such import.

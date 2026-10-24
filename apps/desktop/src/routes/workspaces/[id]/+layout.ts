@@ -1,5 +1,5 @@
 import { page } from "$app/state";
-import { readSavedViews, savedViewsDependency } from "$lib/modules/workspace/state/saved-views";
+import { readSavedViews, savedViewsDependency } from "#lib/modules/workspace/state/saved-views.js";
 import type { LayoutLoad } from "./$types";
 
 export const load: LayoutLoad = async ({ params, depends }) => {

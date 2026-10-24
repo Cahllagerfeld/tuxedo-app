@@ -1,7 +1,7 @@
 import { page } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
-import { summarizeTodoFile } from "$lib/modules/todo/domain/todo-file-summary";
+import { summarizeTodoFile } from "#lib/modules/todo/domain/todo-file-summary.js";
 import ReaderStatusBar from "./ReaderStatusBar.svelte";
 
 const workspace = {

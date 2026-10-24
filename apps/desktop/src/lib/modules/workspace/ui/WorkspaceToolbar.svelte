@@ -1,26 +1,26 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { createHotkey } from "@tanstack/svelte-hotkeys";
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import type { TodoItem } from "$lib/modules/todo/domain/todo";
-	import TodoEditorDialog from "$lib/modules/todo/ui/TodoEditorDialog.svelte";
-	import ActiveTodoFilters from "$lib/modules/todo/ui/ActiveTodoFilters.svelte";
-	import * as AlertDialog from "$lib/shared/ui/alert-dialog";
-	import { Button } from "$lib/shared/ui/button";
-	import * as ButtonGroup from "$lib/shared/ui/button-group";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+	import TodoEditorDialog from "#lib/modules/todo/ui/TodoEditorDialog.svelte";
+	import ActiveTodoFilters from "#lib/modules/todo/ui/ActiveTodoFilters.svelte";
+	import * as AlertDialog from "#lib/shared/ui/alert-dialog/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as ButtonGroup from "#lib/shared/ui/button-group/index.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
 	import ListChecks from "@lucide/svelte/icons/list-checks";
 	import Clock from "@lucide/svelte/icons/clock";
 	import Check from "@lucide/svelte/icons/check";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
-	import { Input } from "$lib/shared/ui/input";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
+	import { Input } from "#lib/shared/ui/input/index.js";
 	import SavedViews from "./SavedViews.svelte";
 	import Search from "@lucide/svelte/icons/search";
 	import ListFilter from "@lucide/svelte/icons/list-filter";
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 

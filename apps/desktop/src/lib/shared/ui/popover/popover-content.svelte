@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { Popover as PopoverPrimitive } from "bits-ui";
-	import { cn, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import PopoverPortal from "./popover-portal.svelte";
 	import type { ComponentProps } from "svelte";
 

@@ -2,10 +2,10 @@
 	import type { HTMLButtonAttributes } from "svelte/elements";
 	import { DateFormatter, getLocalTimeZone, parseDate } from "@internationalized/date";
 	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-	import { Button } from "$lib/shared/ui/button";
-	import { Calendar } from "$lib/shared/ui/calendar";
-	import * as Popover from "$lib/shared/ui/popover";
-	import * as Form from "$lib/shared/ui/form";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { Calendar } from "#lib/shared/ui/calendar/index.js";
+	import * as Popover from "#lib/shared/ui/popover/index.js";
+	import * as Form from "#lib/shared/ui/form/index.js";
 
 	let {
 		value = $bindable(""),

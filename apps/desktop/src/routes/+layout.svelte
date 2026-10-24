@@ -2,19 +2,19 @@
 	import {
 		SavedViewsResource,
 		setSavedViews,
-	} from "$lib/modules/workspace/state/saved-views-resource.svelte";
-	import { savedViewsDependency } from "$lib/modules/workspace/state/saved-views";
-	import { setAppState } from "@/app/app-context";
-	import { AppState } from "@/app/app-state.svelte";
-	import { setShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import AppNavbar from "@/app/AppNavbar.svelte";
-	import ReaderStatusBar from "@/app/ReaderStatusBar.svelte";
-	import WorkspaceSidebar from "@/modules/workspace/ui/sidebar/index.svelte";
-	import WorkspaceCreationDialog from "@/modules/workspace/ui/WorkspaceCreationDialog.svelte";
-	import * as Sidebar from "@/shared/ui/sidebar/index";
-	import { Toaster } from "@/shared/ui/sonner";
+	} from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
+	import { savedViewsDependency } from "#lib/modules/workspace/state/saved-views.js";
+	import { setAppState } from "#lib/app/app-context.js";
+	import { AppState } from "#lib/app/app-state.svelte.js";
+	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import AppNavbar from "#lib/app/AppNavbar.svelte";
+	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
+	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
+	import WorkspaceCreationDialog from "#lib/modules/workspace/ui/WorkspaceCreationDialog.svelte";
+	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
+	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	import { ModeWatcher } from "mode-watcher";
-	import { workspaceRouting } from "$lib/app/workspace-routing.svelte";
+	import { workspaceRouting } from "#lib/app/workspace-routing.svelte.js";
 	import { goto, invalidate } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page, navigating } from "$app/state";
@@ -36,8 +36,8 @@
 		appState.workspace.isOperating || appState.workspace.isLoading || !!navigating.to
 	);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
-	const openWorkspace = (id: string, replaceState = false) =>
-		goto(resolve("/workspaces/[id]", { id }), { replaceState });
+	const openWorkspace = (id: string, replace = false) =>
+		goto(resolve("/workspaces/[id]", { id }), { replace });
 </script>
 
 <!-- app.html sets the initial theme; ModeWatcher follows system changes after mount. -->

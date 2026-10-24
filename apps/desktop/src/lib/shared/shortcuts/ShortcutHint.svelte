@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { formatForDisplay } from "@tanstack/svelte-hotkeys";
-	import * as Kbd from "$lib/shared/ui/kbd";
+	import * as Kbd from "#lib/shared/ui/kbd/index.js";
 	let { hotkey }: { hotkey: string } = $props();
 </script>
 

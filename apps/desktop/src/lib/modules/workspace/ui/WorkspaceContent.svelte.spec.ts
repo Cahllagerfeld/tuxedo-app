@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import { toast } from "svelte-sonner";
 import { prefersReducedMotion } from "svelte/motion";
 import type { ConfirmedSession, DesktopAPI, TodoFile, TodoFileChange } from "@tuxedo/contracts";
-import { localToday } from "$lib/modules/todo/domain/todo-due";
+import { localToday } from "#lib/modules/todo/domain/todo-due.js";
 import Harness from "./WorkspaceContentHarness.svelte";
 import "../../../../routes/layout.css";
 afterEach(async () => {

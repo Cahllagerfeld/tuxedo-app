@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
-	import { localToday } from "$lib/modules/todo/domain/todo-due";
-	import type { TodoItem } from "$lib/modules/todo/domain/todo";
+	import { localToday } from "#lib/modules/todo/domain/todo-due.js";
+	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
-	import type { TodoFilterState } from "$lib/modules/todo/state/todo-filter.svelte";
+	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 

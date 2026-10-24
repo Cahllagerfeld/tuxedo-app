@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { cn } from "cn";

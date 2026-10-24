@@ -10,7 +10,7 @@ import type {
 	TodoFileChange,
 	TodoFileObservation,
 } from "@tuxedo/contracts";
-import type { TodoItem } from "$lib/modules/todo/domain/todo";
+import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type { CatalogueData, WorkspaceData } from "./workspace-route-data";
 import type {
 	PendingWorkspaceSessionOperation,

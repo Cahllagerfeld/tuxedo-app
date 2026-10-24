@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Button } from "$lib/shared/ui/button";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
 	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 

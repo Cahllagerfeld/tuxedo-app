@@ -5,9 +5,9 @@
 	import TodoRawLine from "./TodoRawLine.svelte";
 	import { validDueDate } from "../domain/todo-due";
 	import { recurrenceLabel } from "../domain/todo-recurrence";
-	import { Button } from "$lib/shared/ui/button";
-	import { ScrollArea } from "$lib/shared/ui/scroll-area";
-	import * as DropdownMenu from "$lib/shared/ui/dropdown-menu";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
 	import X from "@lucide/svelte/icons/x";
 	import Check from "@lucide/svelte/icons/check";
 	import Undo2 from "@lucide/svelte/icons/undo-2";

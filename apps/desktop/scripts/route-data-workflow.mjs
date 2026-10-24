@@ -22,7 +22,7 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		page.evaluate((href) => {
 			const link = document.createElement("a");
 			link.href = href;
-			link.dataset.sveltekitPreloadData = "off";
+			link.dataset.sveltekitPreloadData = "false";
 			document.body.append(link);
 			link.click();
 			link.remove();
@@ -164,6 +164,19 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		await retry.click();
 		await enabled(item("Receipt A"));
 		assert.equal((await counts()).writes, savedWrites);
+
+		// Kit 3 refreshes same-URL links without activating again or consuming Undo.
+		const beforeSameURL = await readConfirmation(page);
+		const sameURLCounts = await counts();
+		await arm(ids["Receipt A"]);
+		await navigate(ids["Receipt A"]);
+		await entered(ids["Receipt A"]);
+		assert.equal(await item("Receipt A").isEnabled(), false);
+		await release(ids["Receipt A"]);
+		await enabled(item("Receipt A"));
+		assert.deepEqual(await readConfirmation(page), beforeSameURL);
+		assert.equal((await counts()).writes, sameURLCounts.writes);
+		assert.deepEqual((await counts()).activations, sameURLCounts.activations);
 
 		// Home and re-entry recover a committed change through reads, without another activation or write.
 		await arm(ids["Receipt A"], true);

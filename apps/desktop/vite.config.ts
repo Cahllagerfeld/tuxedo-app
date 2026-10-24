@@ -51,9 +51,8 @@ export default defineConfig(async ({ mode }) => ({
 			},
 			preprocess: vitePreprocess(),
 
-			alias: {
-				"@/*": "./src/lib/*",
-			},
+			// Desktop updates do not deploy through the renderer's custom protocol.
+			version: { pollInterval: 0 },
 			adapter: adapter({
 				fallback: "index.html",
 			}),

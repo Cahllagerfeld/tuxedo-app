@@ -63,7 +63,7 @@ async function check(path, boundary) {
 			(boundary !== "backend" && (builtinModules.includes(value) || value.startsWith("node:")))
 		)
 			forbidden();
-		const specifier = value.replace(/^(\$lib\/|@\/)/, join(desktop, "src/lib") + sep);
+		const specifier = value.replace(/^#lib\//, join(desktop, "src/lib") + sep);
 		const resolved =
 			ts.resolveModuleName(specifier, path, options, ts.sys).resolvedModule?.resolvedFileName ??
 			(specifier.endsWith(".svelte") ? resolve(dirname(path), specifier) : undefined);

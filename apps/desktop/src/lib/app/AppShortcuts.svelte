@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { createHotkey, detectPlatform } from "@tanstack/svelte-hotkeys";
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
-	import { rowShortcuts, undoTodoShortcut } from "$lib/modules/todo/ui/shortcuts";
-	import { searchShortcut, saveViewShortcut } from "$lib/modules/workspace/ui/shortcuts";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
+	import { rowShortcuts, undoTodoShortcut } from "#lib/modules/todo/ui/shortcuts.js";
+	import { searchShortcut, saveViewShortcut } from "#lib/modules/workspace/ui/shortcuts.js";
 	import { bindings } from "./shortcut-bindings";
-	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
-	import * as Dialog from "$lib/shared/ui/dialog";
-	import { Button } from "$lib/shared/ui/button";
-	import { useSidebar } from "$lib/shared/ui/sidebar";
+	import ShortcutHint from "#lib/shared/shortcuts/ShortcutHint.svelte";
+	import * as Dialog from "#lib/shared/ui/dialog/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import { useSidebar } from "#lib/shared/ui/sidebar/index.js";
 	import type { AppState } from "./app-state.svelte";
 	let {
 		app,

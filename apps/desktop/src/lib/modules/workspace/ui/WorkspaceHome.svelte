@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
-	import * as Alert from "$lib/shared/ui/alert";
-	import { Button } from "$lib/shared/ui/button";
+	import * as Alert from "#lib/shared/ui/alert/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import Plus from "@lucide/svelte/icons/plus";
 	import type { WorkspaceCatalogue } from "../domain/workspace";

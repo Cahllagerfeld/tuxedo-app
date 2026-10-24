@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import TagsInput from "./tags-input.svelte";
 import TagsInputSuggestion from "./tags-input-suggestion.svelte";
-import Input from "$lib/shared/ui/input/input.svelte";
+import Input from "#lib/shared/ui/input/input.svelte";
 import "../../../../../routes/layout.css";
 
 test.each(["light", "dark"])(

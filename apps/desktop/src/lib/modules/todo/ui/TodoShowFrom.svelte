@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { Badge } from "$lib/shared/ui/badge";
+	import { Badge } from "#lib/shared/ui/badge/index.js";
 	import Clock from "@lucide/svelte/icons/clock";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-	import * as Tooltip from "$lib/shared/ui/tooltip";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
 	import type { TodoItem } from "../domain/todo";
 	import { isDeferred, showFromDate } from "../domain/todo-threshold";
 

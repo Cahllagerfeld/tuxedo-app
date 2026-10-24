@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TodoItem } from "../domain/todo";
-	import { Button } from "$lib/shared/ui/button";
+	import { Button } from "#lib/shared/ui/button/index.js";
 	import { toast } from "svelte-sonner";
 	import Copy from "@lucide/svelte/icons/copy";
 	import Check from "@lucide/svelte/icons/check";

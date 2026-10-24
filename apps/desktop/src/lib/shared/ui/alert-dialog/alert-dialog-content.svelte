@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
+	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	const shortcutScope = getShortcutScope();
 	import { AlertDialog as AlertDialogPrimitive } from "bits-ui";
 	import AlertDialogPortal from "./alert-dialog-portal.svelte";
 	import AlertDialogOverlay from "./alert-dialog-overlay.svelte";
 	import { cn } from "cn";
-	import { type WithoutChild, type WithoutChildrenOrChild } from "$lib/shared/utils.js";
+	import { type WithoutChild, type WithoutChildrenOrChild } from "#lib/shared/utils.js";
 	import type { ComponentProps } from "svelte";
 
 	let {

@@ -2,7 +2,7 @@ import { page } from "$app/state";
 import {
 	readWorkspace,
 	workspaceDependency,
-} from "$lib/modules/workspace/state/workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ params, depends }) => {
