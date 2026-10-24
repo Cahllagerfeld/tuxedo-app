@@ -6,6 +6,7 @@ import {
 	TodoCreationRequest,
 	todoEditorDraft,
 	todoEditorSchema,
+	todoRepeatRuleSchema,
 } from "@tuxedo/contracts/todo-creation";
 
 const data = {
@@ -16,6 +17,8 @@ const data = {
 	creationDate: "",
 	completionDate: "",
 	metadata: [],
+	repeatInterval: "1",
+	repeatUnit: "off",
 };
 test("Standard Schema adapters preserve explicit editor defaults and field errors", async () => {
 	const schema = todoEditorSchema(() => ({ editing: false, completed: false }));
@@ -78,8 +81,9 @@ test.each([
 	expect(result.issues?.some((issue) => issue.path?.[0] === path)).toBe(true);
 });
 test("editor normalizes description and represents empty dates and Priority as null", () => {
+	const { repeatInterval: _, repeatUnit: __, ...fields } = data;
 	expect(todoEditorDraft({ ...data, description: "  Buy\u0085 milk  " }, false)).toEqual({
-		...data,
+		...fields,
 		description: "Buy milk",
 		priority: null,
 		creationDate: null,
@@ -94,4 +98,23 @@ test("editing retains legacy completed items and rechecks the current completion
 	expect((await adapter.validate({ ...data, creationDate: "2026-10-12" })).success).toBe(false);
 	completed = false;
 	expect((await adapter.validate({ ...data, completionDate: "2026-10-12" })).success).toBe(false);
+});
+
+test("Repeat uses the same lowercase rule validation in editor forms and domain consumers", async () => {
+	const adapter = standardClient(todoEditorSchema(() => ({ editing: true, completed: false })));
+	for (const value of ["1d", "2w", "3m", "1y", "999999999999999999999d"])
+		expect(todoRepeatRuleSchema.safeParse(value).success).toBe(true);
+	for (const value of ["", "0d", "01w", "+1w", "1W", "1.5m", "-1y", "1e2d"])
+		expect(todoRepeatRuleSchema.safeParse(value).success).toBe(false);
+	const invalid = await adapter.validate({ ...data, repeatInterval: "0", repeatUnit: "w" });
+	expect(invalid.success).toBe(false);
+	if (!invalid.success)
+		expect(invalid.issues).toContainEqual({
+			path: ["repeatInterval"],
+			message: "Enter a positive whole-number interval.",
+		});
+	expect((await adapter.validate({ ...data, repeatUnit: "fortnights" })).success).toBe(false);
+	expect(
+		(await adapter.validate({ ...data, repeatUnit: "unsupported", metadata: ["rec:+1w"] })).success
+	).toBe(true);
 });

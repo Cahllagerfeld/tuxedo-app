@@ -1,5 +1,6 @@
 import { CalendarDate, parseDate } from "@internationalized/date";
 import { todoDateSchema } from "@tuxedo/contracts";
+import { todoRepeatRuleSchema } from "@tuxedo/contracts/todo-creation";
 import type { TodoItem } from "@tuxedo/contracts/todo";
 import { createTodoLine } from "./create-todo";
 import { parseTodoFile } from "./todo-file";
@@ -10,12 +11,12 @@ export const generationMarker = "tuxedo-generated";
 const minimumCalendarDate = new CalendarDate(1, 1, 1);
 const maximumCalendarDate = new CalendarDate(9999, 12, 31);
 
-function nextDueDate(completion: string | null, rule: RegExpExecArray): string {
+function nextDueDate(completion: string | null, rule: string): string {
 	if (!completion || !todoDateSchema.safeParse(completion).success)
 		throw Error("Recurring completion requires a valid Completion date.");
 	const anchor = parseDate(completion);
-	const interval = Number(rule[1]);
-	const unit = rule[2];
+	const interval = Number(rule.slice(0, -1));
+	const unit = rule.slice(-1);
 	const maximum = maximumCalendarDate;
 	const limit =
 		unit === "y"
@@ -75,8 +76,8 @@ export function planRecurringCompletion(
 		!completed.metadata.rec
 	)
 		return { lineNumber, raw };
-	const rule = /^([1-9][0-9]*)([dwmy])$/u.exec(completed.metadata.rec);
-	if (!rule)
+	const rule = completed.metadata.rec;
+	if (!todoRepeatRuleSchema.safeParse(rule).success)
 		return {
 			lineNumber,
 			raw,

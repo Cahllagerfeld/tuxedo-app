@@ -55,6 +55,8 @@ export const TodoMetadata = Schema.String.check(
 	)
 );
 export const TodoPriority = Schema.String.check(Schema.isPattern(/^[A-Z]$/u));
+export const TodoRepeatRule = Schema.String.check(Schema.isPattern(/^[1-9][0-9]*[dwmy]$/u));
+export const todoRepeatRuleSchema = effectValidator(TodoRepeatRule);
 export const todoCreationFields = {
 	description: TodoDescription,
 	projects: TodoTags,
@@ -145,11 +147,14 @@ const TodoEditorFields = Schema.Struct({
 	creationDate: Schema.Union([Schema.Literal(""), TodoDate]),
 	completionDate: Schema.Union([Schema.Literal(""), TodoDate]),
 	metadata: Schema.mutable(Schema.Array(TodoMetadata)),
+	repeatInterval: Schema.String,
+	repeatUnit: Schema.String.check(Schema.isPattern(/^(off|unsupported|[dwmy])$/u)),
 });
 export type TodoEditorData = typeof TodoEditorFields.Type;
 export function todoEditorDraft(data: TodoEditorData, completed: boolean) {
+	const { repeatInterval: _, repeatUnit: __, ...fields } = data;
 	return {
-		...data,
+		...fields,
 		description: normalizeTodoDescription(data.description),
 		priority: data.priority === "none" ? null : data.priority,
 		creationDate: data.creationDate || null,
@@ -160,12 +165,22 @@ export function todoEditorDraft(data: TodoEditorData, completed: boolean) {
 export function todoEditorSchema(state: () => { editing: boolean; completed: boolean }) {
 	return Schema.toStandardSchemaV1(
 		TodoEditorFields.check(
-			Schema.makeFilter((data) =>
-				todoCreationIssues(
+			Schema.makeFilter((data) => {
+				const issues = todoCreationIssues(
 					todoEditorDraft(data, data.completed ?? state().completed),
 					state().editing
+				);
+				if (
+					data.repeatUnit !== "off" &&
+					data.repeatUnit !== "unsupported" &&
+					!todoRepeatRuleSchema.safeParse(data.repeatInterval + data.repeatUnit).success
 				)
-			)
+					issues.push({
+						path: ["repeatInterval"],
+						issue: "Enter a positive whole-number interval.",
+					});
+				return issues;
+			})
 		),
 		{ parseOptions: { onExcessProperty: "error", errors: "all" } }
 	);

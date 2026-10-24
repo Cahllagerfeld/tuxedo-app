@@ -1,6 +1,8 @@
+import { todoRepeatRuleSchema } from "@tuxedo/contracts/todo-creation";
+
 export function recurrenceLabel(value: string | undefined): string | null {
-	const rule = /^([1-9][0-9]*)([dwmy])$/u.exec(value ?? "");
-	if (!rule) return null;
+	if (!value || !todoRepeatRuleSchema.safeParse(value).success) return null;
+	const interval = value.slice(0, -1);
 	const units: Record<string, string> = { d: "day", w: "week", m: "month", y: "year" };
-	return `${rule[1]} ${units[rule[2]]}${rule[1] === "1" ? "" : "s"}`;
+	return `${interval} ${units[value.slice(-1)]}${interval === "1" ? "" : "s"}`;
 }
