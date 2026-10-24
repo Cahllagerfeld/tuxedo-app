@@ -17,7 +17,10 @@ import type {
 	TodoFileChange,
 	UndoLabel,
 } from "@tuxedo/contracts";
-export type SessionOperation = Exclude<DesktopOperation, "selectTodoFile" | "writeClipboardText">;
+export type SessionOperation = Exclude<
+	DesktopOperation,
+	"selectTodoFile" | "selectNewTodoFile" | "writeClipboardText"
+>;
 export type SessionEffects = {
 	[K in SessionOperation]: (request: DesktopRequest<K>) => Effect.Effect<DesktopResponse<K>>;
 };
@@ -25,6 +28,9 @@ export class WorkspaceSession extends Context.Service<
 	WorkspaceSession,
 	SessionEffects & {
 		stopObservation: Effect.Effect<void>;
+		prepareTodoFile: (
+			path: string
+		) => Effect.Effect<NonNullable<DesktopResponse<"selectNewTodoFile">>, OperationError>;
 	}
 >()("tuxedo/backend/WorkspaceSession") {}
 export type UndoChange = { contents: string; label: UndoLabel };
@@ -298,6 +304,7 @@ export function sessionLayer(
 						})
 					),
 				stopObservation: semaphore.withPermit(closeObservation),
+				prepareTodoFile: (path) => serialize("prepareTodoFile", workspace.prepareTodoFile(path)),
 				readSavedViews: () =>
 					semaphore
 						.withPermit(

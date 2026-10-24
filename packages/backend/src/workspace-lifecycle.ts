@@ -1,9 +1,12 @@
 import { Effect } from "effect";
+import { createHash } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import { FileSystem } from "effect/FileSystem";
 import type { PlatformError } from "effect/PlatformError";
 import { Identity } from "./identity";
 import { WorkspaceCatalogue } from "./workspace-catalogue";
 import { attempt, OperationFailure, readContents } from "./operation";
+import { atomicWrite } from "./atomic-write";
 import { parseTodoFile } from "./todo-file";
 import {
 	catalogueSchema,
@@ -46,6 +49,43 @@ export const readWorkspaceCatalogue = (cataloguePath: string) =>
 	);
 
 export function createWorkspaceLifecycle(cataloguePath: string) {
+	// Only the latest native Save selection can authorize a file write.
+	let selection:
+		| { todoPath: string; creationToken: string; fingerprint: string | undefined; created: boolean }
+		| undefined;
+	const fingerprint = (path: string) =>
+		FileSystem.use((fs) => fs.readFile(path)).pipe(
+			Effect.map((bytes) => createHash("sha256").update(bytes).digest("hex")),
+			Effect.catchTag("PlatformError", (error) =>
+				error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error)
+			)
+		);
+	const canonicalPath = (path: string) =>
+		FileSystem.use((fs) =>
+			fs
+				.realPath(path)
+				.pipe(
+					Effect.catchTag("PlatformError", (error) =>
+						error.reason._tag === "NotFound"
+							? fs
+									.realPath(dirname(path))
+									.pipe(Effect.map((directory) => join(directory, basename(path))))
+							: Effect.fail(error)
+					)
+				)
+		);
+	const prepareTodoFile = (path: string) =>
+		Effect.gen(function* () {
+			const identity = yield* Identity;
+			const todoPath = yield* canonicalPath(path);
+			selection = {
+				todoPath,
+				creationToken: identity.uuid(),
+				fingerprint: yield* fingerprint(todoPath),
+				created: false,
+			};
+			return { todoPath, creationToken: selection.creationToken };
+		});
 	const readCatalogue = () => readWorkspaceCatalogue(cataloguePath);
 	const projectCatalogue = (
 		catalogue: Catalogue
@@ -110,6 +150,7 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 		});
 	});
 	return {
+		prepareTodoFile,
 		setSortOrder: (
 			request: DesktopRequest<"setWorkspaceSortOrder">,
 			current: ConfirmedSession,
@@ -142,14 +183,31 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 				const input = yield* attempt(() => createWorkspaceRequestSchema.parse(request));
 				const fs = yield* FileSystem;
 				const identity = yield* Identity;
-				const todoPath = yield* fs.realPath(input.todoPath);
-				const todoContents = yield* readContents(todoPath);
-				const todo_file = parseTodoFile(todoPath, todoContents);
-				if (todo_file.skipped.length)
-					return yield* new OperationFailure({
-						message: "Cannot create Workspace: Todo file contains skipped lines.",
-					});
 				const previous = yield* readCatalogue();
+				const creation = input.creationToken ? selection : undefined;
+				if (
+					input.creationToken &&
+					(!creation ||
+						creation.creationToken !== input.creationToken ||
+						creation.todoPath !== input.todoPath)
+				)
+					return yield* new OperationFailure({
+						message: "Choose the new Todo file’s location again before creating it.",
+					});
+				const todoPath =
+					creation && !creation.created ? creation.todoPath : yield* fs.realPath(input.todoPath);
+				if (creation) {
+					const catalogueFile = yield* canonicalPath(cataloguePath).pipe(
+						Effect.catchTag("PlatformError", (error) =>
+							error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error)
+						)
+					);
+					// A missing catalogue has no realPath to normalize its case on macOS.
+					if (todoPath.toLowerCase() === catalogueFile?.toLowerCase())
+						return yield* new OperationFailure({
+							message: "Choose a Todo file outside Tuxedo’s Workspace catalogue.",
+						});
+				}
 				const workspace = {
 					id: identity.uuid(),
 					name: input.name,
@@ -164,10 +222,44 @@ export function createWorkspaceLifecycle(cataloguePath: string) {
 						workspaces: [...previous.workspaces, workspace],
 					})
 				);
-				return yield* commitCatalogue(catalogue, {
-					session: { status: "ready", catalogue, todo_file },
-					todoContents,
-				});
+				return yield* Effect.gen(function* () {
+					if (creation && !creation.created) {
+						if ((yield* fingerprint(todoPath)) !== creation.fingerprint)
+							return yield* new OperationFailure({
+								message:
+									"The selected file changed. Choose its location again to confirm replacement, or open it as an existing Todo file.",
+							});
+						if (creation.fingerprint === undefined) {
+							yield* Effect.scoped(
+								Effect.gen(function* () {
+									const handle = yield* fs.open(todoPath, { flag: "wx", mode: 0o600 });
+									creation.created = true;
+									yield* handle.sync;
+								})
+							);
+						} else {
+							const info = yield* fs.stat(todoPath);
+							yield* atomicWrite(todoPath, "", info.mode);
+						}
+						creation.created = true;
+					}
+					const todoContents = yield* readWorkspaceContents(todoPath);
+					const todo_file = parseTodoFile(todoPath, todoContents);
+					if (todo_file.skipped.length)
+						return yield* new OperationFailure({ message: "Todo file contains skipped lines." });
+					return yield* commitCatalogue(catalogue, {
+						session: { status: "ready", catalogue, todo_file },
+						todoContents,
+					});
+				}).pipe(
+					Effect.mapError((error) =>
+						creation?.created
+							? new OperationFailure({
+									message: `The Todo file at ${todoPath} was created or replaced, but Workspace setup failed. The file has been preserved. Submit again to open it without rewriting it. ${error.message}`,
+								})
+							: error
+					)
+				);
 			}),
 		switchWorkspace: (request: DesktopRequest<"switchWorkspace">) =>
 			Effect.gen(function* () {

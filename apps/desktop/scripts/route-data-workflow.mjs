@@ -385,7 +385,7 @@ export async function routeDataWorkflow(application, page, directory, developmen
 		const beforeCreation = (await counts()).activations;
 		await page.getByRole("button", { name: "New workspace", exact: true }).click();
 		await page.getByRole("textbox", { name: "Workspace name" }).fill("Receipt created");
-		await page.getByRole("button", { name: "Todo file", exact: true }).click();
+		await page.getByRole("button", { name: "Open an existing Todo file", exact: true }).click();
 		await page.getByText(createdPath, { exact: true }).waitFor();
 		await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 		await enabled(
