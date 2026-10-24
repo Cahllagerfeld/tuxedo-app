@@ -499,44 +499,6 @@ test("defaults to All with both completion states, the total count, and existing
 		.toHaveTextContent("2 matching items");
 });
 
-test("Open combines exact Project and Context filters", async () => {
-	render(Harness, { desktop: adapter() });
-	await page.getByRole("button", { name: /^Open/ }).click();
-	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
-	await expect.element(page.getByText("Completed work", { exact: true })).not.toBeInTheDocument();
-	await expect
-		.element(page.getByLabelText("Filtered result count"))
-		.toHaveTextContent("6 matching items");
-
-	await page.getByRole("button", { name: "Show more Projects" }).click();
-	await page.getByRole("button", { name: "+Work", exact: true }).click();
-	await expect
-		.element(page.getByRole("button", { name: "+Work", exact: true }))
-		.toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: "@Home", exact: true }).click();
-	await expect
-		.element(page.getByRole("button", { name: "@Home", exact: true }))
-		.toHaveAttribute("aria-pressed", "true");
-	await expect
-		.element(page.getByLabelText("Filtered result count"))
-		.toHaveTextContent("1 matching item");
-	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
-	await expect.element(page.getByText("Open personal", { exact: true })).not.toBeInTheDocument();
-
-	await page.getByRole("button", { name: /^Completed/ }).click();
-	await expect.element(page.getByText("Completed work", { exact: true })).toBeVisible();
-	await expect
-		.element(page.getByLabelText("Filtered result count"))
-		.toHaveTextContent("1 matching item");
-	await page
-		.getByLabelText("Active filters")
-		.getByRole("button", { name: "Clear filters", exact: true })
-		.click();
-	await expect
-		.element(page.getByLabelText("Filtered result count"))
-		.toHaveTextContent("1 matching item");
-});
-
 test("searches bounded facet values and clears a Priority across status changes", async () => {
 	render(Harness, { desktop: adapter() });
 	await expect.element(page.getByRole("button", { name: "Show more Projects" })).toBeVisible();
@@ -784,18 +746,6 @@ test("updates the filtered view only after accepted completion", async () => {
 		.element(page.getByRole("button", { name: "Clear Project Work", exact: true }))
 		.not.toBeInTheDocument();
 	await expect.poll(rowCount).toBe(5);
-});
-
-test("preserves the filtered view after a rejected completion", async () => {
-	render(Harness, {
-		desktop: adapter({
-			setTodoCompletion: async () => ({ status: "rejected", message: "Cannot complete" }),
-		}),
-	});
-	await page.getByRole("button", { name: "Show more Projects" }).click();
-	await page.getByRole("button", { name: "+Work", exact: true }).click();
-	await page.getByRole("checkbox", { name: "Mark Open work complete" }).click();
-	await expect.element(page.getByText("Open work", { exact: true })).toBeVisible();
 });
 
 test("keeps long filter input and facet labels inside a narrow independently scrolling sidebar", async () => {

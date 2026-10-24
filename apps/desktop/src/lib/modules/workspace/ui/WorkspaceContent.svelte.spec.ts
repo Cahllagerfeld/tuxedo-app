@@ -717,8 +717,6 @@ test("duplicate creation submissions keep dismissal blocked until the admitted s
 	form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
 	form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
 	await expect.poll(() => calls).toBe(1);
-	// Allow both validation continuations and any busy rejection to settle.
-	await new Promise((resolve) => setTimeout(resolve, 0));
 	const close = page.getByRole("button", { name: "Close", exact: true });
 	await expect.element(close).toBeDisabled();
 	await expect.element(description).toBeDisabled();
@@ -730,10 +728,7 @@ test("duplicate creation submissions keep dismissal blocked until the admitted s
 			?.disabled
 	).toBe(true);
 	(close.element() as HTMLButtonElement).click();
-	description
-		.element()
-		.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-	await new Promise((resolve) => setTimeout(resolve, 150));
+	await userEvent.keyboard("{Escape}");
 	await expect.element(page.getByRole("dialog")).toBeVisible();
 	await expect.element(description).toHaveValue("Keep this draft");
 	finish({ status: "rejected", message: "Creation blocked by permissions" });
@@ -2607,8 +2602,9 @@ test.each(["middle", "last", "all"] as const)(
 			);
 		await page.getByRole("button", { name: "Delete Todo items", exact: true }).click();
 		await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-		// CI can observe the success notice after the 200 ms exit-animation window.
-		await new Promise((resolve) => setTimeout(resolve, 400));
+		await Promise.all(
+			document.getAnimations().map((animation) => animation.finished.catch(() => {}))
+		);
 		await expect
 			.element(
 				page.getByText(

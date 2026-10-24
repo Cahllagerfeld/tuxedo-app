@@ -1,11 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { listPackage } from "@electron/asar";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 process.chdir(fileURLToPath(new URL("../", import.meta.url)));
 const directory = await mkdtemp(join(tmpdir(), "tuxedo-packaged-"));
 const bundle = join(directory, "Tuxedo.app");
@@ -93,22 +92,50 @@ try {
 	console.log(
 		"Packaged executable, bundled assets, SPA navigation/reload, and constrained protocol checks passed."
 	);
+	// Exercise bundled backend dependencies and native route reloads outside the checkout.
+	const todoPath = join(directory, "todo.txt");
+	const contents = "Packaged item\r\nLast";
+	await writeFile(todoPath, contents);
+	const created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
+		name: "Packaged",
+		color: "blue",
+		todoPath,
+	});
+	assert.equal(created.status, "applied");
+	const workspaceId = created.confirmed.session.catalogue.active_workspace_id;
 	await application?.close();
 	application = undefined;
-
-	const result = spawnSync(
-		process.execPath,
-		["scripts/test-electron.mjs", ...(visible ? ["--visible"] : [])],
-		{
-			stdio: "inherit",
-			env: {
-				...packageEnv,
-				TUXEDO_PACKAGED_EXECUTABLE: executablePath,
-				TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
-			},
-		}
+	application = await electron.launch({
+		executablePath,
+		args: [],
+		cwd: directory,
+		env: {
+			...packageEnv,
+			TUXEDO_USER_DATA: directory,
+			TUXEDO_TEST_HIDDEN: visible ? "0" : "1",
+			TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1",
+		},
+		timeout: 20000,
+	});
+	const restored = await application.firstWindow();
+	restored.setDefaultTimeout(10000);
+	const checkbox = restored.getByRole("checkbox", {
+		name: "Mark Packaged item complete",
+		exact: true,
+	});
+	await checkbox.and(restored.locator(":enabled")).waitFor();
+	await restored.waitForURL(`tuxedo://app/workspaces/${workspaceId}`);
+	await restored.reload();
+	await checkbox.and(restored.locator(":enabled")).waitFor();
+	await checkbox.click();
+	await restored.getByRole("button", { name: "Undo completion", exact: true }).waitFor();
+	assert.match(await readFile(todoPath, "utf8"), /^x \d{4}-\d{2}-\d{2} Packaged item\r\nLast$/);
+	await restored.getByRole("button", { name: "Undo completion", exact: true }).click();
+	await checkbox.and(restored.locator(":enabled")).waitFor();
+	assert.equal(await readFile(todoPath, "utf8"), contents);
+	console.log(
+		"Packaged persistence, restart, native Workspace reload, completion and Undo passed."
 	);
-	assert.equal(result.status, 0, "Packaged Electron workflow suite");
 } finally {
 	await application?.close();
 	await rm(directory, { recursive: true, force: true });

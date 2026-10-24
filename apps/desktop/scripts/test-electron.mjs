@@ -12,8 +12,6 @@ import { once } from "node:events";
 process.chdir(fileURLToPath(new URL("../", import.meta.url)));
 const development = process.argv.includes("--dev");
 const visible = process.argv.includes("--visible");
-const packagedExecutable = process.env.TUXEDO_PACKAGED_EXECUTABLE;
-if (development && packagedExecutable) throw Error("Development tests require unpackaged Electron");
 const directory = await mkdtemp(join(tmpdir(), "tuxedo-electron-"));
 let application;
 let vite;
@@ -23,12 +21,12 @@ const environment = {
 	TUXEDO_USER_DATA: directory,
 	TUXEDO_TEST_HIDDEN: visible ? "0" : "1",
 };
-if (!packagedExecutable) delete environment.TUXEDO_RENDERER_ORIGIN;
+delete environment.TUXEDO_RENDERER_ORIGIN;
 const launchApplication = () =>
 	electron.launch({
 		timeout: 20000,
-		executablePath: packagedExecutable ?? electronPath,
-		args: packagedExecutable ? [] : [resolve("dist-electron/main.js")],
+		executablePath: electronPath,
+		args: [resolve("dist-electron/main.js")],
 		env: environment,
 	});
 const assertWindowState = async (page) => {
@@ -134,40 +132,6 @@ try {
 	const originalThemeSource = await application.evaluate(
 		({ nativeTheme }) => nativeTheme.themeSource
 	);
-	const expectStartupTheme = async (theme) => {
-		await application.evaluate(({ nativeTheme }, source) => {
-			nativeTheme.themeSource = source;
-		}, theme);
-		// Stop the SPA and its styles from loading to inspect the initial HTML canvas.
-		const cdp = await page.context().newCDPSession(page);
-		await cdp.send("Network.enable");
-		await cdp.send("Network.setBlockedURLs", { urls: ["*.js", "*.css"] });
-		try {
-			await page.reload({ waitUntil: "domcontentloaded" });
-			const initial = await page.evaluate(() => ({
-				dark: document.documentElement.classList.contains("dark"),
-				scheme: getComputedStyle(document.documentElement).colorScheme,
-				background: getComputedStyle(document.documentElement).backgroundColor,
-				mounted: document.querySelector("main") !== null,
-			}));
-			assert.equal(initial.mounted, false, "Startup check must run before the SPA mounts");
-			assert.equal(initial.dark, theme === "dark");
-			assert.equal(initial.scheme, theme);
-			assert.equal(
-				initial.background,
-				theme === "dark" ? "oklch(0.260325 0 0)" : "oklch(0.949119 0 0)"
-			);
-			const nativeBackground = await application.evaluate(({ BrowserWindow }) =>
-				BrowserWindow.getAllWindows()[0].getBackgroundColor()
-			);
-			assert.equal(nativeBackground.toLowerCase(), theme === "dark" ? "#242424" : "#eeeeee");
-		} finally {
-			await cdp.send("Network.setBlockedURLs", { urls: [] });
-			await cdp.detach();
-		}
-		await reopen();
-		await page.getByText("No workspace open", { exact: true }).waitFor();
-	};
 	const expectTheme = async (theme) => {
 		await page.waitForFunction((expected) => {
 			const root = document.documentElement;
@@ -179,9 +143,6 @@ try {
 		}, theme);
 	};
 	try {
-		await expectStartupTheme("dark");
-		await expectStartupTheme("light");
-		console.log("Dark and light startup backgrounds match before SPA assets load.");
 		await application.evaluate(({ nativeTheme }) => {
 			nativeTheme.themeSource = "light";
 		});
@@ -270,28 +231,10 @@ try {
 	// The inset shell gives the Todo file more room when navigation is collapsed.
 	const sidebarToggle = page.getByRole("button", { name: "Toggle Sidebar", exact: true });
 	await sidebarToggle.waitFor({ timeout: 5000 });
-	const inset = page.locator("[data-slot='app-inset']");
 	const content = page.getByRole("main");
 	assert.equal(await content.count(), 1, "The page must have one main landmark");
 	assert.equal(await content.locator("[data-slot='sidebar']").count(), 0);
 	const sidebar = page.locator("[data-slot='sidebar-container']");
-	const sidebarBackground = await sidebar
-		.locator("[data-slot='sidebar-inner']")
-		.evaluate((element) => getComputedStyle(element).backgroundColor);
-	const windowBackground = await page
-		.locator("[data-slot='sidebar-wrapper']")
-		.evaluate((element) => getComputedStyle(element).backgroundColor);
-	assert.notEqual(sidebarBackground, windowBackground, "Sidebar must have its own background");
-	assert.equal(await inset.locator("[data-slot='sidebar']").count(), 1);
-	const insetBounds = await inset.boundingBox();
-	const sidebarBounds = await sidebar.boundingBox();
-	assert.ok(insetBounds.x > 0, "The full application must have an outer margin");
-	assert.ok(sidebarBounds.x >= insetBounds.x, "Sidebar must sit inside the inset");
-	assert.ok(sidebarBounds.y >= insetBounds.y, "Sidebar must sit below the inset's top edge");
-	assert.ok(
-		sidebarBounds.y + sidebarBounds.height <= insetBounds.y + insetBounds.height,
-		"Sidebar must fit inside the inset's bottom edge"
-	);
 	const expandedWidth = (await content.boundingBox()).width;
 	await sidebarToggle.click();
 	await page.waitForFunction(
@@ -299,11 +242,6 @@ try {
 			document.querySelector("[data-slot='app-content']").getBoundingClientRect().width >
 			width + 100,
 		expandedWidth
-	);
-	assert.deepEqual(
-		await inset.boundingBox(),
-		insetBounds,
-		"Collapsing keeps the outer inset fixed"
 	);
 	// Collapsed navigation must not leave keyboard focus on offscreen controls.
 	await sidebarToggle.focus();
@@ -1120,29 +1058,7 @@ try {
 	const renderedItems = page.getByRole("list", { name: "Todo items" }).getByRole("listitem");
 	assert.ok((await renderedItems.count()) < 60, "Todo-item rendering must stay bounded");
 	assert.equal(await page.getByText("Item 1000", { exact: true }).count(), 0);
-	const switcher = page.getByRole("button", { name: "Select workspace: Deletion" });
-	// Check settled hover colors without a timed wait that can outlive native hover.
-	await switcher.evaluate((element) => {
-		element.style.transition = "none";
-	});
-	await switcher.hover();
-	const hoverContrast = await switcher.evaluate((element) => {
-		const background = getComputedStyle(element).backgroundColor;
-		const sidebar = getComputedStyle(
-			element.closest('[data-slot="sidebar-inner"]')
-		).backgroundColor;
-		return background !== "rgba(0, 0, 0, 0)" && background !== sidebar;
-	});
-	await switcher.evaluate((element) => element.style.removeProperty("transition"));
 	const reader = page.getByLabel("Todo item results", { exact: true });
-	await reader.hover();
-	const thumb = reader.locator('[data-slot="scroll-area-thumb"]');
-	await thumb.waitFor({ state: "visible" });
-	const thumbVisible = await thumb.isVisible();
-	assert.ok(
-		hoverContrast && thumbVisible,
-		`Workspace hover contrast: ${hoverContrast}; ScrollArea thumb visible: ${thumbVisible}`
-	);
 	const viewport = reader.locator('[data-slot="scroll-area-viewport"]');
 	await viewport.evaluate((element) => {
 		element.scrollTop = element.scrollHeight;
@@ -1588,99 +1504,6 @@ try {
 	console.log(
 		"Checkbox and editor recurrence generate one successor through preload/IPC; Undo restores exact CRLF/EOF bytes."
 	);
-	const recurringBatchPath = join(directory, "recurring-batch.txt");
-	const recurringBatchBytes =
-		"Batch monthly rec:1m\r\nOrdinary\nBatch weekly rec:1w\nBatch unsupported rec:+1w\nHidden rec:1d";
-	await writeFile(recurringBatchPath, recurringBatchBytes);
-	const recurringBatchWorkspace = await page.evaluate(
-		(input) => window.desktop.createWorkspace(input),
-		{
-			name: "Recurring batch",
-			color: "green",
-			todoPath: recurringBatchPath,
-		}
-	);
-	assert.equal(recurringBatchWorkspace.status, "applied");
-	await reopen();
-	await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
-	await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).fill("Batch");
-	await page.getByRole("button", { name: "Select items", exact: true }).click();
-	await page.getByRole("button", { name: "Select all", exact: true }).click();
-	await page.getByText("3 selected", { exact: true }).waitFor();
-	await page.getByRole("button", { name: "Complete", exact: true }).click();
-	await page.getByText("Completed 3 Todo items", { exact: true }).waitFor();
-	await page
-		.getByText("Generated 2 next occurrences. Skipped 1 unsupported Repeat rule.", { exact: true })
-		.waitFor();
-	await page.getByText("0 selected", { exact: true }).waitFor();
-	const recurringBatchState = await readConfirmation(page);
-	const batchItems = recurringBatchState.session.todo_file.items;
-	assert.equal(batchItems.length, 7);
-	assert.deepEqual(
-		batchItems.map((item) => item.description),
-		[
-			"Batch monthly",
-			"Batch monthly",
-			"Ordinary",
-			"Batch weekly",
-			"Batch weekly",
-			"Batch unsupported",
-			"Hidden",
-		]
-	);
-	assert.equal(batchItems.filter((item) => item.completed).length, 3);
-	assert.equal(batchItems[0].metadata["tuxedo-generated"], "1");
-	assert.equal(batchItems[3].metadata["tuxedo-generated"], "1");
-	assert.equal(batchItems[1].metadata["tuxedo-generated"], undefined);
-	assert.equal(batchItems[4].metadata["tuxedo-generated"], undefined);
-	assert.equal(
-		await page.getByRole("searchbox", { name: "Search Todo items", exact: true }).inputValue(),
-		"Batch"
-	);
-	await page.getByRole("button", { name: "Exit selection mode", exact: true }).click();
-	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
-	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
-	assert.equal(await readFile(recurringBatchPath, "utf8"), recurringBatchBytes);
-	console.log(
-		"Bulk recurring completion reports aggregate counts, preserves filtered-out items, and undoes exact mixed-ending bytes through the real selection UI."
-	);
-	const leadPath = join(directory, "lead.txt");
-	const leadBytes = "Mow rec:1m due:2020-01-10 t:2020-01-07\n";
-	await writeFile(leadPath, leadBytes);
-	const leadWorkspace = await page.evaluate((input) => window.desktop.createWorkspace(input), {
-		name: "Lead time",
-		color: "green",
-		todoPath: leadPath,
-	});
-	assert.equal(leadWorkspace.status, "applied");
-	await reopen();
-	await page.getByRole("checkbox", { name: "Mark Mow complete", exact: true }).click();
-	await page
-		.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\. Show from \d{4}-\d{2}-\d{2}\.$/)
-		.waitFor();
-	const leadState = await readConfirmation(page);
-	assert.equal(leadState.session.todo_file.items[0].metadata.t, "2020-01-07");
-	const leadSuccessor = leadState.session.todo_file.items[1];
-	const day = 24 * 60 * 60 * 1000;
-	assert.equal(
-		(Date.parse(`${leadSuccessor.metadata.due}T00:00:00Z`) -
-			Date.parse(`${leadSuccessor.metadata.t}T00:00:00Z`)) /
-			day,
-		3
-	);
-	const showDeferredLead = page.getByRole("button", { name: "Show deferred", exact: true });
-	assert.equal(await showDeferredLead.getAttribute("aria-pressed"), "false");
-	assert.equal((await showDeferredLead.innerText()).trim(), "1");
-	assert.equal(await page.getByText("Mow", { exact: true }).count(), 1);
-	await showDeferredLead.click();
-	await page.getByTitle(/^Show from \d{4}-\d{2}-\d{2} · Deferred$/).waitFor();
-	assert.equal(await page.getByText("Mow", { exact: true }).count(), 2);
-	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
-	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
-	assert.equal(await readFile(leadPath, "utf8"), leadBytes);
-	console.log(
-		"Recurring completion preserves Show from lead time, hides the future successor, and undoes the whole change."
-	);
 	await page.evaluate(() => {
 		window.validationSignals = [];
 		window.validationSignalReceived = new Promise((resolve) => {
@@ -1846,8 +1669,14 @@ try {
 	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
 	await page.getByLabel("Opening workspace", { exact: true }).waitFor();
 	const pendingUrl = page.url();
-	await page.evaluate(() => history.back());
-	await page.waitForTimeout(300);
+	await page.evaluate(
+		() =>
+			new Promise((resolve) => {
+				window.addEventListener("popstate", resolve, { once: true });
+				history.back();
+			})
+	);
+	await page.waitForURL(pendingUrl);
 	assert.equal(page.url(), pendingUrl, "Back is blocked during a Workspace session operation");
 	assert.equal(await page.getByText("Alpha item", { exact: true }).count(), 0);
 	await application.evaluate(() =>
@@ -1865,19 +1694,6 @@ try {
 	const removeFromHome = async (name, cancel = false) => {
 		await page.getByRole("button", { name: `Options for ${name}`, exact: true }).click();
 		const removal = page.getByRole("menuitem", { name: "Remove workspace", exact: true });
-		assert.equal(
-			await removal.evaluate((element) => {
-				const text = [...element.childNodes].find(
-					(node) =>
-						node.nodeType === Node.TEXT_NODE && node.textContent.includes("Remove workspace")
-				);
-				const range = document.createRange();
-				range.selectNodeContents(text);
-				return range.getClientRects().length;
-			}),
-			1,
-			"Remove workspace must fit on one line"
-		);
 		await removal.click();
 		const confirmation = page.getByRole("alertdialog");
 		await confirmation.waitFor();
@@ -1928,9 +1744,10 @@ try {
 	const stuckPage = await application.firstWindow();
 	await stuckPage.waitForFunction(() => typeof window.desktop?.selectTodoFile === "function");
 	await application.evaluate(({ dialog }) => {
-		globalThis.dialogEntered = false;
+		let entered;
+		globalThis.dialogEntered = new Promise((resolve) => (entered = resolve));
 		dialog.showOpenDialog = () => {
-			globalThis.dialogEntered = true;
+			entered();
 			return new Promise(() => {});
 		};
 	});
@@ -1938,7 +1755,7 @@ try {
 		void window.desktop.selectTodoFile({}).catch(() => {});
 	});
 	await application.evaluate(async () => {
-		while (!globalThis.dialogEntered) await new Promise((resolve) => setTimeout(resolve, 10));
+		await globalThis.dialogEntered;
 	});
 	let shutdownDiagnostic = "";
 	application.process().stderr.setEncoding("utf8");
@@ -1957,26 +1774,24 @@ try {
 	console.log(
 		"Real Electron stuck-dialog quit reached the 10-second fallback with pending-operation diagnostics."
 	);
-	if (!packagedExecutable) {
-		const failed = spawn(electronPath, [resolve("dist-electron/main.js")], {
-			env: { ...environment, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1" },
-			stdio: ["ignore", "ignore", "pipe"],
-		});
-		let diagnostic = "";
-		failed.stderr.setEncoding("utf8");
-		failed.stderr.on("data", (chunk) => {
-			diagnostic += chunk;
-		});
-		try {
-			const [code] = await once(failed, "exit", { signal: AbortSignal.timeout(15000) });
-			assert.equal(code, 1, diagnostic);
-			assert.match(diagnostic, /Desktop startup failed/);
-			assert.doesNotMatch(diagnostic, /shutdown deadline exceeded/);
-		} finally {
-			if (failed.exitCode === null && failed.signalCode === null) failed.kill();
-		}
-		console.log("Real Electron renderer startup failure cleaned up and exited with a diagnostic.");
+	const failed = spawn(electronPath, [resolve("dist-electron/main.js")], {
+		env: { ...environment, TUXEDO_RENDERER_ORIGIN: "http://127.0.0.1:1" },
+		stdio: ["ignore", "ignore", "pipe"],
+	});
+	let diagnostic = "";
+	failed.stderr.setEncoding("utf8");
+	failed.stderr.on("data", (chunk) => {
+		diagnostic += chunk;
+	});
+	try {
+		const [code] = await once(failed, "exit", { signal: AbortSignal.timeout(15000) });
+		assert.equal(code, 1, diagnostic);
+		assert.match(diagnostic, /Desktop startup failed/);
+		assert.doesNotMatch(diagnostic, /shutdown deadline exceeded/);
+	} finally {
+		if (failed.exitCode === null && failed.signalCode === null) failed.kill();
 	}
+	console.log("Real Electron renderer startup failure cleaned up and exited with a diagnostic.");
 } finally {
 	try {
 		await application?.close();

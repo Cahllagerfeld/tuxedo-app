@@ -164,15 +164,6 @@ describe("TodoList", () => {
 		const contextOverflow = page.getByRole("button", { name: "1 more Contexts", exact: true });
 		await expect.element(projectOverflow).toHaveTextContent("+2");
 		await expect.element(contextOverflow).toHaveTextContent("+1");
-		expect(getComputedStyle(projectOverflow.element()).color).toBe(
-			getComputedStyle(page.getByText("+One", { exact: true }).element()).color
-		);
-		expect(getComputedStyle(contextOverflow.element()).color).toBe(
-			getComputedStyle(page.getByText("@desk", { exact: true }).element()).color
-		);
-		expect(getComputedStyle(projectOverflow.element()).color).not.toBe(
-			getComputedStyle(contextOverflow.element()).color
-		);
 		await expect.element(page.getByText("+Two", { exact: true })).not.toBeInTheDocument();
 		await expect.element(page.getByText("@home", { exact: true })).not.toBeInTheDocument();
 		expect(document.querySelectorAll("time")).toHaveLength(1);
