@@ -44,7 +44,6 @@
 			clearTimeout(timer);
 			const now = new Date();
 			todoFilter.today = localToday(now);
-			bulkSelection.reconcileVisibility();
 			const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 			timer = setTimeout(refreshDate, midnight.getTime() - now.getTime());
 		}
