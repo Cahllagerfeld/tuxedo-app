@@ -23,11 +23,13 @@
 		todoFilter,
 		filteredTodoItems,
 		bulkSelection,
+		onCreate,
 	}: {
 		workspace: WorkspaceCommands;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
+		onCreate: () => void;
 	} = $props();
 	const shortcutScope = getShortcutScope();
 	const wide = new MediaQuery("(min-width: 1100px)");
@@ -192,6 +194,7 @@
 						<TodoList
 							today={todoFilter.today}
 							showEmpty={workspace.todoFile.items.length === 0}
+							{onCreate}
 							bind:this={todoList}
 							fallback={todoViewport}
 							workspaceId={workspace.activeWorkspace?.id ?? ""}

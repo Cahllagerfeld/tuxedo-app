@@ -95,16 +95,32 @@ try {
 	// Exercise bundled backend dependencies and native route reloads outside the checkout.
 	const todoPath = join(directory, "todo.txt");
 	const contents = "Packaged item\r\nLast";
-	await writeFile(todoPath, contents);
-	const created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
-		name: "Packaged",
-		color: "blue",
-		todoPath,
+	await application.evaluate(({ dialog }, path) => {
+		globalThis.originalSaveDialog = dialog.showSaveDialog;
+		dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
+	}, todoPath);
+	await page.getByRole("button", { name: "New workspace", exact: true }).click();
+	const setup = page.getByRole("dialog");
+	await setup.getByRole("textbox", { name: "Workspace name" }).fill("Packaged");
+	await setup.getByRole("button", { name: "Create a Todo file", exact: true }).click();
+	await setup.getByRole("button", { name: "Create workspace", exact: true }).click();
+	await setup.waitFor({ state: "detached" });
+	await page
+		.getByRole("button", { name: "Add your first Todo item", exact: true })
+		.and(page.locator(":enabled"))
+		.waitFor();
+	assert.equal(await readFile(todoPath, "utf8"), "");
+	const { active_workspace_id: workspaceId } = JSON.parse(
+		await readFile(join(directory, "workspaces.json"), "utf8")
+	);
+	await page.waitForURL(`tuxedo://app/workspaces/${workspaceId}`);
+	await application.evaluate(({ dialog }) => {
+		dialog.showSaveDialog = globalThis.originalSaveDialog;
+		delete globalThis.originalSaveDialog;
 	});
-	assert.equal(created.status, "applied");
-	const workspaceId = created.confirmed.session.catalogue.active_workspace_id;
 	await application?.close();
 	application = undefined;
+	await writeFile(todoPath, contents);
 	application = await electron.launch({
 		executablePath,
 		args: [],

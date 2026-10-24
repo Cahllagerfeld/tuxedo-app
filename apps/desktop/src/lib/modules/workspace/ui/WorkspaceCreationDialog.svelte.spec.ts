@@ -13,7 +13,7 @@ describe("WorkspaceCreationDialog", () => {
 			createWorkspace: () => new Promise((resolve) => (finish = resolve)),
 		});
 		await page.getByLabelText("Workspace name").fill("Work");
-		await page.getByText("Choose Todo file", { exact: true }).click();
+		await page.getByText("Open an existing Todo file", { exact: true }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 		await expect.element(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
 		await userEvent.keyboard("{Escape}");
@@ -36,7 +36,7 @@ describe("WorkspaceCreationDialog", () => {
 		await expect.element(createButton).toBeDisabled();
 
 		await page.getByLabelText("Workspace name").fill(" Work ");
-		await page.getByText("Choose Todo file", { exact: true }).click();
+		await page.getByText("Open an existing Todo file", { exact: true }).click();
 		await expect.element(createButton).toBeEnabled();
 
 		await createButton.click();
@@ -59,7 +59,7 @@ describe("WorkspaceCreationDialog", () => {
 		});
 
 		await page.getByLabelText("Workspace name").fill("Work");
-		await page.getByText("Choose Todo file", { exact: true }).click();
+		await page.getByText("Open an existing Todo file", { exact: true }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
 		await expect
@@ -83,10 +83,10 @@ it("cancelling native file selection keeps the previously selected file and form
 		createWorkspace: async () => ({ status: "applied" }),
 	});
 	await page.getByLabelText("Workspace name").fill("Work");
-	await page.getByText("Choose Todo file", { exact: true }).click();
+	await page.getByText("Open an existing Todo file", { exact: true }).click();
 	await expect.element(page.getByText("/tmp/work.todo", { exact: true })).toBeVisible();
 	selection = null;
-	await page.getByText("Choose Todo file", { exact: true }).click();
+	await page.getByText("Open an existing Todo file", { exact: true }).click();
 	await expect.element(page.getByText("/tmp/work.todo", { exact: true })).toBeVisible();
 	await expect.element(page.getByLabelText("Workspace name")).toHaveValue("Work");
 	await expect.element(page.getByRole("button", { name: "Create workspace" })).toBeEnabled();
@@ -96,7 +96,7 @@ it("reports a blank Todo-file reference at its form field without submitting", a
 	const createWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 	render(WorkspaceCreationDialog, { open: true, selectFile: async () => "   ", createWorkspace });
 	await page.getByLabelText("Workspace name").fill("Work");
-	await page.getByText("Choose Todo file", { exact: true }).click();
+	await page.getByText("Open an existing Todo file", { exact: true }).click();
 	await page.getByRole("button", { name: "Create workspace" }).click();
 	await expect
 		.element(page.getByText("Choose the exact Todo file for this workspace.", { exact: true }))
