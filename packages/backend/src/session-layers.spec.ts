@@ -33,6 +33,20 @@ const fixture = Effect.gen(function* () {
 });
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers", (it) => {
+	it.effect("Save-path selection and invalid Workspace submission create no Todo file", () =>
+		Effect.gen(function* () {
+			const { fs, todoPath, session } = yield* fixture;
+			const path = join(todoPath, "..", "work.txt");
+			const selected = yield* session.prepareTodoFile(path);
+			expect(yield* fs.exists(path)).toBe(false);
+			expect(
+				yield* session.createWorkspace({ name: " ", color: "green", ...selected })
+			).toMatchObject({
+				status: "rejected",
+			});
+			expect(yield* fs.exists(path)).toBe(false);
+		})
+	);
 	it.effect("Workspace lifecycle and Todo-item mutations share the injected catalogue", () =>
 		Effect.gen(function* () {
 			const { fs, todoPath, cataloguePath, session, state } = yield* fixture;
@@ -51,6 +65,132 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 			).toMatchObject({ status: "applied" });
 			expect(yield* fs.readFileString(todoPath)).toBe("");
 			expect(yield* fs.exists(cataloguePath)).toBe(false);
+		})
+	);
+	it.effect(
+		"a saved new file survives catalogue failure and explicit retry preserves later edits",
+		() =>
+			Effect.gen(function* () {
+				const { fs, todoPath, session, state } = yield* fixture;
+				yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+				const before = yield* session.readWorkspaceCatalogue({});
+				const selected = yield* session.prepareTodoFile(join(todoPath, "..", "new.txt"));
+				const request = { name: "New", color: "green" as const, ...selected };
+				yield* Ref.update(state, (current) => ({
+					...current,
+					writeFailure: new OperationFailure({ message: "Write denied" }),
+				}));
+				expect(yield* session.createWorkspace(request)).toMatchObject({
+					status: "rejected",
+					message: expect.stringContaining("file has been preserved"),
+				});
+				expect(yield* fs.readFileString(selected.todoPath)).toBe("");
+				expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+				yield* Ref.update(state, (current) => ({ ...current, writeFailure: undefined }));
+				yield* fs.remove(selected.todoPath);
+				yield* fs.symlink(todoPath, selected.todoPath);
+				expect(yield* session.createWorkspace(request)).toMatchObject({ status: "rejected" });
+				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
+				yield* fs.remove(selected.todoPath);
+				yield* fs.writeFileString(selected.todoPath, "Written elsewhere\r\n");
+				yield* Ref.update(state, (current) => ({ ...current, writeFailure: undefined }));
+				expect(yield* session.createWorkspace(request)).toMatchObject({
+					status: "applied",
+					confirmed: { session: { todo_file: { items: [{ description: "Written elsewhere" }] } } },
+				});
+				expect(yield* fs.readFileString(selected.todoPath)).toBe("Written elsewhere\r\n");
+			})
+	);
+	for (const exists of [false, true]) {
+		it.effect(
+			`Save selection cannot use the Workspace catalogue as a Todo file (${exists ? "existing" : "missing"})`,
+			() =>
+				Effect.gen(function* () {
+					const { fs, todoPath, cataloguePath, session, state } = yield* fixture;
+					yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+					const before = yield* session.readWorkspaceCatalogue({});
+					const contents = JSON.stringify((yield* Ref.get(state)).catalogue);
+					if (exists) yield* fs.writeFileString(cataloguePath, contents);
+					const selected = yield* session.prepareTodoFile(cataloguePath);
+					expect(
+						yield* session.createWorkspace({ name: "Unsafe", color: "green", ...selected })
+					).toMatchObject({ status: "rejected" });
+					expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+					if (exists) expect(yield* fs.readFileString(cataloguePath)).toBe(contents);
+					else expect(yield* fs.exists(cataloguePath)).toBe(false);
+					const caseVariant = yield* session.prepareTodoFile(
+						join(cataloguePath, "..", "Workspaces.JSON")
+					);
+					expect(
+						yield* session.createWorkspace({ name: "Unsafe", color: "green", ...caseVariant })
+					).toMatchObject({ status: "rejected" });
+					if (exists) expect(yield* fs.readFileString(cataloguePath)).toBe(contents);
+					else expect(yield* fs.exists(caseVariant.todoPath)).toBe(false);
+				})
+		);
+	}
+	it.effect("an unavailable Save destination preserves the previous session and catalogue", () =>
+		Effect.gen(function* () {
+			const { fs, todoPath, session, state } = yield* fixture;
+			yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+			const before = yield* session.readWorkspaceCatalogue({});
+			const directory = join(todoPath, "..", "destination");
+			yield* fs.makeDirectory(directory);
+			const selected = yield* session.prepareTodoFile(join(directory, "new.txt"));
+			yield* fs.remove(directory, { recursive: true });
+			expect(
+				yield* session.createWorkspace({ name: "New", color: "blue", ...selected })
+			).toMatchObject({ status: "rejected" });
+			expect(yield* fs.exists(selected.todoPath)).toBe(false);
+			expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+			expect((yield* Ref.get(state)).catalogue.workspaces).toHaveLength(1);
+		})
+	);
+	it.effect(
+		"replacement requires a current native Save selection and validates duplicates before writing",
+		() =>
+			Effect.gen(function* () {
+				const { fs, todoPath, session } = yield* fixture;
+				yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+				const path = join(todoPath, "..", "existing.txt");
+				yield* fs.writeFileString(path, "Keep me\r\n");
+				const selected = yield* session.prepareTodoFile(path);
+				expect(yield* fs.readFileString(path)).toBe("Keep me\r\n");
+				expect(
+					yield* session.createWorkspace({ name: "Previous", color: "blue", ...selected })
+				).toMatchObject({ status: "rejected" });
+				expect(yield* fs.readFileString(path)).toBe("Keep me\r\n");
+				expect(
+					yield* session.createWorkspace({
+						name: "New",
+						color: "blue",
+						todoPath: path,
+						creationToken: "550e8400-e29b-41d4-a716-446655440000",
+					})
+				).toMatchObject({ status: "rejected" });
+				yield* fs.writeFileString(path, "Changed since selection\n");
+				expect(
+					yield* session.createWorkspace({ name: "New", color: "blue", ...selected })
+				).toMatchObject({ status: "rejected", message: expect.stringContaining("file changed") });
+				expect(yield* fs.readFileString(path)).toBe("Changed since selection\n");
+				const confirmed = yield* session.prepareTodoFile(path);
+				expect(
+					yield* session.createWorkspace({ name: "New", color: "blue", ...confirmed })
+				).toMatchObject({ status: "applied" });
+				expect(yield* fs.readFileString(path)).toBe("");
+			})
+	);
+	it.effect("duplicate canonical Todo-file references cannot be replaced", () =>
+		Effect.gen(function* () {
+			const { fs, todoPath, session } = yield* fixture;
+			yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+			const alias = join(todoPath, "..", "alias.txt");
+			yield* fs.symlink(todoPath, alias);
+			const selected = yield* session.prepareTodoFile(alias);
+			expect(
+				yield* session.createWorkspace({ name: "Duplicate", color: "green", ...selected })
+			).toMatchObject({ status: "rejected" });
+			expect(yield* fs.readFileString(todoPath)).toBe("First\n");
 		})
 	);
 

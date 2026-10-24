@@ -87,6 +87,7 @@ export const WorkspaceCreationRequest = Schema.Struct({
 	name: Schema.mutableKey(WorkspaceName),
 	color: Schema.mutableKey(WorkspaceColor),
 	todoPath: Schema.mutableKey(TodoPath),
+	creationToken: Schema.mutableKey(Schema.optional(UUID)),
 });
 export const createWorkspaceRequestSchema = effectValidator(WorkspaceCreationRequest);
 const SessionSchema = Schema.Union([
@@ -459,6 +460,13 @@ export const desktopContract = {
 		request: emptyRequestSchema,
 		response: effectValidator(Schema.NullOr(Schema.NonEmptyString)),
 	},
+	selectNewTodoFile: {
+		channel: "tuxedo:select-new-todo-file",
+		request: emptyRequestSchema,
+		response: effectValidator(
+			Schema.NullOr(Schema.Struct({ todoPath: TodoPath, creationToken: UUID }))
+		),
+	},
 	createWorkspace: {
 		channel: "tuxedo:create-workspace",
 		request: createWorkspaceRequestSchema,
@@ -522,6 +530,7 @@ export function createDesktopClient(
 		createTodo: (request) => call("createTodo", request),
 		switchWorkspace: (request) => call("switchWorkspace", request),
 		selectTodoFile: (request) => call("selectTodoFile", request),
+		selectNewTodoFile: (request) => call("selectNewTodoFile", request),
 		createWorkspace: (request) => call("createWorkspace", request),
 	};
 }

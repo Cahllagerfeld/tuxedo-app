@@ -76,6 +76,7 @@
 			{todoFilter}
 			{filteredTodoItems}
 			{bulkSelection}
+			onCreate={() => (creationOpen = true)}
 		/>
 	{:else}
 		<WorkspaceEmptyState

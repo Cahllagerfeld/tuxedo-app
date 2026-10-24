@@ -4,6 +4,8 @@
 (D) Confirm overflow priority is hidden by default +TuxedoApp @computer
 2026-05-24 Document parser behavior +TuxedoApp @computer
 Plan next feature
+Create an empty Todo file from New workspace and add your first Todo item +TuxedoApp @computer
+Open an existing work.txt without changing its contents +TuxedoApp @computer
 Capture inbox item @home @computer +TuxedoApp +Ideas
 Email Sam about launch notes @email +TuxedoApp
 Buy milk @GroceryStore due:2026-05-26

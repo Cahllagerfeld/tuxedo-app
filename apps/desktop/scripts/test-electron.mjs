@@ -1,5 +1,6 @@
 import { readConfirmation, activateWorkspace } from "./read-confirmation.mjs";
 import { routeDataWorkflow } from "./route-data-workflow.mjs";
+import { workspaceSetupWorkflow } from "./workspace-setup-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import electronPath from "electron";
@@ -183,6 +184,7 @@ try {
 	assert.equal(preferences.contextIsolation, true);
 	assert.equal(preferences.nodeIntegration, false);
 	await assert.rejects(readFile(join(directory, "workspaces.json")), { code: "ENOENT" });
+	await workspaceSetupWorkflow(application, page, directory);
 	const todoPath = join(directory, "todo.txt");
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
 	let created = await page.evaluate((input) => window.desktop.createWorkspace(input), {
@@ -1608,7 +1610,7 @@ try {
 	}, createdPath);
 	await page.getByRole("button", { name: "New workspace", exact: true }).click();
 	await page.getByRole("textbox", { name: "Workspace name" }).fill("Route C");
-	await page.getByRole("button", { name: "Todo file", exact: true }).click();
+	await page.getByRole("button", { name: "Open an existing Todo file", exact: true }).click();
 	await page.getByText(createdPath, { exact: true }).waitFor();
 	await page.getByRole("button", { name: "Create workspace", exact: true }).click();
 	await page.getByText("Gamma item", { exact: true }).waitFor();
