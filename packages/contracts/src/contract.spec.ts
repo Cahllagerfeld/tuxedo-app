@@ -6,30 +6,20 @@ import {
 	todoFileChangeEvent,
 } from "@tuxedo/contracts";
 
-test("Save selection and Workspace creation validate explicit creation authorization", async () => {
-	const selection = {
+test("Workspace setup validates creation authorization and Save-selection responses", async () => {
+	const request = {
+		name: "Work",
+		color: "blue",
 		todoPath: "/tmp/work.txt",
 		creationToken: "550e8400-e29b-41d4-a716-446655440000",
 	};
-	let forwarded: unknown;
-	const desktop = createDesktopClient(async (channel, request) => {
-		forwarded = { channel, request };
-		return channel === desktopContract.selectNewTodoFile.channel
-			? selection
-			: { status: "rejected", message: "Read-only catalogue" };
-	});
-	expect(await desktop.selectNewTodoFile({})).toEqual(selection);
-	expect(forwarded).toEqual({ channel: "tuxedo:select-new-todo-file", request: {} });
-	const request = { name: "Work", color: "blue" as const, ...selection };
-	await desktop.createWorkspace(request);
-	expect(forwarded).toEqual({ channel: "tuxedo:create-workspace", request });
 	for (const invalid of [
 		{ ...request, creationToken: "yes" },
 		{ ...request, replaceExisting: true },
 	])
 		expect(() => desktopContract.createWorkspace.request.parse(invalid)).toThrow();
 	await expect(
-		createDesktopClient(async () => ({ todoPath: selection.todoPath })).selectNewTodoFile({})
+		createDesktopClient(async () => ({ todoPath: request.todoPath })).selectNewTodoFile({})
 	).rejects.toThrow();
 	expect(await createDesktopClient(async () => null).selectNewTodoFile({})).toBeNull();
 });

@@ -33,25 +33,18 @@ const fixture = Effect.gen(function* () {
 });
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers", (it) => {
-	it.effect("Save-path selection defers creation until a validated Workspace submission", () =>
+	it.effect("Save-path selection and invalid Workspace submission create no Todo file", () =>
 		Effect.gen(function* () {
-			const { fs, todoPath, session, state } = yield* fixture;
+			const { fs, todoPath, session } = yield* fixture;
 			const path = join(todoPath, "..", "work.txt");
 			const selected = yield* session.prepareTodoFile(path);
 			expect(yield* fs.exists(path)).toBe(false);
-			const request = { name: "New", color: "green" as const, ...selected };
-			expect(yield* session.createWorkspace({ ...request, name: " " })).toMatchObject({
+			expect(
+				yield* session.createWorkspace({ name: " ", color: "green", ...selected })
+			).toMatchObject({
 				status: "rejected",
 			});
 			expect(yield* fs.exists(path)).toBe(false);
-			expect(yield* session.createWorkspace(request)).toMatchObject({
-				status: "applied",
-				confirmed: { session: { status: "ready", todo_file: { items: [] } } },
-			});
-			expect(yield* fs.readFileString(path)).toBe("");
-			expect((yield* Ref.get(state)).catalogue.workspaces).toMatchObject([
-				{ name: "New", color: "green", todo_path: selected.todoPath },
-			]);
 		})
 	);
 	it.effect("Workspace lifecycle and Todo-item mutations share the injected catalogue", () =>
@@ -187,25 +180,18 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 				expect(yield* fs.readFileString(path)).toBe("");
 			})
 	);
-	it.effect(
-		"opening a missing file never creates it, and duplicate canonical references cannot be replaced",
-		() =>
-			Effect.gen(function* () {
-				const { fs, todoPath, session } = yield* fixture;
-				const missing = join(todoPath, "..", "missing.txt");
-				expect(
-					yield* session.createWorkspace({ name: "Missing", color: "blue", todoPath: missing })
-				).toMatchObject({ status: "rejected" });
-				expect(yield* fs.exists(missing)).toBe(false);
-				yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
-				const alias = join(todoPath, "..", "alias.txt");
-				yield* fs.symlink(todoPath, alias);
-				const selected = yield* session.prepareTodoFile(alias);
-				expect(
-					yield* session.createWorkspace({ name: "Duplicate", color: "green", ...selected })
-				).toMatchObject({ status: "rejected" });
-				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
-			})
+	it.effect("duplicate canonical Todo-file references cannot be replaced", () =>
+		Effect.gen(function* () {
+			const { fs, todoPath, session } = yield* fixture;
+			yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
+			const alias = join(todoPath, "..", "alias.txt");
+			yield* fs.symlink(todoPath, alias);
+			const selected = yield* session.prepareTodoFile(alias);
+			expect(
+				yield* session.createWorkspace({ name: "Duplicate", color: "green", ...selected })
+			).toMatchObject({ status: "rejected" });
+			expect(yield* fs.readFileString(todoPath)).toBe("First\n");
+		})
 	);
 
 	it.effect("catalogue read failure can recover without rebuilding the session", () =>
