@@ -12,6 +12,8 @@
 	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import ShortcutHint from "#lib/shared/shortcuts/ShortcutHint.svelte";
 	import { saveViewShortcut } from "./shortcuts";
+	import { mergeProps } from "bits-ui";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
 	import * as Popover from "#lib/shared/ui/popover/index.js";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import { Input } from "#lib/shared/ui/input/index.js";
@@ -70,16 +72,25 @@
 
 <Popover.Root bind:open={menuOpen}>
 	<Popover.Trigger>
-		{#snippet child({ props })}
-			<Button
-				{...props}
-				variant="ghost"
-				size="icon"
-				aria-label="Saved views"
-				disabled={workspace.isOperating}
-			>
-				<Bookmark class="size-4" aria-hidden="true" />
-			</Button>
+		{#snippet child({ props: popoverProps })}
+			<Tooltip.Provider>
+				<Tooltip.Root disableHoverableContent>
+					<Tooltip.Trigger>
+						{#snippet child({ props: tooltipProps })}
+							<Button
+								{...mergeProps(popoverProps, tooltipProps)}
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Saved views"
+								disabled={workspace.isOperating}
+							>
+								<Bookmark class="size-4" aria-hidden="true" />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Saved views</Tooltip.Content>
+				</Tooltip.Root>
+			</Tooltip.Provider>
 		{/snippet}
 	</Popover.Trigger>
 	<Popover.Content align="end" class="w-72">
@@ -106,16 +117,19 @@
 							onclick={() => {
 								todoFilter.applyView(view.filters);
 								menuOpen = false;
-							}}><span class="truncate">{view.name}</span></Button
+							}}
 						>
+							<span class="truncate">{view.name}</span>
+						</Button>
 						<Button
 							variant="destructive"
 							size="icon-sm"
 							aria-label={`Delete saved view ${view.name}`}
 							disabled={!canSave}
 							onclick={() => deleteView(view.id)}
-							><Trash2 class="size-4" aria-hidden="true" /></Button
 						>
+							<Trash2 class="size-4" aria-hidden="true" />
+						</Button>
 					</div>
 				{:else}<p class="py-2 text-xs text-muted-foreground">No saved views yet.</p>{/each}
 			</div>

@@ -11,6 +11,10 @@
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
 	import type { TodoFile, TodoItem } from "#lib/modules/todo/domain/todo.js";
+	import Plus from "@lucide/svelte/icons/plus";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import ShortcutHint from "#lib/shared/shortcuts/ShortcutHint.svelte";
+	import { createTodoShortcut } from "./shortcuts";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import * as Dialog from "#lib/shared/ui/dialog/index.js";
 	import * as Form from "#lib/shared/ui/form/index.js";
@@ -254,13 +258,26 @@
 
 <Dialog.Root bind:open onOpenChange={handleOpenChange}>
 	{#if !todoToEdit}
-		<Button
-			bind:ref={triggerButton}
-			variant="outline"
-			{disabled}
-			aria-label="Add Todo item"
-			onclick={() => (open = true)}>+ Add Todo item</Button
-		>
+		<Tooltip.Provider>
+			<Tooltip.Root disableHoverableContent>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							bind:ref={triggerButton}
+							variant="ghost"
+							size="icon-sm"
+							{disabled}
+							aria-label="Add Todo item"
+							onclick={() => (open = true)}><Plus aria-hidden="true" /></Button
+						>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content class="flex items-center gap-2"
+					>Add Todo item <ShortcutHint hotkey={createTodoShortcut.key} /></Tooltip.Content
+				>
+			</Tooltip.Root>
+		</Tooltip.Provider>
 	{/if}
 	<Dialog.Content
 		class="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-xl"
@@ -276,10 +293,7 @@
 				<Form.Field {form} name="description">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label
-								>Description <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
+							<Form.Label>Description</Form.Label>
 							<Input
 								{...props}
 								bind:ref={descriptionInput}
@@ -292,15 +306,59 @@
 					</Form.Control>
 					<Form.FieldErrors />
 				</Form.Field>
-
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Form.Field {form} name="projects">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>+Projects</Form.Label>
+								<TagsInput
+									{...props}
+									bind:value={$formData.projects}
+									bind:this={projectInput}
+									prefix="+"
+									suggestions={projectSuggestions}
+									placeholder="Choose or create a Project"
+									validate={(value, tags, source) =>
+										validateTag(value, tags, "+", "projects", source)}
+									onInvalidChange={(message) => setTagError("projects", message)}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						{#if tagErrors.projects}<p role="alert" class="text-sm font-medium text-destructive">
+								{tagErrors.projects}
+							</p>{/if}
+						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="contexts">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>@Contexts</Form.Label>
+								<TagsInput
+									{...props}
+									bind:value={$formData.contexts}
+									bind:this={contextInput}
+									prefix="@"
+									suggestions={contextSuggestions}
+									placeholder="Choose or create a Context"
+									validate={(value, tags, source) =>
+										validateTag(value, tags, "@", "contexts", source)}
+									onInvalidChange={(message) => setTagError("contexts", message)}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						{#if tagErrors.contexts}<p role="alert" class="text-sm font-medium text-destructive">
+								{tagErrors.contexts}
+							</p>{/if}
+						<Form.FieldErrors />
+					</Form.Field>
+				</div>
 				<div class="grid gap-4 sm:grid-cols-2">
 					<Form.Field {form} name="priority">
 						<Form.Control
 							>{#snippet children({ props })}
-								<Form.Label id={`${props.id}-label`}
-									>Priority <span class="font-normal text-muted-foreground">(optional)</span
-									></Form.Label
-								>
+								<Form.Label id={`${props.id}-label`}>Priority</Form.Label>
 								<PriorityPicker
 									{...props}
 									aria-labelledby={`${props.id}-label`}
@@ -310,13 +368,53 @@
 							{/snippet}</Form.Control
 						><Form.FieldErrors />
 					</Form.Field>
+					<Form.Field {form} name="metadata">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Due date</Form.Label>
+								<DatePicker
+									{...props}
+									bind:value={getDueDate, setDueDate}
+									label="Due date"
+									clearable={$formData.metadata.some((token) => token.startsWith("due:"))}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				</div>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Form.Field {form} name="metadata">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Show from</Form.Label>
+								<DatePicker
+									{...props}
+									bind:value={() => showFrom, setShowFrom}
+									label="Show from"
+									clearable={showFromToken !== undefined}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						{#if showFromToken && !showFrom}
+							<p class="text-sm text-muted-foreground">
+								Unsupported Show from value: {showFromToken}. Kept in Metadata until changed or
+								cleared.
+							</p>
+						{/if}
+						{#if showFrom && getDueDate() && showFrom > getDueDate()}
+							<p role="status" class="text-sm text-muted-foreground">
+								Show from is after Due date. This Todo item will stay deferred past its deadline.
+							</p>
+						{/if}
+						<Form.FieldErrors />
+					</Form.Field>
 					<Form.Field {form} name="creationDate">
 						<Form.Control
 							>{#snippet children({ props })}
-								<Form.Label
-									>Creation date <span class="font-normal text-muted-foreground">(optional)</span
-									></Form.Label
-								>
+								<Form.Label>Creation date</Form.Label>
 								<DatePicker
 									{...props}
 									bind:value={$formData.creationDate}
@@ -326,64 +424,7 @@
 						><Form.FieldErrors />
 					</Form.Field>
 				</div>
-
-				<Form.Field {form} name="metadata">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label
-								>Due date <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
-							<DatePicker
-								{...props}
-								bind:value={getDueDate, setDueDate}
-								label="Due date"
-								disabled={controlsDisabled}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.Description
-						>Stored as due:YYYY-MM-DD in Metadata. Other due values remain in Metadata until you
-						change or clear this date.</Form.Description
-					>
-					<Form.FieldErrors />
-				</Form.Field>
-
-				<Form.Field {form} name="metadata">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label
-								>Show from <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
-							<DatePicker
-								{...props}
-								bind:value={() => showFrom, setShowFrom}
-								label="Show from"
-								disabled={controlsDisabled}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.Description
-						>Stored as t:YYYY-MM-DD in Metadata. Open Todo items stay hidden until this date unless
-						Show deferred is on.</Form.Description
-					>
-					{#if showFromToken && !showFrom}
-						<p class="text-sm text-muted-foreground">
-							Unsupported Show from value: {showFromToken}. Kept in Metadata until changed or
-							cleared.
-						</p>
-					{/if}
-					{#if showFrom && getDueDate() && showFrom > getDueDate()}
-						<p role="status" class="text-sm text-muted-foreground">
-							Show from is after Due date. This Todo item will stay deferred past its deadline.
-						</p>
-					{/if}
-					<Form.FieldErrors />
-				</Form.Field>
-
-				{#if todoToEdit}
-					<Form.Field {form} name="completed">
+				{#if todoToEdit}<Form.Field {form} name="completed">
 						<Form.Control>
 							{#snippet children({ props })}
 								<div class="flex items-center gap-2">
@@ -405,16 +446,11 @@
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />
-					</Form.Field>
-				{/if}
-				{#if $formData.completed}
-					<Form.Field {form} name="completionDate">
+					</Form.Field>{/if}
+				{#if $formData.completed}<Form.Field {form} name="completionDate">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label
-									>Completion date <span class="font-normal text-muted-foreground">(optional)</span
-									></Form.Label
-								>
+								<Form.Label>Completion date</Form.Label>
 								<DatePicker
 									{...props}
 									bind:value={$formData.completionDate}
@@ -424,71 +460,11 @@
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />
-					</Form.Field>
-				{/if}
-				<Form.Field {form} name="projects">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label
-								>+Projects <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
-							<TagsInput
-								{...props}
-								bind:value={$formData.projects}
-								bind:this={projectInput}
-								prefix="+"
-								suggestions={projectSuggestions}
-								placeholder="Choose or create a Project"
-								validate={(value, tags, source) =>
-									validateTag(value, tags, "+", "projects", source)}
-								onInvalidChange={(message) => setTagError("projects", message)}
-								disabled={controlsDisabled}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.Description>Type a name and press Enter.</Form.Description>
-					{#if tagErrors.projects}<p role="alert" class="text-sm font-medium text-destructive">
-							{tagErrors.projects}
-						</p>{/if}
-					<Form.FieldErrors />
-				</Form.Field>
-
-				<Form.Field {form} name="contexts">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label
-								>@Contexts <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
-							<TagsInput
-								{...props}
-								bind:value={$formData.contexts}
-								bind:this={contextInput}
-								prefix="@"
-								suggestions={contextSuggestions}
-								placeholder="Choose or create a Context"
-								validate={(value, tags, source) =>
-									validateTag(value, tags, "@", "contexts", source)}
-								onInvalidChange={(message) => setTagError("contexts", message)}
-								disabled={controlsDisabled}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.Description>Reuse a suggestion or create a new name.</Form.Description>
-					{#if tagErrors.contexts}<p role="alert" class="text-sm font-medium text-destructive">
-							{tagErrors.contexts}
-						</p>{/if}
-					<Form.FieldErrors />
-				</Form.Field>
-
+					</Form.Field>{/if}
 				<Form.Field {form} name="metadata">
 					<Form.Control
 						>{#snippet children({ props })}
-							<Form.Label
-								>Metadata <span class="font-normal text-muted-foreground">(optional)</span
-								></Form.Label
-							>
+							<Form.Label>Metadata</Form.Label>
 							<TagsInput
 								{...props}
 								bind:this={metadataInput}
@@ -508,10 +484,6 @@
 								disabled={controlsDisabled}
 							/>
 						{/snippet}</Form.Control
-					>
-					<Form.Description
-						>For example, due:2026-10-12. Press Enter to add more pairs. Repeated keys keep the last
-						value.</Form.Description
 					>
 					{#if tagErrors.metadata}<p role="alert" class="text-sm font-medium text-destructive">
 							{tagErrors.metadata}

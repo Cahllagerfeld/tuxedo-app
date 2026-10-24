@@ -73,6 +73,33 @@ function openDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0).click();
 }
 
+test("creation keeps the primary action visible at desktop and narrow window sizes", async () => {
+	renderDialog(async () => ({ status: "applied" }));
+	const trigger = page.getByRole("button", { name: "Add Todo item", exact: true });
+	await expect.element(trigger).toHaveTextContent("");
+	await page.viewport(1280, 800);
+	await openDialog();
+	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveFocus();
+	for (const [width, height] of [
+		[1280, 800],
+		[420, 700],
+	]) {
+		await page.viewport(width, height);
+		const dialog = page.getByRole("dialog").element();
+		const submit = page
+			.getByRole("button", { name: "Add Todo item", exact: true })
+			.nth(1)
+			.element();
+		expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+		expect(submit.getBoundingClientRect().bottom).toBeLessThanOrEqual(height);
+	}
+	await page.viewport(1280, 800);
+	await page.getByRole("button", { name: "Clear Creation date", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Creation date", exact: true }))
+		.toHaveFocus();
+});
+
 test("Due date controls edit the same metadata and preserve malformed values until explicitly changed", async () => {
 	const calls: TodoItemDraft[] = [];
 	const item = {
@@ -88,13 +115,13 @@ test("Due date controls edit the same metadata and preserve malformed values unt
 			return { status: "rejected", message: "Retry" };
 		},
 	});
-	await expect.element(page.getByRole("button", { name: "Due date (optional)" })).toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Due date", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect.poll(() => calls[0]?.metadata).toEqual(["due:tomorrow", "custom:keep"]);
 	await page.getByRole("button", { name: "Remove due:tomorrow", exact: true }).click();
 	await page.getByPlaceholder("Add key:value").fill("due:2026-10-14");
 	await userEvent.keyboard("{Enter}");
-	const picker = page.getByRole("button", { name: "Due date (optional)" });
+	const picker = page.getByRole("button", { name: "Due date", exact: true });
 	await expect.element(picker).toHaveTextContent("October 14, 2026");
 	await picker.click();
 	await page.getByRole("button", { name: /Thursday, October 15, 2026/ }).click();
@@ -120,7 +147,7 @@ test("Show from preserves unsupported and repeated metadata until the calendar c
 			return { status: "rejected", message: "Retry" };
 		},
 	});
-	const picker = page.getByRole("button", { name: "Show from (optional)" });
+	const picker = page.getByRole("button", { name: "Show from", exact: true });
 	await expect.element(picker).toHaveTextContent("Pick a date");
 	await expect
 		.element(
@@ -384,7 +411,7 @@ test("submits optional Priority, Creation date, and custom Metadata for an open 
 	await openDialog();
 	await page.getByRole("button", { name: "Other", exact: true }).click();
 	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
-	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Creation date", exact: true }).click();
 	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
 	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
 		await page
@@ -395,7 +422,7 @@ test("submits optional Priority, Creation date, and custom Metadata for an open 
 		.element(page.getByRole("combobox", { name: "Select a month" }))
 		.not.toBeInTheDocument();
 	await page.getByRole("button", { name: /Thursday, October 1, 2026/ }).click();
-	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Creation date", exact: true }).click();
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("due:2026-10-10");
 	await pressEnter(metadata);
@@ -623,7 +650,7 @@ test.each(["+2d", "2026-02-30"])(
 			},
 		});
 		await expect
-			.element(page.getByRole("button", { name: "Show from (optional)" }))
+			.element(page.getByRole("button", { name: "Show from", exact: true }))
 			.toHaveTextContent("Pick a date");
 		await expect
 			.element(
@@ -647,7 +674,7 @@ test("creation starts without Show from and warns without blocking a threshold a
 	});
 	await openDialog();
 	await expect
-		.element(page.getByRole("button", { name: "Show from (optional)" }))
+		.element(page.getByRole("button", { name: "Show from", exact: true }))
 		.toHaveTextContent("Pick a date");
 	const metadata = page.getByPlaceholder("Add key:value");
 	await metadata.fill("due:2026-10-01");
@@ -666,6 +693,6 @@ test("creation starts without Show from and warns without blocking a threshold a
 	await expect.poll(() => calls[0]?.metadata).toEqual(["due:2026-10-01", "t:2026-10-14"]);
 	await openDialog();
 	await expect
-		.element(page.getByRole("button", { name: "Show from (optional)" }))
+		.element(page.getByRole("button", { name: "Show from", exact: true }))
 		.toHaveTextContent("Pick a date");
 });
