@@ -78,3 +78,5 @@ Click anywhere in a Workspace row to open it; its separate options trigger opens
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01
 Clear Show from in the editor to remove every threshold token +Imported @review t:2026-10-14 t:+2d
 Create an open Todo item with a future Show from to see hidden-until feedback +TuxedoApp @review
+Use the plus button to create a Todo item with paired fields and compact date controls +TuxedoApp @review
+Hover or focus each toolbar button to see its action and available shortcut +TuxedoApp @review

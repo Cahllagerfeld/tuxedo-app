@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tick } from "svelte";
+	import { mergeProps } from "bits-ui";
+	import ShortcutHint from "$lib/shared/shortcuts/ShortcutHint.svelte";
 	import { createHotkey } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "$lib/shared/shortcuts/shortcut-scope.svelte";
 	import type { TodoItem } from "$lib/modules/todo/domain/todo";
@@ -284,40 +286,91 @@
 		<div class="flex flex-wrap items-center gap-2">
 			{#if bulkSelection.active}
 				<ButtonGroup.Root aria-label="Selection controls">
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={workspace.writesBlocked || filteredTodoItems.length === 0}
-						onclick={bulkSelection.selectAll}>Select all</Button
-					>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={workspace.writesBlocked || bulkSelection.count === 0}
-						onclick={bulkSelection.clear}>Clear selection</Button
-					>
+					<Tooltip.Provider>
+						<Tooltip.Root disableHoverableContent>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="outline"
+										size="sm"
+										disabled={workspace.writesBlocked || filteredTodoItems.length === 0}
+										onclick={bulkSelection.selectAll}>Select all</Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Select all matching Todo items</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+					<Tooltip.Provider>
+						<Tooltip.Root disableHoverableContent>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="outline"
+										size="sm"
+										disabled={workspace.writesBlocked || bulkSelection.count === 0}
+										onclick={bulkSelection.clear}>Clear selection</Button
+									>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Clear selection</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
 				</ButtonGroup.Root>
-				<Button
-					size="sm"
-					disabled={workspace.writesBlocked || bulkSelection.selectedOpenCount === 0}
-					onclick={() => void setSelectedCompletion(true)}
-					><Check aria-hidden="true" />Complete</Button
-				>
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={workspace.writesBlocked || bulkSelection.selectedCompletedCount === 0}
-					onclick={() => void setSelectedCompletion(false)}>Mark incomplete</Button
-				>
-				<Button
-					bind:ref={deleteButton}
-					variant="destructive"
-					size="sm"
-					disabled={workspace.writesBlocked || bulkSelection.count === 0}
-					onclick={openDeleteConfirmation}>Delete</Button
-				>
 				<Tooltip.Provider>
-					<Tooltip.Root>
+					<Tooltip.Root disableHoverableContent>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									size="sm"
+									disabled={workspace.writesBlocked || bulkSelection.selectedOpenCount === 0}
+									onclick={() => void setSelectedCompletion(true)}
+								>
+									<Check aria-hidden="true" />Complete</Button
+								>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Complete selected Todo items</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+				<Tooltip.Provider>
+					<Tooltip.Root disableHoverableContent>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="outline"
+									size="sm"
+									disabled={workspace.writesBlocked || bulkSelection.selectedCompletedCount === 0}
+									onclick={() => void setSelectedCompletion(false)}>Mark incomplete</Button
+								>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Mark selected Todo items incomplete</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+				<Tooltip.Provider>
+					<Tooltip.Root disableHoverableContent>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									bind:ref={deleteButton}
+									variant="destructive"
+									size="sm"
+									disabled={workspace.writesBlocked || bulkSelection.count === 0}
+									onclick={openDeleteConfirmation}>Delete</Button
+								>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Delete selected Todo items</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
+				<Tooltip.Provider>
+					<Tooltip.Root disableHoverableContent>
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
 								<Button
@@ -327,8 +380,10 @@
 									bind:ref={doneButton}
 									aria-label="Exit selection mode"
 									disabled={workspace.writesBlocked}
-									onclick={bulkSelection.exit}><X aria-hidden="true" /></Button
+									onclick={bulkSelection.exit}
 								>
+									<X aria-hidden="true" />
+								</Button>
 							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>Exit selection mode (Esc)</Tooltip.Content>
@@ -336,7 +391,7 @@
 				</Tooltip.Provider>
 			{:else}
 				<Tooltip.Provider>
-					<Tooltip.Root>
+					<Tooltip.Root disableHoverableContent>
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
 								<Button
@@ -345,8 +400,10 @@
 									size="icon-sm"
 									aria-label="Select items"
 									disabled={workspace.writesBlocked}
-									onclick={enterSelectionMode}><ListChecks aria-hidden="true" /></Button
+									onclick={enterSelectionMode}
 								>
+									<ListChecks aria-hidden="true" />
+								</Button>
 							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>Select items</Tooltip.Content>
@@ -357,7 +414,7 @@
 				>{todoFilter.deferredCount} deferred Todo items match the current search and filters.</span
 			>
 			<Tooltip.Provider>
-				<Tooltip.Root>
+				<Tooltip.Root disableHoverableContent>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
 							<Button
@@ -399,17 +456,30 @@
 			</Tooltip.Provider>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
-					{#snippet child({ props })}
-						<Button
-							{...props}
-							variant="ghost"
-							size="icon"
-							aria-label="Sort Todo items"
-							title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
-							disabled={workspace.writesBlocked}
-						>
-							<ListFilter class="size-4" aria-hidden="true" />
-						</Button>
+					{#snippet child({ props: menuProps })}
+						<Tooltip.Provider>
+							<Tooltip.Root disableHoverableContent>
+								<Tooltip.Trigger>
+									{#snippet child({ props: tooltipProps })}
+										<Button
+											{...mergeProps(menuProps, tooltipProps)}
+											variant="ghost"
+											size="icon-sm"
+											aria-label="Sort Todo items"
+											title={`Sort: ${todoFilter.sortOrder === "file" ? "File order" : "Due date"}`}
+											disabled={workspace.writesBlocked}
+										>
+											<ListFilter class="size-4" aria-hidden="true" />
+										</Button>
+									{/snippet}
+								</Tooltip.Trigger>
+								<Tooltip.Content
+									>Sort: {todoFilter.sortOrder === "file"
+										? "File order"
+										: "Due date"}</Tooltip.Content
+								>
+							</Tooltip.Root>
+						</Tooltip.Provider>
 					{/snippet}
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end">
@@ -435,18 +505,30 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<SavedViews {workspace} {todoFilter} />
-			<Button
-				bind:ref={searchButton}
-				variant="ghost"
-				size="icon"
-				aria-label="Toggle Todo-item search"
-				aria-expanded={searchOpen || todoFilter.hasSearch}
-				aria-controls={searchId}
-				disabled={workspace.writesBlocked}
-				onclick={toggleSearch}
-			>
-				<Search class="size-4" aria-hidden="true" />
-			</Button>
+			<Tooltip.Provider>
+				<Tooltip.Root disableHoverableContent>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								bind:ref={searchButton}
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Toggle Todo-item search"
+								aria-expanded={searchOpen || todoFilter.hasSearch}
+								aria-controls={searchId}
+								disabled={workspace.writesBlocked}
+								onclick={toggleSearch}
+							>
+								<Search class="size-4" aria-hidden="true" />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content
+						>Search Todo items <ShortcutHint hotkey={searchShortcut.key} />
+					</Tooltip.Content>
+				</Tooltip.Root>
+			</Tooltip.Provider>
 			{#if !bulkSelection.active}
 				<TodoEditorDialog
 					bind:open={creationOpen}
@@ -479,16 +561,26 @@
 					class="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
 				/>
 				{#if todoFilter.searchText}
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						class="absolute top-1 right-1"
-						aria-label="Clear search"
-						disabled={workspace.writesBlocked}
-						onclick={todoFilter.clearSearch}
-					>
-						<X class="size-4" aria-hidden="true" />
-					</Button>
+					<Tooltip.Provider>
+						<Tooltip.Root disableHoverableContent>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-xs"
+										class="absolute top-1 right-1"
+										aria-label="Clear search"
+										disabled={workspace.writesBlocked}
+										onclick={todoFilter.clearSearch}
+									>
+										<X class="size-4" aria-hidden="true" />
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>Clear search</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
 				{/if}
 			</div>
 		</div>

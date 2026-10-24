@@ -90,6 +90,28 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+test("toolbar icons have tooltips on hover and keyboard focus", async () => {
+	render(Harness, { desktop: adapter() });
+	for (const [name, tooltip] of [
+		["Select items", "Select items"],
+		["Show deferred", "Show deferred (0)"],
+		["Sort Todo items", "Sort: File order"],
+		["Saved views", "Saved views"],
+		["Toggle Todo-item search", "Search Todo items"],
+		["Add Todo item", "Add Todo item"],
+	]) {
+		const button = page.getByRole("button", { name, exact: true });
+		await button.hover();
+		await expect.element(page.getByRole("tooltip")).toMatchTextContent(tooltip);
+		await userEvent.keyboard("{Escape}");
+		button.element().focus();
+		await expect.element(page.getByRole("tooltip")).toMatchTextContent(tooltip);
+		await userEvent.keyboard("{Escape}");
+	}
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await expect.element(page.getByRole("button", { name: "Save current view" })).toBeVisible();
+});
+
 test("Due-date sorting changes only the view and restores reordering in File order", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const ready = initial.session;
@@ -774,7 +796,7 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		.toBeVisible();
 	await expect.element(submit).toBeEnabled();
 	await description.fill("  Ship   the release  ");
-	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Creation date", exact: true }).click();
 	const monthsFromOctober = (new Date().getFullYear() - 2026) * 12 + new Date().getMonth() - 9;
 	for (let month = 0; month < Math.abs(monthsFromOctober); month++) {
 		await page
@@ -785,7 +807,7 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 		.element(page.getByRole("combobox", { name: "Select a month" }))
 		.not.toBeInTheDocument();
 	await page.getByRole("button", { name: /Friday, October 9, 2026/ }).click();
-	await page.getByRole("button", { name: "Creation date (optional)" }).click();
+	await page.getByRole("button", { name: "Creation date", exact: true }).click();
 	await page.getByRole("button", { name: "Other", exact: true }).click();
 	await page.getByRole("textbox", { name: "Other priority" }).fill("z");
 	const metadata = page.getByPlaceholder("Add key:value");
@@ -1099,10 +1121,10 @@ test("editing a completed token-only item prefills empty Description and retains
 	await expect.element(page.getByRole("textbox", { name: /Description/ })).toHaveValue("");
 	await expect
 		.element(page.getByRole("button", { name: "Clear Creation date", exact: true }))
-		.toBeVisible();
+		.not.toBeInTheDocument();
 	await expect
 		.element(page.getByRole("button", { name: "Clear Completion date", exact: true }))
-		.toBeVisible();
+		.not.toBeInTheDocument();
 	await page.getByRole("textbox", { name: /Description/ }).fill("Updated");
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect.element(page.getByText("Read only", { exact: true })).toBeVisible();
