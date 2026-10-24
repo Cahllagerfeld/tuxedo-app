@@ -2447,8 +2447,8 @@ test.each(["rejected", "applied"] as const)(
 				todo_file: { path: "/tmp/work.todo", items: [...items, hidden], skipped: [] },
 			},
 		};
-		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () => ({
-			...(status === "rejected"
+		const bulk = vi.fn<DesktopAPI["bulkSetTodoCompletion"]>(async () =>
+			status === "rejected"
 				? { status, message: "Test rejection" }
 				: {
 						status,
@@ -2468,8 +2468,8 @@ test.each(["rejected", "applied"] as const)(
 								metadata: { rec: "1w" },
 							},
 						]),
-					}),
-		}));
+					}
+		);
 		render(Harness, {
 			desktop: adapter({ resourceState: async () => session, bulkSetTodoCompletion: bulk }),
 		});

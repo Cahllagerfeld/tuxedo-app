@@ -65,7 +65,7 @@ describe("TodoFilterState", () => {
 		};
 		const other = { ...completed, description: "Client follow-up" };
 		const items = [release, other];
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		publish("work", items);
 		filter.searchText = "  CLIENT\t release  ";
 		expect(filter.filterItems(items)).toEqual([release]);
@@ -82,7 +82,7 @@ describe("TodoFilterState", () => {
 	it("combines search with other filters, retains it on reload, and resets it on Workspace switch", () => {
 		const dated = { ...open, metadata: { due: "2026-10-14" } };
 		const items = [dated, completed];
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		publish("work", items);
 		filter.today = "2026-10-14";
 		filter.searchText = "home";
@@ -121,7 +121,7 @@ describe("TodoFilterState", () => {
 			{ ...open, line_number: 5, metadata: {} },
 			{ ...completed, line_number: 6, metadata: { due: "2026-10-13" } },
 		];
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		publish("work", items);
 		filter.today = "2026-10-14";
 		filter.toggleDue("overdue");
@@ -161,7 +161,7 @@ describe("TodoFilterState", () => {
 			const datedOpen: TodoItem = { ...open, metadata: due ? { due } : {} };
 			const datedCompleted = { ...completed, metadata: datedOpen.metadata };
 			const items = [datedOpen, datedCompleted];
-			const { filter, publish, setPreferences } = filterFixture();
+			const { filter, publish } = filterFixture();
 			publish("work", items);
 			filter.today = "2026-10-14";
 			filter.toggleDue(category);
@@ -183,7 +183,7 @@ describe("TodoFilterState", () => {
 	);
 	it("clears the repair filter when the last invalid open Due date is repaired or completed", () => {
 		const invalid = { ...open, metadata: { due: "broken" } };
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		publish("work", [invalid, { ...completed, metadata: invalid.metadata }]);
 		expect(filter.invalidDueCount).toBe(1);
 		filter.toggleDue("invalid");
@@ -198,7 +198,7 @@ describe("TodoFilterState", () => {
 	it("defaults to All and filters both completion states and their combined facets", () => {
 		const completedOnly = { ...completed, projects: ["Personal"], contexts: ["Away"] };
 		const items = [open, completedOnly];
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		expect(filter.status).toBe("all");
 		publish("work", items);
 		expect(filter.status).toBe("all");
@@ -219,7 +219,7 @@ describe("TodoFilterState", () => {
 	});
 
 	it("resets status and selections for another Workspace and reconciles obsolete values", () => {
-		const { filter, publish, setPreferences } = filterFixture();
+		const { filter, publish } = filterFixture();
 		publish("work", [open, completed]);
 		filter.setStatus("completed");
 		filter.toggleProject("Work");
@@ -233,7 +233,7 @@ describe("TodoFilterState", () => {
 });
 
 it("saved views retain absent facets across reloads and resolve Today against the current calendar", () => {
-	const { filter, publish, setPreferences } = filterFixture();
+	const { filter, publish } = filterFixture();
 	publish("work", [open]);
 	filter.applyView({
 		status: "open",
@@ -357,7 +357,7 @@ it("counts deferred matches before threshold exclusion while preserving completi
 });
 
 it("syncs Workspace visibility independently of clearing filters and applying saved views", () => {
-	const { filter, publish, setPreferences } = filterFixture();
+	const { filter, publish } = filterFixture();
 	publish("work", [open], "file", true);
 	expect(filter.showDeferred).toBe(true);
 	expect(filter.hasFilters).toBe(false);

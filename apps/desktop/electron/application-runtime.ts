@@ -28,7 +28,7 @@ export function createApplicationRuntime<R>(
 		closing = true;
 		stopAdmission();
 		return (disposal ??= (async () => {
-			await Promise.allSettled([...pending.keys()]);
+			await Promise.allSettled(pending.keys());
 			try {
 				phase = "observers";
 				await runtime.runPromise(beforeRelease);

@@ -36,6 +36,8 @@
 		"test:electron:dev": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
 		"package:macos": { "dependsOn": ["build"], "cache": false, "passThroughEnv": ["*"] },
 		"test:package": { "dependsOn": ["package:macos"], "cache": false, "passThroughEnv": ["*"] },
-		"//#format:check": { "cache": false, "passThroughEnv": ["*"] }
+		"//#format:check": { "cache": false, "passThroughEnv": ["*"] },
+		"//#lint:oxlint": { "cache": false, "passThroughEnv": ["*"] },
+		"lint:svelte": { "cache": false, "passThroughEnv": ["*"] }
 	}
 }

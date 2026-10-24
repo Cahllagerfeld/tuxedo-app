@@ -179,8 +179,10 @@ export function createTodoListFocus(inputs: Inputs) {
 			case rowShortcuts.complete.eventKey:
 				if (!todo) return;
 				event.preventDefault();
-				if (!event.repeat)
-					inputs.selectionMode ? inputs.onToggleSelection?.(todo) : inputs.onToggle(todo);
+				if (!event.repeat) {
+					if (inputs.selectionMode) inputs.onToggleSelection?.(todo);
+					else inputs.onToggle(todo);
+				}
 				return;
 			case rowShortcuts.edit.key:
 				if (!todo) return;
@@ -190,8 +192,10 @@ export function createTodoListFocus(inputs: Inputs) {
 			case rowShortcuts.details.key:
 				if (!todo) return;
 				event.preventDefault();
-				if (!event.repeat)
-					inputs.selectionMode ? inputs.onToggleSelection?.(todo) : inputs.onSelect?.(todo);
+				if (!event.repeat) {
+					if (inputs.selectionMode) inputs.onToggleSelection?.(todo);
+					else inputs.onSelect?.(todo);
+				}
 				return;
 			default:
 				return;

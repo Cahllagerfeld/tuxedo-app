@@ -81,6 +81,6 @@ registerDesktopOperation(
 // @ts-expect-error Destination reads take a saved Workspace ID, never a filesystem path.
 api.readWorkspace({ todoPath: "/etc/passwd" });
 // @ts-expect-error Repeatable reads return provenance, never an activated session.
-const activated: Promise<import("@tuxedo/contracts").ConfirmedSession> = api.readWorkspace({
+const _activated: Promise<import("@tuxedo/contracts").ConfirmedSession> = api.readWorkspace({
 	workspaceId: "550e8400-e29b-41d4-a716-446655440000",
 });
