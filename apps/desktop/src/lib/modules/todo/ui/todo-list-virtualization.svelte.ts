@@ -38,7 +38,7 @@ export function createTodoListVirtualization(inputs: TodoListVirtualizationInput
 
 	// A different Todo file starts at the top of the shared viewport.
 	$effect(() => {
-		todoPath;
+		void todoPath;
 		if (inputs.scrollElement) get(virtualizer).scrollToOffset(0);
 	});
 

@@ -356,7 +356,7 @@ test("edits must explicitly preserve or clear Creation date", async () => {
 		invoked = true;
 		throw Error("unexpected");
 	});
-	const { creationDate, ...input } = createTodoRequest;
+	const { creationDate: _creationDate, ...input } = createTodoRequest;
 	await expect(
 		client.editTodo({ ...input, lineNumber: 1, expectedRaw: "Old" } as never)
 	).rejects.toThrow();

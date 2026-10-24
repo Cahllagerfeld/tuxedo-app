@@ -40,7 +40,7 @@ jobs:
       - name: Check Svelte and TypeScript
         run: pnpm check
 
-      - name: Check formatting
+      - name: Check lint and formatting
         run: pnpm lint
 
       - name: Build renderer and desktop

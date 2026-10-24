@@ -2,7 +2,7 @@ import { resourceDesktop } from "./testing/resource-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "@tuxedo/contracts";
+import type { ConfirmedSession, ConfirmedTodo } from "@tuxedo/contracts";
 import Harness, { type CreateTodoDesktop } from "./ElectronCreateTodoHarness.svelte";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -130,7 +130,6 @@ test("create admission is synchronous and blocks a second create until the first
 	});
 
 	await expect.element(page.getByLabelText("Session status")).toHaveTextContent("ready");
-	const create = page.getByRole("button", { name: "Create" });
 	const createButton = document.querySelector("button")!;
 	createButton.click();
 	createButton.click();

@@ -113,7 +113,7 @@ export function todoCreationIssues(input: TodoCreation, editing = false) {
 		input.creationDate === null &&
 		(/^\d{4}-\d{2}-\d{2}(?: |$)/u.test(description) ||
 			((!input.priority || (input.completed && !editing)) && /^\([A-Z]\) /u.test(leadingText)) ||
-			(!input.completed && !input.priority && /^x /u.test(leadingText)))
+			(!input.completed && !input.priority && leadingText.startsWith("x ")))
 	)
 		issue(
 			"description",

@@ -20,13 +20,16 @@
 		"test:package": "node scripts/turbo.mjs run test:package",
 		"check": "node scripts/turbo.mjs run check",
 		"test:backend": "node scripts/turbo.mjs run test:backend",
-		"lint": "node scripts/turbo.mjs run format:check",
+		"lint": "node scripts/turbo.mjs run lint:oxlint lint:svelte format:check",
+		"lint:oxlint": "oxlint --disable-nested-config --deny-warnings .",
+		"lint:fix": "pnpm lint:oxlint --fix && pnpm --filter @tuxedo/desktop lint:svelte --fix",
 		"format": "prettier --write .",
 		"turbo": "node scripts/turbo.mjs",
 		"format:check": "prettier --check ."
 	},
 	"license": "MIT",
 	"devDependencies": {
+		"oxlint": "1.89.0",
 		"prettier": "3.9.10",
 		"prettier-plugin-svelte": "4.1.1",
 		"prettier-plugin-tailwindcss": "0.8.1",

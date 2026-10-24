@@ -1,3 +1,5 @@
 {
-	"svelte.enable-ts-plugin": true
+	"svelte.enable-ts-plugin": true,
+	"eslint.workingDirectories": ["./apps/desktop"],
+	"eslint.validate": ["svelte"]
 }

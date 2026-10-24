@@ -29,13 +29,13 @@ export function createTodoBulkSelection(inputs: Inputs) {
 	const filterSignature = $derived(inputs.getFilterSignature());
 	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
 	const mode = $derived.by(() => {
-		workspaceKey;
+		void workspaceKey;
 		return cell(false);
 	});
 	const selection = $derived.by(() => {
-		workspaceKey;
-		fileSignature;
-		filterSignature;
+		void workspaceKey;
+		void fileSignature;
+		void filterSignature;
 		return cell(new Set<string>());
 	});
 	const selectedItems = $derived(
