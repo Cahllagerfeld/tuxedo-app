@@ -1321,12 +1321,14 @@ try {
 	const metadataInput = creationDialog.getByPlaceholder("Add key:value");
 	await metadataInput.fill("custom:first");
 	await metadataInput.press("Enter");
+	await creationDialog.getByRole("button", { name: "Weeks", exact: true }).click();
+	await creationDialog.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2");
 	await metadataInput.fill("due:2026-10-12");
 	await creationDialog.getByRole("button", { name: "Add Todo item", exact: true }).click();
 	await creationDialog.waitFor({ state: "detached" });
 	assert.ok(
 		(await readFile(deletionPath, "utf8")).endsWith(
-			"\n(Z) Metadata check custom:first due:2026-10-12"
+			"\n(Z) Metadata check custom:first rec:2w due:2026-10-12"
 		)
 	);
 	await reopen();
@@ -1336,6 +1338,7 @@ try {
 	assert.equal(metadataSession.session.todo_file.items.at(-1).priority, "Z");
 	assert.deepEqual(metadataSession.session.todo_file.items.at(-1).metadata, {
 		custom: "first",
+		rec: "2w",
 		due: "2026-10-12",
 	});
 	await viewport.evaluate((element) => {
@@ -1350,6 +1353,17 @@ try {
 		"Metadata check"
 	);
 	await editDialog.getByPlaceholder("What needs doing?").fill("Edited metadata check");
+	assert.equal(
+		await editDialog.getByRole("textbox", { name: "Repeat interval", exact: true }).inputValue(),
+		"2"
+	);
+	assert.equal(
+		await editDialog
+			.getByRole("button", { name: "Weeks", exact: true })
+			.getAttribute("aria-pressed"),
+		"true"
+	);
+	await editDialog.getByRole("button", { name: "Off", exact: true }).click();
 	await editDialog.getByRole("button", { name: "Save changes", exact: true }).click();
 	await editDialog.waitFor({ state: "detached" });
 	assert.ok(
@@ -1575,12 +1589,18 @@ try {
 	await page.getByRole("button", { name: "Actions for Clean", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
 	await page.getByRole("textbox", { name: /Description/ }).fill("Edited chore");
+	await page.getByRole("button", { name: "Weeks", exact: true }).click();
+	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2");
 	await page.getByRole("checkbox", { name: "Completed", exact: true }).click();
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await page.getByRole("dialog").waitFor({ state: "hidden" });
 	recurrenceState = await readConfirmation(page);
 	assert.equal(recurrenceState.session.todo_file.items.length, 3);
 	assert.equal(recurrenceState.session.todo_file.items[1].description, "Edited chore");
+	assert.equal(recurrenceState.session.todo_file.items[0].metadata.rec, "2w");
+	assert.equal(recurrenceState.session.todo_file.items[1].metadata.rec, "2w");
+	assert.equal(recurrenceState.session.todo_file.items[1].metadata["tuxedo-generated"], undefined);
+	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
 	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
 	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();

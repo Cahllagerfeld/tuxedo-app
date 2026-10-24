@@ -73,6 +73,177 @@ function openDialog() {
 	return page.getByRole("button", { name: "Add Todo item", exact: true }).nth(0).click();
 }
 
+test("Repeat rejects an invalid interval even when submission commits unrelated Metadata", async () => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Weeks", exact: true }).click();
+	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2.5");
+	await page.getByPlaceholder("Add key:value").fill("custom:keep");
+	await submitDialog();
+	await expect.element(page.getByText("Enter a positive whole-number interval.")).toBeVisible();
+	expect(calls).toEqual([]);
+});
+
+test("creation defaults Repeat to Off, configures each unit and resets after saving", async () => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "Off", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect
+		.element(page.getByRole("textbox", { name: "Repeat interval", exact: true }))
+		.not.toBeInTheDocument();
+	for (const [unit, token] of [
+		["Days", "1d"],
+		["Weeks", "1w"],
+		["Months", "1m"],
+		["Years", "1y"],
+	]) {
+		await page.getByRole("button", { name: unit, exact: true }).click();
+		await expect
+			.element(page.getByRole("button", { name: `Remove rec:${token}`, exact: true }))
+			.toBeVisible();
+	}
+	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["rec:2y"]);
+	expect(calls[0]).not.toHaveProperty("repeatInterval");
+	expect(calls[0]).not.toHaveProperty("repeatUnit");
+	await openDialog();
+	await expect
+		.element(page.getByRole("button", { name: "Off", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+});
+
+test.each(["", "0", "-1", "1.5", "+2", "01", "1e2", "two"])(
+	"Repeat rejects interval %j until corrected or turned off",
+	async (interval) => {
+		const calls: TodoItemDraft[] = [];
+		renderDialog(async (input) => {
+			calls.push(input);
+			return { status: "rejected", message: "Retry" };
+		});
+		await openDialog();
+		await page.getByRole("button", { name: "Days", exact: true }).click();
+		await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill(interval);
+		await submitDialog();
+		await expect.element(page.getByText("Enter a positive whole-number interval.")).toBeVisible();
+		expect(calls).toEqual([]);
+		await page.getByRole("button", { name: "Off", exact: true }).click();
+		await submitDialog();
+		await expect.poll(() => calls[0]?.metadata).toEqual([]);
+	}
+);
+
+test.each(["2w", "+1w", "0d", "1W"])(
+	"Repeat retains repeated effective %s and the generation marker until explicitly changed",
+	async (rec) => {
+		const calls: TodoItemDraft[] = [];
+		const metadata = ["rec:1d", `rec:${rec}`, "custom:first", "custom:last", "tuxedo-generated:1"];
+		render(TodoEditorDialog, {
+			todoFile,
+			todoToEdit: { ...todoFile.items[0], edit: { description: "Plan release", metadata } },
+			saveTodoItem: async (input) => {
+				calls.push(input);
+				return { status: "rejected", message: "Retry" };
+			},
+		});
+		if (rec === "2w") {
+			await expect
+				.element(page.getByRole("button", { name: "Weeks", exact: true }))
+				.toHaveAttribute("aria-pressed", "true");
+			await expect
+				.element(page.getByRole("textbox", { name: "Repeat interval", exact: true }))
+				.toHaveValue("2");
+		} else {
+			await expect
+				.element(
+					page.getByText(
+						`Unsupported Repeat value: ${rec}. Kept in Metadata until changed or turned off.`
+					)
+				)
+				.toBeVisible();
+		}
+		await page.getByPlaceholder("What needs doing?").fill("Unrelated edit");
+		await page.getByRole("button", { name: "Save changes", exact: true }).click();
+		await expect.poll(() => calls[0]?.metadata).toEqual(metadata);
+		await page.getByRole("button", { name: "Months", exact: true }).click();
+		await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("3");
+		await page.getByRole("button", { name: "Save changes", exact: true }).click();
+		await expect
+			.poll(() => calls[1]?.metadata)
+			.toEqual(["custom:first", "custom:last", "tuxedo-generated:1", "rec:3m"]);
+		await page.getByRole("button", { name: "Off", exact: true }).click();
+		await page.getByRole("button", { name: "Save changes", exact: true }).click();
+		await expect
+			.poll(() => calls[2]?.metadata)
+			.toEqual(["custom:first", "custom:last", "tuxedo-generated:1"]);
+	}
+);
+
+test("Repeat follows added, removed and pending effective Metadata tokens", async () => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "rejected", message: "Retry" };
+	});
+	await openDialog();
+	const metadata = page.getByPlaceholder("Add key:value");
+	await metadata.fill("rec:4m");
+	await userEvent.keyboard("{Enter}");
+	await metadata.fill("rec:+1w");
+	await userEvent.keyboard("{Enter}");
+	await expect.element(page.getByText(/Unsupported Repeat value: \+1w/)).toBeVisible();
+	await page.getByRole("button", { name: "Remove rec:+1w", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Months", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await expect
+		.element(page.getByRole("textbox", { name: "Repeat interval", exact: true }))
+		.toHaveValue("4");
+	await metadata.fill("rec:2w");
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual(["rec:4m", "rec:2w"]);
+	await expect
+		.element(page.getByRole("button", { name: "Weeks", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Remove rec:2w", exact: true }).click();
+	await page.getByRole("button", { name: "Remove rec:4m", exact: true }).click();
+	await expect
+		.element(page.getByRole("button", { name: "Off", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+});
+
+test("changing historical Repeat preserves the recorded completion state and date", async () => {
+	let saved: TodoItemDraft | undefined;
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: todoFile.items[1],
+		saveTodoItem: async (input) => {
+			saved = input;
+			return { status: "applied" };
+		},
+	});
+	await page.getByRole("button", { name: "Years", exact: true }).click();
+	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect
+		.poll(() => saved)
+		.toMatchObject({
+			completed: true,
+			completionDate: "2026-10-08",
+			metadata: ["rec:2y"],
+		});
+});
+
 test("Due date controls edit the same metadata and preserve malformed values until explicitly changed", async () => {
 	const calls: TodoItemDraft[] = [];
 	const item = {

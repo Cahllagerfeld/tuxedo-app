@@ -4,6 +4,7 @@
 		todoDateSchema,
 		todoTagSchema,
 		todoMetadataSchema,
+		todoRepeatRuleSchema,
 		todoEditorSchema,
 		todoEditorDraft,
 		type TodoEditorData,
@@ -66,6 +67,32 @@
 		if (value) metadata.push(`t:${value}`);
 		$formData = { ...$formData, metadata };
 	}
+	function repeatFields(metadata: readonly string[]) {
+		const value = metadata.findLast((token) => token.startsWith("rec:"))?.slice(4);
+		return value && todoRepeatRuleSchema.safeParse(value).success
+			? { repeatInterval: value.slice(0, -1), repeatUnit: value.slice(-1) }
+			: { repeatInterval: "1", repeatUnit: value === undefined ? "off" : "unsupported" };
+	}
+	function setMetadata(metadata: string[]) {
+		const changed =
+			metadata.findLast((token) => token.startsWith("rec:")) !==
+			$formData.metadata.findLast((token) => token.startsWith("rec:"));
+		$formData = { ...$formData, metadata, ...(changed ? repeatFields(metadata) : {}) };
+	}
+	function setRepeat(interval: string, unit: string) {
+		$formData = { ...$formData, repeatInterval: interval, repeatUnit: unit };
+		if (unit !== "off" && !todoRepeatRuleSchema.safeParse(interval + unit).success) return;
+		const metadata = $formData.metadata.filter((token) => !token.startsWith("rec:"));
+		if (unit !== "off") metadata.push(`rec:${interval}${unit}`);
+		$formData = { ...$formData, metadata };
+	}
+	const repeatUnits = [
+		{ value: "off", label: "Off" },
+		{ value: "d", label: "Days" },
+		{ value: "w", label: "Weeks" },
+		{ value: "m", label: "Months" },
+		{ value: "y", label: "Years" },
+	];
 
 	const schema = todoEditorSchema(() => ({
 		editing: !!todoToEdit,
@@ -84,6 +111,9 @@
 	const { form: formData } = form;
 	const showFromToken = $derived(
 		$formData.metadata.findLast((token) => token.startsWith("t:"))?.slice(2)
+	);
+	const repeatToken = $derived(
+		$formData.metadata.findLast((token) => token.startsWith("rec:"))?.slice(4)
 	);
 	const showFrom = $derived(
 		showFromToken && todoDateSchema.safeParse(showFromToken).success ? showFromToken : ""
@@ -148,6 +178,7 @@
 				creationDate: localToday(),
 				completionDate: "",
 				metadata: [],
+				...repeatFields([]),
 			};
 		return {
 			description: todoToEdit.edit.description,
@@ -158,6 +189,7 @@
 			creationDate: todoToEdit.creation_date ?? "",
 			completionDate: todoToEdit.completion_date ?? "",
 			metadata: [...todoToEdit.edit.metadata],
+			...repeatFields(todoToEdit.edit.metadata),
 		};
 	}
 
@@ -382,6 +414,58 @@
 					<Form.FieldErrors />
 				</Form.Field>
 
+				<Form.Field {form} name="repeatUnit">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label id={`${props.id}-label`}
+								>Repeat <span class="font-normal text-muted-foreground">(optional)</span
+								></Form.Label
+							>
+							<div role="group" aria-labelledby={`${props.id}-label`} class="flex flex-wrap gap-1">
+								{#each repeatUnits as unit (unit.value)}
+									<Button
+										type="button"
+										size="sm"
+										variant={$formData.repeatUnit === unit.value ? "secondary" : "outline"}
+										id={unit.value === "off" ? props.id : undefined}
+										aria-label={unit.label}
+										aria-pressed={$formData.repeatUnit === unit.value}
+										disabled={controlsDisabled}
+										onclick={() => setRepeat($formData.repeatInterval, unit.value)}
+										>{unit.label}</Button
+									>
+								{/each}
+							</div>
+						{/snippet}
+					</Form.Control>
+					<Form.Description
+						>Generate the next occurrence relative to its recorded Completion date.</Form.Description
+					>
+					{#if $formData.repeatUnit === "unsupported"}
+						<p class="text-sm text-muted-foreground">
+							Unsupported Repeat value: {repeatToken}. Kept in Metadata until changed or turned off.
+						</p>
+					{/if}
+					<Form.FieldErrors />
+				</Form.Field>
+				{#if $formData.repeatUnit !== "off" && $formData.repeatUnit !== "unsupported"}
+					<Form.Field {form} name="repeatInterval">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Repeat interval</Form.Label>
+								<Input
+									{...props}
+									inputmode="numeric"
+									value={$formData.repeatInterval}
+									oninput={(event) => setRepeat(event.currentTarget.value, $formData.repeatUnit)}
+									disabled={controlsDisabled}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				{/if}
+
 				{#if todoToEdit}
 					<Form.Field {form} name="completed">
 						<Form.Control>
@@ -492,7 +576,7 @@
 							<TagsInput
 								{...props}
 								bind:this={metadataInput}
-								bind:value={$formData.metadata}
+								bind:value={() => $formData.metadata, setMetadata}
 								placeholder="Add key:value"
 								validate={(value) => {
 									const clean = value.trim();
