@@ -65,90 +65,47 @@
 		}
 	}
 	const shortcutScope = getShortcutScope();
-	let previousSelection: typeof bulkSelection.context | undefined;
-	// Report invalidation to the external toast system; selection itself is derived.
-	$effect(() => {
-		if (workspace.writesBlocked) return;
-		const current = bulkSelection.context;
-		if (
-			previousSelection &&
-			previousSelection.workspaceKey === current.workspaceKey &&
-			previousSelection.selection !== current.selection &&
-			previousSelection.selection.size &&
-			(previousSelection.fileSignature !== current.fileSignature ||
-				previousSelection.filterSignature !== current.filterSignature ||
-				previousSelection.matchingSignature !== current.matchingSignature) &&
-			bulkSelection.active &&
-			!workspace.writesBlocked
-		) {
-			toast.info(
-				previousSelection.fileSignature !== current.fileSignature
-					? "Selection cleared because the Todo file changed."
-					: previousSelection.filterSignature !== current.filterSignature
-						? "Selection cleared because filters changed."
-						: "Selection updated because some Todo items are no longer shown."
-			);
-		}
-		previousSelection = current;
-	});
 	let deleteButton = $state<HTMLButtonElement | null>(null);
 	let doneButton = $state<HTMLButtonElement | null>(null);
-	let confirmation = $state.raw<{
-		context: typeof bulkSelection.context;
-		items: readonly TodoItem[];
-	} | null>(null);
-	let deleting = $state(false);
-	const deleteOpen = $derived(
-		!!confirmation &&
-			bulkSelection.active &&
-			(deleting ||
-				workspace.writesBlocked ||
-				confirmation.context.selection === bulkSelection.context.selection)
-	);
+	const deleting = $derived(bulkSelection.deleting);
+	const deleteOpen = $derived(!!bulkSelection.deletionItems);
 	let deletionError = $state<string | null>(null);
-	let deletionFocus: { workspaceKey: string; index: number } | null = null;
-	let deleteWorkspaceKey = "";
+	let deletionFocus: { scope: symbol; index: number } | null = null;
+	let deleteScope: symbol | undefined;
 	function openDeleteConfirmation() {
-		if (workspace.writesBlocked || !bulkSelection.count) return;
 		deletionError = null;
-		deleteWorkspaceKey = bulkSelection.context.workspaceKey;
-		confirmation = { context: bulkSelection.context, items: [...bulkSelection.selectedItems] };
+		deleteScope = bulkSelection.scope;
+		bulkSelection.openDeletion();
 	}
 	async function deleteSelected() {
-		if (deleting || workspace.writesBlocked || !deleteOpen || !confirmation) return;
-		const { context, items } = confirmation;
-		const position = filteredTodoItems.findIndex(
-			(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
-		);
-		deletionError = null;
-		previousSelection = undefined;
-		// Keep the modal through confirmed-data acceptance so its close hook can recover focus.
-		deleting = true;
-		const result = await workspace.bulkDeleteTodos(items);
-		if (result.status === "applied") {
-			toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
-			if (result.notice) toast.info(result.notice);
-			deletionFocus = { workspaceKey: context.workspaceKey, index: position };
-			bulkSelection.clear();
-			confirmation = null;
-		} else if (result.status === "conflict") {
-			toast.error("Todo file changed", { description: result.message });
-			bulkSelection.clear();
-			confirmation = null;
-		} else {
-			deletionError = result.message;
-			toast.error("Could not delete Todo items", { description: result.message });
-		}
-		deleting = false;
+		await bulkSelection.deleteConfirmed(async (items) => {
+			const scope = bulkSelection.scope;
+			const position = filteredTodoItems.findIndex(
+				(todo) => todo.line_number === items[0].line_number && todo.raw === items[0].raw
+			);
+			deletionError = null;
+			const result = await workspace.bulkDeleteTodos(items);
+			if (result.status === "applied") {
+				toast.success(`Deleted ${items.length} ${items.length === 1 ? "Todo item" : "Todo items"}`);
+				if (result.notice) toast.info(result.notice);
+				deletionFocus = { scope, index: position };
+			} else if (result.status === "conflict") {
+				toast.error("Todo file changed", { description: result.message });
+			} else {
+				deletionError = result.message;
+				toast.error("Could not delete Todo items", { description: result.message });
+			}
+			return result;
+		});
 	}
 	function restoreDeleteFocus(event: Event) {
 		event.preventDefault();
 		const target = deletionFocus;
 		deletionFocus = null;
-		confirmation = null;
-		const workspaceKey = target?.workspaceKey ?? deleteWorkspaceKey;
+		bulkSelection.cancelDeletion();
+		const scope = target?.scope ?? deleteScope;
 		void tick().then(() => {
-			if (workspaceKey !== bulkSelection.context.workspaceKey || !bulkSelection.active) return;
+			if (scope !== bulkSelection.scope || !bulkSelection.active) return;
 			if (!target) (deleteButton?.disabled ? doneButton : deleteButton)?.focus();
 			else {
 				const todo = filteredTodoItems[Math.min(target.index, filteredTodoItems.length - 1)];
@@ -162,11 +119,12 @@
 		const items = [...bulkSelection.selectedItems];
 		const count = items.filter((todo) => todo.completed !== completed).length;
 		if (!count) return;
-		const workspaceKey = bulkSelection.context.workspaceKey;
+		const scope = bulkSelection.scope;
 		const position = filteredTodoItems.indexOf(items[0]);
 		const origin = document.activeElement;
-		previousSelection = undefined;
-		const result = await workspace.bulkSetCompletion(items, completed);
+		const result = await bulkSelection.changeSelected((targets) =>
+			workspace.bulkSetCompletion(targets, completed)
+		);
 		if (result.status === "applied") {
 			toast.success(
 				completed
@@ -174,10 +132,8 @@
 					: `Marked ${count} ${count === 1 ? "Todo item" : "Todo items"} incomplete`
 			);
 			if (result.notice) toast.info(result.notice);
-			bulkSelection.clear();
 		} else if (result.status === "conflict") {
 			toast.error("Todo file changed", { description: result.message });
-			bulkSelection.clear();
 		} else
 			toast.error(
 				completed ? "Could not complete Todo items" : "Could not mark Todo items incomplete",
@@ -187,7 +143,7 @@
 			);
 		if (result.status === "applied" || result.status === "conflict") {
 			await tick();
-			if (workspaceKey !== bulkSelection.context.workspaceKey || !bulkSelection.active) return;
+			if (scope !== bulkSelection.scope || !bulkSelection.active) return;
 			const focused = document.activeElement;
 			if (
 				focused !== origin &&
@@ -231,7 +187,7 @@
 <AlertDialog.Root
 	open={deleteOpen}
 	onOpenChange={(open) => {
-		if (!open && !workspace.isOperating && !deleting) confirmation = null;
+		if (!open) bulkSelection.cancelDeletion();
 	}}
 >
 	<AlertDialog.Content
@@ -242,8 +198,8 @@
 	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>
-				Delete {confirmation?.items.length ?? 0}
-				{confirmation?.items.length === 1 ? "Todo item" : "Todo items"}?
+				Delete {bulkSelection.deletionItems?.length ?? 0}
+				{bulkSelection.deletionItems?.length === 1 ? "Todo item" : "Todo items"}?
 			</AlertDialog.Title>
 			<AlertDialog.Description>
 				The selected Todo items will be deleted from the Todo file. After leaving selection mode,
@@ -427,9 +383,7 @@
 								aria-pressed={todoFilter.showDeferred}
 								disabled={workspace.writesBlocked || todoFilter.status === "completed"}
 								onclick={() =>
-									void workspace.setShowDeferred(!todoFilter.showDeferred).then(async (outcome) => {
-										await tick();
-										bulkSelection.reconcileVisibility();
+									void workspace.setShowDeferred(!todoFilter.showDeferred).then((outcome) => {
 										if (outcome.status === "applied") {
 											if (outcome.notice) toast.info(outcome.notice);
 										} else
