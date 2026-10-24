@@ -1600,7 +1600,11 @@ try {
 	assert.equal(recurrenceState.session.todo_file.items[0].metadata.rec, "2w");
 	assert.equal(recurrenceState.session.todo_file.items[1].metadata.rec, "2w");
 	assert.equal(recurrenceState.session.todo_file.items[1].metadata["tuxedo-generated"], undefined);
-	await page.getByText(/^Next occurrence due \d{4}-\d{2}-\d{2}\.$/).waitFor();
+	await page
+		.getByText(`Next occurrence due ${recurrenceState.session.todo_file.items[1].metadata.due}.`, {
+			exact: true,
+		})
+		.waitFor();
 	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
 	await page.getByRole("button", { name: "Undo last change", exact: true }).waitFor();
 	await page.getByRole("checkbox", { name: "Mark Clean complete", exact: true }).waitFor();
