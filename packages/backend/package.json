@@ -13,12 +13,12 @@
 	},
 	"dependencies": {
 		"@tuxedo/contracts": "workspace:*",
-		"effect": "4.0.4",
+		"effect": "4.0.5",
 		"@internationalized/date": "3.12.4"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "4.0.4",
-		"@effect/vitest": "4.0.4",
+		"@effect/platform-node": "4.0.5",
+		"@effect/vitest": "4.0.5",
 		"@types/node": "24.19.2",
 		"typescript": "5.9.3",
 		"vitest": "5.0.5"
