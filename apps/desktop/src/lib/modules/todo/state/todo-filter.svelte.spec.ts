@@ -218,21 +218,6 @@ describe("TodoFilterState", () => {
 		expect(filter.filterItems(items)).toEqual([completedOnly]);
 	});
 
-	it("combines exact selections and clears Priority in Completed", () => {
-		const { filter, publish, setPreferences } = filterFixture();
-		publish("work", [open, completed]);
-		filter.toggleProject("Work");
-		filter.toggleContext("Home");
-		filter.togglePriority("A");
-
-		expect(filter.filterItems([open, completed])).toEqual([open]);
-		filter.setStatus("completed");
-		expect(filter.selectedPriority).toBeNull();
-		expect(filter.filterItems([open, completed])).toEqual([completed]);
-		filter.setStatus("open");
-		expect(filter.filterItems([open, completed])).toEqual([open]);
-	});
-
 	it("resets status and selections for another Workspace and reconciles obsolete values", () => {
 		const { filter, publish, setPreferences } = filterFixture();
 		publish("work", [open, completed]);

@@ -179,7 +179,20 @@ const catalogue = {
 		},
 	],
 };
-const todo_file = { path: "/tmp/work.todo", items: [], skipped: [] };
+const todo_item = {
+	line_number: 1,
+	raw: "Buy milk",
+	completed: false,
+	priority: null,
+	creation_date: null,
+	completion_date: null,
+	description: "Buy milk",
+	projects: [],
+	contexts: [],
+	metadata: {},
+	edit: { description: "Buy milk", metadata: [] },
+};
+const todo_file = { path: "/tmp/work.todo", items: [todo_item], skipped: [] };
 test.each([
 	{
 		status: "empty",
@@ -299,10 +312,14 @@ test.each([
 	await expect(desktop.createTodo(request)).rejects.toThrow();
 	expect(invocations).toBe(0);
 });
-test("desktop transport rejects malformed create Todo responses", async () => {
+test.each([
+	{ ...todo_file, path: "" },
+	{ ...todo_file, items: [{ ...todo_item, line_number: "1" }] },
+	{ ...todo_file, skipped: [{ line_number: 2, raw: "Invalid", reason: null }] },
+])("desktop transport rejects malformed Todo-file responses %#", async (todo_file) => {
 	const desktop = createDesktopClient(async () => ({
 		status: "applied",
-		confirmed: { ...confirmedTodo, todo_file: { ...todo_file, path: "" } },
+		confirmed: { ...confirmedTodo, todo_file },
 	}));
 	await expect(desktop.createTodo(createTodoRequest)).rejects.toThrow();
 });
