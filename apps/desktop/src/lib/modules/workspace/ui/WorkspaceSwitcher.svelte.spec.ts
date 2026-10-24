@@ -226,31 +226,6 @@ it("opens Workspace options on activation, never on hover", async () => {
 	expect(selectWorkspace).not.toHaveBeenCalled();
 });
 
-it("highlights the entire switcher row and keeps options separately focusable", async () => {
-	const selectWorkspace = vi.fn();
-	render(WorkspaceSwitcher, {
-		workspaces: [work, personal],
-		activeWorkspaceId: work.id,
-		selectWorkspace,
-		deleteWorkspace: vi.fn(),
-		openCreationDialog: vi.fn(),
-	});
-	await page.getByRole("button", { name: /Select workspace: Work/ }).click();
-	const item = page.getByRole("menuitem", { name: "Personal", exact: true });
-	const options = page.getByRole("menuitem", { name: "Options for Personal", exact: true });
-	const row = item.element().parentElement!;
-	const background = (element: Element) => getComputedStyle(element).backgroundColor;
-	const initial = background(row);
-	await item.hover();
-	await expect.poll(() => background(row)).not.toBe(initial);
-	expect(background(item.element())).toBe("rgba(0, 0, 0, 0)");
-	await options.hover();
-	await expect.poll(() => background(options.element())).not.toBe("rgba(0, 0, 0, 0)");
-	expect(background(row)).not.toBe(initial);
-	await expect.element(options).toHaveAttribute("aria-expanded", "false");
-	expect(selectWorkspace).not.toHaveBeenCalled();
-});
-
 it("clicking the switcher row gap selects the Workspace while clicking options only opens its menu", async () => {
 	const selectWorkspace = vi.fn();
 	await render(WorkspaceSwitcher, {

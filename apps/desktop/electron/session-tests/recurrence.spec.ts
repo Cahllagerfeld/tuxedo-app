@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSessionBackend } from "../session-runtime";
+import { todoEditorDraft } from "@tuxedo/contracts/todo-creation";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -125,6 +126,47 @@ test("bare rec: is description text and does not change the metadata grammar", a
 	expect(await readFile(path, "utf8")).toBe("x 2028-01-31 Clean rec:");
 	expect(result).not.toHaveProperty("notice");
 });
+
+test.each([
+	["2w", ""],
+	["off", ""],
+	["2w", " tuxedo-generated:1"],
+	["off", " tuxedo-generated:1"],
+])(
+	"structured Repeat %s retains generation history %j and undoes exact bytes",
+	async (rule, marker) => {
+		const initial = `Clean rec:1d rec:+1w custom:keep${marker}\r\n\nLast`;
+		const { backend, path, target } = await setup(initial);
+		const draft = todoEditorDraft(
+			{
+				description: "Clean",
+				projects: [],
+				contexts: [],
+				priority: "none",
+				creationDate: "",
+				completionDate: "",
+				metadata: ["custom:keep", ...(rule === "off" ? [] : [`rec:${rule}`])],
+				repeatInterval: "2",
+				repeatUnit: rule === "off" ? "off" : "w",
+			},
+			false
+		);
+		const result = await backend.editTodo({ ...target, ...draft });
+		if (result.status !== "applied") throw Error("edit failed");
+		expect(result.confirmed.todo_file.items).toHaveLength(2);
+		expect(await readFile(path, "utf8")).toBe(
+			`Clean custom:keep${rule === "off" ? "" : " rec:2w"}${marker}\r\n\nLast`
+		);
+		const undone = await backend.undoTodo({
+			scope: target.scope,
+			workspaceId: target.workspaceId,
+			revision: result.confirmed.revision,
+		});
+		expect(undone.status).toBe("applied");
+		expect(await readFile(path, "utf8")).toBe(initial);
+		await backend.dispose();
+	}
+);
 
 test("editor completion uses saved content and backdated leap day, then a durable marker prevents regeneration", async () => {
 	const { backend, path, target, catalogue } = await setup("(A) Clean rec:2w");
