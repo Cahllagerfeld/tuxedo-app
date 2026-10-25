@@ -252,6 +252,23 @@ const startup = Effect.gen(function* () {
 	yield* register("switchWorkspace", backend.switchWorkspace);
 	yield* register("createWorkspace", backend.createWorkspace);
 	yield* register("deleteWorkspace", backend.deleteWorkspace);
+	yield* register("selectNewTodoFile", () =>
+		backend.run(
+			"selectNewTodoFile",
+			Effect.gen(function* () {
+				if (!mainWindow) throw Error("No application window");
+				const result = yield* Effect.tryPromise(() =>
+					dialog.showSaveDialog(mainWindow!, {
+						title: "Create a Todo file",
+						defaultPath: "todo.txt",
+						properties: ["createDirectory", "showOverwriteConfirmation"],
+					})
+				);
+				if (result.canceled || !result.filePath) return null;
+				return yield* WorkspaceSession.use((session) => session.prepareTodoFile(result.filePath));
+			})
+		)
+	);
 
 	yield* Effect.acquireRelease(
 		Effect.sync(() =>

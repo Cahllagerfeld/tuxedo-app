@@ -1,6 +1,10 @@
 <script lang="ts">
 	import * as Schema from "effect/Schema";
-	import { WorkspaceCreationRequest } from "@tuxedo/contracts";
+	import {
+		WorkspaceCreationRequest,
+		type DesktopRequest,
+		type DesktopResponse,
+	} from "@tuxedo/contracts";
 	import { defaults, superForm } from "sveltekit-superforms";
 	import { standard, standardClient } from "sveltekit-superforms/adapters";
 	import { Button } from "#lib/shared/ui/button/index.js";
@@ -12,10 +16,11 @@
 	import { cn } from "cn";
 	import { toast } from "svelte-sonner";
 
-	type CreateWorkspaceInput = { name: string; color: Workspace["color"]; todoPath: string };
+	type CreateWorkspaceInput = DesktopRequest<"createWorkspace">;
 	type Props = {
 		open?: boolean;
 		selectFile?: () => Promise<string | null>;
+		selectNewFile?: () => Promise<DesktopResponse<"selectNewTodoFile">>;
 		createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceSessionActionResult>;
 		disabled?: boolean;
 	};
@@ -83,6 +88,7 @@
 	let {
 		open = $bindable(false),
 		selectFile = selectTodoFile,
+		selectNewFile = () => window.desktop.selectNewTodoFile({}),
 		createWorkspace,
 		disabled = false,
 	}: Props = $props();
@@ -93,8 +99,10 @@
 	const { form: formData } = form;
 	let serverError = $state("");
 	let isCreating = $state(false);
+	let isSelecting = $state(false);
+	const controlsDisabled = $derived(disabled || isCreating || isSelecting);
 	const canCreate = $derived(
-		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !isCreating && !disabled
+		$formData.name.trim().length > 0 && $formData.todoPath.length > 0 && !controlsDisabled
 	);
 
 	async function selectTodoFile(): Promise<string | null> {
@@ -104,24 +112,41 @@
 		$formData.name = "";
 		$formData.todoPath = "";
 		$formData.color = "blue";
+		$formData.creationToken = undefined;
 		serverError = "";
 	}
-	async function chooseFile() {
+	async function chooseFile(create: boolean) {
+		if (controlsDisabled) return;
+		isSelecting = true;
 		serverError = "";
 		try {
-			const selected = await selectFile();
-			if (selected !== null) $formData.todoPath = selected;
+			if (create) {
+				const selected = await selectNewFile();
+				if (selected !== null) {
+					$formData.todoPath = selected.todoPath;
+					$formData.creationToken = selected.creationToken;
+				}
+			} else {
+				const selected = await selectFile();
+				if (selected !== null) {
+					$formData.todoPath = selected;
+					$formData.creationToken = undefined;
+				}
+			}
 		} catch (error) {
 			serverError = error instanceof Error ? error.message : String(error);
+		} finally {
+			isSelecting = false;
 		}
 	}
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		const result = await form.validateForm({ update: true });
-		if (!result.valid) return;
+		if (controlsDisabled) return;
 		isCreating = true;
 		serverError = "";
 		try {
+			const result = await form.validateForm({ update: true });
+			if (!result.valid) return;
 			const outcome = await createWorkspace(result.data);
 			if (outcome.status !== "applied") {
 				serverError = outcome.message;
@@ -141,12 +166,13 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		showCloseButton={false}
-		escapeKeydownBehavior={isCreating ? "ignore" : "close"}
-		interactOutsideBehavior={isCreating ? "ignore" : "close"}
+		escapeKeydownBehavior={isCreating || isSelecting ? "ignore" : "close"}
+		interactOutsideBehavior={isCreating || isSelecting ? "ignore" : "close"}
 	>
 		<Dialog.Header
 			><Dialog.Title>Create workspace</Dialog.Title><Dialog.Description
-				>Create a saved Workspace for one Todo file.</Dialog.Description
+				>Create an empty Todo file or open one you already use. Give your Workspace a name and
+				color.</Dialog.Description
 			></Dialog.Header
 		>
 		<form class="grid gap-6" onsubmit={submit}>
@@ -156,7 +182,7 @@
 							{...props}
 							bind:value={$formData.name}
 							aria-label="Workspace name"
-							{disabled}
+							disabled={controlsDisabled}
 							autocomplete="off"
 						/>{/snippet}</Form.Control
 				>
@@ -164,17 +190,26 @@
 			</Form.Field>
 			<Form.Field {form} name="todoPath">
 				<Form.Control
-					>{#snippet children({ props })}<Form.Label>Todo file</Form.Label><Button
-							{...props}
-							type="button"
-							variant="outline"
-							{disabled}
-							onclick={chooseFile}>Choose Todo file</Button
-						>{/snippet}</Form.Control
+					>{#snippet children({ props })}<Form.Label>Todo file</Form.Label>
+						<div class="grid gap-3 sm:grid-cols-2">
+							<Button
+								{...props}
+								type="button"
+								aria-label="Create a Todo file"
+								variant="outline"
+								disabled={controlsDisabled}
+								onclick={() => chooseFile(true)}>Create a Todo file</Button
+							><Button
+								type="button"
+								variant="outline"
+								disabled={controlsDisabled}
+								onclick={() => chooseFile(false)}>Open an existing Todo file</Button
+							>
+						</div>{/snippet}</Form.Control
 				>
-				<Form.Description
+				<Form.Description class="break-all"
 					>{$formData.todoPath ||
-						"Choose the exact Todo file for this workspace."}</Form.Description
+						"Choose where to save a new file, or select an existing plain-text file."}</Form.Description
 				><Form.FieldErrors />
 			</Form.Field>
 			<Form.Field {form} name="color">
@@ -196,7 +231,7 @@
 							)}
 							aria-label={option.label}
 							aria-pressed={$formData.color === option.token}
-							{disabled}
+							disabled={controlsDisabled}
 							onclick={() => ($formData.color = option.token)}
 							><span class="sr-only">{option.label}</span></Button
 						>{/each}
@@ -212,7 +247,7 @@
 							{...props}
 							type="button"
 							variant="outline"
-							disabled={isCreating}
+							disabled={isCreating || isSelecting}
 							onclick={() => {
 								open = false;
 								resetForm();

@@ -6,6 +6,7 @@ import { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 
 import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import { createTodoBulkSelection } from "#lib/modules/workspace/ui/todo-bulk-selection.svelte.js";
+import { toast } from "svelte-sonner";
 
 export class AppState {
 	workspace: WorkspaceCommands;
@@ -32,6 +33,7 @@ export class AppState {
 			getWorkspace: () => this.workspace,
 			getMatchingItems: () => this.filteredTodoItems,
 			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
+			onInvalidated: (message) => toast.info(message),
 		});
 		let previousWorkspace: string | null = null;
 		// Only a confirmed reader reconciles ephemeral filters after backend updates.

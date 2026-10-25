@@ -202,6 +202,8 @@ test.each([
 	expect(result.status).toBe("rejected");
 	expect(await readConfirmation(backend)).toEqual(first.confirmed);
 	expect(await readFile(path, "utf8")).toBe(before);
+	if (failure === "missing-file")
+		await expect(readFile(join(directory, "absent"))).rejects.toMatchObject({ code: "ENOENT" });
 	await expect((await import("node:fs/promises")).readdir(directory)).resolves.not.toContain(
 		expect.stringMatching(/\.tmp$/)
 	);

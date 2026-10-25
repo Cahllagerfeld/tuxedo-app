@@ -51,6 +51,7 @@ function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop
 		refreshSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
+		selectNewTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),

@@ -5,6 +5,24 @@ import {
 	savedViewsFileSchema,
 	todoFileChangeEvent,
 } from "@tuxedo/contracts";
+
+test("Workspace setup validates creation authorization and Save-selection responses", async () => {
+	const request = {
+		name: "Work",
+		color: "blue",
+		todoPath: "/tmp/work.txt",
+		creationToken: "550e8400-e29b-41d4-a716-446655440000",
+	};
+	for (const invalid of [
+		{ ...request, creationToken: "yes" },
+		{ ...request, replaceExisting: true },
+	])
+		expect(() => desktopContract.createWorkspace.request.parse(invalid)).toThrow();
+	await expect(
+		createDesktopClient(async () => ({ todoPath: request.todoPath })).selectNewTodoFile({})
+	).rejects.toThrow();
+	expect(await createDesktopClient(async () => null).selectNewTodoFile({})).toBeNull();
+});
 test.each([true, false])(
 	"bulk completion transport validates the explicit completion state %s",
 	async (completed) => {

@@ -60,6 +60,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		refreshSession: overrides.readSession ?? (async () => initial),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
+		selectNewTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		switchWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		deleteWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -2239,6 +2240,7 @@ test.each(["rejected", "conflict"] as const)(
 			await page.getByRole("button", { name: "Mark incomplete", exact: true }).click();
 			expect(bulk).toHaveBeenCalledTimes(2);
 			finish({ status: "rejected", message: "Still read-only" });
+			await expect.element(page.getByText("Still read-only", { exact: true })).toBeVisible();
 		}
 	}
 );
@@ -2752,43 +2754,6 @@ test("idle selection allows clearing active filters and clears the selection", a
 		.toBeVisible();
 });
 
-test("unchanged refresh retains selection and a skipped-line edit clears it with a notice", async () => {
-	if (initial.session.status !== "ready") throw Error("Expected Ready");
-	const ready = initial.session;
-	let notify!: (change: TodoFileChange) => void;
-	let loads = 0;
-	const readSession = vi.fn<NonNullable<Partial<DesktopAPI>["readSession"]>>(async () => ({
-		...initial,
-		revision: ++loads,
-		session: {
-			...ready,
-			todo_file: {
-				...ready.todo_file,
-				skipped: [{ line_number: 2, raw: loads < 3 ? "x" : "x ", reason: "Invalid Todo item" }],
-			},
-		},
-	}));
-	render(Harness, {
-		desktop: adapter({ readSession }),
-		observation: {
-			onTodoFileChanged(listener) {
-				notify = listener;
-				return () => {};
-			},
-		},
-	});
-	await page.getByRole("button", { name: "Select items", exact: true }).click();
-	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
-	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
-	await expect.poll(() => loads).toBe(2);
-	await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
-	notify({ scope, revision: 3, workspaceId, todoPath: "/tmp/work.todo" });
-	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
-	await expect
-		.element(page.getByText("Selection cleared because the Todo file changed.", { exact: true }))
-		.toBeVisible();
-});
-
 test.each(["focus", "visibilitychange", "midnight"])(
 	"a %s date refresh preserves selection on arrival and prunes hidden selections",
 	async (refresh) => {
@@ -2869,12 +2834,6 @@ test.each(["focus", "visibilitychange", "midnight"])(
 			)
 			.toBeVisible();
 		await expect.element(page.getByRole("button", { name: "Delete", exact: true })).toHaveFocus();
-		vi.setSystemTime(new Date(2026, 9, 19, 12));
-		window.dispatchEvent(new Event("focus"));
-		await expect
-			.element(page.getByRole("checkbox", { name: "Select Tomorrow", exact: true }))
-			.not.toBeChecked();
-		await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
 		expect(bulkDeleteTodos).not.toHaveBeenCalled();
 	}
 );

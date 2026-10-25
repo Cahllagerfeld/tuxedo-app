@@ -13,7 +13,10 @@ import {
 } from "@tuxedo/backend";
 import type { DesktopAPI, DesktopRequest, TodoFileChange } from "@tuxedo/contracts";
 
-type SessionBackend = Omit<DesktopAPI, "selectTodoFile" | "writeClipboardText">;
+type SessionBackend = Omit<
+	DesktopAPI,
+	"selectTodoFile" | "selectNewTodoFile" | "writeClipboardText"
+>;
 export type SessionDependencies = {
 	filesystem?: FileSystem;
 	identity?: Identity["Service"];

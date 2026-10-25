@@ -1,5 +1,7 @@
+import { untrack } from "svelte";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
 
 const todoKey = (todo: TodoItem) => `${todo.line_number}\0${todo.raw}`;
 
@@ -16,10 +18,16 @@ function cell<T>(initial: T) {
 }
 
 type Inputs = {
-	readonly getWorkspace: () => WorkspaceCommands;
+	readonly getWorkspace: () => Pick<
+		WorkspaceCommands,
+		"activeWorkspace" | "todoFile" | "isOperating" | "writesBlocked"
+	>;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
+	readonly onInvalidated: (message: string) => void;
 };
+
+type Change = (items: readonly TodoItem[]) => Promise<WorkspaceSessionActionResult>;
 
 export function createTodoBulkSelection(inputs: Inputs) {
 	const workspaceKey = $derived(
@@ -28,6 +36,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 	const fileSignature = $derived(JSON.stringify(inputs.getWorkspace().todoFile));
 	const filterSignature = $derived(inputs.getFilterSignature());
 	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
+	const scope = $derived(Symbol(workspaceKey));
 	const mode = $derived.by(() => {
 		workspaceKey;
 		return cell(false);
@@ -42,8 +51,77 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		mode.value ? inputs.getMatchingItems().filter((todo) => selection.value.has(todoKey(todo))) : []
 	);
 	const selectedOpenCount = $derived(selectedItems.filter((todo) => !todo.completed).length);
+	let confirmation = $state.raw<{
+		scope: symbol;
+		selection: Set<string>;
+		items: readonly TodoItem[];
+	} | null>(null);
+	let deleting = $state(false);
+	const context = $derived({
+		scope,
+		fileSignature,
+		filterSignature,
+		matchingSignature,
+		selection: selection.value,
+	});
+	let previousSelection: typeof context | undefined;
+	// Route publication and local-date events can retire selected items; remember that history before rendering or announcing it.
+	$effect.pre(() => {
+		const current = { ...context };
+		const visible = new Set(inputs.getMatchingItems().map(todoKey));
+		const blocked = inputs.getWorkspace().writesBlocked;
+		const active = mode.value;
+		untrack(() => {
+			const retained = new Set([...current.selection].filter((key) => visible.has(key)));
+			if (retained.size !== current.selection.size) {
+				selection.value = retained;
+				current.selection = retained;
+			}
+			if (blocked) return;
+			if (
+				previousSelection?.scope === current.scope &&
+				previousSelection.selection !== current.selection &&
+				previousSelection.selection.size &&
+				active
+			) {
+				const message =
+					previousSelection.fileSignature !== fileSignature
+						? "Selection cleared because the Todo file changed."
+						: previousSelection.filterSignature !== filterSignature
+							? "Selection cleared because filters changed."
+							: previousSelection.matchingSignature !== matchingSignature
+								? "Selection updated because some Todo items are no longer shown."
+								: null;
+				if (message) inputs.onInvalidated(message);
+			}
+			previousSelection = current;
+		});
+	});
+	const deletionItems = $derived(
+		confirmation?.scope === scope &&
+			mode.value &&
+			(deleting ||
+				inputs.getWorkspace().writesBlocked ||
+				confirmation.selection === selection.value)
+			? confirmation.items
+			: null
+	);
 	function clear() {
+		previousSelection = undefined;
 		selection.value = new Set();
+		confirmation = null;
+	}
+	async function change(
+		items: readonly TodoItem[] | null,
+		action: Change
+	): Promise<WorkspaceSessionActionResult> {
+		if (inputs.getWorkspace().writesBlocked || !items?.length)
+			return { status: "rejected", message: "Select Todo items in the current Workspace first." };
+		previousSelection = undefined;
+		// Let the caller prepare focus and announce the outcome before closing the confirmation.
+		const result = await action([...items]);
+		if (result.status !== "rejected") clear();
+		return result;
 	}
 	function exit() {
 		if (inputs.getWorkspace().isOperating) return;
@@ -51,6 +129,33 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		clear();
 	}
 	return {
+		get scope() {
+			return scope;
+		},
+		get deletionItems() {
+			return deletionItems;
+		},
+		get deleting() {
+			return deleting;
+		},
+		openDeletion() {
+			if (!inputs.getWorkspace().writesBlocked && selectedItems.length)
+				confirmation = { scope, selection: selection.value, items: [...selectedItems] };
+		},
+		cancelDeletion() {
+			if (!inputs.getWorkspace().isOperating && !deleting) confirmation = null;
+		},
+		changeSelected: (action: Change) => change(selectedItems, action),
+		async deleteConfirmed(action: Change) {
+			if (deleting) return { status: "rejected" as const, message: "Deletion is already running." };
+			const items = deletionItems;
+			deleting = true;
+			try {
+				return await change(items, action);
+			} finally {
+				deleting = false;
+			}
+		},
 		get active() {
 			return mode.value;
 		},
@@ -65,21 +170,6 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		},
 		get selectedCompletedCount() {
 			return selectedItems.length - selectedOpenCount;
-		},
-		// The UI uses these identities only to announce invalidation to the user.
-		get context() {
-			return {
-				workspaceKey,
-				fileSignature,
-				filterSignature,
-				matchingSignature,
-				selection: selection.value,
-			};
-		},
-		reconcileVisibility() {
-			const visible = new Set(inputs.getMatchingItems().map(todoKey));
-			const retained = new Set([...selection.value].filter((key) => visible.has(key)));
-			if (retained.size !== selection.value.size) selection.value = retained;
 		},
 		enter() {
 			if (inputs.getWorkspace().isOperating) return;

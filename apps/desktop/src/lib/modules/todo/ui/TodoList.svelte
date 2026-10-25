@@ -33,6 +33,7 @@
 		isSelected?: (todo: TodoFile["items"][number]) => boolean;
 		onToggleSelect?: (todo: TodoFile["items"][number]) => void;
 		onSelectAll?: () => void;
+		onCreate?: () => void;
 	};
 
 	let {
@@ -55,6 +56,7 @@
 		isSelected,
 		onToggleSelect,
 		onSelectAll,
+		onCreate,
 	}: TodoListProps = $props();
 
 	const list = createTodoListView({
@@ -210,5 +212,8 @@
 			<Empty.Title>No valid Todo items</Empty.Title>
 			<Empty.Description>This Todo file did not contain any parsed Todo items.</Empty.Description>
 		</Empty.Header>
+		{#if onCreate && todoFile.skipped.length === 0}
+			<Button {disabled} onclick={onCreate}>Add your first Todo item</Button>
+		{/if}
 	</Empty.Root>
 {/if}

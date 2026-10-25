@@ -42,7 +42,7 @@
 			<p class="mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
 				{workspaces.length
 					? "Pick a Workspace and get back to what matters."
-					: "A clearer view of what’s next. Start with a Todo file of your own."}
+					: "A clearer view of what’s next. Start fresh or bring your own Todo file."}
 			</p>
 		</div>
 		{#if workspaces.length}
@@ -78,7 +78,7 @@
 			</div>
 			<h2 class="text-xl font-semibold tracking-tight">No workspace open</h2>
 			<p class="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
-				Connect an existing Todo file. Give it a name and a color, and make it your Workspace.
+				Create a Todo file or open an existing one. Give your Workspace a name and a color.
 			</p>
 			<Button {disabled} onclick={openWorkspaceCreationDialog} class="mt-7 gap-2 px-4"
 				><Plus aria-hidden="true" />New workspace</Button
