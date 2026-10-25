@@ -25,7 +25,7 @@
 	"license": "MIT",
 	"devDependencies": {
 		"@effect/platform-node": "4.0.5",
-		"@effect/vitest": "4.0.5",
+		"@effect/vitest": "4.0.6",
 		"@electron-forge/cli": "8.0.1",
 		"@electron/asar": "4.3.1",
 		"@fontsource-variable/figtree": "5.3.0",
