@@ -1,9 +1,7 @@
 import { todoFileChangeEvent } from "@tuxedo/contracts";
-import { tick } from "svelte";
 import type {
 	DesktopAPI,
 	DesktopRequest,
-	WorkspaceSelection,
 	ConfirmedTodo,
 	ConfirmedSession,
 	TodoSortOrder,
@@ -11,7 +9,6 @@ import type {
 	TodoFileObservation,
 } from "@tuxedo/contracts";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
-import type { CatalogueData, WorkspaceData } from "./workspace-route-data";
 import type {
 	PendingWorkspaceSessionOperation,
 	WorkspaceSessionActionResult,
@@ -20,76 +17,56 @@ import type {
 } from "./workspace-session-types";
 
 export type WorkspaceRoutes = {
-	catalogue: () => CatalogueData | undefined;
-	workspace: () => WorkspaceData | undefined;
 	destination: () => string | undefined;
 	navigating: () => boolean;
-	refresh: (workspaceId: string | null, catalogue: boolean) => Promise<void>;
 	navigate: (workspaceId: string | null, replace?: boolean) => Promise<void>;
 };
 export type CreateTodoDraft = Omit<
 	DesktopRequest<"createTodo">,
 	"scope" | "revision" | "workspaceId"
 >;
+export type WorkspaceLoad = { value: ConfirmedSession | null; error: string };
 
-// Commands keep admission and receipts. All displayed backend data belongs to the router.
+class CommandValidationError extends Error {}
+
+// The renderer keeps one confirmed resource; RPC results replace it before admission is released.
 export class WorkspaceCommands {
+	private value = $state.raw<ConfirmedSession>();
 	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
-	private required = $state<WorkspaceSelection>();
-	private refreshFailure = $state("");
+	private readFailure = $state("");
+	private initialized = $state(false);
+	private startupHandled = $state(false);
+	private startupTarget = $state<string>();
+	private handoff: string | null | undefined;
+	private deferredDestination = false;
+	destinationError = $state("");
+
 	constructor(
 		private readonly desktop: DesktopAPI,
 		private readonly routes: WorkspaceRoutes
 	) {}
-	private get current() {
-		const data = this.routes.workspace();
-		return data?.workspaceId === this.routes.destination() ? data : undefined;
-	}
+
 	get catalogue() {
-		return this.routes.catalogue()?.value?.catalogue ?? null;
+		return this.value?.session.status !== "unavailable"
+			? (this.value?.session.catalogue ?? null)
+			: null;
 	}
 	get activeWorkspace() {
 		return (
-			(this.todoFile ? this.current?.value?.workspace : null) ??
-			this.catalogue?.workspaces.find((w) => w.id === this.catalogue?.active_workspace_id) ??
-			null
+			this.catalogue?.workspaces.find((w) => w.id === this.catalogue?.active_workspace_id) ?? null
 		);
 	}
 	get todoFile() {
-		return this.current?.value?.provenance.status === "confirmed" &&
-			this.catalogue?.active_workspace_id === this.current.value.workspace.id
-			? this.current.value.todo_file
+		return this.value?.session.status === "ready" &&
+			this.activeWorkspace?.id === this.routes.destination()
+			? this.value.session.todo_file
 			: null;
 	}
-	private get selection() {
-		const provenance = this.current?.value?.provenance;
-		return provenance?.status === "confirmed" ? provenance.selection : undefined;
-	}
-	private matches(selection: WorkspaceSelection | undefined | null, required: WorkspaceSelection) {
-		return (
-			!!selection &&
-			selection.scope === required.scope &&
-			selection.revision >= required.revision &&
-			selection.workspaceId === required.workspaceId &&
-			selection.todoPath === required.todoPath
-		);
-	}
 	get ready() {
-		const current = this.current;
-		const selection = this.selection;
-		return (
-			!!current?.value &&
-			!current.error &&
-			!this.routes.catalogue()?.error &&
-			!this.refreshFailure &&
-			!!selection &&
-			selection.workspaceId === this.routes.destination() &&
-			this.catalogue?.active_workspace_id === selection.workspaceId &&
-			(!this.required || this.matches(selection, this.required))
-		);
+		return !!this.todoFile && !this.readFailure;
 	}
 	get isOperating() {
-		return this.pending !== null || this.navigationPending || this.routes.navigating();
+		return this.pending !== null || this.routes.navigating();
 	}
 	get canMutate() {
 		return this.ready && !this.isOperating;
@@ -100,264 +77,226 @@ export class WorkspaceCommands {
 	get pendingTarget() {
 		return this.pending?.target ?? null;
 	}
-	private todoTarget() {
-		if (!this.ready || !this.selection?.workspaceId)
-			throw Error("Refresh the Workspace before changing Todo items.");
-		const { scope, revision, workspaceId } = this.selection;
-		return { scope, revision, workspaceId };
+	get isStarting() {
+		return (
+			!this.initialized ||
+			(!this.startupHandled && !this.routes.destination()) ||
+			!!this.startupTarget
+		);
 	}
+	get isLoading() {
+		return this.session.status === "loading";
+	}
+	get undoLabel() {
+		return this.todoFile ? this.value?.undoLabel : undefined;
+	}
+	get error() {
+		return this.readFailure;
+	}
+	get warning() {
+		return (
+			this.destinationError ||
+			(this.value?.session.status === "empty" ? (this.value.session.warning ?? "") : "")
+		);
+	}
+	get recoveryError() {
+		return this.readFailure;
+	}
+	get writesBlocked() {
+		return !this.canMutate;
+	}
+	get session(): ConfirmedSession["session"] | { status: "loading" } {
+		if (!this.value)
+			return this.readFailure
+				? { status: "unavailable", error: this.readFailure }
+				: { status: "loading" };
+		return this.value.session;
+	}
+
+	private acceptSession(incoming: ConfirmedSession) {
+		if (
+			this.value &&
+			(incoming.scope !== this.value.scope || incoming.revision < this.value.revision)
+		)
+			return false;
+		if (incoming.session.status === "unavailable") {
+			this.readFailure = incoming.session.error;
+			if (!this.value) this.value = incoming;
+			return false;
+		}
+		this.value = incoming;
+		this.readFailure = "";
+		return true;
+	}
+	acceptLoadedSession(resource: WorkspaceLoad) {
+		this.initialized = true;
+		if (resource.error) this.readFailure = resource.error;
+		else if (resource.value && (!this.value || resource.value.revision > this.value.revision))
+			this.acceptSession(resource.value);
+	}
+	private async readSession(refresh = false): Promise<WorkspaceSessionActionResult> {
+		try {
+			const incoming = await (refresh
+				? this.desktop.refreshSession({})
+				: this.desktop.readSession({}));
+			if (!this.acceptSession(incoming))
+				throw Error(
+					this.readFailure || "The Workspace session changed. Refresh its current contents."
+				);
+			return { status: "applied" };
+		} catch (error) {
+			this.readFailure = error instanceof Error ? error.message : String(error);
+			return { status: "rejected", message: this.readFailure };
+		}
+	}
+	retry = () =>
+		this.runAction("restore", async () => {
+			const outcome = await this.readSession(true);
+			if (
+				outcome.status === "applied" &&
+				this.routes.destination() &&
+				this.activeWorkspace?.id !== this.routes.destination()
+			)
+				await this.navigate(
+					this.value?.session.status === "ready" ? this.activeWorkspace!.id : null,
+					true
+				);
+			return outcome;
+		});
+
 	async runAction(
 		operation: WorkspaceSessionOperation,
 		action: () => Promise<WorkspaceSessionActionResult>,
 		target: WorkspaceSessionOperationTarget | null = null,
 		committed = false
 	): Promise<WorkspaceSessionActionResult> {
-		if (this.pending || this.navigationPending || (!committed && this.routes.navigating()))
+		if (this.pending || (!committed && this.routes.navigating()))
 			return { status: "rejected", message: "A Workspace session operation is already running." };
 		this.pending = { operation, target };
 		try {
 			return await action();
 		} catch (error) {
-			return {
-				status: "rejected",
-				message: error instanceof Error ? error.message : String(error),
-			};
+			// A lost RPC response may follow a committed write. Recover by reading, never resubmitting it.
+			const message = error instanceof Error ? error.message : String(error);
+			if (!(error instanceof CommandValidationError)) this.readFailure = message;
+			return { status: "rejected", message };
 		} finally {
 			this.pending = null;
-			this.drainObservation();
+			if (this.deferredDestination) {
+				this.deferredDestination = false;
+				await this.committedDestination(this.routes.destination());
+			} else void this.drainObservation();
 		}
 	}
-	private async refresh(workspaceId: string | null, catalogue = false) {
-		try {
-			await this.routes.refresh(workspaceId, catalogue);
-			await tick();
-			const selection = workspaceId ? this.selection : this.routes.catalogue()?.value?.selection;
-			// Home can confirm that observation retired the previously active Todo file.
-			if (
-				!this.routes.destination() &&
-				!this.routes.catalogue()?.error &&
-				selection?.workspaceId === null &&
-				this.required?.scope === selection.scope &&
-				selection.revision >= this.required.revision
-			)
-				this.required = selection;
-			if (
-				this.current?.error ||
-				(catalogue &&
-					(this.routes.catalogue()?.error ||
-						!this.required ||
-						!this.matches(this.routes.catalogue()?.value?.selection, this.required))) ||
-				!this.required ||
-				!this.matches(selection, this.required)
-			)
-				throw Error(
-					this.current?.error ||
-						this.routes.catalogue()?.error ||
-						"Confirmed data has not reached the screen. Retry the refresh."
-				);
-			this.refreshFailure = "";
-			this.refreshCatalogue = false;
-			return { status: "applied" as const };
-		} catch (error) {
-			this.refreshFailure = error instanceof Error ? error.message : String(error);
-			return { status: "rejected" as const, message: this.refreshFailure };
-		}
-	}
-	private async todoOutcome(outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>) {
-		if (outcome.status === "rejected") return outcome;
-		const value: ConfirmedTodo = outcome.confirmed;
-		this.refreshCatalogue = false;
-		this.required = {
-			scope: value.scope,
-			revision: value.revision,
-			workspaceId: value.workspaceId,
-			todoPath: value.todo_file.path,
+	private todoTarget() {
+		if (!this.ready || !this.value || !this.activeWorkspace)
+			throw new CommandValidationError("Refresh the Workspace before changing Todo items.");
+		return {
+			scope: this.value.scope,
+			revision: this.value.revision,
+			workspaceId: this.activeWorkspace.id,
 		};
-		const refreshed = await this.refresh(value.workspaceId);
-		if (refreshed.status !== "applied")
-			return outcome.status === "conflict"
-				? {
-						status: "conflict" as const,
-						message: `${outcome.message} The screen could not be refreshed. ${refreshed.message}`,
-					}
-				: {
-						status: "applied" as const,
-						notice: `Change saved, but the Workspace could not be refreshed. ${refreshed.message}`,
-					};
+	}
+	private todoOutcome(
+		outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>
+	): WorkspaceSessionActionResult {
+		if (outcome.status === "rejected") return outcome;
+		const incoming: ConfirmedTodo = outcome.confirmed;
+		const current = this.value;
+		if (
+			current?.session.status === "ready" &&
+			incoming.scope === current.scope &&
+			incoming.revision >= current.revision &&
+			incoming.workspaceId === current.session.catalogue.active_workspace_id &&
+			incoming.todo_file.path === current.session.todo_file.path
+		) {
+			this.value = {
+				scope: incoming.scope,
+				revision: incoming.revision,
+				...(incoming.undoLabel ? { undoLabel: incoming.undoLabel } : {}),
+				session: { ...current.session, todo_file: incoming.todo_file },
+			};
+			this.readFailure = "";
+		}
 		return outcome.status === "conflict"
-			? { status: "conflict" as const, message: outcome.message }
-			: { status: "applied" as const, ...(outcome.notice ? { notice: outcome.notice } : {}) };
+			? { status: "conflict", message: outcome.message }
+			: { status: "applied", ...(outcome.notice ? { notice: outcome.notice } : {}) };
 	}
-	retry = () =>
-		this.runAction("restore", async () => {
-			if (!this.required) {
-				await this.routes.refresh(this.routes.destination() ?? null, true);
-				await tick();
-				return this.recoveryError
-					? { status: "rejected", message: this.recoveryError }
-					: { status: "applied" };
-			}
-			if (this.routes.destination() && this.routes.destination() !== this.required.workspaceId)
-				await this.navigate(this.required.workspaceId, true);
-			return this.refresh(
-				this.routes.destination() === this.required.workspaceId ? this.required.workspaceId : null,
-				this.refreshCatalogue || !this.routes.destination()
-			);
-		});
-	get session(): ConfirmedSession["session"] | { status: "loading" } {
-		const catalogue = this.catalogue;
-		if (!catalogue)
-			return this.routes.catalogue()?.error
-				? { status: "unavailable", error: this.routes.catalogue()!.error }
-				: { status: "loading" };
-		return this.todoFile
-			? { status: "ready", catalogue, todo_file: this.todoFile }
-			: { status: "empty", catalogue, warning: this.destinationError || null };
+	private sessionOutcome(
+		outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>
+	): WorkspaceSessionActionResult {
+		if (outcome.status !== "applied") return outcome;
+		this.acceptSession(outcome.confirmed);
+		return { status: "applied" };
 	}
-	get isLoading() {
-		return this.session.status === "loading";
-	}
-	get undoLabel() {
-		return this.selection?.undoLabel;
-	}
-	get error() {
-		return this.routes.catalogue()?.error ?? "";
-	}
-	get warning() {
-		return this.destinationError;
-	}
-	get recoveryError() {
-		return this.refreshFailure || this.current?.error || this.routes.catalogue()?.error || "";
-	}
-	get writesBlocked() {
-		return !this.canMutate;
-	}
-	destinationError = $state("");
-	private refreshCatalogue = false;
-	private navigationPending = $state(false);
-	private navigationGeneration = 0;
-	private startupHandled = $state(false);
-	private startupTarget = $state<string>();
-	get isStarting() {
-		return !this.startupHandled || !!this.startupTarget;
-	}
-	private handoff: string | null | undefined;
 
-	// Native navigating also gates admission: SvelteKit skips beforeNavigate on supersession.
-	beginNavigation(complete: Promise<void>, destination: string | undefined) {
-		if (this.pending && this.handoff !== (destination ?? null)) return false;
-		this.handoff = undefined;
-		const generation = ++this.navigationGeneration;
-		this.navigationPending = true;
-		void complete.catch(async () => {
-			await tick();
-			if (generation === this.navigationGeneration && !this.routes.navigating())
-				this.navigationPending = false;
-		});
-		return true;
+	// Native navigating covers superseded loads too; only committed navigation may activate a Workspace.
+	beginNavigation(_complete: Promise<void>, destination: string | undefined) {
+		return !this.pending || this.handoff === (destination ?? null);
 	}
-	private navigate = async (id: string | null, replace = false) => {
+	private async navigate(id: string | null, replace = false) {
 		this.handoff = id;
 		try {
 			await this.routes.navigate(id, replace);
 		} finally {
 			this.handoff = undefined;
 		}
-	};
-	// This is called only by afterNavigate, never by a loader or a precommit hook.
-	committedDestination = async (workspaceId: string | undefined, initial = false) => {
+	}
+	committedDestination = async (
+		workspaceId: string | undefined,
+		initial = false
+	): Promise<WorkspaceSessionActionResult | undefined> => {
 		if (workspaceId !== this.routes.destination()) return;
-		this.navigationPending = false;
+		if (!this.initialized) return;
 		if (workspaceId === this.startupTarget) this.startupTarget = undefined;
 		if (!this.startupHandled) {
 			this.startupHandled = true;
 			if (initial && !workspaceId) {
-				const active = this.catalogue?.active_workspace_id;
+				const active =
+					this.value?.session.status === "ready" ? this.activeWorkspace?.id : undefined;
 				if (active) {
 					this.startupTarget = active;
-					await this.navigate(active, true);
+					try {
+						await this.navigate(active, true);
+					} catch (error) {
+						this.destinationError = error instanceof Error ? error.message : String(error);
+					} finally {
+						this.startupTarget = undefined;
+					}
 				}
 				return;
 			}
 		}
-		if (!workspaceId) return this.drainObservation(true);
-		if (!this.current) {
-			this.destinationError = "Workspace could not be loaded. Try opening it again.";
-			await this.navigate(null, true);
+		if (!workspaceId || this.ready) return this.drainObservation(true);
+		if (this.pending) {
+			this.deferredDestination = true;
 			return;
 		}
-		// Creation already committed activation. Same-Workspace reads and Home preserve Undo.
-		if (this.ready) return this.drainObservation(true);
-		if (this.required?.workspaceId === workspaceId) {
-			if (this.pending) return;
-			return this.runAction(
-				"restore",
-				() => this.refresh(workspaceId, this.refreshCatalogue),
-				{ workspaceId },
-				true
-			);
-		}
-		const outcome = await this.runAction(
+		return this.runAction(
 			"open_workspace",
 			async () => {
+				if (this.activeWorkspace?.id === workspaceId && this.value?.session.status === "ready")
+					return this.readSession();
+				const outcome = await this.desktop.switchWorkspace({ workspaceId });
+				if (outcome.status === "applied") this.acceptSession(outcome.confirmed);
 				if (workspaceId !== this.routes.destination())
 					return { status: "rejected", message: "Destination changed." };
-				const result = await this.desktop.switchWorkspace({ workspaceId });
-				if (workspaceId !== this.routes.destination())
-					return { status: "rejected", message: "Destination changed." };
-				if (result.status === "rejected") {
-					this.destinationError = result.message;
+				if (outcome.status === "rejected") {
+					this.destinationError = outcome.message;
 					await this.navigate(null, true);
-					return result;
+					return outcome;
 				}
 				this.destinationError = "";
-				this.requireSession(result.confirmed);
-				const refreshed = await this.refresh(workspaceId, true);
-				return refreshed.status === "applied"
-					? refreshed
-					: {
-							status: "applied",
-							notice: `Workspace opened, but it could not be refreshed. ${refreshed.message}`,
-						};
+				return { status: "applied" };
 			},
 			{ workspaceId },
 			true
 		);
-		if (outcome.status === "rejected" && this.routes.destination() === workspaceId) {
-			this.destinationError = outcome.message;
-			await this.navigate(null, true);
-		}
-		return outcome;
 	};
-	private requireSession(confirmed: ConfirmedSession) {
-		this.required = {
-			scope: confirmed.scope,
-			revision: confirmed.revision,
-			workspaceId:
-				confirmed.session.status === "ready"
-					? confirmed.session.catalogue.active_workspace_id
-					: null,
-			todoPath: confirmed.session.status === "ready" ? confirmed.session.todo_file.path : null,
-		};
-		this.refreshCatalogue = true;
-	}
-	private async sessionOutcome(outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>) {
-		if (outcome.status !== "applied") return outcome;
-		this.requireSession(outcome.confirmed);
-		const refreshed = await this.refresh(
-			this.routes.destination() === this.required!.workspaceId ? this.required!.workspaceId : null,
-			true
-		);
-		return refreshed.status === "applied"
-			? refreshed
-			: {
-					status: "applied" as const,
-					notice: `Change saved, but the Workspace could not be refreshed. ${refreshed.message}`,
-				};
-	}
+
 	private catalogueTarget() {
-		if (!this.catalogue || this.routes.catalogue()?.error || this.refreshFailure)
-			throw Error("Refresh Workspaces before changing them.");
+		if (!this.catalogue || this.readFailure)
+			throw new CommandValidationError("Refresh Workspaces before changing them.");
 	}
 	create = (input: DesktopRequest<"createWorkspace">) =>
 		this.runAction(
@@ -366,27 +305,17 @@ export class WorkspaceCommands {
 				this.catalogueTarget();
 				const outcome = await this.desktop.createWorkspace(input);
 				if (outcome.status !== "applied") return outcome;
-				this.requireSession(outcome.confirmed);
+				this.acceptSession(outcome.confirmed);
 				this.destinationError = "";
-				const id = this.required!.workspaceId;
-				// Carry the committed receipt across navigation; its preloaded data cannot authorize writes.
-				this.refreshFailure = "Workspace creation is saved; waiting for its route data.";
 				try {
-					await this.navigate(id);
+					await this.navigate(this.activeWorkspace?.id ?? null);
 				} catch (error) {
-					this.refreshFailure = error instanceof Error ? error.message : String(error);
 					return {
 						status: "applied",
-						notice: `Workspace created, but its destination could not be opened. ${this.refreshFailure}`,
+						notice: `Workspace created, but its destination could not be opened. ${error instanceof Error ? error.message : String(error)}`,
 					};
 				}
-				const refreshed = await this.refresh(id, true);
-				return refreshed.status === "applied"
-					? refreshed
-					: {
-							status: "applied",
-							notice: `Workspace created, but it could not be refreshed. ${refreshed.message}`,
-						};
+				return { status: "applied" };
 			},
 			{ todoPath: input.todoPath }
 		);
@@ -397,19 +326,18 @@ export class WorkspaceCommands {
 				this.catalogueTarget();
 				const outcome = await this.desktop.deleteWorkspace({ workspaceId });
 				if (outcome.status !== "applied") return outcome;
-				this.requireSession(outcome.confirmed);
-				if (this.routes.destination() && this.required!.workspaceId !== this.routes.destination()) {
+				this.acceptSession(outcome.confirmed);
+				if (this.routes.destination() && this.activeWorkspace?.id !== this.routes.destination()) {
 					try {
 						await this.navigate(null, true);
 					} catch (error) {
-						this.refreshFailure = error instanceof Error ? error.message : String(error);
 						return {
 							status: "applied",
-							notice: `Workspace removed, but the screen could not be refreshed. ${this.refreshFailure}`,
+							notice: `Workspace removed, but its destination could not be opened. ${error instanceof Error ? error.message : String(error)}`,
 						};
 					}
 				}
-				return this.sessionOutcome(outcome);
+				return { status: "applied" };
 			},
 			{ workspaceId }
 		);
@@ -441,80 +369,69 @@ export class WorkspaceCommands {
 	private dirty: { event: TodoFileChange; notify: () => void } | undefined;
 	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
 		let listening = true;
-		const unsubscribe = observation.onTodoFileChanged((event) => {
+		const stop = observation.onTodoFileChanged((event) => {
 			const parsed = todoFileChangeEvent.payload.safeParse(event);
-			const selection =
-				this.selection ?? this.required ?? this.routes.catalogue()?.value?.selection;
+			if (!listening || !parsed.success) return;
 			if (
-				!listening ||
-				!parsed.success ||
-				!selection ||
-				selection.scope !== parsed.data.scope ||
-				selection.workspaceId !== parsed.data.workspaceId ||
-				selection.todoPath !== parsed.data.todoPath ||
-				parsed.data.revision < selection.revision
+				this.value &&
+				(parsed.data.scope !== this.value.scope || parsed.data.revision <= this.value.revision)
 			)
 				return;
-			this.dirty = {
-				event: parsed.data,
-				notify: () => {
-					if (listening) onSummaryChanged();
-				},
-			};
-			this.drainObservation();
+			if (
+				!this.pending &&
+				!this.routes.navigating() &&
+				this.value &&
+				!this.matchesObservation(parsed.data)
+			)
+				return;
+			if (!this.dirty || parsed.data.revision >= this.dirty.event.revision)
+				this.dirty = {
+					event: parsed.data,
+					notify: () => {
+						if (listening) onSummaryChanged();
+					},
+				};
+			void this.drainObservation();
 		});
 		return () => {
 			listening = false;
 			this.dirty = undefined;
-			unsubscribe();
+			stop();
 		};
 	};
-	private drainObservation(committed = false) {
-		if (
-			this.pending ||
-			this.navigationPending ||
-			(!committed && this.routes.navigating()) ||
-			!this.dirty
-		)
+	private matchesObservation(event: TodoFileChange) {
+		return (
+			this.value?.session.status === "ready" &&
+			event.scope === this.value.scope &&
+			event.workspaceId === this.activeWorkspace?.id &&
+			event.todoPath === this.value.session.todo_file.path &&
+			event.revision > this.value.revision
+		);
+	}
+	private drainObservation(committed = false): Promise<WorkspaceSessionActionResult> | undefined {
+		if (this.pending || (!committed && this.routes.navigating()) || !this.dirty || !this.value)
 			return;
 		const { event, notify } = this.dirty;
 		this.dirty = undefined;
-		const selection = this.required ?? this.selection ?? this.routes.catalogue()?.value?.selection;
-		if (!selection || !this.matches(event, selection)) return;
-		const destination = this.routes.destination();
-		if (
-			destination &&
-			(event.workspaceId !== destination || event.todoPath !== this.todoFile?.path)
-		)
-			return;
-		const before = JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped });
+		if (!this.matchesObservation(event)) return;
+		const summary = () =>
+			this.value?.session.status === "ready"
+				? JSON.stringify({
+						items: this.value.session.todo_file.items,
+						skipped: this.value.session.todo_file.skipped,
+					})
+				: "";
+		const before = summary();
 		return this.runAction(
 			"restore",
 			async () => {
-				this.required = {
-					scope: event.scope,
-					revision: event.revision,
-					workspaceId: event.workspaceId,
-					todoPath: event.todoPath,
-				};
-				this.refreshCatalogue = true;
-				const outcome = await this.refresh(destination ? event.workspaceId : null, true);
-				// The authoritative session may now be Empty (an externally removed Todo file).
-				if (
-					this.routes.catalogue()?.value?.selection?.workspaceId === null &&
-					this.current?.error
-				) {
-					this.destinationError = this.current.error;
-					this.required = undefined;
-					this.refreshFailure = "";
-					await this.navigate(null, true);
-				} else if (
-					destination &&
-					outcome.status === "applied" &&
-					before !==
-						JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped })
-				)
-					notify();
+				const outcome = await this.readSession();
+				if (outcome.status === "applied") {
+					if (this.routes.destination() && this.value?.session.status !== "ready") {
+						this.destinationError = this.warning;
+						await this.navigate(null, true);
+					} else if (this.routes.destination() && before !== summary()) notify();
+				}
 				return outcome;
 			},
 			{ workspaceId: event.workspaceId },
@@ -572,7 +489,9 @@ export class WorkspaceCommands {
 	private validateCurrentItems(items: readonly TodoItem[]) {
 		const current = new Map(this.todoFile?.items.map((item) => [item.line_number, item.raw]));
 		if (items.some((item) => current.get(item.line_number) !== item.raw))
-			throw Error("The Todo file changed. Try again with its current Todo items.");
+			throw new CommandValidationError(
+				"The Todo file changed. Try again with its current Todo items."
+			);
 	}
 
 	private todoMutationTarget(todo: TodoItem): DesktopRequest<"deleteTodo"> {

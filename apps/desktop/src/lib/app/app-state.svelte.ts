@@ -34,7 +34,7 @@ export class AppState {
 			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
 		});
 		let previousWorkspace: string | null = null;
-		// Route publication is external; only a confirmed reader reconciles ephemeral filters.
+		// Only a confirmed reader reconciles ephemeral filters after backend updates.
 		$effect(() => {
 			if (!this.workspace.todoFile) return;
 			const id = this.workspace.activeWorkspace?.id ?? null;

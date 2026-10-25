@@ -7,10 +7,10 @@
 	import { summarizeTodoFile } from "#lib/modules/todo/domain/todo-file-summary.js";
 	import { summarizeTodoFilterFacets } from "#lib/modules/todo/domain/todo-filter-facets.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
+	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
+	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
 	onMount(() => {
 		void fixture.start();

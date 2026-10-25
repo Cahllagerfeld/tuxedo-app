@@ -1,4 +1,3 @@
-import { resourceDesktop } from "#lib/modules/workspace/state/testing/resource-desktop.js";
 import { expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -63,15 +62,14 @@ const created = {
 };
 
 function adapter(undo: DesktopAPI["undoTodo"]): DesktopAPI {
-	return resourceDesktop({
-		resourceState: async () => initial,
+	return {
 		...createDesktopClient(async (channel, input) => {
-			if (channel === "tuxedo:read-saved-views") return { status: "applied", views: [] };
 			if (channel === "tuxedo:create-todo") return { status: "applied", confirmed: created };
 			if (channel === "tuxedo:undo-todo") return undo(undoTodoRequestSchema.parse(input));
 			throw Error(`Unexpected ${channel}`);
 		}),
-	});
+		readSession: async () => initial,
+	};
 }
 
 test("topbar Undo follows confirmed data, blocks overlapping actions, and consumes its slot", async () => {

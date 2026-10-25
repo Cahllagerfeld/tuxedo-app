@@ -212,6 +212,7 @@ const startup = Effect.gen(function* () {
 				if (!trusted(event.url)) event.preventDefault();
 			});
 			window.webContents.on("will-attach-webview", (event) => event.preventDefault());
+			yield* WorkspaceSession.use((session) => session.refreshSession({}));
 			yield* Effect.promise(() => window.loadURL(devOrigin ?? "tuxedo://app/"));
 		}).pipe(Scope.provide(windowScope));
 	});
@@ -233,8 +234,8 @@ const startup = Effect.gen(function* () {
 			})
 		)
 	);
-	yield* register("readWorkspaceCatalogue", backend.readWorkspaceCatalogue);
-	yield* register("readWorkspace", backend.readWorkspace);
+	yield* register("readSession", backend.readSession);
+	yield* register("refreshSession", backend.refreshSession);
 	yield* register("setWorkspaceSortOrder", backend.setWorkspaceSortOrder);
 	yield* register("setWorkspaceShowDeferred", backend.setWorkspaceShowDeferred);
 	yield* register("undoTodo", backend.undoTodo);

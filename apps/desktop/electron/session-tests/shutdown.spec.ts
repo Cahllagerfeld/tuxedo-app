@@ -97,15 +97,11 @@ describe("application shutdown", () => {
 				creationDate: null,
 			});
 			await replacing;
-			const queued = backend.readWorkspaceCatalogue({});
-			const workspaceRead = backend.readWorkspace({
-				workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-			});
-			const catalogueRead = backend.readWorkspaceCatalogue({});
+			const queued = backend.readSession({});
 			const quitting = backend.shutdown();
 			await expect(readConfirmation(backend)).rejects.toThrow("shutting down");
 			await expect(backend.stopObservation()).rejects.toThrow("shutting down");
-			await expect(backend.readWorkspaceCatalogue({})).rejects.toThrow("shutting down");
+			await expect(backend.readSession({})).rejects.toThrow("shutting down");
 			expect(observers).toBe(1);
 			expect(await readFile(todoPath, "utf8")).toBe("First");
 			release();
@@ -113,16 +109,8 @@ describe("application shutdown", () => {
 			expect(result.status).toBe("applied");
 			if (result.status !== "applied") throw Error("mutation failed");
 			expect(await queued).toMatchObject({
-				status: "ready",
-				selection: { revision: result.confirmed.revision },
-			});
-			expect(await workspaceRead).toMatchObject({
-				status: "ready",
-				provenance: { status: "confirmed", selection: { revision: result.confirmed.revision } },
-			});
-			expect(await catalogueRead).toMatchObject({
-				status: "ready",
-				selection: { revision: result.confirmed.revision },
+				revision: result.confirmed.revision,
+				session: { status: "ready" },
 			});
 			expect(await quitting).toBe("complete");
 			expect(observers).toBe(0);

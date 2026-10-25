@@ -142,7 +142,6 @@ export const sessionOutcomeSchema = effectValidator(
 );
 export const switchWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
 export const deleteWorkspaceRequestSchema = switchWorkspaceRequestSchema;
-export const readWorkspaceRequestSchema = switchWorkspaceRequestSchema;
 const TodoMutationRequest = Schema.Struct({
 	scope: UUID,
 	revision: Revision,
@@ -284,7 +283,17 @@ export const savedViewsFileSchema = effectValidator(
 );
 const savedViewsOutcomeSchema = effectValidator(
 	Schema.Union([
-		Schema.Struct({ status: Schema.Literal("applied"), views: Schema.Array(SavedViewSchema) }),
+		Schema.Struct({
+			status: Schema.Literal("applied"),
+			workspaceId: UUID,
+			views: Schema.Array(SavedViewSchema),
+		}).check(
+			Schema.makeFilter((value) =>
+				value.views.some((view) => view.workspace_id !== value.workspaceId)
+					? "Saved views must belong to the requested Workspace"
+					: undefined
+			)
+		),
 		Rejected,
 	])
 );
@@ -294,7 +303,7 @@ export const saveViewRequestSchema = effectValidator(
 export const deleteViewRequestSchema = effectValidator(
 	Schema.Struct({ workspaceId: UUID, viewId: UUID })
 );
-const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
+export const emptyRequestSchema = effectValidator(Schema.Record(Schema.String, Schema.Never));
 export const setWorkspaceSortOrderRequestSchema = effectValidator(
 	Schema.Struct({ scope: UUID, revision: Revision, workspaceId: UUID, sortOrder: TodoSortOrder })
 );
@@ -306,73 +315,16 @@ export const setWorkspaceShowDeferredRequestSchema = effectValidator(
 		showDeferred: Schema.Boolean,
 	})
 );
-// Selection metadata is a receipt, never a second loaded session.
-const WorkspaceSelection = Schema.Struct({
-	scope: UUID,
-	revision: Revision,
-	workspaceId: Schema.NullOr(UUID),
-	todoPath: Schema.NullOr(TodoPath),
-	undoLabel: Schema.optional(UndoLabel),
-}).check(
-	Schema.makeFilter((value) =>
-		(value.workspaceId === null) !== (value.todoPath === null)
-			? "Selection requires both Workspace and Todo-file identity"
-			: undefined
-	)
-);
-export type WorkspaceSelection = typeof WorkspaceSelection.Type;
-const WorkspaceReadFailure = Schema.Struct({
-	status: Schema.Literal("rejected"),
-	reason: Schema.Literals(["catalogue", "workspace", "todo-file", "unexpected"]),
-	message: Schema.NonEmptyString,
-});
-export const workspaceCatalogueReadSchema = effectValidator(
-	Schema.Union([
-		Schema.Struct({
-			status: Schema.Literal("ready"),
-			catalogue: CatalogueSchema,
-			selection: Schema.NullOr(WorkspaceSelection),
-		}),
-		WorkspaceReadFailure,
-	])
-);
-export const workspaceReadSchema = effectValidator(
-	Schema.Union([
-		Schema.Struct({
-			status: Schema.Literal("ready"),
-			workspace: WorkspaceSchema,
-			todo_file: TodoFileSchema,
-			provenance: Schema.Union([
-				Schema.Struct({ status: Schema.Literal("speculative") }),
-				Schema.Struct({ status: Schema.Literal("confirmed"), selection: WorkspaceSelection }),
-			]),
-		}).check(
-			Schema.makeFilter((value) => {
-				if (value.workspace.todo_path !== value.todo_file.path)
-					return "Todo file must belong to the requested Workspace";
-				if (
-					value.provenance.status === "confirmed" &&
-					(value.provenance.selection.workspaceId !== value.workspace.id ||
-						value.provenance.selection.todoPath !== value.todo_file.path)
-				)
-					return "Confirmation must identify the requested Workspace and Todo file";
-			})
-		),
-		WorkspaceReadFailure,
-	])
-);
-export type WorkspaceRead = ReturnType<typeof workspaceReadSchema.parse>;
-export type WorkspaceCatalogueRead = ReturnType<typeof workspaceCatalogueReadSchema.parse>;
 export const desktopContract = {
-	readWorkspaceCatalogue: {
-		channel: "tuxedo:read-workspace-catalogue",
+	readSession: {
+		channel: "tuxedo:read-session",
 		request: emptyRequestSchema,
-		response: workspaceCatalogueReadSchema,
+		response: confirmedSessionSchema,
 	},
-	readWorkspace: {
-		channel: "tuxedo:read-workspace",
-		request: readWorkspaceRequestSchema,
-		response: workspaceReadSchema,
+	refreshSession: {
+		channel: "tuxedo:refresh-session",
+		request: emptyRequestSchema,
+		response: confirmedSessionSchema,
 	},
 	setWorkspaceShowDeferred: {
 		channel: "tuxedo:set-workspace-show-deferred",
@@ -391,7 +343,7 @@ export const desktopContract = {
 	},
 	readSavedViews: {
 		channel: "tuxedo:read-saved-views",
-		request: emptyRequestSchema,
+		request: switchWorkspaceRequestSchema,
 		response: savedViewsOutcomeSchema,
 	},
 	saveView: {
@@ -503,8 +455,8 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
-		readWorkspaceCatalogue: (request) => call("readWorkspaceCatalogue", request),
-		readWorkspace: (request) => call("readWorkspace", request),
+		readSession: (request) => call("readSession", request),
+		refreshSession: (request) => call("refreshSession", request),
 		setWorkspaceShowDeferred: (request) => call("setWorkspaceShowDeferred", request),
 		setWorkspaceSortOrder: (request) => call("setWorkspaceSortOrder", request),
 		undoTodo: (request) => call("undoTodo", request),

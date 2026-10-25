@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import { SavedViewsResource, setSavedViews } from "../state/saved-views-resource.svelte";
-	import { readSavedViews, type SavedViewsData } from "../state/saved-views";
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
-	import { workspaceRouteFixture } from "../state/testing/workspace-route-fixture.svelte";
+	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
 	import { AppState } from "#lib/app/app-state.svelte.js";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
@@ -27,22 +26,22 @@
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
+	const fixture = workspaceFixture(desktop);
 	const app = new AppState(fixture.commands);
-	let routeData = $state.raw<SavedViewsData>();
-	async function refreshViews(workspaceId: string) {
-		routeData = await readSavedViews(desktop, workspaceId, () => routeData);
-	}
 	// svelte-ignore state_referenced_locally
-	setSavedViews(new SavedViewsResource(desktop, app.workspace, () => routeData, refreshViews));
+	const savedViews = new SavedViewsResource(desktop, app.workspace);
+	setSavedViews(savedViews);
+	const workspaceId = $derived(
+		app.workspace.todoFile ? app.workspace.activeWorkspace?.id : undefined
+	);
+	$effect(() => {
+		const id = workspaceId;
+		if (id) void untrack(() => savedViews.load(id));
+	});
 	onMount(() => {
 		const stop =
-			observation &&
-			app.workspace.observe(fixture.observe(observation), () => toast.info("Todo file reloaded"));
-		void fixture.start().then(() => {
-			const id = app.workspace.activeWorkspace?.id;
-			if (id) return refreshViews(id);
-		});
+			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
+		void fixture.start();
 		return stop;
 	});
 </script>

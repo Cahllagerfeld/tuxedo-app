@@ -10,20 +10,20 @@ const getWindow = () => window;
 // @ts-expect-error No generic filesystem operation is exposed.
 api.readFile("/etc/passwd");
 // @ts-expect-error Catalogue requests cannot carry arbitrary filesystem paths.
-api.readWorkspaceCatalogue({ path: "/etc/passwd" });
+api.readSession({ path: "/etc/passwd" });
 registerDesktopOperation(
 	ipc,
 	getWindow,
 	() => true,
 	// @ts-expect-error Main cannot register an unknown operation/channel.
 	"arbitraryChannel",
-	api.readWorkspaceCatalogue
+	api.readSession
 );
 registerDesktopOperation(
 	ipc,
 	getWindow,
 	() => true,
-	"readWorkspaceCatalogue",
+	"readSession",
 	// @ts-expect-error Main results must be serialized resource outcomes.
 	async () => ({ revision: "invalid" })
 );
@@ -36,7 +36,7 @@ registerDesktopOperation(
 	() => true,
 	"createWorkspace",
 	// @ts-expect-error Creation must return a serialized domain outcome, not a session.
-	api.readWorkspaceCatalogue
+	api.readSession
 );
 api.createTodo({
 	scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
@@ -55,7 +55,7 @@ registerDesktopOperation(
 	() => true,
 	"createTodo",
 	// @ts-expect-error Creation must return a serialized Todo mutation outcome.
-	api.readWorkspaceCatalogue
+	api.readSession
 );
 
 registerDesktopOperation(ipc, getWindow, () => true, "bulkDeleteTodos", api.bulkDeleteTodos);
@@ -70,17 +70,6 @@ registerDesktopOperation(ipc, getWindow, () => true, "editTodo", api.editTodo);
 // @ts-expect-error Editing needs the original physical line and raw content.
 api.editTodo({ description: "Updated", projects: [], contexts: [] });
 
-registerDesktopOperation(ipc, getWindow, () => true, "readWorkspace", api.readWorkspace);
-registerDesktopOperation(
-	ipc,
-	getWindow,
-	() => true,
-	"readWorkspaceCatalogue",
-	api.readWorkspaceCatalogue
-);
-// @ts-expect-error Destination reads take a saved Workspace ID, never a filesystem path.
-api.readWorkspace({ todoPath: "/etc/passwd" });
-// @ts-expect-error Repeatable reads return provenance, never an activated session.
-const activated: Promise<import("@tuxedo/contracts").ConfirmedSession> = api.readWorkspace({
-	workspaceId: "550e8400-e29b-41d4-a716-446655440000",
-});
+registerDesktopOperation(ipc, getWindow, () => true, "readSession", api.readSession);
+// @ts-expect-error Session reads accept no filesystem path or destination.
+api.readSession({ todoPath: "/etc/passwd" });

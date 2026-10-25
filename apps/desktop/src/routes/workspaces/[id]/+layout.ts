@@ -1,10 +1,20 @@
-import { page } from "$app/state";
-import { readSavedViews, savedViewsDependency } from "#lib/modules/workspace/state/saved-views.js";
 import type { LayoutLoad } from "./$types";
 
-export const load: LayoutLoad = async ({ params, depends }) => {
-	depends(savedViewsDependency(params.id));
-	return {
-		savedViews: await readSavedViews(window.desktop, params.id, () => page.data.savedViews),
-	};
+export const load: LayoutLoad = async ({ params }) => {
+	const workspaceId = params.id;
+	try {
+		return {
+			savedViews: { workspaceId, outcome: await window.desktop.readSavedViews({ workspaceId }) },
+		};
+	} catch (error) {
+		return {
+			savedViews: {
+				workspaceId,
+				outcome: {
+					status: "rejected" as const,
+					message: error instanceof Error ? error.message : String(error),
+				},
+			},
+		};
+	}
 };

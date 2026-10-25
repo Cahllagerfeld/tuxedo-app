@@ -1,30 +1,19 @@
-import { afterNavigate, beforeNavigate, goto, invalidate } from "$app/navigation";
+import { afterNavigate, beforeNavigate, goto } from "$app/navigation";
 import { page, navigating } from "$app/state";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
-import {
-	catalogueDependency,
-	workspaceDependency,
-} from "#lib/modules/workspace/state/workspace-route-data.js";
+import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 
 export function workspaceRouting() {
 	const commands = new WorkspaceCommands(window.desktop, {
-		catalogue: () => page.data.catalogue,
-		workspace: () => page.data.workspace,
 		destination: () => page.params.id,
 		navigating: () => !!navigating.to,
-		refresh: async (id, catalogue) => {
-			await invalidate(
-				(dependency) =>
-					(catalogue && dependency.href === catalogueDependency) ||
-					(!!id && dependency.href === workspaceDependency(id))
-			);
-		},
 		navigate: (id, replace = false) =>
 			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replace }),
 	});
+	const savedViews = new SavedViewsResource(window.desktop, commands);
 	beforeNavigate((navigation) => {
 		if (navigation.shallow && navigation.type === "goto") return;
 
@@ -38,6 +27,10 @@ export function workspaceRouting() {
 	afterNavigate((navigation) => {
 		if (navigation.shallow && navigation.type === "goto") return;
 
+		commands.acceptLoadedSession(page.data.session);
+		const loadedViews = page.data.savedViews;
+		if (loadedViews && loadedViews.workspaceId === page.params.id)
+			savedViews.acceptLoaded(loadedViews.workspaceId, loadedViews.outcome);
 		void commands
 			.committedDestination(page.params.id, navigation.type === "enter")
 			.then((outcome) => {
@@ -45,5 +38,5 @@ export function workspaceRouting() {
 			});
 	});
 	onMount(() => commands.observe(window.desktop, () => toast.info("Todo file reloaded")));
-	return commands;
+	return { workspace: commands, savedViews };
 }

@@ -115,13 +115,12 @@ test("a corrupt catalogue is preserved and a failed save leaves confirmed visibi
 	expect(
 		await backend.setWorkspaceShowDeferred({ ...target(current), showDeferred: true })
 	).toMatchObject({ status: "rejected" });
-	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await backend.refreshSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	expect(await readFile(path, "utf8")).toBe("{broken");
 	await writeFile(path, original);
-	expect(await readConfirmation(backend)).toEqual(current);
+	expect((await backend.refreshSession({})).session).toEqual(current.session);
 });
 
 test("invalid Workspace visibility values preserve the catalogue and confirmed session", async () => {
@@ -139,9 +138,8 @@ test("invalid Workspace visibility values preserve the catalogue and confirmed s
 	await writeFile(path, JSON.stringify(invalid));
 	const restarted = createSessionBackend(path);
 	cleanups.push(() => restarted.dispose());
-	expect(await restarted.readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await restarted.refreshSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	expect(await readFile(path, "utf8")).toBe(JSON.stringify(invalid));
 });

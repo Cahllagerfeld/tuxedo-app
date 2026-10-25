@@ -1,4 +1,3 @@
-import { resourceDesktop } from "./testing/resource-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -47,17 +46,12 @@ const initial: ConfirmedSession = {
 	},
 };
 function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
-	return resourceDesktop({
-		readWorkspaceCatalogue: async () => {
-			throw Error("unused");
-		},
-		readWorkspace: async () => {
-			throw Error("unused");
-		},
-		readSavedViews: async () => ({ status: "applied", views: [] }),
+	return {
+		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		resourceState: async () => initial,
+		readSession: async () => initial,
+		refreshSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -73,7 +67,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		setTodoCompletion: completion,
 		bulkDeleteTodos: async () => ({ status: "rejected", message: "unused" }),
 		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
-	});
+	};
 }
 function updated(): ConfirmedTodo {
 	return {

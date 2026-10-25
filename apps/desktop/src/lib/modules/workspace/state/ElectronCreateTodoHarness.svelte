@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import type { CreateTodoDraft } from "./workspace-commands.svelte";
-	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
+	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
 
 	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
 	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;
@@ -12,7 +12,7 @@
 
 	let { desktop }: { desktop: CreateTodoDesktop } = $props();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
+	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
 	onMount(() => {
 		void fixture.start();

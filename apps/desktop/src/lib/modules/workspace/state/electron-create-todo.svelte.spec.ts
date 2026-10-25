@@ -1,4 +1,3 @@
-import { resourceDesktop } from "./testing/resource-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -44,17 +43,12 @@ const initial: ConfirmedSession = {
 };
 
 function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop {
-	return resourceDesktop({
-		readWorkspaceCatalogue: async () => {
-			throw Error("unused");
-		},
-		readWorkspace: async () => {
-			throw Error("unused");
-		},
-		readSavedViews: async () => ({ status: "applied", views: [] }),
+	return {
+		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		resourceState: async () => initial,
+		readSession: async () => initial,
+		refreshSession: async () => initial,
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
@@ -70,7 +64,7 @@ function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo,
-	});
+	};
 }
 
 function confirmed(items: Array<typeof item> = []): ConfirmedTodo {

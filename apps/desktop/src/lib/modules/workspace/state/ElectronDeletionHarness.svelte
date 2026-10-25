@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
+	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
 	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
+	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
 	onMount(() => {
 		void fixture.start();

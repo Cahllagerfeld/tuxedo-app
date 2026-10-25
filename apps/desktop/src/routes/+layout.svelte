@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		SavedViewsResource,
-		setSavedViews,
-	} from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
-	import { savedViewsDependency } from "#lib/modules/workspace/state/saved-views.js";
+	import { setSavedViews } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 	import { setAppState } from "#lib/app/app-context.js";
 	import { AppState } from "#lib/app/app-state.svelte.js";
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
@@ -15,23 +11,17 @@
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	import { ModeWatcher } from "mode-watcher";
 	import { workspaceRouting } from "#lib/app/workspace-routing.svelte.js";
-	import { goto, invalidate } from "$app/navigation";
+	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page, navigating } from "$app/state";
 	import "./layout.css";
 	let { children } = $props();
 
 	setShortcutScope();
-	const appState = new AppState(workspaceRouting());
+	const { workspace, savedViews } = workspaceRouting();
+	const appState = new AppState(workspace);
 	setAppState(appState);
-	setSavedViews(
-		new SavedViewsResource(
-			window.desktop,
-			appState.workspace,
-			() => page.data.savedViews,
-			(workspaceId) => invalidate(savedViewsDependency(workspaceId))
-		)
-	);
+	setSavedViews(savedViews);
 	const busy = $derived(
 		appState.workspace.isOperating || appState.workspace.isLoading || !!navigating.to
 	);

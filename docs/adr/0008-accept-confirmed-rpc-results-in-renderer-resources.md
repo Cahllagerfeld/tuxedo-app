@@ -1,0 +1,7 @@
+# Accept confirmed RPC results in renderer resources
+
+The typed preload interface is RPC: domain functions return confirmed data that the renderer can display directly. SvelteKit loaders read the shared session and Workspace-scoped saved views for initial/navigation data. `WorkspaceCommands` accepts those seeds and subsequent lifecycle snapshots or scoped Todo-file results before releasing command admission; `SavedViewsResource` independently accepts scoped view results. SvelteKit owns destinations and history, with activation only after committed navigation.
+
+This supersedes [ADR-0007](0007-own-renderer-resources-in-sveltekit-route-data.md). Route-only data ownership required returning a snapshot, extracting a receipt, reading it again through a loader, and confirming publication. Direct acceptance removes that second read, speculative provenance, publication checks, and saved-view fingerprints while retaining backend serialization, scope/revision checks, external-edit protection, and Undo.
+
+`readSession` is a pure confirmed snapshot read for loaders and observation notifications. `refreshSession` explicitly reconciles disk at host startup and read-only recovery; unchanged refreshes preserve revision and Undo. Relevant external-change notifications received during commands are coalesced and read afterward. Failed reads retain displayed data and block stale writes; ambiguous write responses recover through reads without automatic write retries. Same-Workspace updates keep UI mounted, and preloading never activates a Workspace or consumes Undo.
