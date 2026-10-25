@@ -155,7 +155,8 @@ export class WorkspaceCommands {
 			if (
 				outcome.status === "applied" &&
 				this.routes.destination() &&
-				this.activeWorkspace?.id !== this.routes.destination()
+				(this.value?.session.status !== "ready" ||
+					this.activeWorkspace?.id !== this.routes.destination())
 			)
 				await this.navigate(
 					this.value?.session.status === "ready" ? this.activeWorkspace!.id : null,

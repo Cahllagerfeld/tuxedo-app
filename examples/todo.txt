@@ -75,6 +75,7 @@ Remove a saved Workspace from its Home row options and confirm without deleting 
 Return Home to see the last-opened Workspace first while other Workspaces keep their creation order +TuxedoApp @review
 Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
 See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
+Retry a failed refresh after a Todo file disappears to return Home with its missing-file message +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01

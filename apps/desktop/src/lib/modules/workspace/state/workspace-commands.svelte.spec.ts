@@ -216,6 +216,38 @@ test("a lost write response preserves contents and blocks writes until read-only
 	expect(writes).toBe(1);
 });
 
+test("Retry returns Home when a failed observation read recovers to Empty with the same Active workspace", async () => {
+	let reads = 0;
+	const f = fixture(async (channel) => {
+		if (channel === "tuxedo:read-session" && ++reads > 1) throw Error("Read unavailable");
+	});
+	await f.start();
+	const events = observation();
+	const stop = f.commands.observe(events.source, () => {});
+	f.setNavigating(true);
+	events.signal(6);
+	await f.commands.committedDestination(workspaceId);
+	f.setNavigating(false);
+	expect(f.commands.recoveryError).toBe("Read unavailable");
+	expect(f.commands.todoFile).not.toBeNull();
+	f.setBackend({
+		scope,
+		revision: 6,
+		session: {
+			status: "empty",
+			catalogue: { version: 1, active_workspace_id: workspaceId, workspaces: [workspace] },
+			warning: "Todo file missing",
+		},
+	});
+	expect(await f.commands.retry()).toEqual({ status: "applied" });
+	expect(f.navigations).toEqual([{ id: null, replace: true }]);
+	expect(f.commands.recoveryError).toBe("");
+	expect(f.commands.warning).toBe("Todo file missing");
+	expect(f.commands.isOperating).toBe(false);
+	expect(f.calls).toEqual(["tuxedo:read-session", "tuxedo:read-session", "tuxedo:refresh-session"]);
+	stop();
+});
+
 test("stale revisions and another runtime's results cannot replace confirmed contents", async () => {
 	const f = fixture(async (channel) =>
 		channel === "tuxedo:set-todo-completion" ? { status: "applied", confirmed: todo(6) } : undefined
