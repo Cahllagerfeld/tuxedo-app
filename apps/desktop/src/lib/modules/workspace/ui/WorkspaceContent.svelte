@@ -5,6 +5,8 @@
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceSessionActionResult } from "../state/workspace-session-types.js";
+	import type { WorkspaceView } from "../state/workspace-view.js";
 	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
@@ -13,6 +15,8 @@
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
+		view: WorkspaceView;
+		deleteWorkspace: (id: string) => Promise<WorkspaceSessionActionResult>;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		openWorkspaceCreationDialog: () => void;
@@ -22,6 +26,8 @@
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
+		view,
+		deleteWorkspace,
 		todoFilter,
 		filteredTodoItems,
 		openWorkspaceCreationDialog,
@@ -30,7 +36,7 @@
 	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
 	$effect.pre(() => {
 		if (
-			!workspace.todoFile &&
+			!view.todoFile &&
 			document.activeElement?.closest("[data-todo-reader], [data-todo-details]")
 		) {
 			void tick().then(() => emptyState?.focusViewport());
@@ -61,6 +67,7 @@
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceToolbar
 		{workspace}
+		{view}
 		{todoFilter}
 		{bulkSelection}
 		{filteredTodoItems}
@@ -68,10 +75,11 @@
 		closeDetails={() => reader?.closeDetails()}
 		focusTodo={(todo) => void reader?.focusTodo(todo)}
 	/>
-	{#if workspace.todoFile}
+	{#if view.todoFile}
 		<WorkspaceTodoReader
 			bind:this={reader}
 			{workspace}
+			{view}
 			{todoFilter}
 			{filteredTodoItems}
 			{bulkSelection}
@@ -80,9 +88,9 @@
 	{:else}
 		<WorkspaceEmptyState
 			bind:this={emptyState}
-			session={workspace.session}
-			deleteWorkspace={workspace.deleteWorkspace}
-			disabled={workspace.isOperating || workspace.isLoading}
+			session={view.session}
+			{deleteWorkspace}
+			disabled={workspace.isOperating || view.isLoading}
 			{openWorkspaceCreationDialog}
 		/>
 	{/if}

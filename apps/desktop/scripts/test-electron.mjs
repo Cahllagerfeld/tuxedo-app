@@ -1,5 +1,5 @@
 import { readConfirmation, activateWorkspace } from "./read-confirmation.mjs";
-import { routeDataWorkflow } from "./route-data-workflow.mjs";
+import { rpcWorkflow } from "./rpc-workflow.mjs";
 import { workspaceSetupWorkflow } from "./workspace-setup-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
@@ -84,11 +84,10 @@ try {
 	// Loading the entry route resumes the backend's Active workspace, like a fresh launch.
 	const reopen = () => page.goto(new URL("/", page.url()).href);
 	await assertWindowState(page);
-	await page.waitForFunction(() => typeof window.desktop?.readWorkspaceCatalogue === "function");
-	const confirmed = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
-	assert.equal(confirmed.status, "ready");
-	assert.equal(confirmed.selection, null);
-	assert.deepEqual(confirmed.catalogue.workspaces, []);
+	await page.waitForFunction(() => typeof window.desktop?.readSession === "function");
+	const confirmed = await page.evaluate(() => window.desktop.readSession({}));
+	assert.equal(confirmed.session.status, "empty");
+	assert.deepEqual(confirmed.session.catalogue.workspaces, []);
 	await application.evaluate(({ dialog }) => {
 		globalThis.originalOpenDialog = dialog.showOpenDialog;
 		dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
@@ -113,7 +112,7 @@ try {
 	assert.equal(
 		await page.evaluate(async () => {
 			try {
-				await window.desktop.readWorkspaceCatalogue({ path: "/etc/passwd" });
+				await window.desktop.readSession({ path: "/etc/passwd" });
 				return false;
 			} catch {
 				return true;
@@ -342,7 +341,13 @@ try {
 		},
 	});
 	assert.equal(savedView.status, "applied");
-	assert.deepEqual(await page.evaluate(() => window.desktop.readSavedViews({})), savedView);
+	assert.deepEqual(
+		await page.evaluate(
+			(workspaceId) => window.desktop.readSavedViews({ workspaceId }),
+			savedView.workspaceId
+		),
+		savedView
+	);
 	await assert.rejects(
 		page.evaluate((input) => window.desktop.saveView(input), {
 			workspaceId: created.confirmed.session.catalogue.active_workspace_id,
@@ -449,7 +454,7 @@ try {
 	await writeFile(todoPath, bulkSource);
 	const bulkSession = await activateWorkspace(
 		page,
-		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
 			.active_workspace_id
 	);
 	const bulkTarget = {
@@ -512,7 +517,7 @@ try {
 	await writeFile(todoPath, beforeBulk);
 	switched.confirmed = await activateWorkspace(
 		page,
-		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
 			.active_workspace_id
 	);
 
@@ -552,7 +557,7 @@ try {
 	await writeFile(todoPath, "(A) Call Mom +Family @phone\nx 2026-07-10 Finished\n");
 	await activateWorkspace(
 		page,
-		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
 			.active_workspace_id
 	);
 	const missing = await page.evaluate(() =>
@@ -575,7 +580,13 @@ try {
 		restored.session.catalogue.workspaces.map((workspace) => workspace.name),
 		["Personal", "Second"]
 	);
-	assert.deepEqual(await page.evaluate(() => window.desktop.readSavedViews({})), savedView);
+	assert.deepEqual(
+		await page.evaluate(
+			(workspaceId) => window.desktop.readSavedViews({ workspaceId }),
+			savedView.workspaceId
+		),
+		savedView
+	);
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Calls", exact: true }).click();
 	await page.getByRole("searchbox", { name: "Search Todo items" }).waitFor();
@@ -584,28 +595,56 @@ try {
 		"Call"
 	);
 	await page.getByRole("button", { name: "Clear search", exact: true }).click();
-	// Hold a real loader read after a real saved-view commit, across native route publication.
-	await application.evaluate(({ ipcMain }) => {
+	// Saved-view writes refresh their own loader while sharing command admission.
+	const preloadWorkspaceId = restored.session.catalogue.workspaces.find(
+		(workspace) => workspace.name === "Second"
+	).id;
+	await application.evaluate(({ ipcMain }, preloadWorkspaceId) => {
 		globalThis.savedViewReadHandler = ipcMain._invokeHandlers.get("tuxedo:read-saved-views");
+		globalThis.saveViewHandler = ipcMain._invokeHandlers.get("tuxedo:save-view");
 		globalThis.savedViewReads = 0;
-		globalThis.savedViewReadEntered = new Promise((resolve) => {
-			globalThis.enterSavedViewRead = resolve;
+		globalThis.savedViewWriteEntered = new Promise((resolve) => {
+			globalThis.enterSavedViewWrite = resolve;
+		});
+		globalThis.savedViewPreloaded = new Promise((resolve) => {
+			globalThis.finishSavedViewPreload = resolve;
 		});
 		ipcMain.removeHandler("tuxedo:read-saved-views");
 		ipcMain.handle("tuxedo:read-saved-views", async (...args) => {
 			globalThis.savedViewReads++;
-			globalThis.enterSavedViewRead();
-			await new Promise((resolve) => {
-				globalThis.releaseSavedViewRead = resolve;
-			});
-			return globalThis.savedViewReadHandler(...args);
+			const result = await globalThis.savedViewReadHandler(...args);
+			if (args[1].workspaceId === preloadWorkspaceId) globalThis.finishSavedViewPreload();
+			return result;
 		});
-	});
+		ipcMain.removeHandler("tuxedo:save-view");
+		ipcMain.handle("tuxedo:save-view", async (...args) => {
+			const result = await globalThis.saveViewHandler(...args);
+			globalThis.enterSavedViewWrite();
+			await new Promise((resolve) => {
+				globalThis.releaseSavedViewWrite = resolve;
+			});
+			return result;
+		});
+	}, preloadWorkspaceId);
+	await page.evaluate((workspaceId) => {
+		const link = document.createElement("a");
+		link.href = `/workspaces/${workspaceId}`;
+		link.textContent = "Preload Second";
+		link.dataset.sveltekitPreloadData = "hover";
+		link.style.cssText = "position:fixed;top:0;right:0;z-index:10000";
+		document.body.append(link);
+	}, preloadWorkspaceId);
+	await page.getByRole("link", { name: "Preload Second", exact: true }).hover();
+	await application.evaluate(() => globalThis.savedViewPreloaded);
+	await page
+		.getByRole("link", { name: "Preload Second", exact: true })
+		.evaluate((link) => link.remove());
+	const savedReadsBeforeWrite = await application.evaluate(() => globalThis.savedViewReads);
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Save current view", exact: true }).click();
 	await page.getByRole("textbox", { name: "View name", exact: true }).fill("All personal");
 	await page.getByRole("button", { name: "Save view", exact: true }).click();
-	await application.evaluate(() => globalThis.savedViewReadEntered);
+	await application.evaluate(() => globalThis.savedViewWriteEntered);
 	assert.equal(
 		await page.getByRole("button", { name: "Save view", exact: true }).isDisabled(),
 		true
@@ -614,56 +653,27 @@ try {
 		await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).isDisabled(),
 		true
 	);
-	await application.evaluate(() => globalThis.releaseSavedViewRead());
+	await application.evaluate(() => globalThis.releaseSavedViewWrite());
 	await page.getByRole("dialog").waitFor({ state: "hidden" });
-	await page.getByRole("button", { name: "Saved views", exact: true }).click();
-	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
-	await page.keyboard.press("Escape");
-
-	// Fail the next read after a committed delete. Native load error handling must retain route data.
+	assert.equal(
+		await application.evaluate(() => globalThis.savedViewReads),
+		savedReadsBeforeWrite + 1,
+		"A saved-view write refreshes its loader"
+	);
 	await application.evaluate(({ ipcMain }) => {
-		ipcMain.removeHandler("tuxedo:read-saved-views");
-		ipcMain.handle("tuxedo:read-saved-views", () => ({
-			status: "rejected",
-			message: "Held saved-view refresh failed",
-		}));
+		ipcMain.removeHandler("tuxedo:save-view");
+		ipcMain.handle("tuxedo:save-view", globalThis.saveViewHandler);
+		delete globalThis.saveViewHandler;
 	});
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
 	await page.getByRole("button", { name: "Delete saved view Calls", exact: true }).click();
-	await page.getByText(/View deleted, but saved views could not be refreshed/).waitFor();
-	await page.getByRole("button", { name: "Calls", exact: true }).waitFor();
-	assert.equal(
-		await page.getByRole("button", { name: "Delete saved view Calls", exact: true }).isDisabled(),
-		true
-	);
-	assert.equal(
-		await page.getByRole("button", { name: "Save current view", exact: true }).isDisabled(),
-		true
-	);
-	assert.equal(
-		await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).isEnabled(),
-		true
-	);
-	await application.evaluate(({ ipcMain }) => {
-		ipcMain.removeHandler("tuxedo:read-saved-views");
-		ipcMain.handle("tuxedo:read-saved-views", (...args) => {
-			globalThis.savedViewReads++;
-			return globalThis.savedViewReadHandler(...args);
-		});
-	});
-	await page.getByRole("button", { name: "Retry saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Calls", exact: true }).waitFor({ state: "hidden" });
-	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
 	assert.equal(
-		await page.getByRole("button", { name: "Save current view", exact: true }).isEnabled(),
-		true
+		await application.evaluate(() => globalThis.savedViewReads),
+		savedReadsBeforeWrite + 2,
+		"Deleting a saved view refreshes its loader"
 	);
-	await page.keyboard.press("Escape");
-	await page.reload();
-	await page.getByText("Call Mom", { exact: true }).waitFor();
-	await page.getByRole("button", { name: "Saved views", exact: true }).click();
-	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
-	assert.equal(await page.getByRole("button", { name: "Calls", exact: true }).count(), 0);
 	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Select workspace: Personal" }).click();
 	await page.getByRole("menuitem", { name: "Second", exact: true }).click();
@@ -675,6 +685,13 @@ try {
 	await page.getByRole("menuitem", { name: "Personal", exact: true }).click();
 	await page.getByText("Call Mom", { exact: true }).waitFor();
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
+	assert.equal(await page.getByRole("button", { name: "Calls", exact: true }).count(), 0);
+	await page.keyboard.press("Escape");
+	await page.reload();
+	await page.getByText("Call Mom", { exact: true }).waitFor();
+	await page.getByRole("button", { name: "Saved views", exact: true }).click();
+	await page.getByRole("button", { name: "All personal", exact: true }).waitFor();
 	await page.getByRole("button", { name: "Delete saved view All personal", exact: true }).click();
 	await page.getByText("No saved views yet.", { exact: true }).waitFor();
 	await page.keyboard.press("Escape");
@@ -682,93 +699,18 @@ try {
 		() => globalThis.savedViewReads
 	);
 	console.log(
-		"Saved-view route loads retain data on failure, share admission through publication, and recover with read-only Retry across real IPC, reload, and Workspace switches."
+		"Saved-view loaders publish writes and remain scoped across reload and Workspace switches."
 	);
 
-	// Pure IPC reads keep the mounted controller's mutation and observation target intact.
+	// Stable session reads preserve Undo and the renderer's editing target.
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).click();
 	await page.getByRole("button", { name: "Undo completion", exact: true }).waitFor();
 	const beforeReads = await readConfirmation(page);
-	const catalogueBytes = await readFile(join(directory, "workspaces.json"), "utf8");
-	const inactiveId = beforeReads.session.catalogue.workspaces.find(
-		(workspace) => workspace.name === "Second"
-	).id;
-	for (let n = 0; n < 2; n++) {
-		const inactive = await page.evaluate(
-			(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
-			inactiveId
-		);
-		assert.equal(inactive.status, "ready");
-		assert.equal(inactive.workspace.id, inactiveId);
-		assert.equal(inactive.todo_file.items[0].description, "Second item");
-		assert.deepEqual(inactive.provenance, { status: "speculative" });
-		const catalogueRead = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
-		assert.equal(catalogueRead.status, "ready");
-		assert.equal(catalogueRead.selection.revision, beforeReads.revision);
-		assert.equal(
-			catalogueRead.selection.workspaceId,
-			beforeReads.session.catalogue.active_workspace_id
-		);
-		assert.equal(catalogueRead.selection.undoLabel, "Undo completion");
-	}
-	assert.deepEqual(
-		await page.evaluate(() =>
-			window.desktop.readWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })
-		),
-		{ status: "rejected", reason: "workspace", message: "Workspace does not exist." }
-	);
-	await rm(secondPath);
-	try {
-		const failedRead = await page.evaluate(
-			(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
-			inactiveId
-		);
-		assert.equal(failedRead.status, "rejected");
-		assert.equal(failedRead.reason, "todo-file");
-	} finally {
-		await writeFile(secondPath, "Second item");
-	}
-	await writeFile(join(directory, "workspaces.json"), "corrupt");
-	try {
-		const failedCatalogue = await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}));
-		assert.equal(failedCatalogue.status, "rejected");
-		assert.equal(failedCatalogue.reason, "catalogue");
-		assert.equal(await readFile(join(directory, "workspaces.json"), "utf8"), "corrupt");
-	} finally {
-		await writeFile(join(directory, "workspaces.json"), catalogueBytes);
-	}
-	assert.deepEqual(await readConfirmation(page), beforeReads);
-	assert.equal(await readFile(join(directory, "workspaces.json"), "utf8"), catalogueBytes);
-	const activeRead = await page.evaluate(
-		(workspaceId) => window.desktop.readWorkspace({ workspaceId }),
-		beforeReads.session.catalogue.active_workspace_id
-	);
-	assert.equal(activeRead.provenance.status, "confirmed");
-	assert.equal(activeRead.provenance.selection.revision, beforeReads.revision);
-	await assert.rejects(
-		page.evaluate(
-			(workspaceId) => window.desktop.readWorkspace({ workspaceId, todoPath: "/etc/passwd" }),
-			inactiveId
-		)
-	);
-	await assert.rejects(
-		page.evaluate(() => window.desktop.readWorkspaceCatalogue({ path: "/etc/passwd" }))
-	);
+	for (let n = 0; n < 2; n++) assert.deepEqual(await readConfirmation(page), beforeReads);
+	await assert.rejects(page.evaluate(() => window.desktop.readSession({ path: "/etc/passwd" })));
 	await page.getByRole("button", { name: "Undo completion", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).waitFor();
-	await page.getByRole("button", { name: "Actions for Call Mom", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
-	await page.getByRole("textbox", { name: /Description/ }).fill("Read-safe Call Mom");
-	await page.getByRole("button", { name: "Save changes", exact: true }).click();
-	await page.getByRole("dialog").waitFor({ state: "hidden" });
-	await page.getByText("Read-safe Call Mom", { exact: true }).waitFor();
-	assert.match(await readFile(todoPath, "utf8"), /Read-safe Call Mom/);
-	assert.equal(await readFile(secondPath, "utf8"), "Second item");
-	await page.getByRole("button", { name: "Undo edit", exact: true }).click();
-	await page.getByText("Call Mom", { exact: true }).waitFor();
-	console.log(
-		"Repeated inactive preload/IPC reads preserve selection, revision, Undo and the original editing target."
-	);
+	console.log("Repeated session reads preserve selection, revision and Undo.");
 
 	// Real observation signals cross preload/IPC and use the mounted controller.
 	await writeFile(
@@ -801,8 +743,7 @@ try {
 		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n\n"
 	);
 	await page.waitForFunction(
-		async (revision) =>
-			(await window.desktop.readWorkspaceCatalogue({})).selection?.revision > revision,
+		async (revision) => (await window.desktop.readSession({})).revision > revision,
 		observed.revision
 	);
 	assert.equal(
@@ -981,7 +922,7 @@ try {
 	await writeFile(deletionPath, bulkDeletionSource);
 	const bulkDeletionSession = await activateWorkspace(
 		page,
-		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
 			.active_workspace_id
 	);
 	const bulkDeletionTarget = {
@@ -1421,8 +1362,8 @@ try {
 		try {
 			await untrusted.loadURL("about:blank");
 			return await untrusted.webContents.executeJavaScript(`Promise.all([
-				window.desktop.readWorkspaceCatalogue({}),
-				window.desktop.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" })
+				window.desktop.readSession({}),
+				window.desktop.readSavedViews({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" })
 			].map((request) => request.then(() => "accepted", (error) => error.message)))`);
 		} finally {
 			untrusted.destroy();
@@ -1448,34 +1389,15 @@ try {
 		true
 	);
 	await application.evaluate(({ ipcMain }) => {
-		globalThis.originalWorkspaceRead = ipcMain._invokeHandlers.get("tuxedo:read-workspace");
-		globalThis.originalCatalogueRead = ipcMain._invokeHandlers.get(
-			"tuxedo:read-workspace-catalogue"
-		);
-		ipcMain.removeHandler("tuxedo:read-workspace");
-		ipcMain.handle("tuxedo:read-workspace", () => ({
-			status: "ready",
-			provenance: { status: "confirmed" },
-		}));
-		ipcMain.removeHandler("tuxedo:read-workspace-catalogue");
-		ipcMain.handle("tuxedo:read-workspace-catalogue", () => ({
-			status: "ready",
-			selection: { revision: -1 },
-		}));
+		globalThis.originalSessionRead = ipcMain._invokeHandlers.get("tuxedo:read-session");
+		ipcMain.removeHandler("tuxedo:read-session");
+		ipcMain.handle("tuxedo:read-session", () => ({ scope: "invalid", revision: -1 }));
 	});
-	await assert.rejects(
-		page.evaluate(() =>
-			window.desktop.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000" })
-		)
-	);
-	await assert.rejects(page.evaluate(() => window.desktop.readWorkspaceCatalogue({})));
+	await assert.rejects(page.evaluate(() => window.desktop.readSession({})));
 	await application.evaluate(({ ipcMain }) => {
-		ipcMain.removeHandler("tuxedo:read-workspace");
-		ipcMain.handle("tuxedo:read-workspace", globalThis.originalWorkspaceRead);
-		ipcMain.removeHandler("tuxedo:read-workspace-catalogue");
-		ipcMain.handle("tuxedo:read-workspace-catalogue", globalThis.originalCatalogueRead);
-		delete globalThis.originalWorkspaceRead;
-		delete globalThis.originalCatalogueRead;
+		ipcMain.removeHandler("tuxedo:read-session");
+		ipcMain.handle("tuxedo:read-session", globalThis.originalSessionRead);
+		delete globalThis.originalSessionRead;
 	});
 	const signal = {
 		scope: "9426bd98-a6dd-48eb-b1ab-037d82983ae1",
@@ -1564,7 +1486,7 @@ try {
 		"Sandboxed preload rejects malformed responses and discards malformed observation events."
 	);
 
-	await routeDataWorkflow(application, page, directory, development);
+	await rpcWorkflow(application, page, directory);
 
 	const routeIds = {};
 	for (const [name, item] of [
@@ -1587,7 +1509,7 @@ try {
 		await page.getByLabel("Workspace home", { exact: true }).waitFor();
 	};
 	const activeId = async () =>
-		(await page.evaluate(() => window.desktop.readWorkspaceCatalogue({}))).catalogue
+		(await page.evaluate(() => window.desktop.readSession({}))).session.catalogue
 			.active_workspace_id;
 	const expectRoute = async (name, item) => {
 		await page.waitForURL(routeUrl(`/workspaces/${routeIds[name]}`));

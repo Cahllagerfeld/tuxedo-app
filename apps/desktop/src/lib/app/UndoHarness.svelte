@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { AppState } from "./app-state.svelte";
 	import AppNavbar from "./AppNavbar.svelte";
-	import { workspaceRouteFixture } from "#lib/modules/workspace/state/testing/workspace-route-fixture.svelte.js";
+	import { workspaceFixture } from "#lib/modules/workspace/state/testing/workspace-fixture.svelte.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
@@ -11,8 +10,8 @@
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
-	const app = new AppState(fixture.commands);
+	const fixture = workspaceFixture(desktop);
+	const app = fixture.createApp();
 	onMount(() => {
 		void fixture.start();
 	});
@@ -25,6 +24,6 @@
 	>Create item</button
 >
 <button onclick={() => fixture.reload()}>Refresh</button>
-<p aria-label="Item count">{app.workspace.todoFile?.items.length ?? 0}</p>
+<p aria-label="Item count">{app.todoFile?.items.length ?? 0}</p>
 <input aria-label="Draft" />
 <Toaster />

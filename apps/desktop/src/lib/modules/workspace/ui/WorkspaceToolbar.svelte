@@ -22,6 +22,7 @@
 	import { toast } from "svelte-sonner";
 	import X from "@lucide/svelte/icons/x";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+	import type { WorkspaceView } from "../state/workspace-view.js";
 	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
@@ -30,6 +31,7 @@
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
+		view: WorkspaceView;
 		todoFilter: TodoFilterState;
 		filteredTodoItems: readonly TodoItem[];
 		closeDetails: () => void;
@@ -40,6 +42,7 @@
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
+		view,
 		todoFilter,
 		filteredTodoItems,
 		closeDetails,
@@ -177,7 +180,7 @@
 		})
 	);
 	createHotkey(searchShortcut.key, toggleSearch, () => ({
-		enabled: (shortcutScope?.available ?? true) && !!workspace.todoFile && !workspace.writesBlocked,
+		enabled: (shortcutScope?.available ?? true) && !!view.todoFile && !workspace.writesBlocked,
 		ignoreInputs: false,
 		preventDefault: true,
 		requireReset: true,
@@ -225,7 +228,7 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-{#if workspace.todoFile}
+{#if view.todoFile}
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 		<div>
 			{#if bulkSelection.active}
@@ -486,9 +489,9 @@
 			{#if !bulkSelection.active}
 				<TodoEditorDialog
 					bind:open={creationOpen}
-					todoFile={workspace.todoFile}
+					todoFile={view.todoFile}
 					saveTodoItem={workspace.createTodo}
-					workspaceName={workspace.activeWorkspace?.name ?? ""}
+					workspaceName={view.activeWorkspace?.name ?? ""}
 					showDeferred={todoFilter.showDeferred}
 					initialProject={todoFilter.selectedProject}
 					initialContext={todoFilter.selectedContext}

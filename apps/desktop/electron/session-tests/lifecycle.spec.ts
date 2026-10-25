@@ -174,20 +174,18 @@ test("Todo-item writes and Workspace lifecycle commands share ordering and recov
 	};
 	const completed = backend.setTodoCompletion({ ...target, completed: true });
 	const failed = backend.switchWorkspace({ workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
-	const resource = backend.readWorkspace({ workspaceId: target.workspaceId });
+	const resource = backend.readSession({});
 	const stale = backend.deleteTodo(target);
 	const read = readConfirmation(backend);
 	expect(await completed).toMatchObject({ status: "applied" });
 	expect(await failed).toMatchObject({ status: "rejected" });
 	const confirmed = await resource;
 	expect(confirmed).toMatchObject({
-		status: "ready",
-		todo_file: { items: [{ completed: true }] },
+		session: { status: "ready", todo_file: { items: [{ completed: true }] } },
 	});
 	expect(await stale).toMatchObject({ status: "rejected" });
-	if (confirmed.status !== "ready" || confirmed.provenance.status !== "confirmed")
-		throw Error("Expected confirmed Workspace contents");
-	expect((await read).revision).toBe(confirmed.provenance.selection.revision);
+	if (confirmed.session.status !== "ready") throw Error("Expected confirmed Workspace contents");
+	expect((await read).revision).toBe(confirmed.revision);
 	expect(await readFile(todoPath, "utf8")).toMatch(/^x \d{4}-\d{2}-\d{2} First\n$/);
 });
 
@@ -204,7 +202,7 @@ test("unexpected lifecycle defects are diagnosed with operation context and safe
 	});
 	backends.push(backend);
 	try {
-		const before = await backend.readWorkspaceCatalogue({});
+		const before = await backend.readSession({});
 		fail = true;
 		expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toEqual({
 			status: "rejected",
@@ -212,7 +210,7 @@ test("unexpected lifecycle defects are diagnosed with operation context and safe
 		});
 		expect(diagnostic.mock.calls.flat().join(" ")).toContain("createWorkspace");
 		expect(diagnostic.mock.calls.flat().join(" ")).toContain("private diagnostic detail");
-		expect(await backend.readWorkspaceCatalogue({})).toEqual(before);
+		expect(await backend.readSession({})).toEqual(before);
 		await expect(readFile(cataloguePath)).rejects.toMatchObject({ code: "ENOENT" });
 		fail = false;
 		expect(await backend.createWorkspace({ name: "Work", color: "blue", todoPath })).toMatchObject({
@@ -253,7 +251,7 @@ test("runtime disposal lets an admitted catalogue replacement finish before rele
 	await disposed;
 	const restarted = createSessionBackend(cataloguePath);
 	backends.push(restarted);
-	const catalogue = await restarted.readWorkspaceCatalogue({});
+	const catalogue = (await restarted.refreshSession({})).session;
 	if (catalogue.status !== "ready" || !catalogue.catalogue.active_workspace_id)
 		throw Error("Expected remembered workspace");
 	expect(

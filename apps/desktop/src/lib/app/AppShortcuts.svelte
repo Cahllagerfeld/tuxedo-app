@@ -52,7 +52,7 @@
 			}))
 			.filter((group) => group.shortcuts.length > 0)
 	);
-	const idle = $derived(!app.workspace.isLoading && !app.workspace.isOperating);
+	const idle = $derived(!app.isLoading && !app.workspace.isOperating);
 	const actions = {
 		workspace: async () => {
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);

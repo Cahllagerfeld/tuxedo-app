@@ -190,7 +190,7 @@ test("debounced signals are suppressed while a resource read holds admission and
 	const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
 	await writeFile(path, "External edit");
 	pause = true;
-	const restore = backend.readWorkspace({ workspaceId });
+	const restore = backend.refreshSession({});
 	try {
 		await expect.poll(() => reading).toBe(true);
 		signal();
@@ -200,17 +200,16 @@ test("debounced signals are suppressed while a resource read holds admission and
 		resume();
 	}
 	expect(await restore).toMatchObject({
-		status: "ready",
-		todo_file: { items: [{ description: "External edit" }] },
+		session: { status: "ready", todo_file: { items: [{ description: "External edit" }] } },
 	});
-	await expect.poll(() => changes.length).toBe(1);
+	// The explicit read already confirmed this edit, so its queued signal is redundant.
+	expect(changes).toEqual([]);
 	await writeFile(cataloguePath, "invalid");
 	await writeFile(path, "External after catalogue failure");
 	signal();
 	await expect.poll(() => subscribed).toBe(false);
-	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await backend.readSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	const settled = changes.length;
 	signal();
@@ -288,9 +287,7 @@ test("disposal releases observation resources when an admitted resource read fin
 	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 		throw Error("setup");
 	pause = true;
-	const restore = backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const restore = backend.refreshSession({});
 	let disposal: Promise<void> | undefined;
 	let stopping: Promise<void> | undefined;
 	try {
@@ -388,7 +385,7 @@ test("observation attaches only to confirmed Active Todo files and stops in Empt
 	};
 	const backend = createSessionBackend(join(directory, "workspaces.json"), observation);
 	backends.push(backend);
-	await backend.readWorkspaceCatalogue({});
+	await backend.readSession({});
 	expect([...paths]).toEqual([]);
 	const firstPath = join(directory, "first.todo");
 	const secondPath = join(directory, "second.todo");

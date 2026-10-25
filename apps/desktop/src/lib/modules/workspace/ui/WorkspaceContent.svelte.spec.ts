@@ -1,4 +1,4 @@
-import { resourceDesktop, type ResourceFixture } from "../state/testing/resource-desktop";
+import { loaderDesktop } from "../state/testing/loader-desktop";
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -52,18 +52,13 @@ const initial: ConfirmedSession = {
 		todo_file: { path: "/tmp/work.todo", items: [todo], skipped: [] },
 	},
 };
-function adapter(overrides: ResourceFixture = {}): DesktopAPI {
-	return resourceDesktop({
-		readWorkspaceCatalogue: async () => {
-			throw Error("unused");
-		},
-		readWorkspace: async () => {
-			throw Error("unused");
-		},
-		readSavedViews: async () => ({ status: "applied", views: [] }),
+function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
+	return loaderDesktop({
+		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		resourceState: async () => initial,
+		readSession: async () => initial,
+		refreshSession: overrides.readSession ?? (async () => initial),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		selectNewTodoFile: async () => null,
@@ -131,7 +126,7 @@ test("Due-date sorting changes only the view and restores reordering in File ord
 		.mockResolvedValue({ status: "rejected", message: "unused" });
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					session: {
@@ -188,7 +183,7 @@ test("restores the Workspace sort choice and retains it when saving fails", asyn
 	const ready = initial.session;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...ready,
@@ -239,7 +234,7 @@ test("details preserve the raw line, show all attributes, resize, and follow key
 	try {
 		render(Harness, {
 			desktop: adapter({
-				resourceState: async () =>
+				readSession: async () =>
 					({
 						...initial,
 						session: {
@@ -348,7 +343,7 @@ test("an external replacement clears details and cannot reopen a reused physical
 	let notify!: (change: TodoFileChange) => void;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -374,22 +369,22 @@ test("an external replacement clears details and cannot reopen a reused physical
 	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
 	const panel = page.getByRole("complementary", { name: "Todo item details" });
 	await expect.element(panel).toBeVisible();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("Replacement", { exact: true })).toBeVisible();
 	await expect.element(panel).not.toBeInTheDocument();
-	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 3, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
 	await expect.element(panel).not.toBeInTheDocument();
 });
 
-test("empty-query search stays open across Ready → Empty → Ready without remounting", async () => {
+test("Retry keeps Home visible when an unreadable Workspace becomes available again", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const catalogue = initial.session.catalogue;
 	let loads = 0;
 	render(Harness, {
 		restoration: true,
 		desktop: adapter({
-			resourceState: async () => {
+			readSession: async () => {
 				loads += 1;
 				return loads === 2
 					? {
@@ -412,10 +407,9 @@ test("empty-query search stays open across Ready → Empty → Ready without rem
 	await expect.element(toggle).not.toBeInTheDocument();
 	await expect.element(search).not.toBeInTheDocument();
 	await restore.click();
-	await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
-	await expect.element(search).toBeVisible();
-	await expect.element(search).toHaveValue("");
-	expect(loads).toBe(3);
+	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
+	await expect.element(page.getByRole("link", { name: "Work", exact: true })).toBeVisible();
+	await expect.element(search).not.toBeInTheDocument();
 });
 
 test("an unreadable external reload transfers detail focus to the Empty-state viewport", async () => {
@@ -426,7 +420,7 @@ test("an unreadable external reload transfers detail focus to the Empty-state vi
 	let notify!: (change: TodoFileChange) => void;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				loads++
 					? {
 							scope,
@@ -447,7 +441,7 @@ test("an unreadable external reload transfers detail focus to the Empty-state vi
 	(
 		panel.getByRole("button", { name: "Close details", exact: true }).element() as HTMLElement
 	).focus();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("Todo file unreadable", { exact: true })).toBeVisible();
 	await expect.element(panel).not.toBeInTheDocument();
 	const viewport = document.querySelector<HTMLElement>(
@@ -520,7 +514,7 @@ test("idle observation updates the list, counts, facets, and skipped lines with 
 	let loads = 0;
 	let notify!: (event: TodoFileChange) => void;
 	render(Harness, {
-		desktop: adapter({ resourceState: async () => (loads++ ? refreshed : initial) }),
+		desktop: adapter({ readSession: async () => (loads++ ? refreshed : initial) }),
 		observation: {
 			onTodoFileChanged(listener) {
 				notify = listener;
@@ -529,7 +523,7 @@ test("idle observation updates the list, counts, facets, and skipped lines with 
 		},
 	});
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("New item", { exact: true })).toBeVisible();
 	await expect.element(page.getByText("Plan release", { exact: true })).not.toBeInTheDocument();
 	await expect.element(page.getByLabelText("Summary counts")).toHaveTextContent("1/1");
@@ -553,7 +547,7 @@ test("conflict recovery and delayed observation never stack error and info notic
 	let loads = 0;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => (loads++ ? refreshed : initial),
+			readSession: async () => (loads++ ? refreshed : initial),
 			setTodoCompletion: async () => {
 				notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
 				return { status: "conflict", message: "changed", confirmed: latest };
@@ -570,13 +564,13 @@ test("conflict recovery and delayed observation never stack error and info notic
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
-	await expect.poll(() => loads).toBe(2);
+	expect(loads).toBe(1);
 	await expect.element(page.getByText("Todo file changed")).toBeVisible();
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
 });
 test("loading is a non-actionable Workspace session", async () => {
-	render(Harness, { desktop: adapter({ resourceState: () => new Promise(() => {}) }) });
+	render(Harness, { desktop: adapter({ readSession: () => new Promise(() => {}) }) });
 	await expect.element(page.getByLabelText("Loading workspace session")).toBeVisible();
 	await expect.element(page.getByRole("button")).not.toBeInTheDocument();
 });
@@ -659,7 +653,7 @@ test("rejected deletion preserves confirmed content and reports its contextual e
 test("an unavailable catalogue offers no actions", async () => {
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "unavailable", error: "invalid catalogue" },
@@ -674,7 +668,7 @@ test("Empty state retains restoration warnings", async () => {
 	const catalogue = initial.session.catalogue;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				scope,
 				revision: 1,
 				session: { status: "empty", catalogue, warning: "Could not open /tmp/work.todo" },
@@ -767,7 +761,7 @@ test("creation updates confirmed items, counts, and suggestions without moving t
 	let request: Parameters<DesktopAPI["createTodo"]>[0] | undefined;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => loaded,
+			readSession: async () => loaded,
 			createTodo: async (input) => {
 				request = input;
 				return { status: "applied", confirmed: confirmedTodo([...items, created]) };
@@ -919,7 +913,7 @@ test("a keyboard drop keeps confirmed order while saving and follows selected de
 	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["reorderTodo"]>>) => void;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => snapshot,
+			readSession: async () => snapshot,
 			reorderTodo: (request) => {
 				input = request;
 				return new Promise((resolve) => {
@@ -993,7 +987,7 @@ test("external reload updates search results while preserving the query", async 
 	const changed = { ...todo, raw: "Different content", description: "Different content" };
 	await render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				revision: ++loads,
 				session: {
@@ -1013,7 +1007,7 @@ test("external reload updates search results while preserving the query", async 
 	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
 	await search.fill("plan");
 	await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByLabelText("No matching Todo items")).toBeVisible();
 	await expect.element(search).toHaveValue("plan");
 	await search.fill("different");
@@ -1103,7 +1097,7 @@ test("editing a completed token-only item prefills empty Description and retains
 	let request: Parameters<DesktopAPI["editTodo"]>[0] | undefined;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => snapshot,
+			readSession: async () => snapshot,
 			editTodo: async (input) => {
 				request = input;
 				return { status: "rejected", message: "Read only" };
@@ -1210,7 +1204,7 @@ test.each(["next", "previous", "empty"])(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				resourceState: async () =>
+				readSession: async () =>
 					({
 						...initial,
 						session: {
@@ -1280,7 +1274,7 @@ test("external refresh retains unchanged row focus and sends uncertain identity 
 	const changed = { ...todo, raw: "Different content", description: "Different content" };
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -1300,10 +1294,10 @@ test("external refresh retains unchanged row focus and sends uncertain identity 
 	const row = page.getByRole("button", { name: "Navigate Plan release", exact: true });
 	await expect.element(row).toBeVisible();
 	(row.element() as HTMLElement).focus();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => loads).toBe(2);
 	await expect.element(row).toHaveFocus();
-	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 3, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByText("Different content", { exact: true })).toBeVisible();
 	await expect.element(page.getByRole("list", { name: "Todo items" })).toHaveFocus();
 });
@@ -1313,7 +1307,7 @@ test("deleting through Actions focuses the next physical-line neighbor", async (
 	const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					session: {
@@ -1389,7 +1383,7 @@ test("loading suspends mutations, help remains available, and held sidebar keys 
 	let ready!: (session: ConfirmedSession) => void;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: () =>
+			readSession: () =>
 				new Promise((resolve) => {
 					ready = resolve;
 				}),
@@ -1448,7 +1442,7 @@ test("editing a row out of a Project filter returns focus to its visible neighbo
 	render(Harness, {
 		shell: true,
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					session: {
@@ -1549,7 +1543,7 @@ test("Workspace switching clears old navigation focus even when both files have 
 	render(Harness, {
 		shell: true,
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({ ...initial, session: { ...initial.session, catalogue } }) as ConfirmedSession,
 			switchWorkspace: async () => ({
 				status: "applied",
@@ -1600,7 +1594,7 @@ test("Tab reenters row navigation after leaving and scrolling to another virtual
 			},
 		},
 		desktop: adapter({
-			resourceState: async () =>
+			readSession: async () =>
 				({
 					...initial,
 					revision: ++loads,
@@ -1617,7 +1611,7 @@ test("Tab reenters row navigation after leaving and scrolling to another virtual
 	(
 		page.getByRole("button", { name: "Add Todo item", exact: true }).element() as HTMLElement
 	).focus();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => loads).toBe(2);
 	const viewport = document.querySelector<HTMLElement>(
 		'[aria-label="Todo item results"] [data-slot="scroll-area-viewport"]'
@@ -1641,7 +1635,7 @@ test.each([false, true])(
 			const neighbor = { ...todo, line_number: 2, raw: "Neighbor", description: "Neighbor" };
 			render(Harness, {
 				desktop: adapter({
-					resourceState: async () =>
+					readSession: async () =>
 						({
 							...initial,
 							session: {
@@ -1689,7 +1683,7 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	const views: import("@tuxedo/contracts").SavedView[] = [];
 	render(Harness, {
 		desktop: adapter({
-			readSavedViews: async () => ({ status: "applied", views }),
+			readSavedViews: async () => ({ status: "applied", workspaceId, views }),
 			saveView: async (request) => {
 				views.push({
 					id: scope,
@@ -1697,12 +1691,12 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 					name: request.name,
 					filters: request.filters,
 				});
-				return { status: "applied", views: [...views] };
+				return { status: "applied", workspaceId, views: [...views] };
 			},
 			deleteView: async (request) => {
 				expect(request).toEqual({ workspaceId, viewId: scope });
 				views.splice(0);
-				return { status: "applied", views: [] };
+				return { status: "applied", workspaceId, views: [] };
 			},
 		}),
 	});
@@ -1732,38 +1726,17 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
 });
 
-test("a saved-view write holds all commands until refreshed views reach the screen", async () => {
-	let refresh = false;
-	let release!: (value: Awaited<ReturnType<DesktopAPI["readSavedViews"]>>) => void;
-	const refreshed = new Promise<Awaited<ReturnType<DesktopAPI["readSavedViews"]>>>((resolve) => {
+test("a saved-view write holds commands until its invalidated loader updates the screen", async () => {
+	let release!: (value: Awaited<ReturnType<DesktopAPI["saveView"]>>) => void;
+	const saved = new Promise<Awaited<ReturnType<DesktopAPI["saveView"]>>>((resolve) => {
 		release = resolve;
 	});
-	render(Harness, {
-		desktop: adapter({
-			readSavedViews: async () => (refresh ? refreshed : { status: "applied", views: [] }),
-			saveView: async () => {
-				refresh = true;
-				return {
-					status: "applied",
-					views: [
-						{
-							id: scope,
-							workspace_id: workspaceId,
-							name: "Release work",
-							filters: {
-								status: "all",
-								search: "",
-								project: null,
-								context: null,
-								priority: null,
-								due: null,
-							},
-						},
-					],
-				};
-			},
-		}),
-	});
+	const reads = vi.fn<DesktopAPI["readSavedViews"]>(async () => ({
+		status: "applied",
+		workspaceId,
+		views: [],
+	}));
+	render(Harness, { desktop: adapter({ readSavedViews: reads, saveView: () => saved }) });
 	await page.getByRole("button", { name: "Saved views", exact: true }).click();
 	await page.getByRole("button", { name: "Save current view", exact: true }).click();
 	await page.getByRole("textbox", { name: "View name" }).fill("Release work");
@@ -1774,6 +1747,7 @@ test("a saved-view write holds all commands until refreshed views reach the scre
 		.toBeDisabled();
 	release({
 		status: "applied",
+		workspaceId,
 		views: [
 			{
 				id: scope,
@@ -1795,65 +1769,6 @@ test("a saved-view write holds all commands until refreshed views reach the scre
 	await expect
 		.element(page.getByRole("button", { name: "Release work", exact: true }))
 		.toBeVisible();
-});
-
-test("a committed view survives a failed refresh and Retry only reads", async () => {
-	const filters = {
-		status: "all" as const,
-		search: "",
-		project: null,
-		context: null,
-		priority: null,
-		due: null,
-	};
-	const first = { id: scope, workspace_id: workspaceId, name: "Existing view", filters };
-	const added = { ...first, id: workspaceId, name: "New view" };
-	let persisted = [first];
-	let failRead = false;
-	let wrote = false;
-	render(Harness, {
-		desktop: adapter({
-			readSavedViews: async () => {
-				if (failRead) throw Error("Saved-view disk is unavailable");
-				return { status: "applied", views: [...persisted] };
-			},
-			saveView: async () => {
-				if (wrote) throw Error("The committed save must not be repeated");
-				wrote = true;
-				persisted = [first, added];
-				failRead = true;
-				return { status: "applied", views: [...persisted] };
-			},
-		}),
-	});
-	await page.getByRole("button", { name: "Saved views", exact: true }).click();
-	await page.getByRole("button", { name: "Save current view", exact: true }).click();
-	await page.getByRole("textbox", { name: "View name" }).fill("New view");
-	await page.getByRole("button", { name: "Save view", exact: true }).click();
-	await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-	await expect
-		.element(page.getByText(/View saved, but saved views could not be refreshed/))
-		.toBeVisible();
-	await expect
-		.element(page.getByRole("checkbox", { name: "Mark Plan release complete", exact: true }))
-		.toBeEnabled();
-	await page.getByRole("button", { name: "Saved views", exact: true }).click();
-	await expect
-		.element(page.getByRole("button", { name: "Existing view", exact: true }))
-		.toBeVisible();
-	await expect
-		.element(page.getByRole("button", { name: "Save current view", exact: true }))
-		.toBeDisabled();
-	await expect
-		.element(page.getByRole("button", { name: "Delete saved view Existing view", exact: true }))
-		.toBeDisabled();
-	failRead = false;
-	await page.getByRole("button", { name: "Retry saved views", exact: true }).click();
-	await expect.element(page.getByRole("button", { name: "New view", exact: true })).toBeVisible();
-	await expect
-		.element(page.getByRole("button", { name: "Save current view", exact: true }))
-		.toBeEnabled();
-	expect(persisted.map((view) => view.name)).toEqual(["Existing view", "New view"]);
 });
 
 test("a failed saved-view read warns while the confirmed Todo file remains usable", async () => {
@@ -2001,7 +1916,7 @@ test("a future Show from successor stays hidden until Show deferred", async () =
 	};
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => current,
+			readSession: async () => current,
 			setTodoCompletion: async () => {
 				if (current.session.status !== "ready") throw Error("not ready");
 				current = {
@@ -2074,7 +1989,7 @@ test("a successor is shown on its Show from date", async () => {
 	const ready = initial.session;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...ready,
@@ -2134,7 +2049,7 @@ test.each(["mixed", "completed remaining", "completed empty"])(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2224,7 +2139,7 @@ test.each([
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2283,7 +2198,7 @@ test.each(["rejected", "conflict"] as const)(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...ready,
@@ -2358,7 +2273,7 @@ test("selection mode completes selected open Todo items through one bulk operati
 	render(Harness, {
 		desktop: adapter({
 			bulkSetTodoCompletion,
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initial.session,
@@ -2391,7 +2306,7 @@ test.each(["rejected", "conflict"] as const)(
 		render(Harness, {
 			shell: true,
 			desktop: adapter({
-				resourceState: async () => ({ ...initial, undoLabel: "Undo edit" }),
+				readSession: async () => ({ ...initial, undoLabel: "Undo edit" }),
 				bulkSetTodoCompletion: bulk,
 				createTodo,
 				undoTodo,
@@ -2472,7 +2387,7 @@ test.each(["rejected", "applied"] as const)(
 					}),
 		}));
 		render(Harness, {
-			desktop: adapter({ resourceState: async () => session, bulkSetTodoCompletion: bulk }),
+			desktop: adapter({ readSession: async () => session, bulkSetTodoCompletion: bulk }),
 		});
 		await page.getByRole("button", { name: "Toggle Todo-item search", exact: true }).click();
 		const search = page.getByRole("searchbox", { name: "Search Todo items", exact: true });
@@ -2578,7 +2493,7 @@ test.each(["middle", "last", "all"] as const)(
 		const deleteTodo = vi.fn<DesktopAPI["deleteTodo"]>();
 		render(Harness, {
 			desktop: adapter({
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...initial.session,
@@ -2731,7 +2646,7 @@ test("unchanged refresh preserves deletion confirmation; changed contents dismis
 	render(Harness, {
 		desktop: adapter({
 			bulkDeleteTodos,
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				revision: ++loads,
 				session: {
@@ -2753,7 +2668,7 @@ test("unchanged refresh preserves deletion confirmation; changed contents dismis
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
 	await page.getByRole("button", { name: "Delete", exact: true }).click();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => loads).toBe(2);
 	await expect
 		.element(page.getByRole("alertdialog", { name: "Delete 1 Todo item?" }))
@@ -2761,7 +2676,7 @@ test("unchanged refresh preserves deletion confirmation; changed contents dismis
 	await expect
 		.element(page.getByRole("button", { name: "Delete Todo items", exact: true }))
 		.toBeEnabled();
-	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 3, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 	await expect.element(page.getByText("0 selected", { exact: true })).toBeVisible();
 	await expect
@@ -2792,7 +2707,7 @@ test("an unchanged refresh allows the same confirmation to delete using the curr
 	render(Harness, {
 		desktop: adapter({
 			bulkDeleteTodos,
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				revision: ++revision,
 				session: { ...ready, todo_file: { ...ready.todo_file, items: [todo, second] } },
@@ -2808,7 +2723,7 @@ test("an unchanged refresh allows the same confirmation to delete using the curr
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Select Second", exact: true }).click();
 	await page.getByRole("button", { name: "Delete", exact: true }).click();
-	notify({ scope, revision: 1, workspaceId, todoPath: "/tmp/work.todo" });
+	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
 	await expect.poll(() => revision).toBe(2);
 	await expect
 		.element(page.getByRole("button", { name: "Delete Todo items", exact: true }))
@@ -2854,7 +2769,7 @@ test.each(["focus", "visibilitychange", "midnight"])(
 		render(Harness, {
 			desktop: adapter({
 				bulkDeleteTodos,
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...initial.session,
@@ -2972,7 +2887,7 @@ test.each(["completion", "deletion"] as const)(
 		);
 		render(Harness, {
 			desktop: adapter({
-				resourceState: async () => current,
+				readSession: async () => current,
 				bulkSetTodoCompletion: bulk,
 				bulkDeleteTodos: bulk,
 				setWorkspaceShowDeferred: async ({ showDeferred }) => {
@@ -3085,52 +3000,5 @@ test.each(["create", "edit"] as const)(
 		await expect
 			.element(page.getByRole("button", { name: "Actions for Plan release", exact: true }))
 			.not.toBeInTheDocument();
-	}
-);
-
-test.each(["applied", "conflict"] as const)(
-	"row deletion reports %s honestly when the saved contents cannot be refreshed",
-	async (status) => {
-		const deleteTodo = vi.fn<DesktopAPI["deleteTodo"]>(async () =>
-			status === "applied"
-				? { status, confirmed: confirmedTodo([]) }
-				: { status, confirmed: confirmedTodo([]), message: "Changed externally" }
-		);
-		const desktop = adapter({ deleteTodo });
-		const readWorkspace = desktop.readWorkspace;
-		let reads = 0;
-		render(Harness, {
-			desktop: {
-				...desktop,
-				readWorkspace: (input) =>
-					reads++
-						? Promise.resolve({
-								status: "rejected",
-								reason: "todo-file",
-								message: "Refresh unavailable",
-							})
-						: readWorkspace(input),
-			},
-		});
-		await page.getByRole("button", { name: "Actions for Plan release" }).click();
-		await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-		const notice =
-			status === "applied"
-				? "Change saved, but the Workspace could not be refreshed. Refresh unavailable"
-				: "Changed externally The screen could not be refreshed. Refresh unavailable";
-		await expect.element(page.getByText(notice, { exact: true })).toBeVisible();
-		expect(
-			document.querySelectorAll(
-				`[data-sonner-toast][data-type="${status === "applied" ? "info" : "error"}"]`
-			)
-		).toHaveLength(1);
-		await expect
-			.element(page.getByText("Todo file reloaded", { exact: true }))
-			.not.toBeInTheDocument();
-		await expect.element(page.getByText("Plan release", { exact: true })).toBeVisible();
-		await expect
-			.element(page.getByRole("checkbox", { name: "Mark Plan release complete" }))
-			.toBeDisabled();
-		expect(deleteTodo).toHaveBeenCalledTimes(1);
 	}
 );

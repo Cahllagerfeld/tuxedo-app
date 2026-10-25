@@ -37,7 +37,11 @@ async function fixture() {
 }
 test("saved views survive restart, remain Workspace-specific, and can be deleted without touching Todo files", async () => {
 	const { backend, directory, path, todoPath, workspaceId } = await fixture();
-	expect(await backend.readSavedViews({})).toEqual({ status: "applied", views: [] });
+	expect(await backend.readSavedViews({ workspaceId })).toEqual({
+		status: "applied",
+		workspaceId,
+		views: [],
+	});
 	await expect(readFile(join(directory, "saved-views.json"))).rejects.toMatchObject({
 		code: "ENOENT",
 	});
@@ -50,7 +54,7 @@ test("saved views survive restart, remain Workspace-specific, and can be deleted
 	await backend.shutdown();
 	const restarted = createSessionBackend(path);
 	backends.push(restarted);
-	expect(await restarted.readSavedViews({})).toEqual(saved);
+	expect(await restarted.readSavedViews({ workspaceId })).toEqual(saved);
 	const secondPath = join(directory, "other.txt");
 	await writeFile(secondPath, "Other\n");
 	const other = await restarted.createWorkspace({
@@ -66,9 +70,13 @@ test("saved views survive restart, remain Workspace-specific, and can be deleted
 	).toMatchObject({ status: "rejected" });
 	expect(
 		await restarted.saveView({ workspaceId: otherId, name: "Today at work", filters })
-	).toMatchObject({ status: "applied", views: expect.arrayContaining([{ ...saved.views[0] }]) });
+	).toMatchObject({
+		status: "applied",
+		workspaceId: otherId,
+		views: [{ workspace_id: otherId, name: "Today at work" }],
+	});
 	const deleted = await restarted.deleteView({ workspaceId, viewId: saved.views[0].id });
-	expect(deleted).toMatchObject({ status: "applied", views: [{ workspace_id: otherId }] });
+	expect(deleted).toMatchObject({ status: "applied", workspaceId, views: [] });
 	expect(await readFile(todoPath, "utf8")).toBe("Invoice +work\n");
 });
 test.each(["{broken", '{"version":2,"views":[]}', '{"version":1,"views":[],"extra":true}'])(
@@ -77,7 +85,7 @@ test.each(["{broken", '{"version":2,"views":[]}', '{"version":1,"views":[],"extr
 		const { backend, directory, workspaceId } = await fixture();
 		const path = join(directory, "saved-views.json");
 		await writeFile(path, contents);
-		expect(await backend.readSavedViews({})).toMatchObject({
+		expect(await backend.readSavedViews({ workspaceId })).toMatchObject({
 			status: "rejected",
 			message: expect.stringContaining(path),
 		});
@@ -104,7 +112,7 @@ test("serialized saves retain both views and reject duplicate names and unknown 
 			filters,
 		})
 	).toMatchObject({ status: "rejected" });
-	expect(await backend.readSavedViews({})).toMatchObject({
+	expect(await backend.readSavedViews({ workspaceId })).toMatchObject({
 		status: "applied",
 		views: [{ name: "First" }, { name: "Second" }],
 	});

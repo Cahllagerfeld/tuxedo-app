@@ -1,107 +1,88 @@
-import { createContext, tick } from "svelte";
-import type { DesktopAPI, SavedView, SavedViewFilterValues } from "@tuxedo/contracts";
+import { createContext } from "svelte";
+import type { DesktopAPI, SavedViewFilterValues } from "@tuxedo/contracts";
 import type { WorkspaceCommands } from "./workspace-commands.svelte";
-import type { SavedViewsData } from "./saved-views";
+import type { WorkspaceSessionActionResult } from "./workspace-session-types";
+import type { SavedViewsData } from "./workspace-route-data";
 
-async function fingerprint(views: readonly SavedView[]) {
-	const digest = await crypto.subtle.digest(
-		"SHA-256",
-		new TextEncoder().encode(JSON.stringify(views))
-	);
-	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
+export type SavedViewsRoutes = {
+	current: () => SavedViewsData | undefined;
+	workspaceId: () => string | undefined;
+	refresh: (workspaceId: string) => Promise<void>;
+};
 
-// A read-only route adapter plus command/refresh metadata; no saved-view snapshot lives here.
 export class SavedViewsResource {
-	private required = $state<{ workspaceId: string; signature: string }>();
-	private refreshFailure = $state("");
-
+	private failure = $state<{ workspaceId: string; message: string }>();
 	constructor(
 		private readonly desktop: Pick<DesktopAPI, "saveView" | "deleteView">,
 		private readonly session: WorkspaceCommands,
-		private readonly getCurrent: () => SavedViewsData | undefined,
-		private readonly refresh: (workspaceId: string) => Promise<void>
+		private readonly routes: SavedViewsRoutes
 	) {}
-
+	private get current() {
+		const data = this.routes.current();
+		return data?.workspaceId === this.routes.workspaceId() ? data : undefined;
+	}
 	get views() {
 		return this.current?.views ?? [];
 	}
-	private get current() {
-		const data = this.getCurrent();
-		return data?.workspaceId === this.session.activeWorkspace?.id ? data : undefined;
-	}
 	get error() {
 		return (
+			(this.failure?.workspaceId === this.routes.workspaceId() ? this.failure?.message : "") ||
 			this.current?.error ||
-			(this.required?.workspaceId === this.current?.workspaceId ? this.refreshFailure : "")
+			""
 		);
 	}
 	get canWrite() {
 		return !!this.current && !this.error && this.session.canMutate;
 	}
-
-	private async revalidate(workspaceId: string) {
-		const previous = this.getCurrent();
+	private async refresh(workspaceId: string): Promise<WorkspaceSessionActionResult> {
 		try {
-			await this.refresh(workspaceId);
-			await tick();
-			const current = this.getCurrent();
-			if (!current || current === previous || current.workspaceId !== workspaceId || current.error)
-				throw Error(
-					current?.error || "Saved views have not reached the screen. Retry the refresh."
-				);
-			if (
-				this.required?.workspaceId === workspaceId &&
-				(await fingerprint(current.views)) !== this.required.signature
-			)
-				throw Error("Saved views do not yet reflect the confirmed change. Retry the refresh.");
-			this.required = undefined;
-			this.refreshFailure = "";
-			return { status: "applied" as const };
+			await this.routes.refresh(workspaceId);
+			if (this.current?.error) throw Error(this.current.error);
+			this.failure = undefined;
+			return { status: "applied" };
 		} catch (error) {
-			this.refreshFailure = error instanceof Error ? error.message : String(error);
-			return { status: "rejected" as const, message: this.refreshFailure };
+			const message = error instanceof Error ? error.message : String(error);
+			this.failure = { workspaceId, message };
+			return { status: "rejected", message };
 		}
 	}
-
-	retry = () => {
-		const workspaceId = this.current?.workspaceId;
-		return this.session.runAction(
-			"refresh_saved_views",
-			async () =>
-				workspaceId
-					? this.revalidate(workspaceId)
-					: { status: "rejected", message: "Open a Workspace first." },
-			workspaceId ? { workspaceId } : null
-		);
-	};
-
+	retry = () =>
+		this.session.runAction("refresh_saved_views", async () => {
+			const workspaceId = this.routes.workspaceId();
+			return workspaceId
+				? this.refresh(workspaceId)
+				: { status: "rejected", message: "Open a Workspace first." };
+		});
 	private write(
 		operation: "save_view" | "delete_view",
 		command: (workspaceId: string) => ReturnType<DesktopAPI["saveView"]>
 	) {
-		const workspaceId = this.current?.workspaceId;
+		const workspaceId = this.routes.workspaceId();
 		return this.session.runAction(
 			operation,
 			async () => {
-				// runAction owns admission by this point, so check data readiness without isOperating.
-				if (!workspaceId || this.error || !this.session.ready)
+				if (!workspaceId || !this.current || this.error || !this.session.ready)
 					return { status: "rejected", message: "Refresh saved views before changing them." };
-				const outcome = await command(workspaceId);
-				if (outcome.status !== "applied") return outcome;
-				this.required = {
-					workspaceId,
-					signature: await fingerprint(
-						outcome.views.filter((view) => view.workspace_id === workspaceId)
-					),
-				};
-				const refreshed = await this.revalidate(workspaceId);
-				return refreshed.status === "applied"
-					? refreshed
-					: {
-							status: "applied",
-							notice: `View ${operation === "save_view" ? "saved" : "deleted"}, but saved views could not be refreshed. ${refreshed.message}`,
-						};
+				try {
+					const outcome = await command(workspaceId);
+					if (outcome.status !== "applied") return outcome;
+					if (outcome.workspaceId !== workspaceId)
+						throw Error("Saved views belong to a different Workspace.");
+					const refreshed = await this.refresh(workspaceId);
+					return {
+						status: "applied",
+						...(refreshed.status === "rejected"
+							? {
+									notice:
+										"Change saved, but saved views could not be refreshed. " + refreshed.message,
+								}
+							: {}),
+					};
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					this.failure = { workspaceId, message };
+					return { status: "rejected", message };
+				}
 			},
 			workspaceId ? { workspaceId } : null
 		);
@@ -111,5 +92,4 @@ export class SavedViewsResource {
 	delete = (viewId: string) =>
 		this.write("delete_view", (workspaceId) => this.desktop.deleteView({ workspaceId, viewId }));
 }
-
 export const [getSavedViews, setSavedViews] = createContext<SavedViewsResource>();

@@ -34,10 +34,9 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("authoritative observ
 				yield* fs.writeFileString(todoPath, "External\n");
 				signal();
 				const event = yield* Deferred.await(received);
-				expect(yield* session.readWorkspace({ workspaceId })).toMatchObject({
-					status: "ready",
-					todo_file: { items: [{ description: "External" }] },
-					provenance: { status: "confirmed", selection: { revision: event.revision } },
+				expect(yield* session.readSession({})).toMatchObject({
+					revision: event.revision,
+					session: { status: "ready", todo_file: { items: [{ description: "External" }] } },
 				});
 				expect((yield* readConfirmation(session)).undoLabel).toBeUndefined();
 			}).pipe(
@@ -77,7 +76,7 @@ layer(NodeFileSystem.layer)("observation during admitted work", (it) => {
 					throw Error("setup");
 				const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
 				pause = true;
-				const operation = yield* session.readWorkspace({ workspaceId }).pipe(Effect.forkChild);
+				const operation = yield* session.refreshSession({}).pipe(Effect.forkChild);
 				yield* Deferred.await(reading);
 				yield* fs.writeFileString(todoPath, "External during work\n");
 				signal();
@@ -85,10 +84,8 @@ layer(NodeFileSystem.layer)("observation during admitted work", (it) => {
 				yield* Deferred.succeed(release, undefined);
 				yield* Fiber.join(operation);
 				yield* Deferred.await(received);
-				expect(yield* session.readWorkspace({ workspaceId })).toMatchObject({
-					status: "ready",
-					todo_file: { items: [{ raw: "External during work" }] },
-					provenance: { status: "confirmed" },
+				expect(yield* session.readSession({})).toMatchObject({
+					session: { status: "ready", todo_file: { items: [{ raw: "External during work" }] } },
 				});
 			}).pipe(
 				Effect.provide(

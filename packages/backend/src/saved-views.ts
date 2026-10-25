@@ -6,6 +6,7 @@ import {
 	savedViewsFileSchema,
 	saveViewRequestSchema,
 	deleteViewRequestSchema,
+	switchWorkspaceRequestSchema,
 	type SavedView,
 	type DesktopRequest,
 } from "@tuxedo/contracts";
@@ -38,13 +39,22 @@ export function createSavedViewOperations(path: string, state: SessionState) {
 					new OperationFailure({ message: "The Workspace no longer exists." })
 				);
 		});
-	const applied = (views: readonly SavedView[]) => ({ status: "applied" as const, views });
-	const commit = (views: readonly SavedView[]) =>
+	const applied = (workspaceId: string, views: readonly SavedView[]) => ({
+		status: "applied" as const,
+		workspaceId,
+		views: views.filter((view) => view.workspace_id === workspaceId),
+	});
+	const commit = (workspaceId: string, views: readonly SavedView[]) =>
 		atomicWrite(path, JSON.stringify({ version: 1, views }, null, 2) + "\n").pipe(
-			Effect.as(applied(views))
+			Effect.as(applied(workspaceId, views))
 		);
 	return {
-		read: () => read().pipe(Effect.map((file) => applied(file.views))),
+		read: (request: DesktopRequest<"readSavedViews">) =>
+			Effect.gen(function* () {
+				const { workspaceId } = yield* attempt(() => switchWorkspaceRequestSchema.parse(request));
+				const file = yield* read();
+				return applied(workspaceId, file.views);
+			}),
 		save: (input: DesktopRequest<"saveView">) =>
 			Effect.gen(function* () {
 				const request = yield* attempt(() => saveViewRequestSchema.parse(input));
@@ -63,7 +73,7 @@ export function createSavedViewOperations(path: string, state: SessionState) {
 						})
 					);
 				const identity = yield* Identity;
-				return yield* commit([
+				return yield* commit(request.workspaceId, [
 					...file.views,
 					{
 						id: identity.uuid(),
@@ -86,7 +96,10 @@ export function createSavedViewOperations(path: string, state: SessionState) {
 					return yield* Effect.fail(
 						new OperationFailure({ message: "The saved view no longer exists in this Workspace." })
 					);
-				return yield* commit(file.views.filter((view) => view.id !== request.viewId));
+				return yield* commit(
+					request.workspaceId,
+					file.views.filter((view) => view.id !== request.viewId)
+				);
 			}),
 	};
 }

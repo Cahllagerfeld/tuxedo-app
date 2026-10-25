@@ -1,9 +1,9 @@
-import { resourceDesktop, type ResourceFixture } from "../state/testing/resource-desktop";
 import { page } from "vitest/browser";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "@tuxedo/contracts";
 import Harness from "./WorkspaceFilteringHarness.svelte";
+import { loaderDesktop } from "../state/testing/loader-desktop";
 import "../../../../routes/layout.css";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -175,19 +175,14 @@ const secondWorkspaceSession: ConfirmedSession = {
 	},
 };
 
-function adapter(overrides: ResourceFixture = {}): DesktopAPI {
+function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 	let current = initial;
-	const desktop: DesktopAPI & { resourceState: () => Promise<ConfirmedSession> } = {
-		readWorkspaceCatalogue: async () => {
-			throw Error("unused");
-		},
-		readWorkspace: async () => {
-			throw Error("unused");
-		},
-		readSavedViews: async () => ({ status: "applied", views: [] }),
+	const desktop: Omit<DesktopAPI, "readWorkspace"> = {
+		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		resourceState: async () => initial,
+		readSession: async () => initial,
+		refreshSession: (input) => desktop.readSession(input),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
 		selectNewTodoFile: async () => null,
@@ -224,8 +219,8 @@ function adapter(overrides: ResourceFixture = {}): DesktopAPI {
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	};
-	const read = desktop.resourceState;
-	desktop.resourceState = async () => (current = await read());
+	const read = desktop.readSession;
+	desktop.readSession = async () => (current = await read({}));
 	const switchWorkspace = desktop.switchWorkspace;
 	desktop.switchWorkspace = async (request) => {
 		const outcome = await switchWorkspace(request);
@@ -245,7 +240,7 @@ function adapter(overrides: ResourceFixture = {}): DesktopAPI {
 		}
 		return outcome;
 	};
-	return resourceDesktop(desktop);
+	return loaderDesktop(desktop);
 }
 
 function rowCount() {
@@ -325,7 +320,7 @@ test("date filters and row indicators refresh at local midnight and clear with o
 	];
 	const view = await render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -374,7 +369,7 @@ test("shows a counted repair filter only while open invalid Due dates exist", as
 	];
 	await render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -631,7 +626,7 @@ test.each([
 		}));
 		render(Harness, {
 			desktop: adapter({
-				resourceState: async () => ({
+				readSession: async () => ({
 					...initial,
 					session: {
 						...initialReadySession,
@@ -757,7 +752,7 @@ test("keeps long filter input and facet labels inside a narrow independently scr
 	}));
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -820,7 +815,7 @@ test("scopes choices and counts to the tab, retaining only available selections"
 	};
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -872,7 +867,7 @@ test("reveals matching deferred items, keeps facets and totals, and restores Wor
 	];
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -934,7 +929,7 @@ test("threshold visibility refreshes at midnight and on return from inactivity w
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(new Date(2026, 9, 14, 23, 59, 58));
 	const desktop = adapter({
-		resourceState: async () => ({
+		readSession: async () => ({
 			...initial,
 			session: {
 				...initialReadySession,
@@ -979,7 +974,7 @@ test("uncompletion reapplies the threshold only after confirmation and locks the
 	let finish!: (result: ReturnType<typeof confirmedTodo>) => void;
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,
@@ -1022,7 +1017,7 @@ test("Show deferred is a Workspace preference outside the filter bar and Clear f
 test("restores saved Show deferred and preserves it when a preference save fails", async () => {
 	render(Harness, {
 		desktop: adapter({
-			resourceState: async () => ({
+			readSession: async () => ({
 				...initial,
 				session: {
 					...initialReadySession,

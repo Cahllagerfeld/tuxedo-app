@@ -59,7 +59,7 @@ A saved Workspace preference that includes deferred open Todo items alongside ac
 A read-only projection of one parsed Todo file: its items and skipped lines, counts of total, open, and completed Todo items, and a Skipped-line count. Without a loaded Todo file it is empty, and it does not filter Todo items.
 
 **Todo-file observation**:
-Observation of the Active workspace's loaded Todo file for external disk changes. Debounced change signals refresh confirmed data, including relevant signals received during another Workspace session operation. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning. Own writes and mutation conflicts continue to return confirmed results directly.
+Observation of the Active workspace's loaded Todo file for external disk changes. Debounced change signals refresh confirmed data, including relevant signals received during another Workspace session operation. A changed parsed summary reports an info notice; a stably unreadable Todo file enters the Empty state with a warning.
 
 **Facet**:
 A distinct, locale-sorted collection of exact parsed values for one Todo-item attribute, such as Projects, Contexts, or Priorities. Facets preserve source spelling and do not merge values that differ only by case.

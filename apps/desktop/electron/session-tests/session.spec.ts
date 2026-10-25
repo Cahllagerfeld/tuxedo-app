@@ -10,14 +10,17 @@ afterEach(async () => {
 		directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
 	);
 });
-test("a fresh catalogue is a repeatable read without confirmation or metadata", async () => {
+test("a fresh session is Empty without creating metadata", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
 	const backend = createSessionBackend(join(directory, "workspaces.json"));
-	expect(await backend.readWorkspaceCatalogue({})).toEqual({
-		status: "ready",
-		catalogue: { version: 1, workspaces: [], active_workspace_id: null },
-		selection: null,
+	expect(await backend.refreshSession({})).toMatchObject({
+		revision: 0,
+		session: {
+			status: "empty",
+			catalogue: { version: 1, workspaces: [], active_workspace_id: null },
+			warning: null,
+		},
 	});
 	await expect(readFile(join(directory, "workspaces.json"))).rejects.toMatchObject({
 		code: "ENOENT",
@@ -32,10 +35,8 @@ test.each([
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
 	await writeFile(path, content);
-	expect(await createSessionBackend(path).readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
-		message: expect.stringContaining(path),
+	expect(await createSessionBackend(path).refreshSession({})).toMatchObject({
+		session: { status: "unavailable", error: expect.stringContaining(path) },
 	});
 	expect(await readFile(path, "utf8")).toBe(content);
 });
@@ -44,15 +45,14 @@ test("repeated reads leave confirmation untouched and recover after catalogue re
 	directories.push(directory);
 	const path = join(directory, "workspaces.json");
 	const backend = createSessionBackend(path);
-	const first = await backend.readWorkspaceCatalogue({});
+	const first = await backend.refreshSession({});
 	await writeFile(path, "invalid");
-	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await backend.refreshSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	expect(await readFile(path, "utf8")).toBe("invalid");
 	await rm(path);
-	expect(await backend.readWorkspaceCatalogue({})).toEqual(first);
+	expect((await backend.refreshSession({})).session).toEqual(first.session);
 });
 test.each([
 	"duplicate-name",
@@ -103,18 +103,16 @@ test.each([
 			];
 	const content = JSON.stringify({ version: 1, active_workspace_id: null, workspaces });
 	await writeFile(path, content);
-	expect(await createSessionBackend(path).readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await createSessionBackend(path).refreshSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	expect(await readFile(path, "utf8")).toBe(content);
 });
 test("an unreadable catalogue remains unavailable without replacing its location", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "tuxedo-session-"));
 	directories.push(directory);
-	expect(await createSessionBackend(directory).readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		message: expect.stringContaining("Check its permissions"),
+	expect(await createSessionBackend(directory).refreshSession({})).toMatchObject({
+		session: { status: "unavailable", error: expect.stringContaining("Check its permissions") },
 	});
 });
 test("creation reads and parses the Todo file before atomically saving an active Workspace", async () => {
@@ -224,9 +222,7 @@ test("resource reads preserve todo.txt fixtures, skipped lines, and exact source
 		todoPath,
 		await readFile(new URL("./fixtures/mixed_real_world.todo.txt", import.meta.url))
 	);
-	const restored = await backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const restored = (await backend.refreshSession({})).session;
 	expect(restored.status).toBe("ready");
 	if (restored.status !== "ready") throw Error("No file");
 	expect(restored.todo_file.items).toHaveLength(6);
@@ -262,9 +258,7 @@ test("resource reads preserve todo.txt fixtures, skipped lines, and exact source
 		todoPath,
 		await readFile(new URL("./fixtures/spec_examples.todo.txt", import.meta.url))
 	);
-	const examples = await backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const examples = (await backend.refreshSession({})).session;
 	if (examples.status !== "ready") throw Error("No examples");
 	expect(examples.todo_file.items).toHaveLength(18);
 	expect(examples.todo_file.skipped).toEqual([]);
@@ -288,9 +282,7 @@ test("resource reads keep physical lines, marker grammar, and exact repeated fac
 		todoPath,
 		"\n  (C) Call   Mom +Work +work +Work @Phone @phone key:first key:last key:value:extra + @  \r\nxylophone\nX 2012-01-01 Make resolutions\n(A) x Find tickets\nx\tNo marker\n(B)->No priority\n(b) Lowercase\nx 2000-02-29 (A) 1999-01-01 Finished\n1900-02-29 Invalid\n+Only @tag\n"
 	);
-	const result = await backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const result = (await backend.refreshSession({})).session;
 	if (result.status !== "ready") throw Error("No grammar");
 	const file = result.todo_file;
 	expect(file.items[0]).toMatchObject({
@@ -320,12 +312,10 @@ test("resource reads keep physical lines, marker grammar, and exact repeated fac
 	});
 	expect(file.skipped.map((line) => line.line_number)).toEqual([10]);
 	await rm(todoPath);
-	const missing = await backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const missing = (await backend.refreshSession({})).session;
 	expect(missing).toMatchObject({
-		status: "rejected",
-		message: "This Todo file couldn’t be found. It may have been moved or deleted.",
+		status: "empty",
+		warning: "This Todo file couldn’t be found. It may have been moved or deleted.",
 	});
 });
 
@@ -616,9 +606,7 @@ test("resource reads keep non-ASCII date-like descriptions intact", async () => 
 	if (created.status !== "applied" || created.confirmed.session.status !== "ready")
 		throw Error("setup");
 	await writeFile(todoPath, "éab-12-34 Invalid date\n");
-	const outcome = await backend.readWorkspace({
-		workspaceId: created.confirmed.session.catalogue.active_workspace_id!,
-	});
+	const outcome = (await backend.refreshSession({})).session;
 	if (outcome.status !== "ready") throw Error("No restored Todo file");
 	expect(outcome.todo_file.skipped).toEqual([]);
 	expect(outcome.todo_file.items).toMatchObject([
@@ -657,18 +645,8 @@ test.each([
 				status: "rejected",
 				message,
 			});
-			expect(await backend.readWorkspace({ workspaceId })).toMatchObject({
-				status: "rejected",
-				reason: "todo-file",
-				message,
-			});
-			expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
-				status: "ready",
-				selection: {
-					scope: created.confirmed.scope,
-					revision: created.confirmed.revision,
-					workspaceId,
-				},
+			expect(await backend.refreshSession({})).toMatchObject({
+				session: { status: "empty", warning: message },
 			});
 		} finally {
 			if (failure === "permission") await chmod(todoPath, 0o600);

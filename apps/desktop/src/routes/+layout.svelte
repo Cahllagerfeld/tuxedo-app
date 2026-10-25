@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		SavedViewsResource,
-		setSavedViews,
-	} from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
-	import { savedViewsDependency } from "#lib/modules/workspace/state/saved-views.js";
+	import { setSavedViews } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 	import { setAppState } from "#lib/app/app-context.js";
 	import { AppState } from "#lib/app/app-state.svelte.js";
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
@@ -15,26 +11,18 @@
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	import { ModeWatcher } from "mode-watcher";
 	import { workspaceRouting } from "#lib/app/workspace-routing.svelte.js";
-	import { goto, invalidate } from "$app/navigation";
+	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page, navigating } from "$app/state";
 	import "./layout.css";
 	let { children } = $props();
 
 	setShortcutScope();
-	const appState = new AppState(workspaceRouting());
+	const { workspace, savedViews, routes, navigation } = workspaceRouting();
+	const appState = new AppState(workspace, routes, navigation);
 	setAppState(appState);
-	setSavedViews(
-		new SavedViewsResource(
-			window.desktop,
-			appState.workspace,
-			() => page.data.savedViews,
-			(workspaceId) => invalidate(savedViewsDependency(workspaceId))
-		)
-	);
-	const busy = $derived(
-		appState.workspace.isOperating || appState.workspace.isLoading || !!navigating.to
-	);
+	setSavedViews(savedViews);
+	const busy = $derived(appState.workspace.isOperating || appState.isLoading || !!navigating.to);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const openWorkspace = (id: string, replace = false) =>
 		goto(resolve("/workspaces/[id]", { id }), { replace });
@@ -47,7 +35,7 @@
 	class="flex h-dvh min-h-0 flex-col overflow-hidden bg-window-background font-normal antialiased"
 	style="--window-toolbar-height: 2.5rem; --sidebar-width: 16rem;"
 >
-	{#if appState.workspace.isStarting}
+	{#if appState.navigation.isStarting}
 		<p role="status" class="sr-only">Loading Tuxedo…</p>
 	{:else}
 		<AppNavbar
@@ -62,15 +50,15 @@
 			{#if page.params.id}
 				<WorkspaceSidebar
 					bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
-					workspaces={appState.workspace.catalogue?.workspaces ?? []}
-					activeWorkspaceId={appState.workspace.activeWorkspace?.id ?? null}
+					workspaces={appState.catalogue?.workspaces ?? []}
+					activeWorkspaceId={appState.activeWorkspace?.id ?? null}
 					todoSummary={appState.todos}
 					todoFilter={appState.todoFilter}
-					todoFileLoaded={showsActiveWorkspace && appState.workspace.todoFile !== null}
+					todoFileLoaded={showsActiveWorkspace && appState.todoFile !== null}
 					disabled={busy}
 					pendingOperation={appState.workspace.pendingOperation}
 					selectWorkspace={(id) => void openWorkspace(id)}
-					deleteWorkspace={appState.workspace.deleteWorkspace}
+					deleteWorkspace={appState.navigation.deleteWorkspace}
 					openCreationDialog={appState.openWorkspaceCreationDialog}
 				/>
 			{/if}
@@ -78,8 +66,8 @@
 				{@render children()}
 				{#if showsActiveWorkspace}
 					<ReaderStatusBar
-						activeWorkspace={appState.workspace.activeWorkspace}
-						todoFile={appState.workspace.todoFile}
+						activeWorkspace={appState.activeWorkspace}
+						todoFile={appState.todoFile}
 						todoSummary={appState.todos}
 						pendingOperation={appState.workspace.pendingOperation}
 					/>
@@ -90,6 +78,6 @@
 	<WorkspaceCreationDialog
 		bind:open={appState.isWorkspaceCreationDialogOpen}
 		disabled={busy}
-		createWorkspace={appState.workspace.create}
+		createWorkspace={appState.navigation.create}
 	/>
 </Sidebar.Provider>

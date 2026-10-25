@@ -4,7 +4,7 @@
 (D) Confirm overflow priority is hidden by default +TuxedoApp @computer
 2026-05-24 Document parser behavior +TuxedoApp @computer
 Plan next feature
-Create an empty Todo file from New workspace and add your first Todo item +TuxedoApp @computer
+Create an empty Todo file from New workspace, open it after setup, and add your first Todo item +TuxedoApp @computer
 Open an existing work.txt without changing its contents +TuxedoApp @computer
 Capture inbox item @home @computer +TuxedoApp +Ideas
 Email Sam about launch notes @email +TuxedoApp
@@ -75,6 +75,7 @@ Remove a saved Workspace from its Home row options and confirm without deleting 
 Return Home to see the last-opened Workspace first while other Workspaces keep their creation order +TuxedoApp @review
 Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
 See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
+Retry a failed refresh after a Todo file disappears to return Home with its missing-file message +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
 
 Choose Show from after Due date to see the non-blocking editor warning +TuxedoApp @review due:2026-10-14 t:2099-01-01
@@ -82,6 +83,7 @@ Clear Show from in the editor to remove every threshold token +Imported @review 
 Create an open Todo item with a future Show from to see hidden-until feedback +TuxedoApp @review
 Use the plus button to create a Todo item with paired fields and compact date controls +TuxedoApp @review
 Hover or focus each toolbar button to see its action and available shortcut +TuxedoApp @review
+Complete an item and keep its reader open while the Workspace loader refreshes +TuxedoApp @review
 Open Shortcuts and search by action, group, or key to find a keyboard shortcut +TuxedoApp @review
 
 Choose Repeat and its paired interval in the compact editor +Home @review

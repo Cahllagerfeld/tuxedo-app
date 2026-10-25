@@ -73,7 +73,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 			Effect.gen(function* () {
 				const { fs, todoPath, session, state } = yield* fixture;
 				yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
-				const before = yield* session.readWorkspaceCatalogue({});
+				const before = yield* session.readSession({});
 				const selected = yield* session.prepareTodoFile(join(todoPath, "..", "new.txt"));
 				const request = { name: "New", color: "green" as const, ...selected };
 				yield* Ref.update(state, (current) => ({
@@ -85,7 +85,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 					message: expect.stringContaining("file has been preserved"),
 				});
 				expect(yield* fs.readFileString(selected.todoPath)).toBe("");
-				expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+				expect(yield* session.readSession({})).toEqual(before);
 				yield* Ref.update(state, (current) => ({ ...current, writeFailure: undefined }));
 				yield* fs.remove(selected.todoPath);
 				yield* fs.symlink(todoPath, selected.todoPath);
@@ -108,14 +108,14 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 				Effect.gen(function* () {
 					const { fs, todoPath, cataloguePath, session, state } = yield* fixture;
 					yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
-					const before = yield* session.readWorkspaceCatalogue({});
+					const before = yield* session.readSession({});
 					const contents = JSON.stringify((yield* Ref.get(state)).catalogue);
 					if (exists) yield* fs.writeFileString(cataloguePath, contents);
 					const selected = yield* session.prepareTodoFile(cataloguePath);
 					expect(
 						yield* session.createWorkspace({ name: "Unsafe", color: "green", ...selected })
 					).toMatchObject({ status: "rejected" });
-					expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+					expect(yield* session.readSession({})).toEqual(before);
 					if (exists) expect(yield* fs.readFileString(cataloguePath)).toBe(contents);
 					else expect(yield* fs.exists(cataloguePath)).toBe(false);
 					const caseVariant = yield* session.prepareTodoFile(
@@ -133,7 +133,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 		Effect.gen(function* () {
 			const { fs, todoPath, session, state } = yield* fixture;
 			yield* session.createWorkspace({ name: "Previous", color: "blue", todoPath });
-			const before = yield* session.readWorkspaceCatalogue({});
+			const before = yield* session.readSession({});
 			const directory = join(todoPath, "..", "destination");
 			yield* fs.makeDirectory(directory);
 			const selected = yield* session.prepareTodoFile(join(directory, "new.txt"));
@@ -142,7 +142,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 				yield* session.createWorkspace({ name: "New", color: "blue", ...selected })
 			).toMatchObject({ status: "rejected" });
 			expect(yield* fs.exists(selected.todoPath)).toBe(false);
-			expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+			expect(yield* session.readSession({})).toEqual(before);
 			expect((yield* Ref.get(state)).catalogue.workspaces).toHaveLength(1);
 		})
 	);
@@ -201,15 +201,12 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 				...current,
 				readFailure: new OperationFailure({ message: "Read denied" }),
 			}));
-			expect(yield* session.readWorkspaceCatalogue({})).toMatchObject({
-				status: "rejected",
-				message: expect.stringContaining("Check its permissions"),
+			expect(yield* session.refreshSession({})).toMatchObject({
+				session: { status: "unavailable", error: expect.stringContaining("Check its permissions") },
 			});
 			yield* Ref.update(state, (current) => ({ ...current, readFailure: undefined }));
-			expect(yield* session.readWorkspaceCatalogue({})).toMatchObject({
-				status: "ready",
-				catalogue: { workspaces: [] },
-				selection: null,
+			expect(yield* session.refreshSession({})).toMatchObject({
+				session: { status: "empty", catalogue: { workspaces: [] } },
 			});
 		})
 	);
@@ -219,7 +216,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 		() =>
 			Effect.gen(function* () {
 				const { fs, todoPath, session, state } = yield* fixture;
-				const before = yield* session.readWorkspaceCatalogue({});
+				const before = yield* session.refreshSession({});
 				yield* Ref.update(state, (current) => ({
 					...current,
 					writeFailure: new OperationFailure({ message: "Write denied" }),
@@ -229,7 +226,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("session test layers"
 					status: "rejected",
 					message: "Cannot create Workspace: Write denied",
 				});
-				expect(yield* session.readWorkspaceCatalogue({})).toEqual(before);
+				expect(yield* session.refreshSession({})).toEqual(before);
 				expect((yield* Ref.get(state)).catalogue.workspaces).toEqual([]);
 				expect(yield* fs.readFileString(todoPath)).toBe("First\n");
 				yield* Ref.update(state, (current) => ({ ...current, writeFailure: undefined }));

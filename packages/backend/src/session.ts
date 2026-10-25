@@ -1,14 +1,15 @@
 import { Cause, Context, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import { dirname, join } from "node:path";
-import { createWorkspaceReads } from "./workspace-reads";
 import { createSavedViewOperations } from "./saved-views";
+import { readWorkspace } from "./workspace-reads";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
 import { createWorkspaceLifecycle, type LoadedSession } from "./workspace-lifecycle";
 import { readContents, type OperationError } from "./operation";
 import { WorkspaceCatalogue } from "./workspace-catalogue";
 import type { TodoFileObservationAdapter } from "./observation";
+import { emptyRequestSchema } from "@tuxedo/contracts";
 import type {
 	ConfirmedSession,
 	DesktopOperation,
@@ -253,36 +254,68 @@ export function sessionLayer(
 				status: "applied" as const,
 				confirmed: state.accept(loaded, null),
 			});
-			const reads = createWorkspaceReads(cataloguePath, () => ({ confirmed, todoContents }));
-			const repeatableRead = <A, E>(
-				name: string,
-				effect: Effect.Effect<A, E, FileSystem | WorkspaceCatalogue>
-			) =>
-				semaphore
-					.withPermit(
-						effect.pipe(
-							Effect.catchDefect((cause) =>
-								Effect.sync(() => {
-									diagnostic(name, cause);
-									return {
-										status: "rejected" as const,
-										reason: "unexpected" as const,
-										message: "Cannot read Workspace data. An unexpected error occurred. Try again.",
-									};
-								})
-							),
-							Effect.withSpan(`WorkspaceSession.${name}`)
-						)
-					)
-					.pipe(Effect.provideContext(dependencies));
 			const todos = createTodoOperations(state);
 			const views = createSavedViewOperations(
 				join(dirname(cataloguePath), "saved-views.json"),
 				state
 			);
 			return WorkspaceSession.of({
-				readWorkspaceCatalogue: () => repeatableRead("readWorkspaceCatalogue", reads.catalogue()),
-				readWorkspace: (request) => repeatableRead("readWorkspace", reads.workspace(request)),
+				readWorkspace: (request) =>
+					semaphore
+						.withPermit(
+							operationResult(
+								"readWorkspace",
+								"",
+								readWorkspace(request, () => confirmed)
+							)
+						)
+						.pipe(
+							Effect.provideContext(dependencies),
+							Effect.withSpan("WorkspaceSession.readWorkspace")
+						),
+				readSession: (request) =>
+					semaphore
+						.withPermit(
+							Effect.sync(() => {
+								emptyRequestSchema.parse(request);
+								return (
+									confirmed ?? {
+										scope,
+										revision: 0,
+										session: {
+											status: "unavailable" as const,
+											error: "Workspace session has not been initialized.",
+										},
+									}
+								);
+							})
+						)
+						.pipe(Effect.withSpan("WorkspaceSession.readSession")),
+				refreshSession: (request) =>
+					serialize(
+						"refreshSession",
+						Effect.gen(function* () {
+							emptyRequestSchema.parse(request);
+							const loaded: LoadedSession = yield* workspace.load();
+							return confirmed &&
+								todoContents === loaded.todoContents &&
+								JSON.stringify(confirmed.session) === JSON.stringify(loaded.session)
+								? confirmed
+								: state.accept(loaded);
+						}).pipe(
+							Effect.catchDefect((cause) =>
+								Effect.sync(() => {
+									diagnostic("refreshSession", cause);
+									return state.accept({
+										session: {
+											status: "unavailable",
+											error: "Cannot read Workspace data. An unexpected error occurred. Try again.",
+										},
+									});
+								})
+							)
+						)
+					),
 				setWorkspaceSortOrder: (request) =>
 					operation(
 						"setWorkspaceSortOrder",
@@ -305,10 +338,10 @@ export function sessionLayer(
 					),
 				stopObservation: semaphore.withPermit(closeObservation),
 				prepareTodoFile: (path) => serialize("prepareTodoFile", workspace.prepareTodoFile(path)),
-				readSavedViews: () =>
+				readSavedViews: (request) =>
 					semaphore
 						.withPermit(
-							operationResult("readSavedViews", "", views.read()).pipe(
+							operationResult("readSavedViews", "", views.read(request)).pipe(
 								Effect.withSpan("WorkspaceSession.readSavedViews")
 							)
 						)

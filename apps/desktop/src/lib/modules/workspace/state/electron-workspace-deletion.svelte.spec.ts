@@ -1,4 +1,4 @@
-import { resourceDesktop } from "./testing/resource-desktop";
+import { loaderDesktop } from "./testing/loader-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -20,8 +20,11 @@ const initial: ConfirmedSession = {
 		todo_file: { path: workspace.todo_path, items: [], skipped: [] },
 	},
 };
-function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
-	return resourceDesktop({
+function adapter(
+	deleteWorkspace: DesktopAPI["deleteWorkspace"],
+	readSession: DesktopAPI["readSession"] = async () => initial
+): DesktopAPI {
+	return loaderDesktop({
 		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),
 		undoTodo: async () => ({ status: "rejected", message: "unused" }),
@@ -31,16 +34,11 @@ function adapter(deleteWorkspace: DesktopAPI["deleteWorkspace"]): DesktopAPI {
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
-		readWorkspaceCatalogue: async () => {
-			throw Error("unused");
-		},
-		readWorkspace: async () => {
-			throw Error("unused");
-		},
-		readSavedViews: async () => ({ status: "applied", views: [] }),
+		readSavedViews: async () => ({ status: "applied", workspaceId: workspace.id, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
-		resourceState: async () => initial,
+		readSession,
+		refreshSession: async () => initial,
 		createWorkspace: async () => ({ status: "rejected", message: "unused" }),
 		writeClipboardText: async () => null,
 		selectTodoFile: async () => null,
@@ -165,22 +163,24 @@ test.each(["ready", "empty"] as const)(
 						},
 		};
 		let calls = 0;
-		const desktop = adapter(async (input) => {
-			expect(input.workspaceId).toBe(unavailable.id);
-			calls++;
-			return {
-				status: "applied",
-				confirmed: {
-					...confirmed,
-					revision: 6,
-					session: {
-						...confirmed.session,
-						catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+		const desktop = adapter(
+			async (input) => {
+				expect(input.workspaceId).toBe(unavailable.id);
+				calls++;
+				return {
+					status: "applied",
+					confirmed: {
+						...confirmed,
+						revision: 6,
+						session: {
+							...confirmed.session,
+							catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
+						},
 					},
-				},
-			};
-		});
-		Object.assign(desktop, resourceDesktop({ ...desktop, resourceState: async () => confirmed }));
+				};
+			},
+			async () => confirmed
+		);
 		desktop.switchWorkspace = async () => {
 			throw Error("Options must not switch Workspace");
 		};
@@ -214,19 +214,21 @@ test("removes the last unavailable Active workspace from Empty", async () => {
 			catalogue: { version: 1, active_workspace_id: workspace.id, workspaces: [workspace] },
 		},
 	};
-	const desktop = adapter(async () => ({
-		status: "applied",
-		confirmed: {
-			...empty,
-			revision: 6,
-			session: {
-				status: "empty",
-				warning: null,
-				catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+	const desktop = adapter(
+		async () => ({
+			status: "applied",
+			confirmed: {
+				...empty,
+				revision: 6,
+				session: {
+					status: "empty",
+					warning: null,
+					catalogue: { version: 1, active_workspace_id: null, workspaces: [] },
+				},
 			},
-		},
-	}));
-	Object.assign(desktop, resourceDesktop({ ...desktop, resourceState: async () => empty }));
+		}),
+		async () => empty
+	);
 	render(ElectronDeletionHarness, { desktop });
 	await confirm();
 	await expect.element(page.getByLabelText("Workspace count")).toHaveTextContent("0");

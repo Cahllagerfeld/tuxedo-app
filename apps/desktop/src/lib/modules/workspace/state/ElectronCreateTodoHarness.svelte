@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import type { CreateTodoDraft } from "./workspace-commands.svelte";
-	import { workspaceRouteFixture } from "./testing/workspace-route-fixture.svelte";
+	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
 
 	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
 	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;
@@ -12,8 +12,9 @@
 
 	let { desktop }: { desktop: CreateTodoDesktop } = $props();
 	// svelte-ignore state_referenced_locally
-	const fixture = workspaceRouteFixture(desktop);
+	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
+	const app = fixture.createApp();
 	onMount(() => {
 		void fixture.start();
 	});
@@ -29,9 +30,9 @@
 	}
 </script>
 
-<p aria-label="Session status">{session.session.status}</p>
+<p aria-label="Session status">{app.session.status}</p>
 <button disabled={session.isOperating} onclick={create}>Create</button>
-<p aria-label="Item count">{session.todoFile?.items.length ?? 0}</p>
+<p aria-label="Item count">{app.todoFile?.items.length ?? 0}</p>
 <p aria-label="Pending operation">{session.pendingOperation ?? "none"}</p>
 <p aria-label="Pending target">
 	{session.pendingTarget ? JSON.stringify(session.pendingTarget) : "none"}

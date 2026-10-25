@@ -112,11 +112,10 @@ test("a corrupt catalogue is preserved and a failed save leaves confirmed sort o
 	expect(
 		await backend.setWorkspaceSortOrder({ ...target(current), sortOrder: "due" })
 	).toMatchObject({ status: "rejected" });
-	expect(await backend.readWorkspaceCatalogue({})).toMatchObject({
-		status: "rejected",
-		reason: "catalogue",
+	expect(await backend.refreshSession({})).toMatchObject({
+		session: { status: "unavailable" },
 	});
 	expect(await readFile(path, "utf8")).toBe("{broken");
 	await writeFile(path, original);
-	expect(await readConfirmation(backend)).toEqual(current);
+	expect((await backend.refreshSession({})).session).toEqual(current.session);
 });
