@@ -4,9 +4,11 @@ import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 import type { TodoItemDraft, SaveTodoItemResult } from "#lib/modules/todo/ui/todo-editor-types.js";
 import type { ShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
+import type { WorkspaceView } from "../state/workspace-view.js";
 
 type Inputs = {
 	readonly workspace: WorkspaceCommands;
+	readonly view: WorkspaceView;
 	readonly fileOrder: boolean;
 	readonly wide: boolean;
 	readonly list: ReturnType<typeof TodoList> | undefined;
@@ -36,12 +38,12 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 		editRecovery?.cancel();
 	});
 	const currentScope = (): Scope => ({
-		workspaceId: inputs.workspace.activeWorkspace?.id,
-		path: inputs.workspace.todoFile?.path,
+		workspaceId: inputs.view.activeWorkspace?.id,
+		path: inputs.view.todoFile?.path,
 	});
 	const selectedTodo = $derived(
 		selection && sameScope(selection.scope, currentScope())
-			? (inputs.workspace.todoFile?.items.find((item) => sameTodo(item, selection?.todo)) ??
+			? (inputs.view.todoFile?.items.find((item) => sameTodo(item, selection?.todo)) ??
 					(writing ? selection.todo : null))
 			: null
 	);
@@ -97,8 +99,7 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 					const moved =
 						line === null
 							? null
-							: (inputs.workspace.todoFile?.items.find((item) => item.line_number === line) ??
-								null);
+							: (inputs.view.todoFile?.items.find((item) => item.line_number === line) ?? null);
 					selection = moved && { todo: moved, scope: selection.scope };
 					if (line === null && trigger?.closest("[data-todo-details]")) inputs.viewport?.focus();
 				} else if (result.status === "conflict") selection = null;

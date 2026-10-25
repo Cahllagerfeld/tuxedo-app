@@ -24,7 +24,8 @@ test("visibility arrivals retain confirmation, while hidden selections are prune
 	let selection!: ReturnType<typeof createTodoBulkSelection>;
 	const dispose = $effect.root(() => {
 		selection = createTodoBulkSelection({
-			getWorkspace: () => ({
+			getWorkspace: () => ({ isOperating: false, writesBlocked: false }),
+			getData: () => ({
 				activeWorkspace: {
 					id: "work",
 					name: "Work",
@@ -33,8 +34,6 @@ test("visibility arrivals retain confirmation, while hidden selections are prune
 					created_at: "2026-10-24T00:00:00Z",
 				},
 				todoFile: { path: "/work.txt", items: [first, second], skipped: [] },
-				isOperating: false,
-				writesBlocked: false,
 			}),
 			getMatchingItems: () => visible,
 			getFilterSignature: () => "",

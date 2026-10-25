@@ -12,12 +12,13 @@
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
+	const app = fixture.createApp();
 	onMount(() => {
 		void fixture.start();
 	});
 	let result = $state("");
 	let viewport = $state<HTMLElement | null>(null);
-	const summary = $derived(summarizeTodoFile(session.todoFile));
+	const summary = $derived(summarizeTodoFile(app.todoFile));
 	async function remove(todo: TodoItem) {
 		const outcome = await session.deleteTodo(todo);
 		result = outcome.status === "applied" ? "Applied" : outcome.message;
@@ -28,11 +29,11 @@
 	}
 </script>
 
-{#if session.todoFile}
+{#if app.todoFile}
 	<ScrollArea bind:viewportRef={viewport} class="h-96">
 		<TodoList
 			scrollElement={viewport}
-			todoFile={session.todoFile}
+			todoFile={app.todoFile}
 			disabled={session.isOperating}
 			onDelete={remove}
 			onToggleComplete={toggleComplete}

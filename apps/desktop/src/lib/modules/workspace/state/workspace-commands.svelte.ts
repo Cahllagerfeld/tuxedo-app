@@ -2,7 +2,6 @@ import { todoFileChangeEvent } from "@tuxedo/contracts";
 import type {
 	DesktopAPI,
 	DesktopRequest,
-	ConfirmedSession,
 	TodoSortOrder,
 	TodoFileChange,
 	TodoFileObservation,
@@ -22,7 +21,6 @@ export type WorkspaceRoutes = {
 	destination: () => string | undefined;
 	navigating: () => boolean;
 	refresh: (workspaceId: string | null, session?: boolean) => Promise<void>;
-	navigate: (workspaceId: string | null, replace?: boolean) => Promise<void>;
 };
 export type CreateTodoDraft = Omit<
 	DesktopRequest<"createTodo">,
@@ -35,11 +33,7 @@ export class WorkspaceCommands {
 	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
 	private readFailure = $state("");
 	private minimumRevision = $state(-1);
-	private startupHandled = $state(false);
-	private startupTarget = $state<string>();
-	private handoff: string | null | undefined;
-	private deferredDestination = false;
-	destinationError = $state("");
+	private completion = Promise.resolve();
 
 	constructor(
 		private readonly desktop: DesktopAPI,
@@ -52,21 +46,17 @@ export class WorkspaceCommands {
 	private get confirmed() {
 		return this.routes.session()?.value;
 	}
-	get catalogue() {
+	private get catalogue() {
 		return this.confirmed?.session.status !== "unavailable"
 			? (this.confirmed?.session.catalogue ?? null)
 			: null;
 	}
-	get activeWorkspace() {
-		const id = this.catalogue?.active_workspace_id;
-		const value = this.current?.value;
-		return (
-			(value && value.workspace.id === id ? value.workspace : null) ??
-			this.catalogue?.workspaces.find((workspace) => workspace.id === id) ??
-			null
+	private get activeWorkspace() {
+		return this.catalogue?.workspaces.find(
+			(workspace) => workspace.id === this.catalogue?.active_workspace_id
 		);
 	}
-	get todoFile() {
+	private get todoFile() {
 		return this.current?.value?.confirmation &&
 			this.current.value.workspace.id === this.catalogue?.active_workspace_id
 			? this.current.value.todo_file
@@ -94,38 +84,14 @@ export class WorkspaceCommands {
 	get pendingTarget() {
 		return this.pending?.target ?? null;
 	}
-	get isStarting() {
-		return (
-			!this.routes.session() ||
-			(!this.startupHandled && !this.routes.destination()) ||
-			!!this.startupTarget
-		);
-	}
-	get isLoading() {
-		return this.session.status === "loading";
-	}
-	get undoLabel() {
-		return this.todoFile ? this.current?.value?.confirmation?.undoLabel : undefined;
-	}
-	get error() {
+	private get error() {
 		return this.routes.session()?.error ?? "";
-	}
-	get warning() {
-		return (
-			this.destinationError ||
-			(this.confirmed?.session.status === "empty" ? (this.confirmed.session.warning ?? "") : "")
-		);
 	}
 	get recoveryError() {
 		return this.readFailure || this.current?.error || this.error;
 	}
 	get writesBlocked() {
 		return !this.canMutate;
-	}
-	get session(): ConfirmedSession["session"] | { status: "loading" } {
-		if (!this.confirmed)
-			return this.error ? { status: "unavailable", error: this.error } : { status: "loading" };
-		return this.confirmed.session;
 	}
 	private requireRevision(value: { scope: string; revision: number }) {
 		if (this.confirmed && value.scope !== this.confirmed.scope)
@@ -138,9 +104,14 @@ export class WorkspaceCommands {
 	): Promise<WorkspaceSessionActionResult> {
 		try {
 			await this.routes.refresh(workspaceId, session);
-			const failure = this.current?.error || this.error;
+			const displayed =
+				workspaceId &&
+				workspaceId === this.routes.destination() &&
+				this.confirmed?.session.status === "ready" &&
+				this.catalogue?.active_workspace_id === workspaceId;
+			const failure = (displayed ? this.current?.error : "") || this.error;
 			if (failure) throw Error(failure);
-			const revision = this.routes.destination()
+			const revision = displayed
 				? this.current?.value?.confirmation?.revision
 				: this.confirmed?.revision;
 			if (revision === undefined || revision < this.minimumRevision)
@@ -156,19 +127,25 @@ export class WorkspaceCommands {
 		this.runAction("restore", async () => {
 			const value = await this.desktop.refreshSession({});
 			this.requireRevision(value);
-			if (
-				this.routes.destination() &&
-				(value.session.status !== "ready" ||
-					value.session.catalogue.active_workspace_id !== this.routes.destination())
-			) {
-				await this.navigate(
-					value.session.status === "ready" ? value.session.catalogue.active_workspace_id : null,
-					true
-				);
-			}
-			return this.refresh(this.routes.destination() ?? null, true);
+			const activeWorkspaceId =
+				value.session.status === "ready" ? value.session.catalogue.active_workspace_id : null;
+			const outcome = await this.refresh(
+				activeWorkspaceId === this.routes.destination() ? activeWorkspaceId : null,
+				true
+			);
+			return outcome.status === "applied" ? { ...outcome, activeWorkspaceId } : outcome;
 		});
-	async runAction(
+	async whenIdle() {
+		while (this.pending) await this.completion;
+	}
+	runAction(
+		operation: WorkspaceSessionOperation,
+		action: () => Promise<WorkspaceSessionActionResult>,
+		target: WorkspaceSessionOperationTarget | null = null
+	) {
+		return this.run(operation, action, target);
+	}
+	private async run(
 		operation: WorkspaceSessionOperation,
 		action: () => Promise<WorkspaceSessionActionResult>,
 		target: WorkspaceSessionOperationTarget | null = null,
@@ -177,6 +154,10 @@ export class WorkspaceCommands {
 		if (this.pending || (!committed && this.routes.navigating()))
 			return { status: "rejected", message: "A Workspace session operation is already running." };
 		this.pending = { operation, target };
+		let finish!: () => void;
+		this.completion = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
 		try {
 			return await action();
 		} catch (error) {
@@ -185,10 +166,8 @@ export class WorkspaceCommands {
 			return { status: "rejected", message };
 		} finally {
 			this.pending = null;
-			if (this.deferredDestination) {
-				this.deferredDestination = false;
-				await this.committedDestination(this.routes.destination());
-			} else void this.drainObservation();
+			finish();
+			void this.drainObservation();
 		}
 	}
 	private todoTarget() {
@@ -222,7 +201,14 @@ export class WorkspaceCommands {
 	): Promise<WorkspaceSessionActionResult> {
 		if (outcome.status !== "applied") return outcome;
 		this.requireRevision(outcome.confirmed);
-		const refreshed = await this.refresh(this.routes.destination() ?? null, true);
+		const activeWorkspaceId =
+			outcome.confirmed.session.status === "ready"
+				? outcome.confirmed.session.catalogue.active_workspace_id
+				: null;
+		const refreshed = await this.refresh(
+			activeWorkspaceId === this.routes.destination() ? activeWorkspaceId : null,
+			true
+		);
 		return {
 			status: "applied",
 			...(refreshed.status === "rejected"
@@ -230,73 +216,21 @@ export class WorkspaceCommands {
 				: {}),
 		};
 	}
-	beginNavigation(_complete: Promise<void>, destination: string | undefined) {
-		return !this.pending || this.handoff === (destination ?? null);
-	}
-	private async navigate(id: string | null, replace = false) {
-		this.handoff = id;
-		try {
-			await this.routes.navigate(id, replace);
-		} finally {
-			this.handoff = undefined;
-		}
-	}
-	committedDestination = async (
-		workspaceId: string | undefined,
-		initial = false
-	): Promise<WorkspaceSessionActionResult | undefined> => {
-		if (workspaceId !== this.routes.destination() || !this.routes.session()) return;
-		if (workspaceId === this.startupTarget) this.startupTarget = undefined;
-		if (!this.startupHandled) {
-			this.startupHandled = true;
-			if (initial && !workspaceId) {
-				const active =
-					this.confirmed?.session.status === "ready" ? this.activeWorkspace?.id : undefined;
-				if (active) {
-					this.startupTarget = active;
-					try {
-						await this.navigate(active, true);
-					} catch (error) {
-						this.destinationError = error instanceof Error ? error.message : String(error);
-					} finally {
-						this.startupTarget = undefined;
-					}
-				}
-				return;
-			}
-		}
-		if (!workspaceId || this.ready) return this.drainObservation(true);
-		if (this.pending) {
-			this.deferredDestination = true;
-			return;
-		}
-		if (this.current?.error && !this.current.value && !this.error) {
-			this.destinationError = this.current.error;
-			await this.navigate(null, true);
-			return;
-		}
-		if (this.recoveryError) return;
-		return this.runAction(
+	activate = (workspaceId: string): Promise<WorkspaceSessionActionResult> =>
+		this.run(
 			"open_workspace",
 			async () => {
 				if (this.activeWorkspace?.id === workspaceId && this.current?.value?.confirmation)
 					return this.refresh(workspaceId, true);
 				const outcome = await this.desktop.switchWorkspace({ workspaceId });
-				if (outcome.status === "applied") this.requireRevision(outcome.confirmed);
-				if (workspaceId !== this.routes.destination())
-					return { status: "rejected", message: "Destination changed." };
-				if (outcome.status === "rejected") {
-					this.destinationError = outcome.message;
-					await this.navigate(null, true);
-					return outcome;
-				}
-				this.destinationError = "";
-				return this.refresh(workspaceId, true);
+				if (outcome.status !== "applied") return outcome;
+				this.requireRevision(outcome.confirmed);
+				return this.refresh(workspaceId === this.routes.destination() ? workspaceId : null, true);
 			},
 			{ workspaceId },
 			true
 		);
-	};
+	flushObservation = () => this.drainObservation(true);
 	private catalogueTarget() {
 		if (!this.catalogue || this.recoveryError)
 			throw new CommandValidationError("Refresh Workspaces before changing them.");
@@ -309,26 +243,21 @@ export class WorkspaceCommands {
 				const outcome = await this.desktop.createWorkspace(input);
 				if (outcome.status !== "applied") return outcome;
 				this.requireRevision(outcome.confirmed);
-				this.destinationError = "";
 				const id =
 					outcome.confirmed.session.status === "ready"
 						? outcome.confirmed.session.catalogue.active_workspace_id
 						: null;
-				try {
-					await this.navigate(id);
-				} catch (error) {
-					this.readFailure = error instanceof Error ? error.message : String(error);
-					return {
-						status: "applied",
-						notice:
-							"Workspace created, but its destination could not be opened. " + this.readFailure,
-					};
-				}
-				if (this.routes.destination() !== id) {
-					await this.routes.refresh(null, true);
-					return { status: "applied" };
-				}
-				return this.sessionOutcome(outcome);
+				const refreshed = await this.refresh(null, true);
+				return {
+					status: "applied",
+					workspaceId: id,
+					...(refreshed.status === "rejected"
+						? {
+								notice:
+									"Workspace created, but Workspaces could not be refreshed. " + refreshed.message,
+							}
+						: {}),
+				};
 			},
 			{ todoPath: input.todoPath }
 		);
@@ -339,24 +268,11 @@ export class WorkspaceCommands {
 				this.catalogueTarget();
 				const outcome = await this.desktop.deleteWorkspace({ workspaceId });
 				if (outcome.status !== "applied") return outcome;
-				this.requireRevision(outcome.confirmed);
 				const active =
 					outcome.confirmed.session.status === "ready"
 						? outcome.confirmed.session.catalogue.active_workspace_id
 						: null;
-				if (this.routes.destination() && active !== this.routes.destination()) {
-					try {
-						await this.navigate(null, true);
-					} catch (error) {
-						this.readFailure = error instanceof Error ? error.message : String(error);
-						return {
-							status: "applied",
-							notice:
-								"Workspace removed, but its destination could not be opened. " + this.readFailure,
-						};
-					}
-				}
-				return this.sessionOutcome(outcome);
+				return { ...(await this.sessionOutcome(outcome)), activeWorkspaceId: active };
 			},
 			{ workspaceId }
 		);
@@ -388,8 +304,9 @@ export class WorkspaceCommands {
 	private summary() {
 		return JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped });
 	}
-	private dirty: { event: TodoFileChange; before: string; notify: () => void } | undefined;
-	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
+	private dirty:
+		{ event: TodoFileChange; before: string; notify: (changed: boolean) => void } | undefined;
+	observe = (observation: TodoFileObservation, onUpdated: (changed: boolean) => void) => {
 		let listening = true;
 		const stop = observation.onTodoFileChanged((event) => {
 			const parsed = todoFileChangeEvent.payload.safeParse(event);
@@ -408,8 +325,8 @@ export class WorkspaceCommands {
 				this.dirty = {
 					event: parsed.data,
 					before: this.dirty?.before ?? this.summary(),
-					notify: () => {
-						if (listening) onSummaryChanged();
+					notify: (changed) => {
+						if (listening) onUpdated(changed);
 					},
 				};
 			void this.drainObservation();
@@ -435,26 +352,24 @@ export class WorkspaceCommands {
 		if (!this.matchesObservation(event)) return;
 		const revision = this.current?.value?.confirmation?.revision;
 		if (this.ready && revision !== undefined && revision >= event.revision) {
-			if (this.routes.destination() && before !== this.summary()) notify();
+			notify(!!this.routes.destination() && before !== this.summary());
 			return;
 		}
-		return this.runAction(
+		return this.run(
 			"restore",
 			async () => {
 				this.requireRevision(event);
 				const outcome = await this.refresh(this.routes.destination() ?? null, true);
-				if (this.routes.destination() && this.confirmed?.session.status === "empty") {
-					this.destinationError = this.warning;
-					await this.navigate(null, true);
-					return this.refresh(null, true);
-				}
-				if (outcome.status === "applied" && this.routes.destination() && before !== this.summary())
-					notify();
 				return outcome;
 			},
 			{ workspaceId: event.workspaceId },
 			committed
-		);
+		).then((outcome) => {
+			notify(
+				outcome.status === "applied" && !!this.routes.destination() && before !== this.summary()
+			);
+			return outcome;
+		});
 	}
 	setCompletion = (todo: TodoItem) =>
 		this.runAction(

@@ -5,7 +5,6 @@
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
 	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
-	import { AppState } from "#lib/app/app-state.svelte.js";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import AppNavbar from "#lib/app/AppNavbar.svelte";
@@ -27,11 +26,11 @@
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
-	const app = new AppState(fixture.commands);
+	const app = fixture.createApp();
 	setSavedViews(fixture.savedViews);
 	onMount(() => {
 		const stop =
-			observation && app.workspace.observe(observation, () => toast.info("Todo file reloaded"));
+			observation && fixture.observe(observation, () => toast.info("Todo file reloaded"));
 		void fixture.start();
 		return stop;
 	});
@@ -56,20 +55,20 @@
 		{#if shell}
 			<WorkspaceSidebar
 				bind:switcherOpen={app.isWorkspaceSwitcherOpen}
-				workspaces={app.workspace.catalogue?.workspaces ?? []}
-				activeWorkspaceId={app.workspace.activeWorkspace?.id ?? null}
+				workspaces={app.catalogue?.workspaces ?? []}
+				activeWorkspaceId={app.activeWorkspace?.id ?? null}
 				todoSummary={app.todos}
 				todoFilter={app.todoFilter}
-				todoFileLoaded={!!app.workspace.todoFile}
-				disabled={app.workspace.isOperating || app.workspace.isLoading}
+				todoFileLoaded={!!app.todoFile}
+				disabled={app.workspace.isOperating || app.isLoading}
 				selectWorkspace={fixture.navigate}
-				deleteWorkspace={app.workspace.deleteWorkspace}
+				deleteWorkspace={app.navigation.deleteWorkspace}
 				openCreationDialog={app.openWorkspaceCreationDialog}
 			/>
 			<WorkspaceCreationDialog
 				bind:open={app.isWorkspaceCreationDialogOpen}
-				disabled={app.workspace.isOperating || app.workspace.isLoading}
-				createWorkspace={app.workspace.create}
+				disabled={app.workspace.isOperating || app.isLoading}
+				createWorkspace={app.navigation.create}
 			/>
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
@@ -77,6 +76,8 @@
 				bulkSelection={app.bulkSelection}
 				bind:creationOpen={app.isTodoCreationOpen}
 				workspace={app.workspace}
+				view={app}
+				deleteWorkspace={app.navigation.deleteWorkspace}
 				todoFilter={app.todoFilter}
 				filteredTodoItems={app.filteredTodoItems}
 				openWorkspaceCreationDialog={app.openWorkspaceCreationDialog}
@@ -85,8 +86,8 @@
 	</div>
 </Sidebar.Provider>
 <ReaderStatusBar
-	activeWorkspace={app.workspace.activeWorkspace}
-	todoFile={app.workspace.todoFile}
+	activeWorkspace={app.activeWorkspace}
+	todoFile={app.todoFile}
 	todoSummary={app.todos}
 	pendingOperation={app.workspace.pendingOperation}
 />

@@ -5,6 +5,7 @@ import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
+import { workspaceNavigation } from "./workspace-navigation.svelte.js";
 import {
 	sessionDependency,
 	workspaceDependency,
@@ -12,21 +13,26 @@ import {
 } from "#lib/modules/workspace/state/workspace-route-data.js";
 
 export function workspaceRouting() {
-	const commands = new WorkspaceCommands(window.desktop, {
+	const routes = {
 		session: () => page.data.session,
 		workspace: () => page.data.workspace,
 		destination: () => page.params.id,
 		navigating: () => !!navigating.to,
-		refresh: (id, session = false) =>
+		refresh: (id: string | null, session = false) =>
 			invalidate(
 				(dependency) =>
 					(session && dependency.href === sessionDependency) ||
 					(!!id && dependency.href === workspaceDependency(id))
 			),
+	};
+	const commands = new WorkspaceCommands(window.desktop, routes);
+	const navigation = workspaceNavigation(commands, {
+		...routes,
 		navigate: (id, replace = false) =>
 			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replace }),
 	});
 	const savedViews = new SavedViewsResource(window.desktop, commands, {
+		workspaceId: routes.destination,
 		current: () => page.data.savedViews,
 		refresh: (id) => invalidate(savedViewsDependency(id)),
 	});
@@ -34,21 +40,18 @@ export function workspaceRouting() {
 		if (navigation.shallow && navigation.type === "goto") return;
 
 		// Window lifecycle is independent of renderer command admission.
-		if (
-			navigation.type !== "leave" &&
-			!commands.beginNavigation(navigation.complete, navigation.to?.params?.id)
-		)
-			navigation.cancel();
+		if (navigation.type !== "leave" && commands.pendingOperation !== null) navigation.cancel();
 	});
-	afterNavigate((navigation) => {
-		if (navigation.shallow && navigation.type === "goto") return;
+	afterNavigate((event) => {
+		if (event.shallow && event.type === "goto") return;
 
-		void commands
-			.committedDestination(page.params.id, navigation.type === "enter")
-			.then((outcome) => {
-				if (outcome?.status === "applied" && outcome.notice) toast.warning(outcome.notice);
-			});
+		void navigation.committedDestination(event.type === "enter");
 	});
-	onMount(() => commands.observe(window.desktop, () => toast.info("Todo file reloaded")));
-	return { workspace: commands, savedViews };
+	onMount(() =>
+		commands.observe(window.desktop, (changed) => {
+			if (changed) toast.info("Todo file reloaded");
+			navigation.observed(changed);
+		})
+	);
+	return { workspace: commands, savedViews, routes, navigation };
 }

@@ -19,7 +19,7 @@
 				variant="outline"
 				size="sm"
 				disabled={workspace.isOperating}
-				onclick={() => void workspace.retry()}>Retry refresh</Button
+				onclick={() => void appState.navigation.retry()}>Retry refresh</Button
 			>
 			<Button variant="outline" size="sm" href={resolve("/")}>Home</Button>
 		</div>
@@ -30,6 +30,8 @@
 				bind:creationOpen={appState.isTodoCreationOpen}
 				bulkSelection={appState.bulkSelection}
 				{workspace}
+				view={appState}
+				deleteWorkspace={appState.navigation.deleteWorkspace}
 				todoFilter={appState.todoFilter}
 				filteredTodoItems={appState.filteredTodoItems}
 				openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}

@@ -14,15 +14,15 @@
 				variant="outline"
 				size="sm"
 				disabled={appState.workspace.isOperating}
-				onclick={() => void appState.workspace.retry()}>Retry refresh</Button
+				onclick={() => void appState.navigation.retry()}>Retry refresh</Button
 			>
 		</div>
 	{/if}
 	<WorkspaceEmptyState
-		session={appState.workspace.session}
-		warning={appState.workspace.destinationError}
-		deleteWorkspace={appState.workspace.deleteWorkspace}
-		disabled={appState.workspace.isOperating || appState.workspace.isLoading}
+		session={appState.session}
+		warning={appState.navigation.destinationError}
+		deleteWorkspace={appState.navigation.deleteWorkspace}
+		disabled={appState.workspace.isOperating || appState.isLoading}
 		openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
 	/>
 </div>

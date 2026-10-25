@@ -1,5 +1,7 @@
-import type { DesktopAPI } from "@tuxedo/contracts";
+import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 import { tick } from "svelte";
+import { AppState } from "#lib/app/app-state.svelte.js";
+import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
 import { WorkspaceCommands } from "../workspace-commands.svelte";
 import { SavedViewsResource } from "../saved-views-resource.svelte";
 import {
@@ -24,15 +26,23 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		if (id) workspace = await readWorkspace(desktop, id, () => workspace);
 		await tick();
 	};
-	const commands = new WorkspaceCommands(desktop, {
+	const routes = {
 		session: () => session,
 		workspace: () => workspace,
 		destination: () => destination,
 		navigating: () => false,
 		refresh,
+	};
+	const commands = new WorkspaceCommands(desktop, routes);
+	const navigation = workspaceNavigation(commands, {
+		...routes,
 		navigate: async (id) => navigate(id ?? undefined),
 	});
 	const savedViews = new SavedViewsResource(desktop, commands, {
+		workspaceId: () =>
+			session?.value?.session.status !== "unavailable"
+				? (session?.value?.session.catalogue.active_workspace_id ?? undefined)
+				: undefined,
 		current: () => views,
 		refresh: loadViews,
 	});
@@ -40,7 +50,7 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		destination = id;
 		await refresh(id ?? null, true);
 		if (id) await loadViews(id);
-		await commands.committedDestination(id);
+		await navigation.committedDestination();
 	}
 	async function start() {
 		session = await readSession(desktop, () => session);
@@ -57,9 +67,17 @@ export function workspaceFixture(desktop: DesktopAPI) {
 
 	return {
 		commands,
+		routes,
+		navigation,
+		createApp: () => new AppState(commands, routes, navigation),
+		observe: (observation: TodoFileObservation, onChanged: () => void) =>
+			commands.observe(observation, (changed) => {
+				navigation.observed(changed);
+				if (changed) onChanged();
+			}),
 		savedViews,
 		start,
-		reload: () => commands.retry(),
+		reload: () => navigation.retry(),
 		navigate: async (id: string | undefined) => {
 			if (commands.isOperating) return { status: "rejected" as const, message: "Busy" };
 			return navigate(id);

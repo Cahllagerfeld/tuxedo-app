@@ -19,7 +19,7 @@
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
 	let helpOpen = $state(false);
-	const idle = $derived(!app.workspace.isLoading && !app.workspace.isOperating);
+	const idle = $derived(!app.isLoading && !app.workspace.isOperating);
 	const actions = {
 		workspace: async () => {
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);

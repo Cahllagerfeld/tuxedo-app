@@ -6,6 +6,7 @@ import type { SavedViewsData } from "./workspace-route-data";
 
 export type SavedViewsRoutes = {
 	current: () => SavedViewsData | undefined;
+	workspaceId: () => string | undefined;
 	refresh: (workspaceId: string) => Promise<void>;
 };
 
@@ -18,16 +19,14 @@ export class SavedViewsResource {
 	) {}
 	private get current() {
 		const data = this.routes.current();
-		return data?.workspaceId === this.session.activeWorkspace?.id ? data : undefined;
+		return data?.workspaceId === this.routes.workspaceId() ? data : undefined;
 	}
 	get views() {
 		return this.current?.views ?? [];
 	}
 	get error() {
 		return (
-			(this.failure?.workspaceId === this.session.activeWorkspace?.id
-				? this.failure?.message
-				: "") ||
+			(this.failure?.workspaceId === this.routes.workspaceId() ? this.failure?.message : "") ||
 			this.current?.error ||
 			""
 		);
@@ -49,7 +48,7 @@ export class SavedViewsResource {
 	}
 	retry = () =>
 		this.session.runAction("refresh_saved_views", async () => {
-			const workspaceId = this.session.activeWorkspace?.id;
+			const workspaceId = this.routes.workspaceId();
 			return workspaceId
 				? this.refresh(workspaceId)
 				: { status: "rejected", message: "Open a Workspace first." };
@@ -58,7 +57,7 @@ export class SavedViewsResource {
 		operation: "save_view" | "delete_view",
 		command: (workspaceId: string) => ReturnType<DesktopAPI["saveView"]>
 	) {
-		const workspaceId = this.session.activeWorkspace?.id;
+		const workspaceId = this.routes.workspaceId();
 		return this.session.runAction(
 			operation,
 			async () => {

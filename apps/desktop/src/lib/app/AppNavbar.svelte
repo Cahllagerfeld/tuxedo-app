@@ -15,10 +15,7 @@
 	}: { app: AppState; readerShown?: boolean; workspaceShown?: boolean } = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		readerShown &&
-			!!app.workspace.undoLabel &&
-			app.workspace.canMutate &&
-			!app.todoBulkSelectionActive
+		readerShown && !!app.undoLabel && app.workspace.canMutate && !app.todoBulkSelectionActive
 	);
 	async function undo() {
 		if (!canUndo) return;
@@ -48,8 +45,8 @@
 			variant="ghost"
 			size="icon-sm"
 			class="[app-region:no-drag]"
-			aria-label={app.workspace.undoLabel ?? "Undo last change"}
-			title={`${app.workspace.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
+			aria-label={app.undoLabel ?? "Undo last change"}
+			title={`${app.undoLabel ?? "Undo last change"} (${formatForDisplay(undoTodoShortcut.key)})`}
 			disabled={!canUndo}
 			onclick={undo}><Undo2 aria-hidden="true" /></Button
 		>

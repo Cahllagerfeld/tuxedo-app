@@ -14,6 +14,7 @@
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const session = fixture.commands;
+	const app = fixture.createApp();
 	onMount(() => {
 		void fixture.start();
 	});
@@ -29,9 +30,9 @@
 	}
 </script>
 
-<p aria-label="Session status">{session.session.status}</p>
+<p aria-label="Session status">{app.session.status}</p>
 <button disabled={session.isOperating} onclick={create}>Create</button>
-<p aria-label="Item count">{session.todoFile?.items.length ?? 0}</p>
+<p aria-label="Item count">{app.todoFile?.items.length ?? 0}</p>
 <p aria-label="Pending operation">{session.pendingOperation ?? "none"}</p>
 <p aria-label="Pending target">
 	{session.pendingTarget ? JSON.stringify(session.pendingTarget) : "none"}
