@@ -1,6 +1,10 @@
 import { afterNavigate, beforeNavigate, goto, invalidate } from "$app/navigation";
 import { page, navigating } from "$app/state";
 import { resolve } from "$app/paths";
+import {
+	panelRouting,
+	setPanelRouting,
+} from "#lib/modules/workspace/ui/todo-panel-routing.svelte.js";
 import { onMount } from "svelte";
 import { toast } from "svelte-sonner";
 import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
@@ -22,7 +26,8 @@ export function workspaceRouting() {
 			invalidate(
 				(dependency) =>
 					(session && dependency.href === sessionDependency) ||
-					(!!id && dependency.href === workspaceDependency(id))
+					(!!id && dependency.href === workspaceDependency(id)),
+				true
 			),
 	};
 	const commands = new WorkspaceCommands(window.desktop, routes);
@@ -34,11 +39,19 @@ export function workspaceRouting() {
 	const savedViews = new SavedViewsResource(window.desktop, commands, {
 		workspaceId: routes.destination,
 		current: () => page.data.savedViews,
-		refresh: (id) => invalidate(savedViewsDependency(id)),
+		refresh: (id) => invalidate(savedViewsDependency(id), true),
 	});
+	setPanelRouting(
+		panelRouting(
+			{
+				url: () => new URL((page.shallow?.url ?? page.url).href),
+				state: () => page.state,
+				update: (url, state) => goto(url, { state, replace: true, shallow: true }),
+			},
+			() => commands.isOperating
+		)
+	);
 	beforeNavigate((navigation) => {
-		if (navigation.shallow && navigation.type === "goto") return;
-
 		// Window lifecycle is independent of renderer command admission.
 		if (navigation.type !== "leave" && commands.pendingOperation !== null) navigation.cancel();
 	});

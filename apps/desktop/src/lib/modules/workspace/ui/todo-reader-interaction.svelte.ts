@@ -1,3 +1,4 @@
+import { getPanelRouting } from "./todo-panel-routing.svelte.js";
 import { onDestroy, tick } from "svelte";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
@@ -21,16 +22,25 @@ type Inputs = {
 type Scope = { workspaceId: string | undefined; path: string | undefined };
 type Tracked = { todo: TodoItem; scope: Scope };
 const sameScope = (a: Scope, b: Scope) => a.workspaceId === b.workspaceId && a.path === b.path;
-const sameTodo = (a: TodoItem | null | undefined, b: TodoItem | null | undefined) =>
-	!!a && !!b && a.line_number === b.line_number && a.raw === b.raw;
+const sameTodo = (
+	a: Pick<TodoItem, "line_number" | "raw"> | null | undefined,
+	b: Pick<TodoItem, "line_number" | "raw"> | null | undefined
+) => !!a && !!b && a.line_number === b.line_number && a.raw === b.raw;
 
 // Created during reader initialization; inputs are reactive getters over the session and DOM.
 export function createTodoReaderInteraction(inputs: Inputs) {
-	let selection = $state.raw<Tracked | null>(null);
+	const panel = getPanelRouting();
+	let localSelection = $state.raw<Tracked | null>(null);
+	const selection = $derived(panel ? panel.selection() : localSelection);
+	function setSelection(value: Tracked | null) {
+		if (panel) return panel.set(value);
+		localSelection = value;
+	}
 	let editing = $state.raw<Tracked | null>(null);
 	let editRecovery: ReturnType<NonNullable<Inputs["list"]>["captureFocus"]> | undefined;
 	let detailEditTrigger: HTMLButtonElement | null = null;
 	let writing = $state(false);
+	let writingTodo = $state.raw<TodoItem | null>(null);
 	let previousWide: boolean | undefined;
 	let destroyed = false;
 	onDestroy(() => {
@@ -44,7 +54,7 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 	const selectedTodo = $derived(
 		selection && sameScope(selection.scope, currentScope())
 			? (inputs.view.todoFile?.items.find((item) => sameTodo(item, selection?.todo)) ??
-					(writing ? selection.todo : null))
+					(writing && sameTodo(writingTodo, selection.todo) ? writingTodo : null))
 			: null
 	);
 	const editingTodo = $derived(
@@ -52,12 +62,14 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 	);
 
 	function select(todo: TodoItem) {
-		selection = { todo, scope: currentScope() };
+		if (inputs.workspace.isOperating) return;
+		void setSelection({ todo, scope: currentScope() });
 	}
-	function closeDetails() {
+	async function closeDetails() {
 		const todo = selectedTodo;
-		selection = null;
-		if (todo) void inputs.list?.focusTodo(todo);
+		if (inputs.workspace.isOperating) return;
+		await setSelection(null);
+		if (todo && !destroyed && !selectedTodo) void inputs.list?.focusTodo(todo);
 	}
 	// DOM focus must leave an invalid details surface before it is removed or changes presentation.
 	$effect.pre(() => {
@@ -70,9 +82,15 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 					if (!destroyed) inputs.details?.querySelector<HTMLButtonElement>("button")?.focus();
 				});
 		}
-		if (selection && !selectedTodo && !writing) {
+		if (
+			(selection || panel?.hasSelection) &&
+			!selectedTodo &&
+			!writing &&
+			!inputs.workspace.isOperating &&
+			inputs.view.todoFile
+		) {
 			if (document.activeElement?.closest("[data-todo-details]")) inputs.viewport?.focus();
-			selection = null;
+			void setSelection(null);
 		}
 	});
 
@@ -84,6 +102,7 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 		trigger?: HTMLButtonElement | null
 	) {
 		const startScope = currentScope();
+		writingTodo = todo;
 		writing = true;
 		try {
 			const result = await mutate();
@@ -100,9 +119,9 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 						line === null
 							? null
 							: (inputs.view.todoFile?.items.find((item) => item.line_number === line) ?? null);
-					selection = moved && { todo: moved, scope: selection.scope };
+					await setSelection(moved && { todo: moved, scope: selection.scope });
 					if (line === null && trigger?.closest("[data-todo-details]")) inputs.viewport?.focus();
-				} else if (result.status === "conflict") selection = null;
+				} else if (result.status === "conflict") void setSelection(null);
 			}
 			if (!destroyed)
 				void recovery?.restore(
@@ -115,6 +134,7 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 			throw error;
 		} finally {
 			writing = false;
+			writingTodo = null;
 		}
 	}
 	function startEdit(todo: TodoItem, trigger: HTMLButtonElement | null) {

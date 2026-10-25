@@ -90,3 +90,8 @@ Choose Repeat and its paired interval in the compact editor +Home @review
 Change Repeat to replace all recurrence tokens with one supported rule +Home rec:1d rec:+1w
 Turn Repeat Off to clear all recurrence tokens while keeping generation history +Home rec:2w tuxedo-generated:1
 x 2026-10-14 Edit historical Repeat without generating another occurrence +Home rec:1y
+
+Open details to update the selection URL while keeping filters and list position +TuxedoApp @review
+Choose another Todo item or close details without adding a Back step +TuxedoApp @review
+Use Back and Forward to switch Workspaces and restore only safely identifiable details +TuxedoApp @review
+Reload a selection URL to close unverified details safely +TuxedoApp @review

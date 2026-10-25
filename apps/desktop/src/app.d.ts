@@ -5,7 +5,9 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			todoPanel?: import("./lib/modules/workspace/ui/todo-panel-routing.svelte.js").PanelEvidence;
+		}
 		// interface Platform {}
 	}
 }

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import { setSavedViews } from "../state/saved-views-resource.svelte";
-	import { onMount } from "svelte";
+	import { panelRouting, setPanelRouting, type PanelHistory } from "./todo-panel-routing.svelte.js";
+	import { onMount, tick } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
 	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
@@ -17,17 +18,35 @@
 		observation,
 		shell = false,
 		restoration = false,
+		panelHistory,
+		panelLocation = false,
 	}: {
 		desktop: DesktopAPI;
 		observation?: TodoFileObservation;
 		shell?: boolean;
 		restoration?: boolean;
+		panelHistory?: PanelHistory;
+		panelLocation?: boolean;
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const app = fixture.createApp();
 	setSavedViews(fixture.savedViews);
+	let entry = $state.raw({
+		url: new URL("https://tuxedo.test/workspaces/work"),
+		state: {} as App.PageState,
+	});
+	const memoryHistory: PanelHistory = {
+		url: () => entry.url,
+		state: () => entry.state,
+		update: async (url, state) => {
+			await tick();
+			if (!app.workspace.isOperating) entry = { url, state };
+		},
+	};
+	// svelte-ignore state_referenced_locally
+	setPanelRouting(panelRouting(panelHistory ?? memoryHistory, () => app.workspace.isOperating));
 	onMount(() => {
 		const stop =
 			observation && fixture.observe(observation, () => toast.info("Todo file reloaded"));
@@ -36,6 +55,9 @@
 	});
 </script>
 
+{#if panelLocation}
+	<output aria-label="Panel URL">{entry.url.href}</output>
+{/if}
 <!-- Sonner only guards per-toast Infinity; an inherited Infinity becomes an immediate timer. -->
 <Toaster duration={60_000} />
 {#if restoration}

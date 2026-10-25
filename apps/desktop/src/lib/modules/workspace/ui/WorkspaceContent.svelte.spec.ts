@@ -308,6 +308,7 @@ test("detail completion and editing use confirmed results and deletion closes th
 		confirmed: { ...confirmedTodo([edited]), revision: ++revision },
 	}));
 	render(Harness, {
+		panelLocation: true,
 		desktop: adapter({
 			setTodoCompletion,
 			editTodo,
@@ -324,16 +325,25 @@ test("detail completion and editing use confirmed results and deletion closes th
 		.element(panel.getByRole("button", { name: "Mark incomplete", exact: true }))
 		.toBeVisible();
 	await expect.element(panel.getByText("2026-10-14", { exact: true }).first()).toBeVisible();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work?item=1");
 	expect(setTodoCompletion).toHaveBeenCalledTimes(1);
 	await panel.getByRole("button", { name: "Edit", exact: true }).click();
 	await page.getByRole("textbox", { name: /Description/ }).fill("Updated");
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect.element(panel.getByRole("heading", { name: "Updated", exact: true })).toBeVisible();
 	await expect.element(panel.getByRole("button", { name: "Edit", exact: true })).toHaveFocus();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work?item=1");
 	expect(editTodo).toHaveBeenCalledTimes(1);
 	await panel.getByRole("button", { name: "Detail actions", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
 	await expect.element(panel).not.toBeInTheDocument();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work");
 });
 
 test("an external replacement clears details and cannot reopen a reused physical line", async () => {
@@ -3002,3 +3012,96 @@ test.each(["create", "edit"] as const)(
 			.not.toBeInTheDocument();
 	}
 );
+
+test("direct selection URLs without identity evidence are removed without opening a reused line", async () => {
+	await page.viewport(1400, 900);
+	let url = new URL("https://tuxedo.test/workspaces/" + workspaceId + "?other=kept&item=1");
+	let state: App.PageState = {};
+	render(Harness, {
+		desktop: adapter(),
+		panelHistory: {
+			url: () => url,
+			state: () => state,
+			update: async (next, value) => {
+				url = next;
+				state = value;
+			},
+		},
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Navigate Plan release", exact: true }))
+		.toBeVisible();
+	await expect.poll(() => url.search).toBe("?other=kept");
+	await expect
+		.element(page.getByRole("complementary", { name: "Todo item details" }))
+		.not.toBeInTheDocument();
+});
+
+test("panel URLs follow selection and Close preserves the current search", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1400, 900);
+	const neighbor = { ...todo, line_number: 2, raw: "Plan neighbor", description: "Plan neighbor" };
+	render(Harness, {
+		panelLocation: true,
+		desktop: adapter({
+			readSession: async () =>
+				({
+					...initial,
+					session: {
+						...initial.session,
+						todo_file: { path: "/tmp/work.todo", items: [todo, neighbor], skipped: [] },
+					},
+				}) as ConfirmedSession,
+		}),
+	});
+	await page.getByRole("button", { name: "Toggle Todo-item search" }).click();
+	await page.getByRole("searchbox", { name: "Search Todo items" }).fill("Plan");
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work?item=1");
+	await page.getByRole("button", { name: "Navigate Plan neighbor", exact: true }).click();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work?item=2");
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await expect
+		.element(panel.getByRole("heading", { name: "Plan neighbor", exact: true }))
+		.toBeVisible();
+	await panel.getByRole("button", { name: "Close details", exact: true }).click();
+	await expect.element(panel).not.toBeInTheDocument();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work");
+	await expect
+		.element(page.getByRole("searchbox", { name: "Search Todo items" }))
+		.toHaveValue("Plan");
+});
+
+test("admitted writes block panel dismissal and keep its URL until the confirmed result arrives", async () => {
+	await page.viewport(1400, 900);
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+	const setTodoCompletion = vi.fn<DesktopAPI["setTodoCompletion"]>(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			})
+	);
+	render(Harness, { panelLocation: true, desktop: adapter({ setTodoCompletion }) });
+	await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Todo item details" });
+	await panel.getByRole("button", { name: "Mark complete", exact: true }).click();
+	await panel.getByRole("button", { name: "Close details", exact: true }).click();
+	await expect.element(panel).toBeVisible();
+	await expect
+		.element(page.getByLabelText("Panel URL"))
+		.toHaveTextContent("https://tuxedo.test/workspaces/work?item=1");
+	finish({
+		status: "applied",
+		confirmed: confirmedTodo([{ ...todo, completed: true, raw: "x Plan release +Work" }]),
+	});
+	await expect
+		.element(panel.getByRole("button", { name: "Mark incomplete", exact: true }))
+		.toBeEnabled();
+	expect(setTodoCompletion).toHaveBeenCalledTimes(1);
+});

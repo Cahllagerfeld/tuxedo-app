@@ -1,3 +1,4 @@
+import { panelWorkflow } from "./panel-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { listPackage } from "@electron/asar";
@@ -152,6 +153,7 @@ try {
 	console.log(
 		"Packaged persistence, restart, native Workspace reload, completion and Undo passed."
 	);
+	await panelWorkflow(application, restored, directory);
 } finally {
 	await application?.close();
 	await rm(directory, { recursive: true, force: true });

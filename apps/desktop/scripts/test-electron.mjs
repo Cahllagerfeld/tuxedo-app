@@ -1,3 +1,4 @@
+import { panelWorkflow } from "./panel-workflow.mjs";
 import { readConfirmation, activateWorkspace } from "./read-confirmation.mjs";
 import { rpcWorkflow } from "./rpc-workflow.mjs";
 import { workspaceSetupWorkflow } from "./workspace-setup-workflow.mjs";
@@ -1487,6 +1488,7 @@ try {
 	);
 
 	await rpcWorkflow(application, page, directory);
+	await panelWorkflow(application, page, directory);
 
 	const routeIds = {};
 	for (const [name, item] of [
