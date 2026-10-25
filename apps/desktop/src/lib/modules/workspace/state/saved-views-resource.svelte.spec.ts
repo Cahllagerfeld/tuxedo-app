@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { createDesktopClient, type ConfirmedSession, type SavedView } from "@tuxedo/contracts";
 import { WorkspaceCommands } from "./workspace-commands.svelte";
 import { SavedViewsResource } from "./saved-views-resource.svelte";
+import { readSavedViews, type SavedViewsData } from "./workspace-route-data";
 
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 const filters = {
@@ -39,117 +40,102 @@ const current: ConfirmedSession = {
 		todo_file: { path: "/tmp/todo.txt", items: [], skipped: [] },
 	},
 };
-function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>) {
-	const calls: string[] = [];
-	const desktop = createDesktopClient(async (channel, request) => {
-		calls.push(channel);
-		return channel === "tuxedo:read-session" ? current : invoke(channel, request);
+function deferred() {
+	let resolve!: () => void;
+	const promise = new Promise<void>((done) => {
+		resolve = done;
 	});
+	return { promise, resolve };
+}
+function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>) {
+	const desktop = createDesktopClient(invoke);
+	let data: SavedViewsData | undefined;
+	let refreshStep: (() => Promise<void>) | undefined;
+	if (current.session.status !== "ready") throw Error("Expected Ready");
+	const ready = current.session;
 	const workspace = new WorkspaceCommands(desktop, {
+		session: () => ({ value: current, error: "" }),
+		workspace: () => ({
+			workspaceId,
+			error: "",
+			value: {
+				status: "ready",
+				workspace: ready.catalogue.workspaces[0],
+				todo_file: ready.todo_file,
+				confirmation: { scope: current.scope, revision: current.revision },
+			},
+		}),
 		destination: () => workspaceId,
 		navigating: () => false,
+		refresh: async () => {},
 		navigate: async () => {},
 	});
+	const load = async () => {
+		await refreshStep?.();
+		data = await readSavedViews(desktop, workspaceId, () => data);
+	};
+	const views = new SavedViewsResource(desktop, workspace, { current: () => data, refresh: load });
 	return {
-		desktop,
 		workspace,
-		views: new SavedViewsResource(desktop, workspace),
-		calls,
-		start: async () =>
-			workspace.acceptLoadedSession({ value: await desktop.readSession({}), error: "" }),
+		views,
+		load,
+		setRefreshStep: (step: () => Promise<void>) => {
+			refreshStep = step;
+		},
 	};
 }
 
-test("a saved-view command holds admission through its response and publishes it without another read", async () => {
-	let release!: () => void;
-	const response = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	let entered!: () => void;
-	const admitted = new Promise<void>((resolve) => {
-		entered = resolve;
-	});
+test("a saved-view command publishes loader data and holds admission until that read completes", async () => {
+	const entered = deferred();
+	const publication = deferred();
+	let persisted: readonly SavedView[] = [];
 	const f = fixture(async (channel) => {
-		if (channel === "tuxedo:read-saved-views") return { status: "applied", workspaceId, views: [] };
+		if (channel === "tuxedo:read-saved-views")
+			return { status: "applied", workspaceId, views: persisted };
 		if (channel === "tuxedo:save-view") {
-			entered();
-			await response;
+			persisted = [view];
 			return { status: "applied", workspaceId, views: [view] };
 		}
-		throw Error(`Unexpected ${channel}`);
+		throw Error("Unexpected operation");
 	});
-	await f.start();
-	const loaded = await f.desktop.readSavedViews({ workspaceId });
-	f.views.acceptLoaded(workspaceId, loaded);
+	await f.load();
+	f.setRefreshStep(async () => {
+		entered.resolve();
+		await publication.promise;
+	});
 	const saving = f.views.save(view.name, filters);
-	await admitted;
+	await entered.promise;
 	expect(f.views.views).toEqual([]);
 	expect(f.workspace.isOperating).toBe(true);
 	expect(
 		await f.workspace.createTodo({ description: "Blocked", projects: [], contexts: [] })
 	).toMatchObject({ status: "rejected" });
-	release();
+	publication.resolve();
 	expect(await saving).toEqual({ status: "applied" });
 	expect(f.views.views).toEqual([view]);
 	expect(f.views.canWrite).toBe(true);
-	f.views.acceptLoaded(workspaceId, loaded);
-	expect(f.views.views).toEqual([view]);
-	expect(f.calls).toEqual(["tuxedo:read-session", "tuxedo:read-saved-views", "tuxedo:save-view"]);
 });
 
 test("failed saved-view reads retain their views independently of Todo readiness, and Retry only reads", async () => {
 	let fail = false;
+	let writes = 0;
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:read-saved-views") {
 			if (fail) throw Error("Saved views unavailable");
 			return { status: "applied", workspaceId, views: [view] };
 		}
-		throw Error(`Unexpected ${channel}`);
+		writes++;
+		throw Error("Unexpected write");
 	});
-	await f.start();
-	await f.views.load(workspaceId);
+	await f.load();
 	fail = true;
-	expect(await f.views.load(workspaceId)).toEqual({
-		status: "rejected",
-		message: "Saved views unavailable",
-	});
+	await f.load();
 	expect(f.views.views).toEqual([view]);
+	expect(f.views.error).toBe("Saved views unavailable");
 	expect(f.views.canWrite).toBe(false);
 	expect(f.workspace.canMutate).toBe(true);
-	f.views.acceptLoaded(workspaceId, { status: "applied", workspaceId, views: [view] });
-	expect(f.views.error).toBe("");
-	expect(f.views.canWrite).toBe(true);
-	f.views.acceptLoaded(workspaceId, {
-		status: "rejected",
-		message: "Fresh navigation read failed",
-	});
-	expect(f.views.views).toEqual([view]);
-	expect(f.views.error).toBe("Fresh navigation read failed");
 	fail = false;
 	expect(await f.views.retry()).toEqual({ status: "applied" });
 	expect(f.views.canWrite).toBe(true);
-	expect(f.calls).toEqual([
-		"tuxedo:read-session",
-		"tuxedo:read-saved-views",
-		"tuxedo:read-saved-views",
-		"tuxedo:read-saved-views",
-	]);
-});
-
-test("an older saved-view read cannot overwrite a newer read", async () => {
-	let resolve!: (value: unknown) => void;
-	const older = new Promise<unknown>((done) => {
-		resolve = done;
-	});
-	let reads = 0;
-	const f = fixture(async () =>
-		++reads === 1 ? older : { status: "applied", workspaceId, views: [view] }
-	);
-	await f.start();
-	const pending = f.views.load(workspaceId);
-	await f.views.load(workspaceId);
-	resolve({ status: "applied", workspaceId, views: [] });
-	await pending;
-	expect(f.views.views).toEqual([view]);
-	expect(f.views.canWrite).toBe(true);
+	expect(writes).toBe(0);
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { SavedViewsResource, setSavedViews } from "../state/saved-views-resource.svelte";
-	import { onMount, untrack } from "svelte";
+	import { setSavedViews } from "../state/saved-views-resource.svelte";
+	import { onMount } from "svelte";
 	import { AppState } from "#lib/app/app-state.svelte.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
@@ -12,16 +12,7 @@
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const app = new AppState(fixture.commands);
-	// svelte-ignore state_referenced_locally
-	const savedViews = new SavedViewsResource(desktop, app.workspace);
-	setSavedViews(savedViews);
-	const workspaceId = $derived(
-		app.workspace.todoFile ? app.workspace.activeWorkspace?.id : undefined
-	);
-	$effect(() => {
-		const id = workspaceId;
-		if (id) void untrack(() => savedViews.load(id));
-	});
+	setSavedViews(fixture.savedViews);
 	onMount(() => {
 		void fixture.start();
 	});

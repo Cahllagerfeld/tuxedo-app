@@ -2,6 +2,7 @@ import { Cause, Context, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } 
 import { FileSystem } from "effect/FileSystem";
 import { dirname, join } from "node:path";
 import { createSavedViewOperations } from "./saved-views";
+import { readWorkspace } from "./workspace-reads";
 import { Identity } from "./identity";
 import { createTodoOperations } from "./todo-operations";
 import { createWorkspaceLifecycle, type LoadedSession } from "./workspace-lifecycle";
@@ -259,6 +260,19 @@ export function sessionLayer(
 				state
 			);
 			return WorkspaceSession.of({
+				readWorkspace: (request) =>
+					semaphore
+						.withPermit(
+							operationResult(
+								"readWorkspace",
+								"",
+								readWorkspace(request, () => confirmed)
+							)
+						)
+						.pipe(
+							Effect.provideContext(dependencies),
+							Effect.withSpan("WorkspaceSession.readWorkspace")
+						),
 				readSession: (request) =>
 					semaphore
 						.withPermit(

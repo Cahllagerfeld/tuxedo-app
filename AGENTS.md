@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. SvelteKit loaders supply initial/navigation data; typed RPC results directly update confirmed renderer Workspace and saved-view resources. The desktop host and renderer live in `apps/desktop`; Effect-native domain services live in `packages/backend` (`@tuxedo/backend`); browser-safe schemas and DTOs live in `packages/contracts` (`@tuxedo/contracts`).
+Electron + SvelteKit SPA; the TypeScript backend owns filesystem, persistence, and todo.txt parsing. SvelteKit loaders own displayed backend data; typed RPC commands and external-change notifications invalidate the affected loader dependencies. The desktop host and renderer live in `apps/desktop`; Effect-native domain services live in `packages/backend` (`@tuxedo/backend`); browser-safe schemas and DTOs live in `packages/contracts` (`@tuxedo/contracts`).
 
 Run tools via devenv: `devenv shell -- pnpm|gh|node ...`.
 

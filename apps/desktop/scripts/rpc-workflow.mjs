@@ -43,10 +43,12 @@ export async function rpcWorkflow(application, page, directory) {
 			writes: 0,
 			activations: [],
 			gate: null,
+			readGate: null,
 			failRead: false,
 		});
 		for (const name of [
 			"read-session",
+			"read-workspace",
 			"refresh-session",
 			"read-saved-views",
 			"set-todo-completion",
@@ -56,11 +58,11 @@ export async function rpcWorkflow(application, page, directory) {
 			state.originals[name] = ipcMain._invokeHandlers.get(channel);
 			ipcMain.removeHandler(channel);
 			ipcMain.handle(channel, async (event, input) => {
-				if (name === "read-session") {
+				if (name === "read-workspace") {
 					state.reads++;
 					if (state.failRead) {
 						state.failRead = false;
-						throw Error("Controlled session read unavailable");
+						throw Error("Controlled Workspace read unavailable");
 					}
 				}
 				if (name === "read-saved-views") state.savedReads++;
@@ -68,6 +70,12 @@ export async function rpcWorkflow(application, page, directory) {
 				if (name === "set-todo-completion") state.writes++;
 				if (name === "switch-workspace") state.activations.push(input.workspaceId);
 				const result = await state.originals[name](event, input);
+				if (name === "read-workspace" && state.readGate) {
+					const gate = state.readGate;
+					state.readGate = null;
+					gate.enter();
+					await gate.released;
+				}
 				if (name === "set-todo-completion" && state.gate) {
 					const gate = state.gate;
 					state.gate = null;
@@ -95,6 +103,13 @@ export async function rpcWorkflow(application, page, directory) {
 		});
 	const entered = () => application.evaluate(() => globalThis.rpcTest.held.entered);
 	const release = () => application.evaluate(() => globalThis.rpcTest.held.release());
+	const armRead = () =>
+		application.evaluate(() => {
+			const gate = (globalThis.rpcTest.readGate = {});
+			gate.entered = new Promise((resolve) => (gate.enter = resolve));
+			gate.released = new Promise((resolve) => (gate.release = resolve));
+			globalThis.rpcTest.heldRead = gate;
+		});
 	const observeNextChange = () =>
 		page.evaluate((id) => {
 			window.rpcObservation = new Promise((resolve) => {
@@ -107,7 +122,7 @@ export async function rpcWorkflow(application, page, directory) {
 			});
 		}, ids["RPC A"]);
 	try {
-		// A successful command publishes its returned contents without another resource read.
+		// Only the loader publishes contents, even after the write RPC has completed.
 		const before = await counts();
 		await page.evaluate(() => {
 			window.retainedReader = document.querySelector("[data-todo-reader]");
@@ -117,9 +132,18 @@ export async function rpcWorkflow(application, page, directory) {
 		await entered();
 		assert.equal(await item("RPC A item").isChecked(), false);
 		assert.equal(await item("RPC A item").isEnabled(), false);
+		await armRead();
 		await release();
+		await application.evaluate(() => globalThis.rpcTest.heldRead.entered);
+		assert.equal(await item("RPC A item").isChecked(), false);
+		assert.equal(await item("RPC A item").isEnabled(), false);
+		await application.evaluate(() => globalThis.rpcTest.heldRead.release());
 		await enabled(item("RPC A item", true));
-		assert.equal((await counts()).reads, before.reads, "Todo commands need no follow-up read");
+		assert.equal(
+			(await counts()).reads,
+			before.reads + 1,
+			"Todo commands refresh their page loader"
+		);
 		assert.equal((await counts()).savedReads, before.savedReads);
 		assert.equal(
 			await page.evaluate(
@@ -148,7 +172,7 @@ export async function rpcWorkflow(application, page, directory) {
 		await writeFile(join(directory, "RPC A.txt"), "Recovered external item\n");
 		const retry = page.getByRole("button", { name: "Retry refresh", exact: true });
 		await enabled(retry);
-		await page.getByText(/Controlled session read unavailable/).waitFor();
+		await page.getByText(/Controlled Workspace read unavailable/).waitFor();
 		assert.equal(await item("External during command").isEnabled(), false);
 		const writes = (await counts()).writes;
 		const refreshes = (await counts()).refreshes;
@@ -191,11 +215,12 @@ export async function rpcWorkflow(application, page, directory) {
 		await enabled(item("RPC B item"));
 		assert.deepEqual((await counts()).activations, [ids["RPC B"], ids["RPC B"]]);
 		console.log(
-			"Direct RPC results, shared admission, queued observation, read-only recovery, harmless preload and Home recovery passed."
+			"Loader-owned updates, shared admission, queued observation, read-only recovery, harmless preload and Home recovery passed."
 		);
 	} finally {
 		await application.evaluate(({ ipcMain }) => {
 			globalThis.rpcTest.held?.release();
+			globalThis.rpcTest.heldRead?.release();
 			for (const [name, handler] of Object.entries(globalThis.rpcTest.originals)) {
 				ipcMain.removeHandler(`tuxedo:${name}`);
 				ipcMain.handle(`tuxedo:${name}`, handler);

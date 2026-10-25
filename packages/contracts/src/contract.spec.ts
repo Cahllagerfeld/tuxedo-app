@@ -55,6 +55,36 @@ test("desktop transport rejects malformed responses", async () => {
 	const desktop = createDesktopClient(async () => ({ revision: 0 }));
 	await expect(desktop.switchWorkspace({ workspaceId })).rejects.toThrow();
 });
+test("Workspace reads validate saved identities, coherent Todo files and confirmation tokens", async () => {
+	const response = {
+		status: "ready",
+		workspace: catalogue.workspaces[0],
+		todo_file: { path: catalogue.workspaces[0].todo_path, items: [], skipped: [] },
+		confirmation: { scope, revision: 2, undoLabel: "Undo edit" },
+	};
+	let forwarded: unknown;
+	const desktop = createDesktopClient(async (channel, request) => {
+		forwarded = { channel, request };
+		return response;
+	});
+	expect(await desktop.readWorkspace({ workspaceId })).toEqual(response);
+	expect(forwarded).toEqual({ channel: "tuxedo:read-workspace", request: { workspaceId } });
+	expect(
+		await createDesktopClient(async () => ({ ...response, confirmation: null })).readWorkspace({
+			workspaceId,
+		})
+	).toEqual({ ...response, confirmation: null });
+	for (const invalid of [
+		{ ...response, todo_file: { ...response.todo_file, path: "/tmp/another.txt" } },
+		{ ...response, confirmation: { scope, revision: -1 } },
+		{ ...response, confirmation: { scope: "invalid", revision: 2 } },
+	])
+		await expect(
+			createDesktopClient(async () => invalid).readWorkspace({ workspaceId })
+		).rejects.toThrow();
+	for (const invalid of [{ workspaceId: "invalid" }, { workspaceId, todoPath: "/etc/passwd" }])
+		expect(() => desktopContract.readWorkspace.request.parse(invalid)).toThrow();
+});
 test("sort-order transport validates requests and confirmed Workspace preferences", async () => {
 	let forwarded: unknown;
 	const desktop = createDesktopClient(async (channel, request) => {

@@ -1,0 +1,7 @@
+# Simplify loader-owned dataflow
+
+SvelteKit loaders own displayed backend data: the root layout reads the shared session, the Workspace page reads the destination identified by its URL, and the Workspace layout reads saved views independently. Commands call typed desktop RPCs and invalidate affected loader dependencies; external-change notifications use the same invalidation path. An additional read after a write is an intentional trade-off for one renderer data owner and the ordinary SvelteKit loading model.
+
+This simplifies [ADR-0007](0007-own-renderer-resources-in-sveltekit-route-data.md): command results do not become renderer snapshots, and command coordination no longer needs publication receipts, saved-view fingerprints, or a publication handshake. Admission covers the command and invalidation; backend scope/revision checks remain authoritative. Failed reads retain matching route data and block stale writes. Retry refreshes backend state and invalidates loaders without repeating a write.
+
+Reads are safe to preload: `readSession` returns the current confirmed backend session; `readWorkspace` returns the requested Workspace and Todo file, with mutation confirmation only for the currently accepted Workspace. Activation stays at committed navigation because it changes persisted selection, Undo, and observation. Home and unchanged recovery preserve Undo. Backend serialization, conflict protection, atomic persistence, and shutdown remain unchanged.

@@ -83,6 +83,7 @@ Clear Show from in the editor to remove every threshold token +Imported @review 
 Create an open Todo item with a future Show from to see hidden-until feedback +TuxedoApp @review
 Use the plus button to create a Todo item with paired fields and compact date controls +TuxedoApp @review
 Hover or focus each toolbar button to see its action and available shortcut +TuxedoApp @review
+Complete an item and keep its reader open while the Workspace loader refreshes +TuxedoApp @review
 
 Choose Repeat and its paired interval in the compact editor +Home @review
 Change Repeat to replace all recurrence tokens with one supported rule +Home rec:1d rec:+1w

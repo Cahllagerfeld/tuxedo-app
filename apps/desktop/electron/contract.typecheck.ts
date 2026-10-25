@@ -73,3 +73,6 @@ api.editTodo({ description: "Updated", projects: [], contexts: [] });
 registerDesktopOperation(ipc, getWindow, () => true, "readSession", api.readSession);
 // @ts-expect-error Session reads accept no filesystem path or destination.
 api.readSession({ todoPath: "/etc/passwd" });
+registerDesktopOperation(ipc, getWindow, () => true, "readWorkspace", api.readWorkspace);
+// @ts-expect-error Workspace reads accept a saved identity, never an arbitrary file path.
+api.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440000", todoPath: "/etc/passwd" });

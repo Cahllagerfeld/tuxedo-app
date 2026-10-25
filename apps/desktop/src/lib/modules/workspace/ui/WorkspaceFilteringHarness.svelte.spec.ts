@@ -3,6 +3,7 @@ import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "@tuxedo/contracts";
 import Harness from "./WorkspaceFilteringHarness.svelte";
+import { loaderDesktop } from "../state/testing/loader-desktop";
 import "../../../../routes/layout.css";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
@@ -176,7 +177,7 @@ const secondWorkspaceSession: ConfirmedSession = {
 
 function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 	let current = initial;
-	const desktop: DesktopAPI = {
+	const desktop: Omit<DesktopAPI, "readWorkspace"> = {
 		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
@@ -239,7 +240,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		}
 		return outcome;
 	};
-	return desktop;
+	return loaderDesktop(desktop);
 }
 
 function rowCount() {

@@ -1,18 +1,16 @@
 import type { LayoutLoad } from "./$types";
+import { page } from "$app/state";
+import {
+	readSession,
+	sessionDependency,
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 // The Electron renderer is a static SvelteKit SPA.
 export const ssr = false;
 
-export const load: LayoutLoad = async ({ params }) => {
-	try {
-		return {
-			destination: params.id,
-			session: { value: await window.desktop.readSession({}), error: "" },
-		};
-	} catch (error) {
-		return {
-			destination: params.id,
-			session: { value: null, error: error instanceof Error ? error.message : String(error) },
-		};
-	}
+export const load: LayoutLoad = async ({ depends }) => {
+	depends(sessionDependency);
+	return {
+		session: await readSession(window.desktop, () => page.data.session),
+	};
 };

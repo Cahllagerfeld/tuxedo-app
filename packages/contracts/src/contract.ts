@@ -143,6 +143,30 @@ export const sessionOutcomeSchema = effectValidator(
 );
 export const switchWorkspaceRequestSchema = effectValidator(Schema.Struct({ workspaceId: UUID }));
 export const deleteWorkspaceRequestSchema = switchWorkspaceRequestSchema;
+export const workspaceReadSchema = effectValidator(
+	Schema.Union([
+		Schema.Struct({
+			status: Schema.Literal("ready"),
+			workspace: WorkspaceSchema,
+			todo_file: TodoFileSchema,
+			confirmation: Schema.NullOr(
+				Schema.Struct({
+					scope: UUID,
+					revision: Revision,
+					undoLabel: Schema.optional(UndoLabel),
+				})
+			),
+		}).check(
+			Schema.makeFilter((value) =>
+				value.workspace.todo_path === value.todo_file.path
+					? undefined
+					: "Todo file must belong to the requested Workspace"
+			)
+		),
+		Rejected,
+	])
+);
+export type WorkspaceRead = ReturnType<typeof workspaceReadSchema.parse>;
 const TodoMutationRequest = Schema.Struct({
 	scope: UUID,
 	revision: Revision,
@@ -317,6 +341,11 @@ export const setWorkspaceShowDeferredRequestSchema = effectValidator(
 	})
 );
 export const desktopContract = {
+	readWorkspace: {
+		channel: "tuxedo:read-workspace",
+		request: switchWorkspaceRequestSchema,
+		response: workspaceReadSchema,
+	},
 	readSession: {
 		channel: "tuxedo:read-session",
 		request: emptyRequestSchema,
@@ -463,6 +492,7 @@ export function createDesktopClient(
 		) as DesktopResponse<K>;
 	};
 	return {
+		readWorkspace: (request) => call("readWorkspace", request),
 		readSession: (request) => call("readSession", request),
 		refreshSession: (request) => call("refreshSession", request),
 		setWorkspaceShowDeferred: (request) => call("setWorkspaceShowDeferred", request),

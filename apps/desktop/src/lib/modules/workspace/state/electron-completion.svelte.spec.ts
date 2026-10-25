@@ -1,3 +1,4 @@
+import { loaderDesktop } from "./testing/loader-desktop";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -46,7 +47,7 @@ const initial: ConfirmedSession = {
 	},
 };
 function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
-	return {
+	return loaderDesktop({
 		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
@@ -68,7 +69,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		setTodoCompletion: completion,
 		bulkDeleteTodos: async () => ({ status: "rejected", message: "unused" }),
 		bulkSetTodoCompletion: async () => ({ status: "rejected", message: "unused" }),
-	};
+	});
 }
 function updated(): ConfirmedTodo {
 	return {

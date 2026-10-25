@@ -595,7 +595,7 @@ try {
 		"Call"
 	);
 	await page.getByRole("button", { name: "Clear search", exact: true }).click();
-	// A saved-view RPC result updates the list directly while sharing command admission.
+	// Saved-view writes refresh their own loader while sharing command admission.
 	const preloadWorkspaceId = restored.session.catalogue.workspaces.find(
 		(workspace) => workspace.name === "Second"
 	).id;
@@ -657,8 +657,8 @@ try {
 	await page.getByRole("dialog").waitFor({ state: "hidden" });
 	assert.equal(
 		await application.evaluate(() => globalThis.savedViewReads),
-		savedReadsBeforeWrite,
-		"A saved-view write needs no follow-up read"
+		savedReadsBeforeWrite + 1,
+		"A saved-view write refreshes its loader"
 	);
 	await application.evaluate(({ ipcMain }) => {
 		ipcMain.removeHandler("tuxedo:save-view");
@@ -671,8 +671,8 @@ try {
 	await page.getByRole("button", { name: "Calls", exact: true }).waitFor({ state: "hidden" });
 	assert.equal(
 		await application.evaluate(() => globalThis.savedViewReads),
-		savedReadsBeforeWrite,
-		"Deleting a saved view accepts its RPC result"
+		savedReadsBeforeWrite + 2,
+		"Deleting a saved view refreshes its loader"
 	);
 	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Select workspace: Personal" }).click();
@@ -699,7 +699,7 @@ try {
 		() => globalThis.savedViewReads
 	);
 	console.log(
-		"Saved-view RPC results update the list directly and remain scoped across reload and Workspace switches."
+		"Saved-view loaders publish writes and remain scoped across reload and Workspace switches."
 	);
 
 	// Stable session reads preserve Undo and the renderer's editing target.

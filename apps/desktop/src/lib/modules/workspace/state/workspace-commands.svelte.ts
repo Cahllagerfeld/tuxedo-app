@@ -2,13 +2,13 @@ import { todoFileChangeEvent } from "@tuxedo/contracts";
 import type {
 	DesktopAPI,
 	DesktopRequest,
-	ConfirmedTodo,
 	ConfirmedSession,
 	TodoSortOrder,
 	TodoFileChange,
 	TodoFileObservation,
 } from "@tuxedo/contracts";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+import type { SessionData, WorkspaceData } from "./workspace-route-data";
 import type {
 	PendingWorkspaceSessionOperation,
 	WorkspaceSessionActionResult,
@@ -17,24 +17,24 @@ import type {
 } from "./workspace-session-types";
 
 export type WorkspaceRoutes = {
+	session: () => SessionData | undefined;
+	workspace: () => WorkspaceData | undefined;
 	destination: () => string | undefined;
 	navigating: () => boolean;
+	refresh: (workspaceId: string | null, session?: boolean) => Promise<void>;
 	navigate: (workspaceId: string | null, replace?: boolean) => Promise<void>;
 };
 export type CreateTodoDraft = Omit<
 	DesktopRequest<"createTodo">,
 	"scope" | "revision" | "workspaceId"
 >;
-export type WorkspaceLoad = { value: ConfirmedSession | null; error: string };
-
 class CommandValidationError extends Error {}
 
-// The renderer keeps one confirmed resource; RPC results replace it before admission is released.
+// Displayed data comes from loaders. Commands retain only admission and recovery metadata.
 export class WorkspaceCommands {
-	private value = $state.raw<ConfirmedSession>();
 	private pending = $state<PendingWorkspaceSessionOperation | null>(null);
 	private readFailure = $state("");
-	private initialized = $state(false);
+	private minimumRevision = $state(-1);
 	private startupHandled = $state(false);
 	private startupTarget = $state<string>();
 	private handoff: string | null | undefined;
@@ -45,25 +45,42 @@ export class WorkspaceCommands {
 		private readonly desktop: DesktopAPI,
 		private readonly routes: WorkspaceRoutes
 	) {}
-
+	private get current() {
+		const data = this.routes.workspace();
+		return data?.workspaceId === this.routes.destination() ? data : undefined;
+	}
+	private get confirmed() {
+		return this.routes.session()?.value;
+	}
 	get catalogue() {
-		return this.value?.session.status !== "unavailable"
-			? (this.value?.session.catalogue ?? null)
+		return this.confirmed?.session.status !== "unavailable"
+			? (this.confirmed?.session.catalogue ?? null)
 			: null;
 	}
 	get activeWorkspace() {
+		const id = this.catalogue?.active_workspace_id;
+		const value = this.current?.value;
 		return (
-			this.catalogue?.workspaces.find((w) => w.id === this.catalogue?.active_workspace_id) ?? null
+			(value && value.workspace.id === id ? value.workspace : null) ??
+			this.catalogue?.workspaces.find((workspace) => workspace.id === id) ??
+			null
 		);
 	}
 	get todoFile() {
-		return this.value?.session.status === "ready" &&
-			this.activeWorkspace?.id === this.routes.destination()
-			? this.value.session.todo_file
+		return this.current?.value?.confirmation &&
+			this.current.value.workspace.id === this.catalogue?.active_workspace_id
+			? this.current.value.todo_file
 			: null;
 	}
 	get ready() {
-		return !!this.todoFile && !this.readFailure;
+		const confirmation = this.current?.value?.confirmation;
+		return (
+			!!this.todoFile &&
+			!this.recoveryError &&
+			!!confirmation &&
+			confirmation.scope === this.confirmed?.scope &&
+			confirmation.revision >= Math.max(this.minimumRevision, this.confirmed?.revision ?? -1)
+		);
 	}
 	get isOperating() {
 		return this.pending !== null || this.routes.navigating();
@@ -79,7 +96,7 @@ export class WorkspaceCommands {
 	}
 	get isStarting() {
 		return (
-			!this.initialized ||
+			!this.routes.session() ||
 			(!this.startupHandled && !this.routes.destination()) ||
 			!!this.startupTarget
 		);
@@ -88,61 +105,47 @@ export class WorkspaceCommands {
 		return this.session.status === "loading";
 	}
 	get undoLabel() {
-		return this.todoFile ? this.value?.undoLabel : undefined;
+		return this.todoFile ? this.current?.value?.confirmation?.undoLabel : undefined;
 	}
 	get error() {
-		return this.readFailure;
+		return this.routes.session()?.error ?? "";
 	}
 	get warning() {
 		return (
 			this.destinationError ||
-			(this.value?.session.status === "empty" ? (this.value.session.warning ?? "") : "")
+			(this.confirmed?.session.status === "empty" ? (this.confirmed.session.warning ?? "") : "")
 		);
 	}
 	get recoveryError() {
-		return this.readFailure;
+		return this.readFailure || this.current?.error || this.error;
 	}
 	get writesBlocked() {
 		return !this.canMutate;
 	}
 	get session(): ConfirmedSession["session"] | { status: "loading" } {
-		if (!this.value)
-			return this.readFailure
-				? { status: "unavailable", error: this.readFailure }
-				: { status: "loading" };
-		return this.value.session;
+		if (!this.confirmed)
+			return this.error ? { status: "unavailable", error: this.error } : { status: "loading" };
+		return this.confirmed.session;
 	}
-
-	private acceptSession(incoming: ConfirmedSession) {
-		if (
-			this.value &&
-			(incoming.scope !== this.value.scope || incoming.revision < this.value.revision)
-		)
-			return false;
-		if (incoming.session.status === "unavailable") {
-			this.readFailure = incoming.session.error;
-			if (!this.value) this.value = incoming;
-			return false;
-		}
-		this.value = incoming;
-		this.readFailure = "";
-		return true;
+	private requireRevision(value: { scope: string; revision: number }) {
+		if (this.confirmed && value.scope !== this.confirmed.scope)
+			throw Error("The Workspace session changed. Refresh its current contents.");
+		this.minimumRevision = Math.max(this.minimumRevision, value.revision);
 	}
-	acceptLoadedSession(resource: WorkspaceLoad) {
-		this.initialized = true;
-		if (resource.error) this.readFailure = resource.error;
-		else if (resource.value && (!this.value || resource.value.revision > this.value.revision))
-			this.acceptSession(resource.value);
-	}
-	private async readSession(refresh = false): Promise<WorkspaceSessionActionResult> {
+	private async refresh(
+		workspaceId: string | null,
+		session = false
+	): Promise<WorkspaceSessionActionResult> {
 		try {
-			const incoming = await (refresh
-				? this.desktop.refreshSession({})
-				: this.desktop.readSession({}));
-			if (!this.acceptSession(incoming))
-				throw Error(
-					this.readFailure || "The Workspace session changed. Refresh its current contents."
-				);
+			await this.routes.refresh(workspaceId, session);
+			const failure = this.current?.error || this.error;
+			if (failure) throw Error(failure);
+			const revision = this.routes.destination()
+				? this.current?.value?.confirmation?.revision
+				: this.confirmed?.revision;
+			if (revision === undefined || revision < this.minimumRevision)
+				throw Error("Current Workspace data could not be refreshed. Retry the refresh.");
+			this.readFailure = "";
 			return { status: "applied" };
 		} catch (error) {
 			this.readFailure = error instanceof Error ? error.message : String(error);
@@ -151,20 +154,20 @@ export class WorkspaceCommands {
 	}
 	retry = () =>
 		this.runAction("restore", async () => {
-			const outcome = await this.readSession(true);
+			const value = await this.desktop.refreshSession({});
+			this.requireRevision(value);
 			if (
-				outcome.status === "applied" &&
 				this.routes.destination() &&
-				(this.value?.session.status !== "ready" ||
-					this.activeWorkspace?.id !== this.routes.destination())
-			)
+				(value.session.status !== "ready" ||
+					value.session.catalogue.active_workspace_id !== this.routes.destination())
+			) {
 				await this.navigate(
-					this.value?.session.status === "ready" ? this.activeWorkspace!.id : null,
+					value.session.status === "ready" ? value.session.catalogue.active_workspace_id : null,
 					true
 				);
-			return outcome;
+			}
+			return this.refresh(this.routes.destination() ?? null, true);
 		});
-
 	async runAction(
 		operation: WorkspaceSessionOperation,
 		action: () => Promise<WorkspaceSessionActionResult>,
@@ -177,7 +180,6 @@ export class WorkspaceCommands {
 		try {
 			return await action();
 		} catch (error) {
-			// A lost RPC response may follow a committed write. Recover by reading, never resubmitting it.
 			const message = error instanceof Error ? error.message : String(error);
 			if (!(error instanceof CommandValidationError)) this.readFailure = message;
 			return { status: "rejected", message };
@@ -190,48 +192,44 @@ export class WorkspaceCommands {
 		}
 	}
 	private todoTarget() {
-		if (!this.ready || !this.value || !this.activeWorkspace)
+		const confirmation = this.current?.value?.confirmation;
+		if (!this.ready || !confirmation || !this.activeWorkspace)
 			throw new CommandValidationError("Refresh the Workspace before changing Todo items.");
 		return {
-			scope: this.value.scope,
-			revision: this.value.revision,
+			scope: confirmation.scope,
+			revision: confirmation.revision,
 			workspaceId: this.activeWorkspace.id,
 		};
 	}
-	private todoOutcome(
+	private async todoOutcome(
 		outcome: Awaited<ReturnType<DesktopAPI["deleteTodo"]>>
-	): WorkspaceSessionActionResult {
+	): Promise<WorkspaceSessionActionResult> {
 		if (outcome.status === "rejected") return outcome;
-		const incoming: ConfirmedTodo = outcome.confirmed;
-		const current = this.value;
-		if (
-			current?.session.status === "ready" &&
-			incoming.scope === current.scope &&
-			incoming.revision >= current.revision &&
-			incoming.workspaceId === current.session.catalogue.active_workspace_id &&
-			incoming.todo_file.path === current.session.todo_file.path
-		) {
-			this.value = {
-				scope: incoming.scope,
-				revision: incoming.revision,
-				...(incoming.undoLabel ? { undoLabel: incoming.undoLabel } : {}),
-				session: { ...current.session, todo_file: incoming.todo_file },
-			};
-			this.readFailure = "";
-		}
-		return outcome.status === "conflict"
-			? { status: "conflict", message: outcome.message }
-			: { status: "applied", ...(outcome.notice ? { notice: outcome.notice } : {}) };
+		this.requireRevision(outcome.confirmed);
+		const refreshed = await this.refresh(outcome.confirmed.workspaceId);
+		if (outcome.status === "conflict") return { status: "conflict", message: outcome.message };
+		return {
+			status: "applied",
+			...(refreshed.status === "rejected"
+				? { notice: "Change saved, but the Workspace could not be refreshed. " + refreshed.message }
+				: outcome.notice
+					? { notice: outcome.notice }
+					: {}),
+		};
 	}
-	private sessionOutcome(
+	private async sessionOutcome(
 		outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>
-	): WorkspaceSessionActionResult {
+	): Promise<WorkspaceSessionActionResult> {
 		if (outcome.status !== "applied") return outcome;
-		this.acceptSession(outcome.confirmed);
-		return { status: "applied" };
+		this.requireRevision(outcome.confirmed);
+		const refreshed = await this.refresh(this.routes.destination() ?? null, true);
+		return {
+			status: "applied",
+			...(refreshed.status === "rejected"
+				? { notice: "Change saved, but the Workspace could not be refreshed. " + refreshed.message }
+				: {}),
+		};
 	}
-
-	// Native navigating covers superseded loads too; only committed navigation may activate a Workspace.
 	beginNavigation(_complete: Promise<void>, destination: string | undefined) {
 		return !this.pending || this.handoff === (destination ?? null);
 	}
@@ -247,14 +245,13 @@ export class WorkspaceCommands {
 		workspaceId: string | undefined,
 		initial = false
 	): Promise<WorkspaceSessionActionResult | undefined> => {
-		if (workspaceId !== this.routes.destination()) return;
-		if (!this.initialized) return;
+		if (workspaceId !== this.routes.destination() || !this.routes.session()) return;
 		if (workspaceId === this.startupTarget) this.startupTarget = undefined;
 		if (!this.startupHandled) {
 			this.startupHandled = true;
 			if (initial && !workspaceId) {
 				const active =
-					this.value?.session.status === "ready" ? this.activeWorkspace?.id : undefined;
+					this.confirmed?.session.status === "ready" ? this.activeWorkspace?.id : undefined;
 				if (active) {
 					this.startupTarget = active;
 					try {
@@ -273,13 +270,19 @@ export class WorkspaceCommands {
 			this.deferredDestination = true;
 			return;
 		}
+		if (this.current?.error && !this.current.value && !this.error) {
+			this.destinationError = this.current.error;
+			await this.navigate(null, true);
+			return;
+		}
+		if (this.recoveryError) return;
 		return this.runAction(
 			"open_workspace",
 			async () => {
-				if (this.activeWorkspace?.id === workspaceId && this.value?.session.status === "ready")
-					return this.readSession();
+				if (this.activeWorkspace?.id === workspaceId && this.current?.value?.confirmation)
+					return this.refresh(workspaceId, true);
 				const outcome = await this.desktop.switchWorkspace({ workspaceId });
-				if (outcome.status === "applied") this.acceptSession(outcome.confirmed);
+				if (outcome.status === "applied") this.requireRevision(outcome.confirmed);
 				if (workspaceId !== this.routes.destination())
 					return { status: "rejected", message: "Destination changed." };
 				if (outcome.status === "rejected") {
@@ -288,15 +291,14 @@ export class WorkspaceCommands {
 					return outcome;
 				}
 				this.destinationError = "";
-				return { status: "applied" };
+				return this.refresh(workspaceId, true);
 			},
 			{ workspaceId },
 			true
 		);
 	};
-
 	private catalogueTarget() {
-		if (!this.catalogue || this.readFailure)
+		if (!this.catalogue || this.recoveryError)
 			throw new CommandValidationError("Refresh Workspaces before changing them.");
 	}
 	create = (input: DesktopRequest<"createWorkspace">) =>
@@ -306,17 +308,27 @@ export class WorkspaceCommands {
 				this.catalogueTarget();
 				const outcome = await this.desktop.createWorkspace(input);
 				if (outcome.status !== "applied") return outcome;
-				this.acceptSession(outcome.confirmed);
+				this.requireRevision(outcome.confirmed);
 				this.destinationError = "";
+				const id =
+					outcome.confirmed.session.status === "ready"
+						? outcome.confirmed.session.catalogue.active_workspace_id
+						: null;
 				try {
-					await this.navigate(this.activeWorkspace?.id ?? null);
+					await this.navigate(id);
 				} catch (error) {
+					this.readFailure = error instanceof Error ? error.message : String(error);
 					return {
 						status: "applied",
-						notice: `Workspace created, but its destination could not be opened. ${error instanceof Error ? error.message : String(error)}`,
+						notice:
+							"Workspace created, but its destination could not be opened. " + this.readFailure,
 					};
 				}
-				return { status: "applied" };
+				if (this.routes.destination() !== id) {
+					await this.routes.refresh(null, true);
+					return { status: "applied" };
+				}
+				return this.sessionOutcome(outcome);
 			},
 			{ todoPath: input.todoPath }
 		);
@@ -327,18 +339,24 @@ export class WorkspaceCommands {
 				this.catalogueTarget();
 				const outcome = await this.desktop.deleteWorkspace({ workspaceId });
 				if (outcome.status !== "applied") return outcome;
-				this.acceptSession(outcome.confirmed);
-				if (this.routes.destination() && this.activeWorkspace?.id !== this.routes.destination()) {
+				this.requireRevision(outcome.confirmed);
+				const active =
+					outcome.confirmed.session.status === "ready"
+						? outcome.confirmed.session.catalogue.active_workspace_id
+						: null;
+				if (this.routes.destination() && active !== this.routes.destination()) {
 					try {
 						await this.navigate(null, true);
 					} catch (error) {
+						this.readFailure = error instanceof Error ? error.message : String(error);
 						return {
 							status: "applied",
-							notice: `Workspace removed, but its destination could not be opened. ${error instanceof Error ? error.message : String(error)}`,
+							notice:
+								"Workspace removed, but its destination could not be opened. " + this.readFailure,
 						};
 					}
 				}
-				return { status: "applied" };
+				return this.sessionOutcome(outcome);
 			},
 			{ workspaceId }
 		);
@@ -367,27 +385,29 @@ export class WorkspaceCommands {
 			this.todoOperationTarget()
 		);
 
-	private dirty: { event: TodoFileChange; notify: () => void } | undefined;
+	private summary() {
+		return JSON.stringify({ items: this.todoFile?.items, skipped: this.todoFile?.skipped });
+	}
+	private dirty: { event: TodoFileChange; before: string; notify: () => void } | undefined;
 	observe = (observation: TodoFileObservation, onSummaryChanged: () => void) => {
 		let listening = true;
 		const stop = observation.onTodoFileChanged((event) => {
 			const parsed = todoFileChangeEvent.payload.safeParse(event);
-			if (!listening || !parsed.success) return;
 			if (
-				this.value &&
-				(parsed.data.scope !== this.value.scope || parsed.data.revision <= this.value.revision)
+				!listening ||
+				!parsed.success ||
+				!this.confirmed ||
+				parsed.data.scope !== this.confirmed.scope
 			)
 				return;
-			if (
-				!this.pending &&
-				!this.routes.navigating() &&
-				this.value &&
-				!this.matchesObservation(parsed.data)
-			)
+			const revision = this.current?.value?.confirmation?.revision ?? this.confirmed.revision;
+			if (parsed.data.revision <= revision) return;
+			if (!this.pending && !this.routes.navigating() && !this.matchesObservation(parsed.data))
 				return;
 			if (!this.dirty || parsed.data.revision >= this.dirty.event.revision)
 				this.dirty = {
 					event: parsed.data,
+					before: this.dirty?.before ?? this.summary(),
 					notify: () => {
 						if (listening) onSummaryChanged();
 					},
@@ -402,37 +422,34 @@ export class WorkspaceCommands {
 	};
 	private matchesObservation(event: TodoFileChange) {
 		return (
-			this.value?.session.status === "ready" &&
-			event.scope === this.value.scope &&
+			!!this.confirmed &&
+			event.scope === this.confirmed.scope &&
 			event.workspaceId === this.activeWorkspace?.id &&
-			event.todoPath === this.value.session.todo_file.path &&
-			event.revision > this.value.revision
+			event.todoPath === this.activeWorkspace.todo_path
 		);
 	}
 	private drainObservation(committed = false): Promise<WorkspaceSessionActionResult> | undefined {
-		if (this.pending || (!committed && this.routes.navigating()) || !this.dirty || !this.value)
-			return;
-		const { event, notify } = this.dirty;
+		if (this.pending || (!committed && this.routes.navigating()) || !this.dirty) return;
+		const { event, before, notify } = this.dirty;
 		this.dirty = undefined;
 		if (!this.matchesObservation(event)) return;
-		const summary = () =>
-			this.value?.session.status === "ready"
-				? JSON.stringify({
-						items: this.value.session.todo_file.items,
-						skipped: this.value.session.todo_file.skipped,
-					})
-				: "";
-		const before = summary();
+		const revision = this.current?.value?.confirmation?.revision;
+		if (this.ready && revision !== undefined && revision >= event.revision) {
+			if (this.routes.destination() && before !== this.summary()) notify();
+			return;
+		}
 		return this.runAction(
 			"restore",
 			async () => {
-				const outcome = await this.readSession();
-				if (outcome.status === "applied") {
-					if (this.routes.destination() && this.value?.session.status !== "ready") {
-						this.destinationError = this.warning;
-						await this.navigate(null, true);
-					} else if (this.routes.destination() && before !== summary()) notify();
+				this.requireRevision(event);
+				const outcome = await this.refresh(this.routes.destination() ?? null, true);
+				if (this.routes.destination() && this.confirmed?.session.status === "empty") {
+					this.destinationError = this.warning;
+					await this.navigate(null, true);
+					return this.refresh(null, true);
 				}
+				if (outcome.status === "applied" && this.routes.destination() && before !== this.summary())
+					notify();
 				return outcome;
 			},
 			{ workspaceId: event.workspaceId },

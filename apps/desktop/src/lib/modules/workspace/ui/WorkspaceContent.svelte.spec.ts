@@ -1,3 +1,4 @@
+import { loaderDesktop } from "../state/testing/loader-desktop";
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -52,7 +53,7 @@ const initial: ConfirmedSession = {
 	},
 };
 function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
-	return {
+	return loaderDesktop({
 		readSavedViews: async () => ({ status: "applied", workspaceId, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),
@@ -75,7 +76,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
-	};
+	});
 }
 function confirmedTodo(items: TodoFile["items"]) {
 	return {
@@ -376,7 +377,7 @@ test("an external replacement clears details and cannot reopen a reused physical
 	await expect.element(panel).not.toBeInTheDocument();
 });
 
-test("empty-query search stays open across Ready → Empty → Ready without remounting", async () => {
+test("Retry keeps Home visible when an unreadable Workspace becomes available again", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const catalogue = initial.session.catalogue;
 	let loads = 0;
@@ -406,10 +407,9 @@ test("empty-query search stays open across Ready → Empty → Ready without rem
 	await expect.element(toggle).not.toBeInTheDocument();
 	await expect.element(search).not.toBeInTheDocument();
 	await restore.click();
-	await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
-	await expect.element(search).toBeVisible();
-	await expect.element(search).toHaveValue("");
-	expect(loads).toBe(3);
+	await expect.element(page.getByLabelText("Workspace home")).toBeVisible();
+	await expect.element(page.getByRole("link", { name: "Work", exact: true })).toBeVisible();
+	await expect.element(search).not.toBeInTheDocument();
 });
 
 test("an unreadable external reload transfers detail focus to the Empty-state viewport", async () => {
@@ -1726,7 +1726,7 @@ test("save, apply, and delete a Workspace-specific view through the desktop adap
 	await expect.element(page.getByText("No saved views yet.")).toBeVisible();
 });
 
-test("a saved-view write holds commands until its RPC result reaches the screen without rereading", async () => {
+test("a saved-view write holds commands until its invalidated loader updates the screen", async () => {
 	let release!: (value: Awaited<ReturnType<DesktopAPI["saveView"]>>) => void;
 	const saved = new Promise<Awaited<ReturnType<DesktopAPI["saveView"]>>>((resolve) => {
 		release = resolve;
@@ -1769,7 +1769,6 @@ test("a saved-view write holds commands until its RPC result reaches the screen 
 	await expect
 		.element(page.getByRole("button", { name: "Release work", exact: true }))
 		.toBeVisible();
-	expect(reads).toHaveBeenCalledTimes(1);
 });
 
 test("a failed saved-view read warns while the confirmed Todo file remains usable", async () => {

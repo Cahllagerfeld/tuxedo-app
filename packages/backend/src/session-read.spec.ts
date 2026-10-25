@@ -6,6 +6,97 @@ import { join } from "node:path";
 import { WorkspaceSession, workspaceSessionLayer, identityLayer } from "@tuxedo/backend";
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("session reads", (it) => {
+	it.effect("Workspace route reads preserve the confirmed session, Undo and observation", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const directory = yield* fs.realPath(yield* fs.makeTempDirectoryScoped());
+			const cataloguePath = join(directory, "workspaces.json");
+			const firstPath = join(directory, "first.txt");
+			const secondPath = join(directory, "second.txt");
+			yield* fs.writeFileString(firstPath, "First\n");
+			yield* fs.writeFileString(secondPath, "Second\n");
+			let observations = 0;
+			yield* Effect.gen(function* () {
+				const session = yield* WorkspaceSession;
+				const first = yield* session.createWorkspace({
+					name: "First",
+					color: "blue",
+					todoPath: firstPath,
+				});
+				const second = yield* session.createWorkspace({
+					name: "Second",
+					color: "green",
+					todoPath: secondPath,
+				});
+				if (
+					first.status !== "applied" ||
+					first.confirmed.session.status !== "ready" ||
+					second.status !== "applied" ||
+					second.confirmed.session.status !== "ready"
+				)
+					throw Error("setup");
+				const firstId = first.confirmed.session.catalogue.active_workspace_id!;
+				const secondId = second.confirmed.session.catalogue.active_workspace_id!;
+				const opened = yield* session.switchWorkspace({ workspaceId: firstId });
+				if (opened.status !== "applied") throw Error("setup");
+				yield* session.setTodoCompletion({
+					scope: opened.confirmed.scope,
+					revision: opened.confirmed.revision,
+					workspaceId: firstId,
+					lineNumber: 1,
+					expectedRaw: "First",
+					completed: true,
+				});
+				const before = yield* session.readSession({});
+				const catalogueContents = yield* fs.readFileString(cataloguePath);
+				const previousObservations = observations;
+				const inactive = yield* session.readWorkspace({ workspaceId: secondId });
+				expect(inactive).toMatchObject({
+					status: "ready",
+					workspace: { id: secondId },
+					todo_file: { path: secondPath, items: [{ description: "Second" }] },
+					confirmation: null,
+				});
+				const active = yield* session.readWorkspace({ workspaceId: firstId });
+				expect(active).toMatchObject({
+					status: "ready",
+					workspace: { id: firstId },
+					todo_file: { path: firstPath, items: [{ completed: true }] },
+					confirmation: {
+						scope: before.scope,
+						revision: before.revision,
+						undoLabel: "Undo completion",
+					},
+				});
+				yield* fs.writeFileString(firstPath, "External\n");
+				expect(yield* session.readWorkspace({ workspaceId: firstId })).toEqual(active);
+				yield* fs.remove(secondPath);
+				expect(yield* session.readWorkspace({ workspaceId: secondId })).toMatchObject({
+					status: "rejected",
+				});
+				expect(
+					yield* session.readWorkspace({ workspaceId: "550e8400-e29b-41d4-a716-446655440099" })
+				).toEqual({ status: "rejected", message: "Workspace does not exist." });
+				expect(yield* fs.readFileString(cataloguePath)).toBe(catalogueContents);
+				yield* fs.writeFileString(cataloguePath, "corrupt");
+				expect(yield* session.readWorkspace({ workspaceId: secondId })).toMatchObject({
+					status: "rejected",
+				});
+				expect(yield* fs.readFileString(cataloguePath)).toBe("corrupt");
+				expect(yield* session.readSession({})).toEqual(before);
+				expect(observations).toBe(previousObservations);
+			}).pipe(
+				Effect.provide(
+					workspaceSessionLayer(cataloguePath, {
+						observe: () =>
+							Effect.sync(() => {
+								observations++;
+							}),
+					}).pipe(Layer.provide(identityLayer))
+				)
+			);
+		})
+	);
 	it.effect(
 		"stable reads preserve revision, Undo and observation; changed disk data is confirmed once",
 		() =>

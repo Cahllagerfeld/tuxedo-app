@@ -65,6 +65,7 @@ export function desktopSessionBackend(runtime: ReturnType<typeof createSessionRu
 			})
 		);
 	const backend: SessionBackend = {
+		readWorkspace: (request) => run("readWorkspace", request),
 		readSession: (request) => run("readSession", request),
 		refreshSession: (request) => run("refreshSession", request),
 		setWorkspaceShowDeferred: (request) => run("setWorkspaceShowDeferred", request),
