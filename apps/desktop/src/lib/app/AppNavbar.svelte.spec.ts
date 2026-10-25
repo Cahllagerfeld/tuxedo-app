@@ -74,6 +74,34 @@ function adapter(undo: DesktopAPI["undoTodo"]): DesktopAPI {
 	});
 }
 
+test("shortcut search filters actions, groups and keys, and resets on reopen", async () => {
+	render(Harness, {
+		desktop: adapter(async () => ({ status: "rejected", message: "Nothing to undo" })),
+	});
+	await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+	const search = page.getByRole("searchbox", { name: "Search shortcuts" });
+	await expect.element(search).toHaveFocus();
+	await expect.element(page.getByRole("heading", { name: "App & Workspaces" })).toBeVisible();
+	await search.fill("  UNDO  ");
+	await expect.element(page.getByText("Undo last Todo-file change", { exact: true })).toBeVisible();
+	await expect
+		.element(page.getByText("Previous Todo item", { exact: true }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(page.getByRole("heading", { name: "App & Workspaces" }))
+		.not.toBeInTheDocument();
+	await search.fill("row navigation");
+	await expect.element(page.getByText("Previous Todo item", { exact: true })).toBeVisible();
+	await search.fill("Mod+Shift+N");
+	await expect.element(page.getByText("New Workspace", { exact: true })).toBeVisible();
+	await search.fill("no matching shortcut");
+	await expect.element(page.getByText("No shortcuts found", { exact: true })).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+	await expect.element(search).toHaveValue("");
+	await expect.element(page.getByText("Previous Todo item", { exact: true })).toBeVisible();
+});
+
 test("topbar Undo follows confirmed data, blocks overlapping actions, and consumes its slot", async () => {
 	let finish!: (value: Awaited<ReturnType<DesktopAPI["undoTodo"]>>) => void;
 	let request: DesktopRequest<"undoTodo"> | undefined;
