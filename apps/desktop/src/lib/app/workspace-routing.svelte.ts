@@ -56,8 +56,6 @@ export function workspaceRouting() {
 		if (navigation.type !== "leave" && commands.pendingOperation !== null) navigation.cancel();
 	});
 	afterNavigate((event) => {
-		if (event.shallow && event.type === "goto") return;
-
 		void navigation.committedDestination(event.type === "enter");
 	});
 	onMount(() =>

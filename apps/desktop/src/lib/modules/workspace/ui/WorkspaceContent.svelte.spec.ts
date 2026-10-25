@@ -3105,3 +3105,87 @@ test("admitted writes block panel dismissal and keep its URL until the confirmed
 		.toBeEnabled();
 	expect(setTodoCompletion).toHaveBeenCalledTimes(1);
 });
+
+test.for([false, true])(
+	"a queued observation after completion retains only compatible detail identity (selected line replaced: %s)",
+	async (replaceSelected) => {
+		if (initial.session.status !== "ready") throw Error("Expected Ready");
+		await page.viewport(1400, 900);
+		const completed = { ...todo, completed: true, raw: "x Plan release +Work" };
+		const neighbor = {
+			...todo,
+			line_number: 2,
+			raw: "External neighbor",
+			description: "External neighbor",
+		};
+		let notify!: (change: TodoFileChange) => void;
+		let finishWrite!: (result: Awaited<ReturnType<DesktopAPI["setTodoCompletion"]>>) => void;
+		let finishRead!: (result: ConfirmedSession) => void;
+		let entered!: () => void;
+		const reading = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		let reads = 0;
+		render(Harness, {
+			panelLocation: true,
+			desktop: adapter({
+				readSession: async () => {
+					if (++reads === 1) return initial;
+					entered();
+					return new Promise((resolve) => {
+						finishRead = resolve;
+					});
+				},
+				setTodoCompletion: () =>
+					new Promise((resolve) => {
+						finishWrite = resolve;
+					}),
+			}),
+			observation: {
+				onTodoFileChanged(listener) {
+					notify = listener;
+					return () => {};
+				},
+			},
+		});
+		await page.getByRole("button", { name: "Navigate Plan release", exact: true }).click();
+		const panel = page.getByRole("complementary", { name: "Todo item details" });
+		await panel.getByRole("button", { name: "Mark complete", exact: true }).click();
+		notify({ scope, revision: 3, workspaceId, todoPath: "/tmp/work.todo" });
+		finishWrite({ status: "applied", confirmed: confirmedTodo([completed]) });
+		await reading;
+		finishRead({
+			...initial,
+			revision: 3,
+			session: {
+				...initial.session,
+				todo_file: {
+					path: "/tmp/work.todo",
+					items: [
+						replaceSelected
+							? { ...completed, raw: "Replacement", description: "Replacement" }
+							: completed,
+						neighbor,
+					],
+					skipped: [],
+				},
+			},
+		});
+		await expect
+			.element(page.getByRole("button", { name: "Navigate External neighbor", exact: true }))
+			.toBeVisible();
+		if (replaceSelected) {
+			await expect.element(panel).not.toBeInTheDocument();
+			await expect
+				.element(page.getByLabelText("Panel URL"))
+				.toHaveTextContent("https://tuxedo.test/workspaces/work");
+		} else {
+			await expect
+				.element(panel.getByRole("button", { name: "Mark incomplete", exact: true }))
+				.toBeEnabled();
+			await expect
+				.element(page.getByLabelText("Panel URL"))
+				.toHaveTextContent("https://tuxedo.test/workspaces/work?item=1");
+		}
+	}
+);

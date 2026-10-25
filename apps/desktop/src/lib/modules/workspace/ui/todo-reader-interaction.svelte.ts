@@ -106,6 +106,12 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 		writing = true;
 		try {
 			const result = await mutate();
+			const moved =
+				result.status === "applied" && line !== null
+					? (inputs.view.todoFile?.items.find((item) => item.line_number === line) ?? null)
+					: null;
+			// A queued observation can start before the mutation's caller resumes.
+			await inputs.workspace.whenIdle();
 			// A write only moves the selection when it targeted this selection in this same scope.
 			if (
 				!destroyed &&
@@ -115,11 +121,9 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 				sameTodo(selection.todo, todo)
 			) {
 				if (result.status === "applied") {
-					const moved =
-						line === null
-							? null
-							: (inputs.view.todoFile?.items.find((item) => item.line_number === line) ?? null);
-					await setSelection(moved && { todo: moved, scope: selection.scope });
+					const retained =
+						moved && inputs.view.todoFile?.items.find((item) => sameTodo(item, moved));
+					await setSelection(retained ? { todo: retained, scope: selection.scope } : null);
 					if (line === null && trigger?.closest("[data-todo-details]")) inputs.viewport?.focus();
 				} else if (result.status === "conflict") void setSelection(null);
 			}
