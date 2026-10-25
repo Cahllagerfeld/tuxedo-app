@@ -114,9 +114,7 @@ export async function panelWorkflow(application, page, directory) {
 	}
 
 	if (previous) {
-		await page
-			.getByRole("button", { name: "Select workspace: Panel routing" })
-			.click();
+		await page.getByRole("button", { name: "Select workspace: Panel routing" }).click();
 		await page.getByRole("menuitem", { name: previous.name, exact: true }).click();
 		await page.waitForURL(new URL(`/workspaces/${previous.id}`, destination).href);
 		await page
