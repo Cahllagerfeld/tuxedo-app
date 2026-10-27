@@ -229,9 +229,7 @@
 </AlertDialog.Root>
 
 {#if view.todoFile}
-	<div
-		class="flex h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3"
-	>
+	<div class="flex h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 		<div>
 			<p class="text-sm font-medium" aria-live={bulkSelection.active ? "polite" : undefined}>
 				{#if bulkSelection.active}
