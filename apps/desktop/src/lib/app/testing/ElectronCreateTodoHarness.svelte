@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import type { CreateTodoDraft } from "./workspace-commands.svelte";
-	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
+	import type { CreateTodoDraft } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
+	import { workspaceFixture } from "./workspace-fixture.svelte";
 
 	type CreateTodoRequest = Parameters<DesktopAPI["createTodo"]>[0];
 	type TodoOutcome = Awaited<ReturnType<DesktopAPI["createTodo"]>>;

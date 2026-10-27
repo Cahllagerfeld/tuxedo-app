@@ -2,8 +2,10 @@ import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 import { tick } from "svelte";
 import { AppState } from "#lib/app/app-state.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
-import { WorkspaceCommands } from "../workspace-commands.svelte";
-import { SavedViewsResource } from "../saved-views-resource.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
+import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
+import { observeTodoFileChanges } from "#lib/app/observation-invalidation.js";
+import type { DisplayedDataTarget } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import {
 	readSession,
 	readWorkspace,
@@ -11,7 +13,7 @@ import {
 	type SessionData,
 	type WorkspaceData,
 	type SavedViewsData,
-} from "../workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 export function workspaceFixture(desktop: DesktopAPI) {
 	let destination = $state<string>();
@@ -21,7 +23,7 @@ export function workspaceFixture(desktop: DesktopAPI) {
 	const loadViews = async (id: string) => {
 		views = await readSavedViews(desktop, id, () => views);
 	};
-	const refresh = async (id: string | null, includeSession = false) => {
+	const refresh = async ({ workspaceId: id, session: includeSession }: DisplayedDataTarget) => {
 		if (includeSession) session = await readSession(desktop, () => session);
 		if (id) workspace = await readWorkspace(desktop, id, () => workspace);
 		await tick();
@@ -31,7 +33,7 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		workspace: () => workspace,
 		destination: () => destination,
 		navigating: () => false,
-		refresh,
+		invalidate: refresh,
 	};
 	const commands = new WorkspaceCommands(desktop, routes);
 	const navigation = workspaceNavigation(commands, {
@@ -44,11 +46,13 @@ export function workspaceFixture(desktop: DesktopAPI) {
 				? (session?.value?.session.catalogue.active_workspace_id ?? undefined)
 				: undefined,
 		current: () => views,
-		refresh: loadViews,
+		invalidate: async ({ savedViewsId }) => {
+			if (savedViewsId) await loadViews(savedViewsId);
+		},
 	});
 	async function navigate(id: string | undefined) {
 		destination = id;
-		await refresh(id ?? null, true);
+		await refresh({ workspaceId: id ?? null, session: true });
 		if (id) await loadViews(id);
 		await navigation.committedDestination();
 	}
@@ -70,11 +74,14 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		routes,
 		navigation,
 		createApp: () => new AppState(commands, routes, navigation),
-		observe: (observation: TodoFileObservation, onChanged: () => void) =>
-			commands.observe(observation, (changed) => {
-				navigation.observed(changed);
-				if (changed) onChanged();
-			}),
+		observe: (observation: TodoFileObservation, reloaded: () => void) => {
+			const stopFollowing = $effect.root(() => navigation.followDisplayedData(reloaded));
+			const stop = observeTodoFileChanges(observation, refresh);
+			return () => {
+				stop();
+				stopFollowing();
+			};
+		},
 		savedViews,
 		start,
 		reload: () => navigation.retry(),

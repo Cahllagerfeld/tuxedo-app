@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { setSavedViews } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
-	import { setAppState } from "#lib/app/app-context.js";
+	import { setAppState, setWorkspaceUi } from "#lib/app/app-context.js";
 	import { AppState } from "#lib/app/app-state.svelte.js";
+	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import AppNavbar from "#lib/app/AppNavbar.svelte";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
@@ -20,7 +21,9 @@
 	setShortcutScope();
 	const { workspace, savedViews, routes, navigation } = workspaceRouting();
 	const appState = new AppState(workspace, routes, navigation);
+	const ui = new WorkspaceUiState(appState);
 	setAppState(appState);
+	setWorkspaceUi(ui);
 	setSavedViews(savedViews);
 	const busy = $derived(appState.workspace.isOperating || appState.isLoading || !!navigating.to);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
@@ -40,6 +43,7 @@
 	{:else}
 		<AppNavbar
 			app={appState}
+			{ui}
 			readerShown={showsActiveWorkspace}
 			workspaceShown={!!page.params.id}
 		/>
@@ -49,17 +53,17 @@
 		>
 			{#if page.params.id}
 				<WorkspaceSidebar
-					bind:switcherOpen={appState.isWorkspaceSwitcherOpen}
+					bind:switcherOpen={ui.isWorkspaceSwitcherOpen}
 					workspaces={appState.catalogue?.workspaces ?? []}
 					activeWorkspaceId={appState.activeWorkspace?.id ?? null}
 					todoSummary={appState.todos}
-					todoFilter={appState.todoFilter}
+					todoFilter={ui.todoFilter}
 					todoFileLoaded={showsActiveWorkspace && appState.todoFile !== null}
 					disabled={busy}
 					pendingOperation={appState.workspace.pendingOperation}
 					selectWorkspace={(id) => void openWorkspace(id)}
 					deleteWorkspace={appState.navigation.deleteWorkspace}
-					openCreationDialog={appState.openWorkspaceCreationDialog}
+					openCreationDialog={ui.openWorkspaceCreationDialog}
 				/>
 			{/if}
 			<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -76,7 +80,7 @@
 		</div>
 	{/if}
 	<WorkspaceCreationDialog
-		bind:open={appState.isWorkspaceCreationDialogOpen}
+		bind:open={ui.isWorkspaceCreationDialogOpen}
 		disabled={busy}
 		createWorkspace={appState.navigation.create}
 	/>

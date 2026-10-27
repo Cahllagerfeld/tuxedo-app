@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getAppState } from "#lib/app/app-context.js";
+	import { getAppState, getWorkspaceUi } from "#lib/app/app-context.js";
 	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import { resolve } from "$app/paths";
@@ -8,6 +8,7 @@
 
 	let { params }: PageProps = $props();
 	const appState = getAppState();
+	const ui = getWorkspaceUi();
 	const workspace = appState.workspace;
 </script>
 
@@ -27,14 +28,14 @@
 	{#key params.id}
 		{#if appState.showsDestination(params.id)}
 			<WorkspaceContent
-				bind:creationOpen={appState.isTodoCreationOpen}
-				bulkSelection={appState.bulkSelection}
+				bind:creationOpen={ui.isTodoCreationOpen}
+				bulkSelection={ui.bulkSelection}
 				{workspace}
 				view={appState}
 				deleteWorkspace={appState.navigation.deleteWorkspace}
-				todoFilter={appState.todoFilter}
-				filteredTodoItems={appState.filteredTodoItems}
-				openWorkspaceCreationDialog={appState.openWorkspaceCreationDialog}
+				todoFilter={ui.todoFilter}
+				filteredTodoItems={ui.filteredTodoItems}
+				openWorkspaceCreationDialog={ui.openWorkspaceCreationDialog}
 			/>
 		{:else}
 			<WorkspaceLoading />

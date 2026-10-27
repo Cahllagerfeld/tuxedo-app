@@ -1,4 +1,4 @@
-import { loaderDesktop } from "./testing/loader-desktop";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
