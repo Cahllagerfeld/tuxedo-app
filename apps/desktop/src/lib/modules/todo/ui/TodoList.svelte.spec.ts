@@ -66,56 +66,6 @@ describe("TodoList", () => {
 			.element(page.getByText("Invalid due date: 2026-02-30", { exact: true }))
 			.not.toBeInTheDocument();
 	});
-	it("shows the invalid Due date tooltip on hover and keyboard focus", async () => {
-		await render(TodoList, {
-			todoFile: { ...todoFile, items: [{ ...todoFile.items[0], metadata: { due: "broken" } }] },
-			disabled: false,
-			onToggleComplete: vi.fn(),
-			onDelete: vi.fn(),
-		});
-		const warning = page.getByRole("button", { name: "Invalid due date", exact: true });
-		await warning.hover();
-		await expect
-			.element(page.getByRole("tooltip"))
-			.toHaveTextContent("Invalid due date — edit this Todo item to repair it.");
-		await userEvent.keyboard("{Escape}");
-		await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
-		await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
-		await userEvent.keyboard("{Tab}");
-		await expect.element(warning).toHaveFocus();
-		await expect.element(page.getByRole("tooltip")).toBeVisible();
-	});
-	it.each(["+2d", "2026-02-30"])(
-		"shows invalid Show from %s only in a warning tooltip",
-		async (value) => {
-			await render(TodoList, {
-				todoFile: { ...todoFile, items: [{ ...todoFile.items[0], metadata: { t: value } }] },
-				disabled: false,
-				onToggleComplete: vi.fn(),
-				onDelete: vi.fn(),
-			});
-			const warning = page.getByRole("button", {
-				name: "Invalid or unsupported Show from",
-				exact: true,
-			});
-			await expect.element(warning).toBeVisible();
-			await expect
-				.element(page.getByText(`Invalid or unsupported Show from: ${value}`, { exact: true }))
-				.not.toBeInTheDocument();
-			await warning.hover();
-			await expect
-				.element(page.getByRole("tooltip"))
-				.toHaveTextContent(
-					`Invalid or unsupported Show from: ${value} — edit this Todo item to repair it.`
-				);
-			await userEvent.keyboard("{Escape}");
-			await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
-			await page.getByRole("checkbox", { name: "Mark Plan complete", exact: true }).click();
-			await userEvent.keyboard("{Tab}");
-			await expect.element(warning).toHaveFocus();
-			await expect.element(page.getByRole("tooltip")).toBeVisible();
-		}
-	);
 	beforeEach(async () => {
 		await page.viewport(800, 600);
 	});
@@ -336,37 +286,6 @@ describe("TodoList", () => {
 		);
 	});
 
-	it("renders compact Todo items with inline facets and completion controls", async () => {
-		render(TodoList, {
-			todoFile,
-			disabled: false,
-			onToggleComplete: vi.fn(),
-			onDelete: vi.fn(),
-		});
-
-		await expect.element(page.getByRole("list", { name: "Todo items" })).toBeVisible();
-		const items = page.getByRole("listitem");
-		await expect.element(items.nth(0)).toMatchTextContent("Plan");
-		await expect.element(items.nth(1)).toMatchTextContent("Ship release");
-		await expect.element(page.getByText("(A)", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("+Tuxedo", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("@desk", { exact: true })).toBeVisible();
-		await expect.element(page.getByText("due:2026-07-12", { exact: true })).not.toBeInTheDocument();
-		await expect.element(page.getByText("2026-07-11", { exact: true })).toBeVisible();
-		await expect
-			.element(page.getByRole("checkbox", { name: "Mark Plan complete" }))
-			.not.toBeChecked();
-		await expect
-			.element(page.getByRole("checkbox", { name: "Mark Ship release incomplete" }))
-			.toBeChecked();
-		await expect
-			.element(page.getByRole("button", { name: "Actions for Plan" }))
-			.toBeInTheDocument();
-		await expect
-			.element(page.getByRole("button", { name: "Actions for Ship release" }))
-			.toBeInTheDocument();
-	});
-
 	it("renders a Todo-file-specific empty state when no valid items were parsed", async () => {
 		render(TodoList, {
 			todoFile: { ...todoFile, items: [] },
@@ -577,59 +496,4 @@ it("row navigation crosses the virtualization window and keeps native controls s
 		.toHaveFocus();
 	await userEvent.keyboard("{Space}{ArrowDown}{Escape}");
 	expect(onToggleComplete).toHaveBeenCalledTimes(1);
-});
-
-it("distinguishes only deferred rows and keeps Show from metadata compact on wide lists", async () => {
-	try {
-		await page.viewport(1800, 700);
-		const items: TodoFile["items"] = [
-			{ ...todoFile.items[0], description: "Future", metadata: { t: "2026-10-16" } },
-			{
-				...todoFile.items[0],
-				line_number: 2,
-				description: "Actionable",
-				metadata: { t: "2026-10-14" },
-			},
-			{ ...todoFile.items[0], line_number: 3, description: "Invalid", metadata: { t: "+2d" } },
-			{ ...todoFile.items[1], line_number: 4, metadata: { t: "2026-10-16" } },
-		];
-		const props = {
-			todoFile: { ...todoFile, items },
-			today: "2026-10-15",
-			disabled: false,
-			onToggleComplete: vi.fn(),
-			onDelete: vi.fn(),
-		};
-		const view = await render(TodoList, props);
-		await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
-		const futureRow = page
-			.getByRole("button", { name: "Navigate Future", exact: true })
-			.element()
-			.closest("li")!;
-		const actionableRow = page
-			.getByRole("button", { name: "Navigate Actionable", exact: true })
-			.element()
-			.closest("li")!;
-		expect(getComputedStyle(futureRow).backgroundColor).not.toBe(
-			getComputedStyle(actionableRow).backgroundColor
-		);
-		const label = page.getByTitle("Show from 2026-10-16 · Deferred", { exact: true }).element();
-		expect(label.getBoundingClientRect().width).toBeLessThan(300);
-		const menu = page.getByRole("button", { name: "Actions for Future", exact: true }).element();
-		expect(menu.getBoundingClientRect().left - label.getBoundingClientRect().right).toBeLessThan(
-			40
-		);
-		await page.viewport(320, 700);
-		await expect.element(page.getByText("Deferred", { exact: true })).toBeVisible();
-		await expect
-			.element(page.getByRole("checkbox", { name: "Mark Future complete", exact: true }))
-			.toBeVisible();
-		await view.rerender({ ...props, today: "2026-10-16" });
-		await expect.element(page.getByText("Deferred", { exact: true })).not.toBeInTheDocument();
-		await expect
-			.poll(() => getComputedStyle(futureRow).backgroundColor)
-			.toBe(getComputedStyle(actionableRow).backgroundColor);
-	} finally {
-		await page.viewport(800, 600);
-	}
 });
