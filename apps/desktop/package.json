@@ -24,7 +24,7 @@
 	},
 	"license": "MIT",
 	"devDependencies": {
-		"@effect/platform-node": "4.0.5",
+		"@effect/platform-node": "4.0.6",
 		"@effect/vitest": "4.0.6",
 		"@electron-forge/cli": "8.0.1",
 		"@electron/asar": "4.3.1",
@@ -42,7 +42,7 @@
 		"@vitest/browser-playwright": "5.0.5",
 		"bits-ui": "2.20.0",
 		"cn": "0.5.0",
-		"effect": "4.0.5",
+		"effect": "4.0.6",
 		"electron": "45.0.0",
 		"formsnap": "2.1.0",
 		"mode-watcher": "1.1.0",
