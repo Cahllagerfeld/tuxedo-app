@@ -373,22 +373,18 @@ test("Retry returns Home when a failed observation read recovers to Empty with t
 	stop();
 });
 
-test("stale revisions and another runtime's results cannot authorize writes", async () => {
-	const f = fixture(async (channel) =>
-		channel === "tuxedo:set-todo-completion" ? { status: "applied", confirmed: todo(6) } : undefined
-	);
+test("disagreeing session and destination reads block writes until Retry re-reads both", async () => {
+	const f = fixture();
 	await f.start();
-	await f.commands.setCompletion(item);
-	f.publishSession({ value: snapshot(5), error: "" });
-	expect(f.todoFile?.items[0].completed).toBe(true);
-	expect(f.commands.canMutate).toBe(true);
-	f.setBackend(snapshot(5));
-	expect(await f.navigation.retry()).toMatchObject({ status: "rejected" });
-	f.setBackend({ ...snapshot(9), scope: otherId });
-	expect(await f.navigation.retry()).toMatchObject({ status: "rejected" });
-	expect(f.commands.canMutate).toBe(false);
+	for (const value of [snapshot(6), { ...snapshot(5), scope: otherId }]) {
+		f.publishSession({ value, error: "" });
+		expect(f.commands.canMutate).toBe(false);
+		expect(await f.commands.setCompletion(item)).toMatchObject({ status: "rejected" });
+	}
 	f.setBackend(snapshot(7));
 	expect(await f.navigation.retry()).toEqual({ status: "applied", activeWorkspaceId: workspaceId });
+	expect(f.commands.canMutate).toBe(true);
+	expect(f.calls).not.toContain("tuxedo:set-todo-completion");
 });
 
 test("startup resumes once with replacement while Home and abandoned destinations preserve selection and Undo", async () => {
@@ -629,4 +625,82 @@ test("a newer committed destination wins while creation's navigation finishes", 
 	expect(switched).toEqual([{ workspaceId: latestId }]);
 	expect(f.activeWorkspaceId).toBe(latestId);
 	expect(f.commands.canMutate).toBe(true);
+});
+
+test("lifecycle commands call one RPC and invalidate the loaders holding the changed data", async () => {
+	type Fixture = ReturnType<typeof fixture>;
+	const cases: Array<{
+		run: (f: Fixture) => Promise<unknown>;
+		channel: string | null;
+		target: { session: boolean; workspaceId: string | null };
+		result: object;
+	}> = [
+		{
+			run: (f) =>
+				f.commands.create({ name: "Next", color: "blue", todoPath: `/tmp/${otherId}.txt` }),
+			channel: "tuxedo:create-workspace",
+			target: { session: true, workspaceId: null },
+			result: { status: "applied", workspaceId: otherId },
+		},
+		{
+			run: (f) => f.commands.deleteWorkspace(otherId),
+			channel: "tuxedo:delete-workspace",
+			target: { session: true, workspaceId },
+			result: { status: "applied", activeWorkspaceId: workspaceId },
+		},
+		{
+			run: (f) => {
+				f.setDestination(otherId);
+				return f.commands.activate(otherId);
+			},
+			channel: "tuxedo:switch-workspace",
+			target: { session: true, workspaceId: otherId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.setSortOrder("due"),
+			channel: "tuxedo:set-workspace-sort-order",
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.setShowDeferred(true),
+			channel: "tuxedo:set-workspace-show-deferred",
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.retry(),
+			channel: "tuxedo:refresh-session",
+			target: { session: true, workspaceId },
+			result: { status: "applied", activeWorkspaceId: workspaceId },
+		},
+		{
+			run: (f) => f.commands.activate(workspaceId),
+			channel: null,
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+	];
+	for (const { run, channel, target, result } of cases) {
+		const f = fixture(async (called) => {
+			if (called === "tuxedo:create-workspace" || called === "tuxedo:switch-workspace")
+				return { status: "applied", confirmed: selected(otherId, 6) };
+			if (called.startsWith("tuxedo:set-workspace-") || called === "tuxedo:delete-workspace")
+				return { status: "applied", confirmed: snapshot(6) };
+		});
+		await f.start();
+		const calls = f.calls.length;
+		const invalidations = f.invalidations.length;
+		expect(await run(f)).toEqual(result);
+		expect(
+			f.calls.slice(calls).filter((call) => !call.startsWith("tuxedo:read-")),
+			channel ?? "activate confirmed"
+		).toEqual(channel ? [channel] : []);
+		expect(
+			f.invalidations
+				.slice(invalidations)
+				.map(({ session = false, workspaceId = null }) => ({ session, workspaceId }))
+		).toEqual([target]);
+	}
 });

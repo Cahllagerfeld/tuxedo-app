@@ -1,11 +1,10 @@
-import type { DesktopAPI, DesktopRequest, TodoSortOrder } from "@tuxedo/contracts";
+import type { ConfirmedSession, DesktopRequest, TodoSortOrder } from "@tuxedo/contracts";
 import type { WorkspaceCommandContext } from "./workspace-commands.svelte";
+import type { DisplayedDataTarget } from "./invalidate-displayed-data";
 import type { WorkspaceSessionActionResult } from "./workspace-session-types";
 import { CommandValidationError } from "./workspace-command-gate.svelte";
 
-const activeWorkspaceId = (
-	confirmed: Awaited<ReturnType<DesktopAPI["refreshSession"]>>
-): string | null =>
+const activeWorkspaceId = (confirmed: ConfirmedSession): string | null =>
 	confirmed.session.status === "ready" ? confirmed.session.catalogue.active_workspace_id : null;
 
 export function workspaceLifecycleCommands({
@@ -16,36 +15,41 @@ export function workspaceLifecycleCommands({
 }: WorkspaceCommandContext) {
 	const destinationOrNull = (workspaceId: string | null) =>
 		workspaceId === routes.destination() ? workspaceId : null;
-	async function sessionOutcome(
-		outcome: Awaited<ReturnType<DesktopAPI["createWorkspace"]>>
+	async function invalidate(
+		target: DisplayedDataTarget,
+		notice: string,
+		applied: Extract<WorkspaceSessionActionResult, { status: "applied" }> = { status: "applied" }
 	): Promise<WorkspaceSessionActionResult> {
-		if (outcome.status !== "applied") return outcome;
-		reader.requireRevision(outcome.confirmed);
-		const refreshed = await reader.refresh({
-			workspaceId: destinationOrNull(activeWorkspaceId(outcome.confirmed)),
-			session: true,
-		});
-		return {
-			status: "applied",
-			...(refreshed.status === "rejected"
-				? { notice: "Change saved, but the Workspace could not be refreshed. " + refreshed.message }
-				: {}),
-		};
+		const refreshed = await reader.refresh(target);
+		return refreshed.status === "rejected"
+			? { ...applied, notice: notice + refreshed.message }
+			: applied;
 	}
-	function catalogueTarget() {
+	function requireCatalogue() {
 		if (!reader.catalogue || reader.recoveryError)
 			throw new CommandValidationError("Refresh Workspaces before changing them.");
+	}
+	async function setPreference(
+		write: (
+			target: ReturnType<typeof reader.todoTarget>
+		) => ReturnType<typeof desktop.setWorkspaceSortOrder>
+	) {
+		const target = reader.todoTarget();
+		const outcome = await write(target);
+		if (outcome.status !== "applied") return outcome;
+		return invalidate(
+			{ session: true, workspaceId: target.workspaceId },
+			"Change saved, but the Workspace could not be refreshed. "
+		);
 	}
 
 	return {
 		retry: () =>
 			gate.run("restore", async () => {
-				const value = await desktop.refreshSession({});
-				reader.requireRevision(value);
-				const active = activeWorkspaceId(value);
+				const active = activeWorkspaceId(await desktop.refreshSession({}));
 				const outcome = await reader.refresh({
-					workspaceId: destinationOrNull(active),
 					session: true,
+					workspaceId: destinationOrNull(active),
 				});
 				return outcome.status === "applied" ? { ...outcome, activeWorkspaceId: active } : outcome;
 			}),
@@ -53,12 +57,11 @@ export function workspaceLifecycleCommands({
 			gate.run(
 				"open_workspace",
 				async () => {
-					if (reader.activeWorkspace?.id === workspaceId && reader.current?.value?.confirmation)
-						return reader.refresh({ workspaceId, session: true });
-					const outcome = await desktop.switchWorkspace({ workspaceId });
-					if (outcome.status !== "applied") return outcome;
-					reader.requireRevision(outcome.confirmed);
-					return reader.refresh({ workspaceId: destinationOrNull(workspaceId), session: true });
+					if (reader.activeWorkspace?.id !== workspaceId || !reader.current?.value?.confirmation) {
+						const outcome = await desktop.switchWorkspace({ workspaceId });
+						if (outcome.status !== "applied") return outcome;
+					}
+					return reader.refresh({ session: true, workspaceId: destinationOrNull(workspaceId) });
 				},
 				{ target: { workspaceId }, committed: true }
 			),
@@ -66,23 +69,14 @@ export function workspaceLifecycleCommands({
 			gate.run(
 				"create_workspace",
 				async () => {
-					catalogueTarget();
+					requireCatalogue();
 					const outcome = await desktop.createWorkspace(input);
 					if (outcome.status !== "applied") return outcome;
-					reader.requireRevision(outcome.confirmed);
-					const id = activeWorkspaceId(outcome.confirmed);
-					const refreshed = await reader.refresh({ session: true });
-					return {
-						status: "applied",
-						workspaceId: id,
-						...(refreshed.status === "rejected"
-							? {
-									notice:
-										"Workspace created, but Workspaces could not be refreshed. " +
-										refreshed.message,
-								}
-							: {}),
-					};
+					return invalidate(
+						{ session: true },
+						"Workspace created, but Workspaces could not be refreshed. ",
+						{ status: "applied", workspaceId: activeWorkspaceId(outcome.confirmed) }
+					);
 				},
 				{ target: { todoPath: input.todoPath } }
 			),
@@ -90,30 +84,29 @@ export function workspaceLifecycleCommands({
 			gate.run(
 				"delete_workspace",
 				async () => {
-					catalogueTarget();
+					requireCatalogue();
 					const outcome = await desktop.deleteWorkspace({ workspaceId });
 					if (outcome.status !== "applied") return outcome;
 					const active = activeWorkspaceId(outcome.confirmed);
-					return { ...(await sessionOutcome(outcome)), activeWorkspaceId: active };
+					return invalidate(
+						{ session: true, workspaceId: destinationOrNull(active) },
+						"Workspace removed, but Workspaces could not be refreshed. ",
+						{ status: "applied", activeWorkspaceId: active }
+					);
 				},
 				{ target: { workspaceId } }
 			),
 		setSortOrder: (sortOrder: TodoSortOrder) =>
 			gate.run(
 				"set_workspace_sort_order",
-				async () =>
-					sessionOutcome(
-						await desktop.setWorkspaceSortOrder({ ...reader.todoTarget(), sortOrder })
-					),
+				() => setPreference((target) => desktop.setWorkspaceSortOrder({ ...target, sortOrder })),
 				{ target: reader.todoOperationTarget() }
 			),
 		setShowDeferred: (showDeferred: boolean) =>
 			gate.run(
 				"set_workspace_show_deferred",
-				async () =>
-					sessionOutcome(
-						await desktop.setWorkspaceShowDeferred({ ...reader.todoTarget(), showDeferred })
-					),
+				() =>
+					setPreference((target) => desktop.setWorkspaceShowDeferred({ ...target, showDeferred })),
 				{ target: reader.todoOperationTarget() }
 			),
 	};
