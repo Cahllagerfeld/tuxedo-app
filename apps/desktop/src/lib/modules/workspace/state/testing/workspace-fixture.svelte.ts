@@ -74,11 +74,14 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		routes,
 		navigation,
 		createApp: () => new AppState(commands, routes, navigation),
-		observe: (observation: TodoFileObservation, onChanged: () => void) =>
-			observeTodoFileChanges(observation, routes, (changed) => {
-				if (changed) onChanged();
-				void navigation.observed();
-			}),
+		observe: (observation: TodoFileObservation, reloaded: () => void) => {
+			const stopFollowing = $effect.root(() => navigation.followDisplayedData(reloaded));
+			const stop = observeTodoFileChanges(observation, refresh);
+			return () => {
+				stop();
+				stopFollowing();
+			};
+		},
 		savedViews,
 		start,
 		reload: () => navigation.retry(),

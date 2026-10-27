@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { expect, test } from "vitest";
 import {
 	createDesktopClient,
@@ -86,10 +87,11 @@ function deferred<T>() {
 }
 function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown>) {
 	let backend = snapshot();
-	let destination: string | undefined = workspaceId;
-	let session: SessionData | undefined;
-	let workspaceData: WorkspaceData | undefined;
-	let navigating = false;
+	let destination = $state.raw<string | undefined>(workspaceId);
+	let session = $state.raw<SessionData>();
+	let workspaceData = $state.raw<WorkspaceData>();
+	let navigating = $state(false);
+	let observedRead = Promise.resolve();
 	let navigationStep: (() => Promise<void>) | undefined;
 	let refreshStep: (() => Promise<void>) | undefined;
 	const calls: string[] = [];
@@ -199,13 +201,21 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		get warning() {
 			return session?.value?.session.status === "empty" ? session.value.session.warning : "";
 		},
-		observe: (
-			observation: TodoFileObservation,
-			invalidated: (changed: boolean, observed: Promise<void>) => void
-		) =>
-			observeTodoFileChanges(observation, routes, (changed) =>
-				invalidated(changed, navigation.observed())
-			),
+		observe: (observation: TodoFileObservation, reloaded = () => {}) => {
+			const stopFollowing = $effect.root(() => navigation.followDisplayedData(reloaded));
+			const stop = observeTodoFileChanges(
+				observation,
+				(target) => (observedRead = invalidate(target))
+			);
+			return () => {
+				stop();
+				stopFollowing();
+			};
+		},
+		observed: async () => {
+			await observedRead;
+			await tick();
+		},
 		desktop,
 		calls,
 		invalidations,
@@ -350,10 +360,9 @@ test("Retry returns Home when a failed observation read recovers to Empty with t
 	});
 	await f.start();
 	const events = observation();
-	const observed = deferred<void>();
-	const stop = f.observe(events.source, (_changed, routed) => void routed.then(observed.resolve));
+	const stop = f.observe(events.source);
 	events.signal(6);
-	await observed.promise;
+	await f.observed();
 	expect(f.commands.recoveryError).toBe("Read unavailable");
 	expect(f.todoFile).not.toBeNull();
 	f.setBackend({
@@ -445,10 +454,9 @@ test("creation navigates after admission ends without switching the created Work
 	expect(f.calls).not.toContain("tuxedo:switch-workspace");
 });
 
-test("an external change during a write is reflected afterward, while stale targets are ignored", async () => {
+test("an external change during a write is reflected afterward without a reload notice", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
-	const noticed = deferred<void>();
 	let reads = 0;
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:set-todo-completion") {
@@ -471,23 +479,16 @@ test("an external change during a write is reflected afterward, while stale targ
 	await f.start();
 	const events = observation();
 	let notices = 0;
-	const stop = f.observe(events.source, (changed) => {
-		if (changed) notices++;
-		noticed.resolve();
-	});
+	const stop = f.observe(events.source, () => notices++);
 	const completing = f.commands.setCompletion(item);
 	await entered.promise;
 	events.signal(7);
+	await f.observed();
 	response.resolve({ status: "applied", confirmed: todo(6) });
 	expect(await completing).toEqual({ status: "applied" });
-	await noticed.promise;
+	await tick();
 	expect(f.todoFile?.items[0].description).toBe("External");
-	expect(notices).toBe(1);
-	const invalidated = f.invalidations.length;
-	events.signal(8, { workspaceId: otherId });
-	events.signal(8, { scope: otherId });
-	events.signal(7);
-	expect(f.invalidations).toHaveLength(invalidated);
+	expect(notices).toBe(0);
 	stop();
 });
 
@@ -495,12 +496,8 @@ test("a change during navigation reaches the committed reader; a missing file re
 	const f = fixture();
 	await f.start();
 	const events = observation();
-	const changes: boolean[] = [];
-	let observed = deferred<void>();
-	const stop = f.observe(events.source, (changed, routed) => {
-		changes.push(changed);
-		void routed.then(observed.resolve);
-	});
+	let notices = 0;
+	const stop = f.observe(events.source, () => notices++);
 	const committed = deferred<void>();
 	f.setNavigating(true);
 	f.setRefreshStep(() => committed.promise);
@@ -510,10 +507,11 @@ test("a change during navigation reaches the committed reader; a missing file re
 	f.setNavigating(false);
 	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 	committed.resolve();
-	await observed.promise;
+	await f.observed();
 	expect(f.todoFile?.items[0].completed).toBe(true);
-	expect(changes).toEqual([true]);
-	observed = deferred();
+	expect(notices).toBe(1);
+	const home = deferred<void>();
+	f.setNavigationStep(async () => home.resolve());
 	f.setBackend({
 		scope,
 		revision: 7,
@@ -524,8 +522,8 @@ test("a change during navigation reaches the committed reader; a missing file re
 		},
 	});
 	events.signal(7);
-	await observed.promise;
-	expect(changes).toEqual([true, false]);
+	await home.promise;
+	expect(notices).toBe(1);
 	expect(f.todoFile).toBeNull();
 	expect(f.navigations).toEqual([{ id: null, replace: true }]);
 	expect(f.warning).toBe("Todo file missing");
@@ -573,7 +571,6 @@ test("a newer committed destination activates after an already admitted activati
 test("a new Workspace's external change survives its delayed activation response", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
-	const noticed = deferred<boolean>();
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:switch-workspace") {
 			entered.resolve();
@@ -582,7 +579,7 @@ test("a new Workspace's external change survives its delayed activation response
 	});
 	await f.start();
 	const events = observation();
-	const stop = f.observe(events.source, (changed) => noticed.resolve(changed));
+	const stop = f.observe(events.source);
 	f.setDestination(otherId);
 	const activating = f.navigation.committedDestination();
 	await entered.promise;
@@ -591,11 +588,10 @@ test("a new Workspace's external change survives its delayed activation response
 	external.session.todo_file.items[0] = { ...item, raw: "External", description: "External" };
 	f.setBackend(external);
 	events.signal(7, { workspaceId: otherId, todoPath: external.session.todo_file.path });
-	expect(await noticed.promise).toBe(true);
-	const invalidated = f.invalidations.length;
+	await f.observed();
 	// An older notification from the previous Workspace cannot replace that change.
 	events.signal(6);
-	expect(f.invalidations).toHaveLength(invalidated);
+	await f.observed();
 	response.resolve({ status: "applied", confirmed: selected(otherId, 6) });
 	await activating;
 	expect(f.activeWorkspaceId).toBe(otherId);

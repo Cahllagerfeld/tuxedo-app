@@ -1,3 +1,5 @@
+import { tick } from "svelte";
+import { errorMessage } from "#lib/shared/utils.js";
 import type {
 	PendingWorkspaceSessionOperation,
 	WorkspaceSessionActionResult,
@@ -49,10 +51,12 @@ export class WorkspaceCommandGate {
 		try {
 			return await action();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			if (!(error instanceof CommandValidationError)) this.failure = message;
 			return { status: "rejected", message };
 		} finally {
+			// Effects observe the command's invalidated loader data while it is still admitted.
+			await tick();
 			this.pending = null;
 			finish();
 		}

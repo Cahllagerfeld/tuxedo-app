@@ -39,11 +39,7 @@ export function workspaceRouting() {
 
 		void navigation.committedDestination(event.type === "enter");
 	});
-	onDestroy(
-		observeTodoFileChanges(window.desktop, routes, (changed) => {
-			if (changed) toast.info("Todo file reloaded");
-			void navigation.observed();
-		})
-	);
+	navigation.followDisplayedData(() => toast.info("Todo file reloaded"));
+	onDestroy(observeTodoFileChanges(window.desktop, invalidateDisplayedData));
 	return { workspace: commands, savedViews, routes, navigation };
 }

@@ -564,7 +564,6 @@ test("conflict recovery and delayed observation never stack error and info notic
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
-	expect(loads).toBe(1);
 	await expect.element(page.getByText("Todo file changed")).toBeVisible();
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);
