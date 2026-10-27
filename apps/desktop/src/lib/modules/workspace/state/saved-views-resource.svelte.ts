@@ -24,13 +24,13 @@ export class SavedViewsResource {
 		const commands = savedViewCommands({
 			desktop,
 			gate: session.gate,
-			ready: () => session.ready,
-			current: () => this.current,
-			workspaceId: routes.workspaceId,
-			error: () => this.error,
 			invalidate: routes.invalidate,
-			setFailure: (failure) => {
-				this.failure = failure;
+			workspaceId: routes.workspaceId,
+			writable: () => this.writable,
+			readError: () => this.current?.error ?? "",
+			setFailure: (workspaceId, message) => {
+				if (message) this.failure = { workspaceId, message };
+				else if (this.failure?.workspaceId === workspaceId) this.failure = undefined;
 			},
 		});
 		this.retry = commands.retry;
@@ -51,8 +51,11 @@ export class SavedViewsResource {
 			""
 		);
 	}
+	private get writable() {
+		return !!this.current && !this.error && this.session.ready;
+	}
 	get canWrite() {
-		return !!this.current && !this.error && this.session.canMutate;
+		return this.writable && !this.session.isOperating;
 	}
 }
 export const [getSavedViews, setSavedViews] = createContext<SavedViewsResource>();
