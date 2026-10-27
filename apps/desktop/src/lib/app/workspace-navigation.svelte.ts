@@ -128,7 +128,8 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 					if (
 						idle &&
 						file &&
-						shown?.workspaceId === workspaceId &&
+						shown &&
+						shown.workspaceId === workspaceId &&
 						contents(shown.file) !== contents(file)
 					)
 						reloaded();

@@ -1,4 +1,4 @@
-import { loaderDesktop } from "../state/testing/loader-desktop";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -7,7 +7,7 @@ import { prefersReducedMotion } from "svelte/motion";
 import type { ConfirmedSession, DesktopAPI, TodoFile, TodoFileChange } from "@tuxedo/contracts";
 import { localToday } from "#lib/modules/todo/domain/todo-due.js";
 import Harness from "./WorkspaceContentHarness.svelte";
-import "../../../../routes/layout.css";
+import "#lib/../routes/layout.css";
 afterEach(async () => {
 	vi.useRealTimers();
 	// Sonner's shared state survives component cleanup between tests.

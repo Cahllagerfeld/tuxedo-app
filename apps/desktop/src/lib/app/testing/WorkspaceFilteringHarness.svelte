@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { setSavedViews } from "../state/saved-views-resource.svelte";
+	import { setSavedViews } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
-	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
-	import { WorkspaceUiState } from "./workspace-ui-state.svelte";
-	import WorkspaceContent from "./WorkspaceContent.svelte";
-	import WorkspaceSidebar from "./sidebar/index.svelte";
+	import { workspaceFixture } from "./workspace-fixture.svelte";
+	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
+	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally

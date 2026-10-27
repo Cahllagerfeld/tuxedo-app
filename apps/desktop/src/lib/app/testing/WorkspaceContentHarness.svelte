@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { setShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
-	import { setSavedViews } from "../state/saved-views-resource.svelte";
+	import { setSavedViews } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 	import { onMount } from "svelte";
 	import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 	import { toast } from "svelte-sonner";
-	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
-	import { WorkspaceUiState } from "./workspace-ui-state.svelte";
+	import { workspaceFixture } from "./workspace-fixture.svelte";
+	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
-	import WorkspaceContent from "./WorkspaceContent.svelte";
+	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
 	import AppNavbar from "#lib/app/AppNavbar.svelte";
-	import WorkspaceSidebar from "./sidebar/index.svelte";
-	import WorkspaceCreationDialog from "./WorkspaceCreationDialog.svelte";
+	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
+	import WorkspaceCreationDialog from "#lib/modules/workspace/ui/WorkspaceCreationDialog.svelte";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	let {

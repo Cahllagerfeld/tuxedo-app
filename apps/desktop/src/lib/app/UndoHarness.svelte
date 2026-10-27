@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import AppNavbar from "./AppNavbar.svelte";
-	import { workspaceFixture } from "#lib/modules/workspace/state/testing/workspace-fixture.svelte.js";
+	import { workspaceFixture } from "#lib/app/testing/workspace-fixture.svelte.js";
 	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";

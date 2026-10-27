@@ -2,10 +2,10 @@ import type { DesktopAPI, TodoFileObservation } from "@tuxedo/contracts";
 import { tick } from "svelte";
 import { AppState } from "#lib/app/app-state.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
-import { WorkspaceCommands } from "../workspace-commands.svelte";
-import { SavedViewsResource } from "../saved-views-resource.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
+import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 import { observeTodoFileChanges } from "#lib/app/observation-invalidation.js";
-import type { DisplayedDataTarget } from "../invalidate-displayed-data";
+import type { DisplayedDataTarget } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import {
 	readSession,
 	readWorkspace,
@@ -13,7 +13,7 @@ import {
 	type SessionData,
 	type WorkspaceData,
 	type SavedViewsData,
-} from "../workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 export function workspaceFixture(desktop: DesktopAPI) {
 	let destination = $state<string>();

@@ -8,16 +8,16 @@ import {
 	type TodoFileChange,
 	type TodoFileObservation,
 } from "@tuxedo/contracts";
-import { WorkspaceCommands } from "./workspace-commands.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
 import { observeTodoFileChanges } from "#lib/app/observation-invalidation.js";
-import type { DisplayedDataTarget } from "./invalidate-displayed-data";
+import type { DisplayedDataTarget } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import {
 	readSession,
 	readWorkspace,
 	type SessionData,
 	type WorkspaceData,
-} from "./workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
