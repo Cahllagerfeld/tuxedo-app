@@ -2,16 +2,12 @@ import {
 	summarizeTodoFile,
 	type TodoFileSummary,
 } from "#lib/modules/todo/domain/todo-file-summary.js";
-import { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
-
 import type {
 	WorkspaceCommands,
 	WorkspaceRoutes,
 } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import type { WorkspaceView } from "#lib/modules/workspace/state/workspace-view.js";
 import type { workspaceNavigation } from "./workspace-navigation.svelte.js";
-import { createTodoBulkSelection } from "#lib/modules/workspace/ui/todo-bulk-selection.svelte.js";
-import { toast } from "svelte-sonner";
 
 export class AppState implements WorkspaceView {
 	readonly catalogue: WorkspaceView["catalogue"];
@@ -20,16 +16,7 @@ export class AppState implements WorkspaceView {
 	readonly undoLabel: WorkspaceView["undoLabel"];
 	readonly session: WorkspaceView["session"];
 	readonly isLoading: boolean;
-	todos: TodoFileSummary;
-	todoFilter: TodoFilterState;
-	filteredTodoItems: ReturnType<TodoFilterState["filterItems"]>;
-	isWorkspaceCreationDialogOpen = $state(false);
-	isWorkspaceSwitcherOpen = $state(false);
-	isTodoCreationOpen = $state(false);
-	bulkSelection: ReturnType<typeof createTodoBulkSelection>;
-	get todoBulkSelectionActive() {
-		return this.bulkSelection.active;
-	}
+	readonly todos: TodoFileSummary;
 
 	constructor(
 		readonly workspace: WorkspaceCommands,
@@ -67,32 +54,7 @@ export class AppState implements WorkspaceView {
 		this.undoLabel = $derived(this.todoFile ? current?.confirmation?.undoLabel : undefined);
 		this.isLoading = $derived(this.session.status === "loading");
 		this.todos = $derived(summarizeTodoFile(this.todoFile));
-		this.todoFilter = new TodoFilterState(
-			() => this.todos.items,
-			() => this.activeWorkspace ?? {}
-		);
-		this.filteredTodoItems = $derived(this.todoFilter.filterItems(this.todos.items));
-		this.bulkSelection = createTodoBulkSelection({
-			getWorkspace: () => this.workspace,
-			getData: () => this,
-			getMatchingItems: () => this.filteredTodoItems,
-			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
-			onInvalidated: (message) => toast.info(message),
-		});
-		let previousWorkspace: string | null = null;
-		// Only a confirmed reader reconciles ephemeral filters after backend updates.
-		$effect(() => {
-			if (!this.todoFile) return;
-			const id = this.activeWorkspace?.id ?? null;
-			if (id !== previousWorkspace) this.isTodoCreationOpen = false;
-			previousWorkspace = id;
-			this.todoFilter.sync(id);
-		});
 	}
-
-	openWorkspaceCreationDialog = () => {
-		this.isWorkspaceCreationDialogOpen = true;
-	};
 
 	showsDestination = (workspaceId: string | undefined) =>
 		!!workspaceId && !!this.todoFile && this.activeWorkspace?.id === workspaceId;

@@ -122,7 +122,7 @@ export async function rpcWorkflow(application, page, directory) {
 			});
 		}, ids["RPC A"]);
 	try {
-		// Only the loader publishes contents, even after the write RPC has completed.
+		// Contents change only after the loader re-reads, even when the write RPC has completed.
 		const before = await counts();
 		await page.evaluate(() => {
 			window.retainedReader = document.querySelector("[data-todo-reader]");
@@ -215,7 +215,7 @@ export async function rpcWorkflow(application, page, directory) {
 		await enabled(item("RPC B item"));
 		assert.deepEqual((await counts()).activations, [ids["RPC B"], ids["RPC B"]]);
 		console.log(
-			"Loader-owned updates, shared admission, queued observation, read-only recovery, harmless preload and Home recovery passed."
+			"Loader-owned updates, shared admission, observation during commands, read-only recovery, harmless preload and Home recovery passed."
 		);
 	} finally {
 		await application.evaluate(({ ipcMain }) => {

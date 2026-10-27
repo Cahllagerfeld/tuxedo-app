@@ -1,5 +1,8 @@
 export { cn } from "cn";
 
+export const errorMessage = (error: unknown) =>
+	error instanceof Error ? error.message : String(error);
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type WithoutChild<T> = T extends { child?: any } ? Omit<T, "child"> : T;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
