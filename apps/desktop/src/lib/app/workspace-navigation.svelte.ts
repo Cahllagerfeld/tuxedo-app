@@ -7,6 +7,7 @@ import type { WorkspaceSessionActionResult } from "#lib/modules/workspace/state/
 
 type NavigationRoutes = Pick<WorkspaceRoutes, "session" | "workspace" | "destination"> & {
 	navigate: (workspaceId: string | null, replace?: boolean) => Promise<void>;
+	flushObservation: () => Promise<unknown> | undefined;
 };
 
 export function workspaceNavigation(commands: WorkspaceCommands, routes: NavigationRoutes) {
@@ -28,7 +29,7 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 				return;
 			}
 			if (!id) {
-				await commands.flushObservation();
+				await routes.flushObservation();
 				return;
 			}
 			if (
@@ -42,7 +43,7 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 				return;
 			}
 			if (commands.ready) {
-				await commands.flushObservation();
+				await routes.flushObservation();
 				return;
 			}
 			if (commands.recoveryError) return;

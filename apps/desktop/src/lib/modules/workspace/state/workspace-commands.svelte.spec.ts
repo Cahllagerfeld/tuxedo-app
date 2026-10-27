@@ -9,6 +9,8 @@ import {
 } from "@tuxedo/contracts";
 import { WorkspaceCommands } from "./workspace-commands.svelte";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
+import { observationInvalidation } from "#lib/app/observation-invalidation.js";
+import type { DisplayedDataTarget } from "./invalidate-displayed-data";
 import {
 	readSession,
 	readWorkspace,
@@ -146,7 +148,7 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		}
 		throw Error(`Unexpected ${channel}`);
 	});
-	const refresh = async (id: string | null, includeSession = false) => {
+	const invalidate = async ({ session: includeSession, workspaceId: id }: DisplayedDataTarget) => {
 		await refreshStep?.();
 		if (includeSession) session = await readSession(desktop, () => session);
 		if (id) workspaceData = await readWorkspace(desktop, id, () => workspaceData);
@@ -157,15 +159,17 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		workspace: () => workspaceData,
 		destination: () => destination,
 		navigating: () => navigating,
-		refresh,
+		invalidate,
 	};
 	const commands = new WorkspaceCommands(desktop, routes);
+	const observations = observationInvalidation(commands, routes);
 	const navigation = workspaceNavigation(commands, {
 		...routes,
+		flushObservation: observations.flush,
 		navigate: async (id, replace = false) => {
 			navigations.push({ id, replace });
 			destination = id ?? undefined;
-			await refresh(id, true);
+			await invalidate({ workspaceId: id, session: true });
 			await navigation.committedDestination();
 			await navigationStep?.();
 		},
@@ -195,14 +199,14 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 			return session?.value?.session.status === "empty" ? session.value.session.warning : "";
 		},
 		observe: (observation: TodoFileObservation, notify: () => void) =>
-			commands.observe(observation, (changed) => {
+			observations.observe(observation, (changed) => {
 				navigation.observed(changed);
 				if (changed) notify();
 			}),
 		desktop,
 		calls,
 		navigations,
-		start: () => refresh(destination ?? null, true),
+		start: () => invalidate({ workspaceId: destination ?? null, session: true }),
 		publishSession: (resource: SessionData) => {
 			session = resource;
 		},

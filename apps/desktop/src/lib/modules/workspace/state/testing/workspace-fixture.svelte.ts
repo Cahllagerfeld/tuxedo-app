@@ -4,6 +4,8 @@ import { AppState } from "#lib/app/app-state.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
 import { WorkspaceCommands } from "../workspace-commands.svelte";
 import { SavedViewsResource } from "../saved-views-resource.svelte";
+import { observationInvalidation } from "#lib/app/observation-invalidation.js";
+import type { DisplayedDataTarget } from "../invalidate-displayed-data";
 import {
 	readSession,
 	readWorkspace,
@@ -21,7 +23,7 @@ export function workspaceFixture(desktop: DesktopAPI) {
 	const loadViews = async (id: string) => {
 		views = await readSavedViews(desktop, id, () => views);
 	};
-	const refresh = async (id: string | null, includeSession = false) => {
+	const refresh = async ({ workspaceId: id, session: includeSession }: DisplayedDataTarget) => {
 		if (includeSession) session = await readSession(desktop, () => session);
 		if (id) workspace = await readWorkspace(desktop, id, () => workspace);
 		await tick();
@@ -31,11 +33,13 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		workspace: () => workspace,
 		destination: () => destination,
 		navigating: () => false,
-		refresh,
+		invalidate: refresh,
 	};
 	const commands = new WorkspaceCommands(desktop, routes);
+	const observations = observationInvalidation(commands, routes);
 	const navigation = workspaceNavigation(commands, {
 		...routes,
+		flushObservation: observations.flush,
 		navigate: async (id) => navigate(id ?? undefined),
 	});
 	const savedViews = new SavedViewsResource(desktop, commands, {
@@ -44,11 +48,13 @@ export function workspaceFixture(desktop: DesktopAPI) {
 				? (session?.value?.session.catalogue.active_workspace_id ?? undefined)
 				: undefined,
 		current: () => views,
-		refresh: loadViews,
+		invalidate: async ({ savedViewsId }) => {
+			if (savedViewsId) await loadViews(savedViewsId);
+		},
 	});
 	async function navigate(id: string | undefined) {
 		destination = id;
-		await refresh(id ?? null, true);
+		await refresh({ workspaceId: id ?? null, session: true });
 		if (id) await loadViews(id);
 		await navigation.committedDestination();
 	}
@@ -71,7 +77,7 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		navigation,
 		createApp: () => new AppState(commands, routes, navigation),
 		observe: (observation: TodoFileObservation, onChanged: () => void) =>
-			commands.observe(observation, (changed) => {
+			observations.observe(observation, (changed) => {
 				navigation.observed(changed);
 				if (changed) onChanged();
 			}),

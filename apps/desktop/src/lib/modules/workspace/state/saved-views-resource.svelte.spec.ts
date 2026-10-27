@@ -67,7 +67,7 @@ function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>
 		}),
 		destination: () => workspaceId,
 		navigating: () => false,
-		refresh: async () => {},
+		invalidate: async () => {},
 	});
 	const load = async () => {
 		await refreshStep?.();
@@ -76,7 +76,7 @@ function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>
 	const views = new SavedViewsResource(desktop, workspace, {
 		workspaceId: () => workspaceId,
 		current: () => data,
-		refresh: load,
+		invalidate: load,
 	});
 	return {
 		workspace,
