@@ -7,7 +7,6 @@ import type { WorkspaceSessionActionResult } from "#lib/modules/workspace/state/
 
 type NavigationRoutes = Pick<WorkspaceRoutes, "session" | "workspace" | "destination"> & {
 	navigate: (workspaceId: string | null, replace?: boolean) => Promise<void>;
-	flushObservation: () => Promise<unknown> | undefined;
 };
 
 export function workspaceNavigation(commands: WorkspaceCommands, routes: NavigationRoutes) {
@@ -28,10 +27,7 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 				if (active) await routes.navigate(active, true);
 				return;
 			}
-			if (!id) {
-				await routes.flushObservation();
-				return;
-			}
+			if (!id) return;
 			if (
 				current?.workspaceId === id &&
 				current.error &&
@@ -42,11 +38,7 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 				await routes.navigate(null, true);
 				return;
 			}
-			if (commands.ready) {
-				await routes.flushObservation();
-				return;
-			}
-			if (commands.recoveryError) return;
+			if (commands.ready || commands.recoveryError) return;
 			const outcome = await commands.activate(id);
 			if (admitted !== generation) return;
 			if (outcome.status === "rejected" && !commands.recoveryError) {
@@ -90,7 +82,7 @@ export function workspaceNavigation(commands: WorkspaceCommands, routes: Navigat
 			return destinationError;
 		},
 		committedDestination,
-		observed: async (_changed: boolean) => {
+		observed: async () => {
 			await commands.whenIdle();
 			const session = routes.session()?.value?.session;
 			const current = routes.workspace();

@@ -1,13 +1,13 @@
 import { afterNavigate, beforeNavigate, goto } from "$app/navigation";
 import { page, navigating } from "$app/state";
 import { resolve } from "$app/paths";
-import { onMount } from "svelte";
+import { onDestroy } from "svelte";
 import { toast } from "svelte-sonner";
 import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-resource.svelte.js";
 import { invalidateDisplayedData } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import { workspaceNavigation } from "./workspace-navigation.svelte.js";
-import { observationInvalidation } from "./observation-invalidation.js";
+import { observeTodoFileChanges } from "./observation-invalidation.js";
 
 export function workspaceRouting() {
 	const routes = {
@@ -18,10 +18,8 @@ export function workspaceRouting() {
 		invalidate: invalidateDisplayedData,
 	};
 	const commands = new WorkspaceCommands(window.desktop, routes);
-	const observation = observationInvalidation(commands, routes);
 	const navigation = workspaceNavigation(commands, {
 		...routes,
-		flushObservation: observation.flush,
 		navigate: (id, replace = false) =>
 			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replace }),
 	});
@@ -41,10 +39,10 @@ export function workspaceRouting() {
 
 		void navigation.committedDestination(event.type === "enter");
 	});
-	onMount(() =>
-		observation.observe(window.desktop, (changed) => {
+	onDestroy(
+		observeTodoFileChanges(window.desktop, routes, (changed) => {
 			if (changed) toast.info("Todo file reloaded");
-			navigation.observed(changed);
+			void navigation.observed();
 		})
 	);
 	return { workspace: commands, savedViews, routes, navigation };

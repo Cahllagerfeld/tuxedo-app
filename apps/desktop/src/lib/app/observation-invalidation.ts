@@ -1,78 +1,43 @@
-import { todoFileChangeEvent } from "@tuxedo/contracts";
-import type { TodoFileChange, TodoFileObservation } from "@tuxedo/contracts";
-import type {
-	WorkspaceCommands,
-	WorkspaceRoutes,
-} from "#lib/modules/workspace/state/workspace-commands.svelte.js";
-import type { WorkspaceSessionActionResult } from "#lib/modules/workspace/state/workspace-session-types.js";
+import type { TodoFile, TodoFileObservation } from "@tuxedo/contracts";
+import type { WorkspaceRoutes } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 
-export function observationInvalidation(
-	commands: WorkspaceCommands,
-	routes: Pick<WorkspaceRoutes, "destination" | "navigating">
+const summary = (file: TodoFile | undefined) => JSON.stringify(file && [file.items, file.skipped]);
+
+/** Invalidates the loaders showing a changed Todo file; `onInvalidated` reports a changed summary. */
+export function observeTodoFileChanges(
+	observation: TodoFileObservation,
+	routes: Pick<WorkspaceRoutes, "session" | "workspace" | "destination" | "invalidate">,
+	onInvalidated: (changed: boolean) => void
 ) {
-	const { gate } = commands;
-	const summary = () =>
-		JSON.stringify({ items: commands.todoFile?.items, skipped: commands.todoFile?.skipped });
-	let dirty:
-		{ event: TodoFileChange; before: string; notify: (changed: boolean) => void } | undefined;
-	const matches = (event: TodoFileChange) =>
-		!!commands.confirmed &&
-		event.scope === commands.confirmed.scope &&
-		event.workspaceId === commands.activeWorkspace?.id &&
-		event.todoPath === commands.activeWorkspace.todo_path;
-	function drain(committed = false): Promise<WorkspaceSessionActionResult> | undefined {
-		if (gate.isPending || (!committed && routes.navigating()) || !dirty) return;
-		const { event, before, notify } = dirty;
-		dirty = undefined;
-		if (!matches(event)) return;
-		const revision = commands.current?.value?.confirmation?.revision;
-		if (commands.ready && revision !== undefined && revision >= event.revision) {
-			notify(!!routes.destination() && before !== summary());
-			return;
-		}
-		return gate
-			.run(
-				"restore",
-				async () => {
-					commands.requireRevision(event);
-					return commands.refresh({ workspaceId: routes.destination() ?? null, session: true });
-				},
-				{ target: { workspaceId: event.workspaceId }, committed }
-			)
-			.then((outcome) => {
-				notify(outcome.status === "applied" && !!routes.destination() && before !== summary());
-				return outcome;
-			});
-	}
-	const stopSettled = gate.onSettled(() => void drain());
-	return {
-		observe(observation: TodoFileObservation, onUpdated: (changed: boolean) => void) {
-			let listening = true;
-			const stop = observation.onTodoFileChanged((event) => {
-				const parsed = todoFileChangeEvent.payload.safeParse(event);
-				const confirmed = commands.confirmed;
-				if (!listening || !parsed.success || !confirmed || parsed.data.scope !== confirmed.scope)
-					return;
-				const revision = commands.current?.value?.confirmation?.revision ?? confirmed.revision;
-				if (parsed.data.revision <= revision) return;
-				if (!gate.isPending && !routes.navigating() && !matches(parsed.data)) return;
-				if (!dirty || parsed.data.revision >= dirty.event.revision)
-					dirty = {
-						event: parsed.data,
-						before: dirty?.before ?? summary(),
-						notify: (changed) => {
-							if (listening) onUpdated(changed);
-						},
-					};
-				void drain();
-			});
-			return () => {
-				listening = false;
-				dirty = undefined;
-				stopSettled();
-				stop();
-			};
-		},
-		flush: () => drain(true),
+	let listening = true;
+	const stop = observation.onTodoFileChanged((event) => {
+		const confirmed = routes.session()?.value;
+		if (!confirmed || event.scope !== confirmed.scope) return;
+		const destination = routes.destination();
+		const active =
+			confirmed.session.status !== "unavailable"
+				? confirmed.session.catalogue.active_workspace_id
+				: null;
+		if (event.workspaceId !== active && event.workspaceId !== destination) return;
+		const shown = () => {
+			const data = routes.workspace();
+			return data?.workspaceId === event.workspaceId ? data.value : undefined;
+		};
+		const before = shown();
+		const revision =
+			(destination === event.workspaceId ? before?.confirmation?.revision : undefined) ??
+			confirmed.revision;
+		if (event.revision <= revision) return;
+		void routes.invalidate({ session: true, workspaceId: event.workspaceId }).then(() => {
+			if (!listening) return;
+			onInvalidated(
+				routes.destination() === event.workspaceId &&
+					summary(before?.todo_file) !== summary(shown()?.todo_file)
+			);
+		});
+	});
+	return () => {
+		listening = false;
+		stop();
 	};
 }

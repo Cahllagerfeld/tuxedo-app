@@ -4,7 +4,7 @@ import { AppState } from "#lib/app/app-state.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
 import { WorkspaceCommands } from "../workspace-commands.svelte";
 import { SavedViewsResource } from "../saved-views-resource.svelte";
-import { observationInvalidation } from "#lib/app/observation-invalidation.js";
+import { observeTodoFileChanges } from "#lib/app/observation-invalidation.js";
 import type { DisplayedDataTarget } from "../invalidate-displayed-data";
 import {
 	readSession,
@@ -36,10 +36,8 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		invalidate: refresh,
 	};
 	const commands = new WorkspaceCommands(desktop, routes);
-	const observations = observationInvalidation(commands, routes);
 	const navigation = workspaceNavigation(commands, {
 		...routes,
-		flushObservation: observations.flush,
 		navigate: async (id) => navigate(id ?? undefined),
 	});
 	const savedViews = new SavedViewsResource(desktop, commands, {
@@ -77,9 +75,9 @@ export function workspaceFixture(desktop: DesktopAPI) {
 		navigation,
 		createApp: () => new AppState(commands, routes, navigation),
 		observe: (observation: TodoFileObservation, onChanged: () => void) =>
-			observations.observe(observation, (changed) => {
-				navigation.observed(changed);
+			observeTodoFileChanges(observation, routes, (changed) => {
 				if (changed) onChanged();
+				void navigation.observed();
 			}),
 		savedViews,
 		start,
