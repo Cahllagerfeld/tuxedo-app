@@ -148,7 +148,10 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		}
 		throw Error(`Unexpected ${channel}`);
 	});
-	const invalidate = async ({ session: includeSession, workspaceId: id }: DisplayedDataTarget) => {
+	const invalidations: DisplayedDataTarget[] = [];
+	const invalidate = async (target: DisplayedDataTarget) => {
+		invalidations.push(target);
+		const { session: includeSession, workspaceId: id } = target;
 		await refreshStep?.();
 		if (includeSession) session = await readSession(desktop, () => session);
 		if (id) workspaceData = await readWorkspace(desktop, id, () => workspaceData);
@@ -205,6 +208,7 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 			}),
 		desktop,
 		calls,
+		invalidations,
 		navigations,
 		start: () => invalidate({ workspaceId: destination ?? null, session: true }),
 		publishSession: (resource: SessionData) => {
