@@ -231,16 +231,23 @@
 {#if view.todoFile}
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 		<div>
-			{#if bulkSelection.active}
-				<p class="text-sm font-medium" aria-live="polite">
+			<p class="text-sm font-medium" aria-live={bulkSelection.active ? "polite" : undefined}>
+				{#if bulkSelection.active}
 					{bulkSelection.count} selected
-				</p>
-			{:else}
-				<p class="text-sm font-medium">Todo items</p>
-				<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
-					{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
-				</p>
-			{/if}
+				{:else}
+					Todo items
+				{/if}
+			</p>
+			<p
+				aria-label={bulkSelection.active ? undefined : "Filtered result count"}
+				aria-hidden={bulkSelection.active}
+				class={[
+					"text-xs text-muted-foreground",
+					bulkSelection.active && "invisible",
+				]}
+			>
+				{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
+			</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if bulkSelection.active}
