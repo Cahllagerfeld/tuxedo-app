@@ -500,7 +500,7 @@ try {
 	await page.getByRole("checkbox", { name: "Mark Call Mom complete", exact: true }).waitFor();
 	console.log("Repeated session reads preserve selection, revision and Undo.");
 
-	// Real observation signals cross preload/IPC and use the mounted controller.
+	// Real observation signals cross preload/IPC and invalidate the displayed Todo file.
 	await writeFile(
 		todoPath,
 		"(B) External insertion +Observed @desk\nx 2026-10-10 Finished\n2026-13-01 Invalid\n"

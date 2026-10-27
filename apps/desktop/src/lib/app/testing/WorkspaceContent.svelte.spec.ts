@@ -1,11 +1,11 @@
-import { loaderDesktop } from "../state/testing/loader-desktop";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import { page, userEvent } from "vitest/browser";
 import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { toast } from "svelte-sonner";
 import type { ConfirmedSession, DesktopAPI, TodoFile, TodoFileChange } from "@tuxedo/contracts";
 import Harness from "./WorkspaceContentHarness.svelte";
-import "../../../../routes/layout.css";
+import "#lib/../routes/layout.css";
 afterEach(async () => {
 	vi.useRealTimers();
 	// Sonner's shared state survives component cleanup between tests.
@@ -359,7 +359,6 @@ test("conflict recovery and delayed observation never stack error and info notic
 	await page.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
 	await expect.element(page.getByText("Edited", { exact: true })).toBeVisible();
 	notify({ scope, revision: 2, workspaceId, todoPath: "/tmp/work.todo" });
-	expect(loads).toBe(1);
 	await expect.element(page.getByText("Todo file changed")).toBeVisible();
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="info"]').length).toBe(0);
 	expect(document.querySelectorAll('[data-sonner-toast][data-type="error"]').length).toBe(1);

@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { expect, test } from "vitest";
 import {
 	createDesktopClient,
@@ -7,14 +8,16 @@ import {
 	type TodoFileChange,
 	type TodoFileObservation,
 } from "@tuxedo/contracts";
-import { WorkspaceCommands } from "./workspace-commands.svelte";
+import { WorkspaceCommands } from "#lib/modules/workspace/state/workspace-commands.svelte.js";
 import { workspaceNavigation } from "#lib/app/workspace-navigation.svelte.js";
+import { observeTodoFileChanges } from "#lib/app/observation-invalidation.js";
+import type { DisplayedDataTarget } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import {
 	readSession,
 	readWorkspace,
 	type SessionData,
 	type WorkspaceData,
-} from "./workspace-route-data";
+} from "#lib/modules/workspace/state/workspace-route-data.js";
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
@@ -84,10 +87,11 @@ function deferred<T>() {
 }
 function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown>) {
 	let backend = snapshot();
-	let destination: string | undefined = workspaceId;
-	let session: SessionData | undefined;
-	let workspaceData: WorkspaceData | undefined;
-	let navigating = false;
+	let destination = $state.raw<string | undefined>(workspaceId);
+	let session = $state.raw<SessionData>();
+	let workspaceData = $state.raw<WorkspaceData>();
+	let navigating = $state(false);
+	let observedRead = Promise.resolve();
 	let navigationStep: (() => Promise<void>) | undefined;
 	let refreshStep: (() => Promise<void>) | undefined;
 	const calls: string[] = [];
@@ -146,7 +150,10 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		}
 		throw Error(`Unexpected ${channel}`);
 	});
-	const refresh = async (id: string | null, includeSession = false) => {
+	const invalidations: DisplayedDataTarget[] = [];
+	const invalidate = async (target: DisplayedDataTarget) => {
+		invalidations.push(target);
+		const { session: includeSession, workspaceId: id } = target;
 		await refreshStep?.();
 		if (includeSession) session = await readSession(desktop, () => session);
 		if (id) workspaceData = await readWorkspace(desktop, id, () => workspaceData);
@@ -157,7 +164,7 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		workspace: () => workspaceData,
 		destination: () => destination,
 		navigating: () => navigating,
-		refresh,
+		invalidate,
 	};
 	const commands = new WorkspaceCommands(desktop, routes);
 	const navigation = workspaceNavigation(commands, {
@@ -165,7 +172,7 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		navigate: async (id, replace = false) => {
 			navigations.push({ id, replace });
 			destination = id ?? undefined;
-			await refresh(id, true);
+			await invalidate({ workspaceId: id, session: true });
 			await navigation.committedDestination();
 			await navigationStep?.();
 		},
@@ -194,15 +201,26 @@ function fixture(invoke?: (channel: string, request: unknown) => Promise<unknown
 		get warning() {
 			return session?.value?.session.status === "empty" ? session.value.session.warning : "";
 		},
-		observe: (observation: TodoFileObservation, notify: () => void) =>
-			commands.observe(observation, (changed) => {
-				navigation.observed(changed);
-				if (changed) notify();
-			}),
+		observe: (observation: TodoFileObservation, reloaded = () => {}) => {
+			const stopFollowing = $effect.root(() => navigation.followDisplayedData(reloaded));
+			const stop = observeTodoFileChanges(
+				observation,
+				(target) => (observedRead = invalidate(target))
+			);
+			return () => {
+				stop();
+				stopFollowing();
+			};
+		},
+		observed: async () => {
+			await observedRead;
+			await tick();
+		},
 		desktop,
 		calls,
+		invalidations,
 		navigations,
-		start: () => refresh(destination ?? null, true),
+		start: () => invalidate({ workspaceId: destination ?? null, session: true }),
 		publishSession: (resource: SessionData) => {
 			session = resource;
 		},
@@ -241,11 +259,11 @@ function observation() {
 	};
 }
 
-test("completion publishes loader data before admitting the next command", async () => {
+test("completion reloads the Todo file before admitting the next command", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
 	const reading = deferred<void>();
-	const publication = deferred<void>();
+	const loaded = deferred<void>();
 	const requests: unknown[] = [];
 	const f = fixture(async (channel, request) => {
 		if (channel === "tuxedo:set-todo-completion") {
@@ -260,7 +278,7 @@ test("completion publishes loader data before admitting the next command", async
 	await f.start();
 	f.setRefreshStep(async () => {
 		reading.resolve();
-		await publication.promise;
+		await loaded.promise;
 	});
 	const completing = f.commands.setCompletion(item);
 	await entered.promise;
@@ -271,7 +289,7 @@ test("completion publishes loader data before admitting the next command", async
 	await reading.promise;
 	expect(f.todoFile?.items[0].completed).toBe(false);
 	expect(f.commands.isOperating).toBe(true);
-	publication.resolve();
+	loaded.resolve();
 	expect(await completing).toEqual({ status: "applied" });
 	expect(f.todoFile?.items[0].completed).toBe(true);
 	expect(f.commands.canMutate).toBe(true);
@@ -280,7 +298,7 @@ test("completion publishes loader data before admitting the next command", async
 	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 });
 
-test("a conflict displays confirmed disk contents; rejection retains them", async () => {
+test("a conflict reloads disk contents; rejection retains them without invalidating", async () => {
 	let writes = 0;
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:set-todo-completion")
@@ -294,11 +312,13 @@ test("a conflict displays confirmed disk contents; rejection retains them", asyn
 		message: "Changed on disk",
 	});
 	expect(f.todoFile?.items[0].completed).toBe(true);
+	const invalidated = f.invalidations.length;
 	expect(await f.commands.setCompletion(item)).toEqual({
 		status: "rejected",
 		message: "Cannot write Todo file",
 	});
 	expect(f.todoFile?.items[0].completed).toBe(true);
+	expect(f.invalidations).toHaveLength(invalidated);
 	expect(f.commands.canMutate).toBe(true);
 	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 });
@@ -340,11 +360,9 @@ test("Retry returns Home when a failed observation read recovers to Empty with t
 	});
 	await f.start();
 	const events = observation();
-	const stop = f.observe(events.source, () => {});
-	f.setNavigating(true);
+	const stop = f.observe(events.source);
 	events.signal(6);
-	await f.navigation.committedDestination();
-	f.setNavigating(false);
+	await f.observed();
 	expect(f.commands.recoveryError).toBe("Read unavailable");
 	expect(f.todoFile).not.toBeNull();
 	f.setBackend({
@@ -365,22 +383,18 @@ test("Retry returns Home when a failed observation read recovers to Empty with t
 	stop();
 });
 
-test("stale revisions and another runtime's results cannot authorize writes", async () => {
-	const f = fixture(async (channel) =>
-		channel === "tuxedo:set-todo-completion" ? { status: "applied", confirmed: todo(6) } : undefined
-	);
+test("disagreeing session and destination reads block writes until Retry re-reads both", async () => {
+	const f = fixture();
 	await f.start();
-	await f.commands.setCompletion(item);
-	f.publishSession({ value: snapshot(5), error: "" });
-	expect(f.todoFile?.items[0].completed).toBe(true);
-	expect(f.commands.canMutate).toBe(true);
-	f.setBackend(snapshot(5));
-	expect(await f.navigation.retry()).toMatchObject({ status: "rejected" });
-	f.setBackend({ ...snapshot(9), scope: otherId });
-	expect(await f.navigation.retry()).toMatchObject({ status: "rejected" });
-	expect(f.commands.canMutate).toBe(false);
+	for (const value of [snapshot(6), { ...snapshot(5), scope: otherId }]) {
+		f.publishSession({ value, error: "" });
+		expect(f.commands.canMutate).toBe(false);
+		expect(await f.commands.setCompletion(item)).toMatchObject({ status: "rejected" });
+	}
 	f.setBackend(snapshot(7));
 	expect(await f.navigation.retry()).toEqual({ status: "applied", activeWorkspaceId: workspaceId });
+	expect(f.commands.canMutate).toBe(true);
+	expect(f.calls).not.toContain("tuxedo:set-todo-completion");
 });
 
 test("startup resumes once with replacement while Home and abandoned destinations preserve selection and Undo", async () => {
@@ -440,10 +454,9 @@ test("creation navigates after admission ends without switching the created Work
 	expect(f.calls).not.toContain("tuxedo:switch-workspace");
 });
 
-test("external changes received during a write refresh afterward, while stale targets are ignored", async () => {
+test("an external change during a write is reflected afterward without a reload notice", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
-	const noticed = deferred<void>();
 	let reads = 0;
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:set-todo-completion") {
@@ -466,41 +479,39 @@ test("external changes received during a write refresh afterward, while stale ta
 	await f.start();
 	const events = observation();
 	let notices = 0;
-	const stop = f.observe(events.source, () => {
-		notices++;
-		noticed.resolve();
-	});
+	const stop = f.observe(events.source, () => notices++);
 	const completing = f.commands.setCompletion(item);
 	await entered.promise;
 	events.signal(7);
-	expect(reads).toBe(1);
+	await f.observed();
 	response.resolve({ status: "applied", confirmed: todo(6) });
-	await completing;
-	await noticed.promise;
+	expect(await completing).toEqual({ status: "applied" });
+	await tick();
 	expect(f.todoFile?.items[0].description).toBe("External");
-	expect(notices).toBe(1);
-	events.signal(8, { workspaceId: otherId });
-	events.signal(6);
-	expect(reads).toBe(2);
+	expect(notices).toBe(0);
 	stop();
 });
 
-test("a change queued during navigation reaches the committed reader; a missing file recovers to Home", async () => {
+test("a change during navigation reaches the committed reader; a missing file recovers to Home", async () => {
 	const f = fixture();
 	await f.start();
 	const events = observation();
 	let notices = 0;
-	const stop = f.observe(events.source, () => {
-		notices++;
-	});
+	const stop = f.observe(events.source, () => notices++);
+	const committed = deferred<void>();
 	f.setNavigating(true);
+	f.setRefreshStep(() => committed.promise);
 	f.setBackend(snapshot(6));
 	events.signal(6);
-	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 	await f.navigation.committedDestination();
 	f.setNavigating(false);
+	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
+	committed.resolve();
+	await f.observed();
 	expect(f.todoFile?.items[0].completed).toBe(true);
 	expect(notices).toBe(1);
+	const home = deferred<void>();
+	f.setNavigationStep(async () => home.resolve());
 	f.setBackend({
 		scope,
 		revision: 7,
@@ -510,10 +521,9 @@ test("a change queued during navigation reaches the committed reader; a missing 
 			warning: "Todo file missing",
 		},
 	});
-	f.setNavigating(true);
 	events.signal(7);
-	await f.navigation.committedDestination();
-	f.setNavigating(false);
+	await home.promise;
+	expect(notices).toBe(1);
 	expect(f.todoFile).toBeNull();
 	expect(f.navigations).toEqual([{ id: null, replace: true }]);
 	expect(f.warning).toBe("Todo file missing");
@@ -561,7 +571,6 @@ test("a newer committed destination activates after an already admitted activati
 test("a new Workspace's external change survives its delayed activation response", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
-	const noticed = deferred<void>();
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:switch-workspace") {
 			entered.resolve();
@@ -570,7 +579,7 @@ test("a new Workspace's external change survives its delayed activation response
 	});
 	await f.start();
 	const events = observation();
-	const stop = f.observe(events.source, () => noticed.resolve());
+	const stop = f.observe(events.source);
 	f.setDestination(otherId);
 	const activating = f.navigation.committedDestination();
 	await entered.promise;
@@ -579,11 +588,12 @@ test("a new Workspace's external change survives its delayed activation response
 	external.session.todo_file.items[0] = { ...item, raw: "External", description: "External" };
 	f.setBackend(external);
 	events.signal(7, { workspaceId: otherId, todoPath: external.session.todo_file.path });
-	// An older notification from the previous Workspace cannot replace that queued change.
+	await f.observed();
+	// An older notification from the previous Workspace cannot replace that change.
 	events.signal(6);
+	await f.observed();
 	response.resolve({ status: "applied", confirmed: selected(otherId, 6) });
 	await activating;
-	await noticed.promise;
 	expect(f.activeWorkspaceId).toBe(otherId);
 	expect(f.todoFile?.items[0].description).toBe("External");
 	expect(f.calls.filter((channel) => channel === "tuxedo:switch-workspace")).toHaveLength(1);
@@ -622,3 +632,133 @@ test("a newer committed destination wins while creation's navigation finishes", 
 	expect(f.activeWorkspaceId).toBe(latestId);
 	expect(f.commands.canMutate).toBe(true);
 });
+
+test("lifecycle commands call one RPC and invalidate the loaders holding the changed data", async () => {
+	type Fixture = ReturnType<typeof fixture>;
+	const cases: Array<{
+		run: (f: Fixture) => Promise<unknown>;
+		channel: string | null;
+		target: { session: boolean; workspaceId: string | null };
+		result: object;
+	}> = [
+		{
+			run: (f) =>
+				f.commands.create({ name: "Next", color: "blue", todoPath: `/tmp/${otherId}.txt` }),
+			channel: "tuxedo:create-workspace",
+			target: { session: true, workspaceId: null },
+			result: { status: "applied", workspaceId: otherId },
+		},
+		{
+			run: (f) => f.commands.deleteWorkspace(otherId),
+			channel: "tuxedo:delete-workspace",
+			target: { session: true, workspaceId },
+			result: { status: "applied", activeWorkspaceId: workspaceId },
+		},
+		{
+			run: (f) => {
+				f.setDestination(otherId);
+				return f.commands.activate(otherId);
+			},
+			channel: "tuxedo:switch-workspace",
+			target: { session: true, workspaceId: otherId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.setSortOrder("due"),
+			channel: "tuxedo:set-workspace-sort-order",
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.setShowDeferred(true),
+			channel: "tuxedo:set-workspace-show-deferred",
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+		{
+			run: (f) => f.commands.retry(),
+			channel: "tuxedo:refresh-session",
+			target: { session: true, workspaceId },
+			result: { status: "applied", activeWorkspaceId: workspaceId },
+		},
+		{
+			run: (f) => f.commands.activate(workspaceId),
+			channel: null,
+			target: { session: true, workspaceId },
+			result: { status: "applied" },
+		},
+	];
+	for (const { run, channel, target, result } of cases) {
+		const f = fixture(async (called) => {
+			if (called === "tuxedo:create-workspace" || called === "tuxedo:switch-workspace")
+				return { status: "applied", confirmed: selected(otherId, 6) };
+			if (called.startsWith("tuxedo:set-workspace-") || called === "tuxedo:delete-workspace")
+				return { status: "applied", confirmed: snapshot(6) };
+		});
+		await f.start();
+		const calls = f.calls.length;
+		const invalidations = f.invalidations.length;
+		expect(await run(f)).toEqual(result);
+		expect(
+			f.calls.slice(calls).filter((call) => !call.startsWith("tuxedo:read-")),
+			channel ?? "activate confirmed"
+		).toEqual(channel ? [channel] : []);
+		expect(
+			f.invalidations
+				.slice(invalidations)
+				.map(({ session = false, workspaceId = null }) => ({ session, workspaceId }))
+		).toEqual([target]);
+	}
+});
+
+const second = { ...item, line_number: 2, raw: "Pay rent", description: "Pay rent" };
+const draft = { description: "Pay rent", projects: [], contexts: [] };
+const both = [
+	{ lineNumber: 1, expectedRaw: "Call Mom" },
+	{ lineNumber: 2, expectedRaw: "Pay rent" },
+];
+test.each<[string, string, (commands: WorkspaceCommands) => Promise<unknown>, object]>([
+	["creation", "tuxedo:create-todo", (c) => c.createTodo(draft), draft],
+	["edit", "tuxedo:edit-todo", (c) => c.editTodo(item, draft), { ...draft, lineNumber: 1 }],
+	["completion", "tuxedo:set-todo-completion", (c) => c.setCompletion(item), { completed: true }],
+	[
+		"uncompletion",
+		"tuxedo:set-todo-completion",
+		(c) => c.setCompletion({ ...item, completed: true }),
+		{ completed: false },
+	],
+	["deletion", "tuxedo:delete-todo", (c) => c.deleteTodo(item), both[0]],
+	["reorder", "tuxedo:reorder-todo", (c) => c.reorderTodo([second, item]), { lineNumbers: [2, 1] }],
+	[
+		"bulk completion",
+		"tuxedo:bulk-set-todo-completion",
+		(c) => c.bulkSetCompletion([item, second], true),
+		{ completed: true, targets: both },
+	],
+	[
+		"bulk deletion",
+		"tuxedo:bulk-delete-todos",
+		(c) => c.bulkDeleteTodos([item, second]),
+		{ targets: both },
+	],
+	["undo", "tuxedo:undo-todo", (c) => c.undoTodo(), {}],
+])(
+	"%s sends the loader identity and invalidates only the Todo file",
+	async (_, channel, run, sent) => {
+		const requests: unknown[] = [];
+		const f = fixture(async (called, request) => {
+			if (called !== channel) return;
+			requests.push(request);
+			return { status: "applied", confirmed: todo(6) };
+		});
+		const backend = snapshot();
+		if (backend.session.status === "ready") backend.session.todo_file.items.push(second);
+		f.setBackend(backend);
+		await f.start();
+		expect(await run(f.commands)).toEqual({ status: "applied" });
+		expect(requests).toMatchObject([{ scope, revision: 5, workspaceId, ...sent }]);
+		const invalidations = f.invalidations.slice(1);
+		expect(invalidations).toMatchObject([{ workspaceId }]);
+		expect(invalidations.some((target) => target.session || target.savedViewsId)).toBe(false);
+	}
+);

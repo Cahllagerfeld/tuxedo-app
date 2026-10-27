@@ -13,11 +13,14 @@
 	import SearchIcon from "@lucide/svelte/icons/search";
 	import { useSidebar } from "#lib/shared/ui/sidebar/index.js";
 	import type { AppState } from "./app-state.svelte";
+	import type { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	let {
 		app,
+		ui,
 		readerShown,
 		workspaceShown,
-	}: { app: AppState; readerShown: boolean; workspaceShown: boolean } = $props();
+	}: { app: AppState; ui: WorkspaceUiState; readerShown: boolean; workspaceShown: boolean } =
+		$props();
 	const scope = getShortcutScope();
 	const platform = detectPlatform();
 	const sidebar = useSidebar();
@@ -58,11 +61,11 @@
 			if (sidebar.isMobile) sidebar.setOpenMobile(true);
 			else sidebar.setOpen(true);
 			await tick();
-			app.isWorkspaceSwitcherOpen = true;
+			ui.isWorkspaceSwitcherOpen = true;
 		},
-		createWorkspace: () => app.openWorkspaceCreationDialog(),
+		createWorkspace: () => ui.openWorkspaceCreationDialog(),
 		createTodo: () => {
-			app.isTodoCreationOpen = true;
+			ui.isTodoCreationOpen = true;
 		},
 		help: () => {
 			helpOpen = true;
@@ -84,7 +87,7 @@
 							id !== "sidebar" &&
 							(id !== "workspace" || workspaceShown) &&
 							(id !== "createTodo" ||
-								(readerShown && app.workspace.canMutate && !app.todoBulkSelectionActive)))),
+								(readerShown && app.workspace.canMutate && !ui.bulkSelection.active)))),
 				ignoreInputs: false,
 				requireReset: true,
 				platform,

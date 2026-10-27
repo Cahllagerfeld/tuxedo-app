@@ -1,6 +1,6 @@
-import { loaderDesktop } from "./testing/loader-desktop";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import { expect, test, vi } from "vitest";
-import { workspaceFixture } from "./testing/workspace-fixture.svelte";
+import { workspaceFixture } from "./workspace-fixture.svelte";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import ElectronTodoHarness from "./ElectronTodoHarness.svelte";

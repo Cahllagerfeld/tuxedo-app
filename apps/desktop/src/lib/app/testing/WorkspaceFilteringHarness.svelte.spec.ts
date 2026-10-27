@@ -3,8 +3,8 @@ import { beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "@tuxedo/contracts";
 import Harness from "./WorkspaceFilteringHarness.svelte";
-import { loaderDesktop } from "../state/testing/loader-desktop";
-import "../../../../routes/layout.css";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
+import "#lib/../routes/layout.css";
 
 // A narrow viewport lets the Todo reader cover toolbar clicks until they time out.
 beforeEach(() => page.viewport(1400, 900));
