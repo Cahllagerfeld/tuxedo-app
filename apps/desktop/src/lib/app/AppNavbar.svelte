@@ -2,6 +2,7 @@
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import AppShortcuts from "./AppShortcuts.svelte";
 	import type { AppState } from "./app-state.svelte";
+	import type { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import { toast } from "svelte-sonner";
@@ -10,12 +11,18 @@
 	import { undoTodoShortcut } from "#lib/modules/todo/ui/shortcuts.js";
 	let {
 		app,
+		ui,
 		readerShown = true,
 		workspaceShown = readerShown,
-	}: { app: AppState; readerShown?: boolean; workspaceShown?: boolean } = $props();
+	}: {
+		app: AppState;
+		ui: WorkspaceUiState;
+		readerShown?: boolean;
+		workspaceShown?: boolean;
+	} = $props();
 	const shortcutScope = getShortcutScope();
 	const canUndo = $derived(
-		readerShown && !!app.undoLabel && app.workspace.canMutate && !app.todoBulkSelectionActive
+		readerShown && !!app.undoLabel && app.workspace.canMutate && !ui.bulkSelection.active
 	);
 	async function undo() {
 		if (!canUndo) return;
@@ -53,5 +60,5 @@
 	{:else}
 		<span class="pl-2 text-xs font-semibold tracking-wide">Tuxedo</span>
 	{/if}
-	<AppShortcuts {app} {readerShown} {workspaceShown} />
+	<AppShortcuts {app} {ui} {readerShown} {workspaceShown} />
 </header>

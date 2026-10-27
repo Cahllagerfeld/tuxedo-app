@@ -4,6 +4,7 @@
 	import type { DesktopAPI } from "@tuxedo/contracts";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { workspaceFixture } from "../state/testing/workspace-fixture.svelte";
+	import { WorkspaceUiState } from "./workspace-ui-state.svelte";
 	import WorkspaceContent from "./WorkspaceContent.svelte";
 	import WorkspaceSidebar from "./sidebar/index.svelte";
 
@@ -11,6 +12,7 @@
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const app = fixture.createApp();
+	const ui = new WorkspaceUiState(app);
 	setSavedViews(fixture.savedViews);
 	onMount(() => {
 		void fixture.start();
@@ -22,7 +24,7 @@
 		workspaces={app.catalogue?.workspaces ?? []}
 		activeWorkspaceId={app.activeWorkspace?.id ?? null}
 		todoSummary={app.todos}
-		todoFilter={app.todoFilter}
+		todoFilter={ui.todoFilter}
 		todoFileLoaded={app.todoFile !== null}
 		collapsible="none"
 		disabled={app.workspace.isOperating || app.isLoading}
@@ -33,12 +35,12 @@
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
-			bulkSelection={app.bulkSelection}
+			bulkSelection={ui.bulkSelection}
 			workspace={app.workspace}
 			view={app}
 			deleteWorkspace={app.navigation.deleteWorkspace}
-			todoFilter={app.todoFilter}
-			filteredTodoItems={app.filteredTodoItems}
+			todoFilter={ui.todoFilter}
+			filteredTodoItems={ui.filteredTodoItems}
 			openWorkspaceCreationDialog={() => {}}
 		/>
 	</Sidebar.Inset>
