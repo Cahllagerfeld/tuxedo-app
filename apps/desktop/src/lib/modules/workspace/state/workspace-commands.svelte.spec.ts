@@ -249,11 +249,11 @@ function observation() {
 	};
 }
 
-test("completion publishes loader data before admitting the next command", async () => {
+test("completion reloads the Todo file before admitting the next command", async () => {
 	const entered = deferred<void>();
 	const response = deferred<unknown>();
 	const reading = deferred<void>();
-	const publication = deferred<void>();
+	const loaded = deferred<void>();
 	const requests: unknown[] = [];
 	const f = fixture(async (channel, request) => {
 		if (channel === "tuxedo:set-todo-completion") {
@@ -268,7 +268,7 @@ test("completion publishes loader data before admitting the next command", async
 	await f.start();
 	f.setRefreshStep(async () => {
 		reading.resolve();
-		await publication.promise;
+		await loaded.promise;
 	});
 	const completing = f.commands.setCompletion(item);
 	await entered.promise;
@@ -279,7 +279,7 @@ test("completion publishes loader data before admitting the next command", async
 	await reading.promise;
 	expect(f.todoFile?.items[0].completed).toBe(false);
 	expect(f.commands.isOperating).toBe(true);
-	publication.resolve();
+	loaded.resolve();
 	expect(await completing).toEqual({ status: "applied" });
 	expect(f.todoFile?.items[0].completed).toBe(true);
 	expect(f.commands.canMutate).toBe(true);
@@ -288,7 +288,7 @@ test("completion publishes loader data before admitting the next command", async
 	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 });
 
-test("a conflict displays confirmed disk contents; rejection retains them", async () => {
+test("a conflict reloads disk contents; rejection retains them without invalidating", async () => {
 	let writes = 0;
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:set-todo-completion")
@@ -302,11 +302,13 @@ test("a conflict displays confirmed disk contents; rejection retains them", asyn
 		message: "Changed on disk",
 	});
 	expect(f.todoFile?.items[0].completed).toBe(true);
+	const invalidated = f.invalidations.length;
 	expect(await f.commands.setCompletion(item)).toEqual({
 		status: "rejected",
 		message: "Cannot write Todo file",
 	});
 	expect(f.todoFile?.items[0].completed).toBe(true);
+	expect(f.invalidations).toHaveLength(invalidated);
 	expect(f.commands.canMutate).toBe(true);
 	expect(f.calls.filter((channel) => channel === "tuxedo:read-session")).toHaveLength(1);
 });
@@ -704,3 +706,55 @@ test("lifecycle commands call one RPC and invalidate the loaders holding the cha
 		).toEqual([target]);
 	}
 });
+
+const second = { ...item, line_number: 2, raw: "Pay rent", description: "Pay rent" };
+const draft = { description: "Pay rent", projects: [], contexts: [] };
+const both = [
+	{ lineNumber: 1, expectedRaw: "Call Mom" },
+	{ lineNumber: 2, expectedRaw: "Pay rent" },
+];
+test.each<[string, string, (commands: WorkspaceCommands) => Promise<unknown>, object]>([
+	["creation", "tuxedo:create-todo", (c) => c.createTodo(draft), draft],
+	["edit", "tuxedo:edit-todo", (c) => c.editTodo(item, draft), { ...draft, lineNumber: 1 }],
+	["completion", "tuxedo:set-todo-completion", (c) => c.setCompletion(item), { completed: true }],
+	[
+		"uncompletion",
+		"tuxedo:set-todo-completion",
+		(c) => c.setCompletion({ ...item, completed: true }),
+		{ completed: false },
+	],
+	["deletion", "tuxedo:delete-todo", (c) => c.deleteTodo(item), both[0]],
+	["reorder", "tuxedo:reorder-todo", (c) => c.reorderTodo([second, item]), { lineNumbers: [2, 1] }],
+	[
+		"bulk completion",
+		"tuxedo:bulk-set-todo-completion",
+		(c) => c.bulkSetCompletion([item, second], true),
+		{ completed: true, targets: both },
+	],
+	[
+		"bulk deletion",
+		"tuxedo:bulk-delete-todos",
+		(c) => c.bulkDeleteTodos([item, second]),
+		{ targets: both },
+	],
+	["undo", "tuxedo:undo-todo", (c) => c.undoTodo(), {}],
+])(
+	"%s sends the loader identity and invalidates only the Todo file",
+	async (_, channel, run, sent) => {
+		const requests: unknown[] = [];
+		const f = fixture(async (called, request) => {
+			if (called !== channel) return;
+			requests.push(request);
+			return { status: "applied", confirmed: todo(6) };
+		});
+		const backend = snapshot();
+		if (backend.session.status === "ready") backend.session.todo_file.items.push(second);
+		f.setBackend(backend);
+		await f.start();
+		expect(await run(f.commands)).toEqual({ status: "applied" });
+		expect(requests).toMatchObject([{ scope, revision: 5, workspaceId, ...sent }]);
+		const invalidations = f.invalidations.slice(1);
+		expect(invalidations).toMatchObject([{ workspaceId }]);
+		expect(invalidations.some((target) => target.session || target.savedViewsId)).toBe(false);
+	}
+);
