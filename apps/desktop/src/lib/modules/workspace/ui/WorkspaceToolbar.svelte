@@ -229,7 +229,9 @@
 </AlertDialog.Root>
 
 {#if view.todoFile}
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
+	<div
+		class="flex h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3"
+	>
 		<div>
 			<p class="text-sm font-medium" aria-live={bulkSelection.active ? "polite" : undefined}>
 				{#if bulkSelection.active}
@@ -238,14 +240,7 @@
 					Todo items
 				{/if}
 			</p>
-			<p
-				aria-label={bulkSelection.active ? undefined : "Filtered result count"}
-				aria-hidden={bulkSelection.active}
-				class={[
-					"text-xs text-muted-foreground",
-					bulkSelection.active && "invisible",
-				]}
-			>
+			<p aria-label="Filtered result count" class="text-xs text-muted-foreground">
 				{filteredTodoItems.length} matching {filteredTodoItems.length === 1 ? "item" : "items"}
 			</p>
 		</div>
