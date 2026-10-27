@@ -38,7 +38,6 @@ export interface WorkspaceReader {
 	readonly ready: boolean;
 	readonly recoveryError: string;
 	refresh(target: DisplayedDataTarget): Promise<WorkspaceSessionActionResult>;
-	requireRevision(value: { scope: string; revision: number }): void;
 	todoTarget(): { scope: string; revision: number; workspaceId: string };
 	todoOperationTarget(todo?: TodoItem): WorkspaceSessionOperationTarget | null;
 }
@@ -52,7 +51,6 @@ export type WorkspaceCommandContext = {
 // Displayed data comes from loaders. Commands retain only admission and recovery metadata.
 export class WorkspaceCommands implements WorkspaceReader {
 	readonly gate: WorkspaceCommandGate;
-	private minimumRevision = $state(-1);
 
 	readonly retry;
 	readonly activate;
@@ -122,7 +120,7 @@ export class WorkspaceCommands implements WorkspaceReader {
 			!this.recoveryError &&
 			!!confirmation &&
 			confirmation.scope === this.confirmed?.scope &&
-			confirmation.revision >= Math.max(this.minimumRevision, this.confirmed?.revision ?? -1)
+			confirmation.revision >= (this.confirmed?.revision ?? -1)
 		);
 	}
 	get isOperating() {
@@ -149,29 +147,16 @@ export class WorkspaceCommands implements WorkspaceReader {
 	whenIdle() {
 		return this.gate.whenIdle();
 	}
-	requireRevision(value: { scope: string; revision: number }) {
-		if (this.confirmed && value.scope !== this.confirmed.scope)
-			throw Error("The Workspace session changed. Refresh its current contents.");
-		this.minimumRevision = Math.max(this.minimumRevision, value.revision);
-	}
-	async refresh({
-		workspaceId = null,
-		session = false,
-	}: DisplayedDataTarget): Promise<WorkspaceSessionActionResult> {
+	async refresh(target: DisplayedDataTarget): Promise<WorkspaceSessionActionResult> {
 		try {
-			await this.routes.invalidate({ session, workspaceId });
+			await this.routes.invalidate(target);
 			const displayed =
-				workspaceId &&
-				workspaceId === this.routes.destination() &&
+				!!target.workspaceId &&
+				target.workspaceId === this.routes.destination() &&
 				this.confirmed?.session.status === "ready" &&
-				this.catalogue?.active_workspace_id === workspaceId;
+				this.catalogue?.active_workspace_id === target.workspaceId;
 			const failure = (displayed ? this.current?.error : "") || this.error;
 			if (failure) throw Error(failure);
-			const revision = displayed
-				? this.current?.value?.confirmation?.revision
-				: this.confirmed?.revision;
-			if (revision === undefined || revision < this.minimumRevision)
-				throw Error("Current Workspace data could not be refreshed. Retry the refresh.");
 			this.gate.failure = "";
 			return { status: "applied" };
 		} catch (error) {

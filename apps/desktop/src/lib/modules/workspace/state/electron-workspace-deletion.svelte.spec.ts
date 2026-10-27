@@ -55,7 +55,7 @@ async function confirm() {
 	await expect.element(page.getByRole("alertdialog")).toBeVisible();
 	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
 }
-test("cancellation preserves the confirmed Workspace and confirmed deletion publishes Empty with pending controls", async () => {
+test("cancellation preserves the confirmed Workspace and confirmed deletion shows Empty with pending controls", async () => {
 	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["deleteWorkspace"]>>) => void;
 	let calls = 0;
 	render(ElectronDeletionHarness, {

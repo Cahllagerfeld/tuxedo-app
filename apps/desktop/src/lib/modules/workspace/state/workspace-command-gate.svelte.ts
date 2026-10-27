@@ -19,7 +19,6 @@ export class WorkspaceCommandGate {
 	/** A lost or unconfirmed write response; only a read-only Retry clears it. */
 	failure = $state("");
 	private completion = Promise.resolve();
-	private readonly settled = new Set<() => void>();
 
 	constructor(private readonly navigating: () => boolean) {}
 
@@ -29,18 +28,11 @@ export class WorkspaceCommandGate {
 	get pendingTarget() {
 		return this.pending?.target ?? null;
 	}
-	get isPending() {
-		return this.pending !== null;
-	}
 	get isOperating() {
 		return this.pending !== null || this.navigating();
 	}
 	async whenIdle() {
 		while (this.pending) await this.completion;
-	}
-	onSettled(listener: () => void) {
-		this.settled.add(listener);
-		return () => this.settled.delete(listener);
 	}
 	async run(
 		operation: WorkspaceSessionOperation,
@@ -63,7 +55,6 @@ export class WorkspaceCommandGate {
 		} finally {
 			this.pending = null;
 			finish();
-			for (const listener of this.settled) listener();
 		}
 	}
 }
