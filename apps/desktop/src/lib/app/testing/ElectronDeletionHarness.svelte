@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
-	import WorkspaceSwitcher from "../ui/WorkspaceSwitcher.svelte";
+	import { workspaceFixture } from "./workspace-fixture.svelte";
+	import WorkspaceSwitcher from "#lib/modules/workspace/ui/WorkspaceSwitcher.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);

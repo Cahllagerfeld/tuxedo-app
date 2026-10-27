@@ -3,6 +3,7 @@ import { createDesktopClient, type ConfirmedSession, type SavedView } from "@tux
 import { WorkspaceCommands } from "./workspace-commands.svelte";
 import { SavedViewsResource } from "./saved-views-resource.svelte";
 import { readSavedViews, type SavedViewsData } from "./workspace-route-data";
+import type { DisplayedDataTarget } from "./invalidate-displayed-data";
 
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
 const filters = {
@@ -51,6 +52,7 @@ function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>
 	const desktop = createDesktopClient(invoke);
 	let data: SavedViewsData | undefined;
 	let refreshStep: (() => Promise<void>) | undefined;
+	const invalidations: DisplayedDataTarget[] = [];
 	if (current.session.status !== "ready") throw Error("Expected Ready");
 	const ready = current.session;
 	const workspace = new WorkspaceCommands(desktop, {
@@ -67,7 +69,9 @@ function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>
 		}),
 		destination: () => workspaceId,
 		navigating: () => false,
-		refresh: async () => {},
+		invalidate: async (target) => {
+			invalidations.push(target);
+		},
 	});
 	const load = async () => {
 		await refreshStep?.();
@@ -76,35 +80,39 @@ function fixture(invoke: (channel: string, request: unknown) => Promise<unknown>
 	const views = new SavedViewsResource(desktop, workspace, {
 		workspaceId: () => workspaceId,
 		current: () => data,
-		refresh: load,
+		invalidate: async (target) => {
+			invalidations.push(target);
+			if (target.savedViewsId === workspaceId) await load();
+		},
 	});
 	return {
 		workspace,
 		views,
 		load,
+		invalidations,
 		setRefreshStep: (step: () => Promise<void>) => {
 			refreshStep = step;
 		},
 	};
 }
 
-test("a saved-view command publishes loader data and holds admission until that read completes", async () => {
+test("a saved-view write invalidates only its saved-view loader and holds admission until that read completes", async () => {
 	const entered = deferred();
-	const publication = deferred();
+	const read = deferred();
 	let persisted: readonly SavedView[] = [];
 	const f = fixture(async (channel) => {
 		if (channel === "tuxedo:read-saved-views")
 			return { status: "applied", workspaceId, views: persisted };
 		if (channel === "tuxedo:save-view") {
 			persisted = [view];
-			return { status: "applied", workspaceId, views: [view] };
+			return { status: "applied", workspaceId, views: [] };
 		}
 		throw Error("Unexpected operation");
 	});
 	await f.load();
 	f.setRefreshStep(async () => {
 		entered.resolve();
-		await publication.promise;
+		await read.promise;
 	});
 	const saving = f.views.save(view.name, filters);
 	await entered.promise;
@@ -113,10 +121,11 @@ test("a saved-view command publishes loader data and holds admission until that 
 	expect(
 		await f.workspace.createTodo({ description: "Blocked", projects: [], contexts: [] })
 	).toMatchObject({ status: "rejected" });
-	publication.resolve();
+	read.resolve();
 	expect(await saving).toEqual({ status: "applied" });
 	expect(f.views.views).toEqual([view]);
 	expect(f.views.canWrite).toBe(true);
+	expect(f.invalidations).toEqual([{ savedViewsId: workspaceId }]);
 });
 
 test("failed saved-view reads retain their views independently of Todo readiness, and Retry only reads", async () => {
@@ -141,4 +150,5 @@ test("failed saved-view reads retain their views independently of Todo readiness
 	expect(await f.views.retry()).toEqual({ status: "applied" });
 	expect(f.views.canWrite).toBe(true);
 	expect(writes).toBe(0);
+	expect(f.invalidations).toEqual([{ savedViewsId: workspaceId }]);
 });

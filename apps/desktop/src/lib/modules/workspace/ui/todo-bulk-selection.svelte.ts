@@ -64,7 +64,7 @@ export function createTodoBulkSelection(inputs: Inputs) {
 		selection: selection.value,
 	});
 	let previousSelection: typeof context | undefined;
-	// Route publication and local-date events can retire selected items; remember that history before rendering or announcing it.
+	// Loader updates and local-date events can retire selected items; remember that history before rendering or announcing it.
 	$effect.pre(() => {
 		const current = { ...context };
 		const visible = new Set(inputs.getMatchingItems().map(todoKey));

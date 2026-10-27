@@ -1,4 +1,4 @@
-import { loaderDesktop } from "./testing/loader-desktop";
+import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -55,7 +55,7 @@ async function confirm() {
 	await expect.element(page.getByRole("alertdialog")).toBeVisible();
 	await page.getByRole("button", { name: "Remove workspace", exact: true }).click();
 }
-test("cancellation preserves the confirmed Workspace and confirmed deletion publishes Empty with pending controls", async () => {
+test("cancellation preserves the confirmed Workspace and confirmed deletion shows Empty with pending controls", async () => {
 	let finish!: (outcome: Awaited<ReturnType<DesktopAPI["deleteWorkspace"]>>) => void;
 	let calls = 0;
 	render(ElectronDeletionHarness, {

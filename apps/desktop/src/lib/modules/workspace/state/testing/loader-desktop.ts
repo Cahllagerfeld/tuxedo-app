@@ -1,6 +1,6 @@
 import type { ConfirmedSession, ConfirmedTodo, DesktopAPI } from "@tuxedo/contracts";
 
-// UI adapters model persisted backend state; only subsequent loader reads publish it.
+// UI adapters model persisted backend state; only subsequent loader reads display it.
 export function loaderDesktop(api: Omit<DesktopAPI, "readWorkspace">): DesktopAPI {
 	let current: ConfirmedSession | undefined;
 	const views = new Map<string, Awaited<ReturnType<DesktopAPI["readSavedViews"]>>>();

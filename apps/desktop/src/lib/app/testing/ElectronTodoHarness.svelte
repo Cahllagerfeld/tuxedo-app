@@ -3,11 +3,11 @@
 	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 	import TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
-	import "../../../../routes/layout.css";
+	import "#lib/../routes/layout.css";
 	import { summarizeTodoFile } from "#lib/modules/todo/domain/todo-file-summary.js";
 	import { summarizeTodoFilterFacets } from "#lib/modules/todo/domain/todo-filter-facets.js";
 	import type { DesktopAPI } from "@tuxedo/contracts";
-	import { workspaceFixture } from "./testing/workspace-fixture.svelte";
+	import { workspaceFixture } from "./workspace-fixture.svelte";
 	let { desktop }: { desktop: DesktopAPI } = $props();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
