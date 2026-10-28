@@ -31,8 +31,12 @@ describe("WorkspaceSwitcher", () => {
 		});
 
 		const switcher = page.getByRole("button", { name: "Select workspace: Work" });
-		await expect.element(switcher).toHaveAttribute("title", "Work");
 		await expect.element(switcher).toHaveTextContent("W");
+		await switcher.hover();
+		await expect.element(page.getByRole("tooltip")).toHaveTextContent("Switch workspace: Work");
+		await switcher.click();
+		await expect.element(page.getByRole("menuitem", { name: "Work, active" })).toBeVisible();
+		await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
 	});
 
 	it("lists workspaces oldest first, identifies the active one, and selects another", async () => {

@@ -5,6 +5,8 @@
 	import WorkspaceRemovalDialog from "./WorkspaceRemovalDialog.svelte";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import { mergeProps } from "bits-ui";
 	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
@@ -46,40 +48,52 @@
 </script>
 
 <DropdownMenu.Root bind:open>
-	<DropdownMenu.Trigger
-		>{#snippet child({ props })}<Button
-				{...props}
-				variant="ghost"
-				size="icon-lg"
-				{disabled}
-				aria-label={`Select workspace: ${activeWorkspace?.name ?? "No workspace selected"}`}
-				title={activeWorkspace?.name ?? "No workspace selected"}
-				class="hover:bg-sidebar-accent"
-			>
-				{#if activeWorkspace}
-					<span
-						class={[
-							"flex size-9 items-center justify-center rounded-lg text-sm font-semibold",
-							workspaceColorClasses[activeWorkspace.color],
-							["green", "amber", "cyan", "orange"].includes(activeWorkspace.color)
-								? "text-slate-950"
-								: "text-white dark:text-slate-950",
-						]}
-						aria-hidden="true"
-					>
-						{#if isPending}
-							<LoaderCircle class="size-4 animate-spin" />
-						{:else}
-							{Array.from(activeWorkspace.name.trim())[0]?.toLocaleUpperCase() ?? "?"}
-						{/if}
-					</span>
-				{:else if isPending}
-					<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-				{:else}
-					<span aria-hidden="true">?</span>
-				{/if}
-			</Button>{/snippet}</DropdownMenu.Trigger
-	>
+	<DropdownMenu.Trigger>
+		{#snippet child({ props: menuProps })}
+			<Tooltip.Provider delayDuration={400} skipDelayDuration={0}>
+				<Tooltip.Root disableHoverableContent>
+					<Tooltip.Trigger>
+						{#snippet child({ props: tooltipProps })}
+							<Button
+								{...mergeProps(menuProps, tooltipProps)}
+								variant="ghost"
+								size="icon-lg"
+								{disabled}
+								aria-label={`Select workspace: ${activeWorkspace?.name ?? "No workspace selected"}`}
+								class="hover:bg-foreground/10 hover:ring-2 hover:ring-foreground/20 dark:hover:bg-foreground/10"
+							>
+								{#if activeWorkspace}
+									<span
+										class={[
+											"flex size-9 items-center justify-center rounded-lg text-sm font-semibold",
+											workspaceColorClasses[activeWorkspace.color],
+											["green", "amber", "cyan", "orange"].includes(activeWorkspace.color)
+												? "text-slate-950"
+												: "text-white dark:text-slate-950",
+										]}
+										aria-hidden="true"
+									>
+										{#if isPending}
+											<LoaderCircle class="size-4 animate-spin" />
+										{:else}
+											{Array.from(activeWorkspace.name.trim())[0]?.toLocaleUpperCase() ?? "?"}
+										{/if}
+									</span>
+								{:else if isPending}
+									<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+								{:else}
+									<span aria-hidden="true">?</span>
+								{/if}
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content side="right" sideOffset={8}>
+						Switch workspace: {activeWorkspace?.name ?? "No workspace selected"}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			</Tooltip.Provider>
+		{/snippet}
+	</DropdownMenu.Trigger>
 	<DropdownMenu.Content side="right" align="start" class="w-64 max-w-[calc(100vw-2rem)]">
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}

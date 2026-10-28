@@ -2,6 +2,7 @@
 	import List from "@lucide/svelte/icons/list";
 	import Columns3 from "@lucide/svelte/icons/columns-3";
 	import { Button } from "#lib/shared/ui/button/index.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
 	import type { Workspace, WorkspaceViewMode } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
@@ -51,28 +52,46 @@
 		{openCreationDialog}
 	/>
 	<div class="mx-2 w-8 border-t"></div>
-	<Button
-		variant="ghost"
-		size="icon-lg"
-		href={listHref}
-		{disabled}
-		aria-label="List"
-		title="List"
-		aria-current={viewMode === "list" ? "page" : undefined}
-		class={viewMode === "list"
-			? "bg-foreground/10 text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
-			: ""}><List aria-hidden="true" /></Button
-	>
-	<Button
-		variant="ghost"
-		size="icon-lg"
-		href={kanbanHref}
-		{disabled}
-		aria-label="Kanban"
-		title="Kanban"
-		aria-current={viewMode === "kanban" ? "page" : undefined}
-		class={viewMode === "kanban"
-			? "bg-foreground/10 text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
-			: ""}><Columns3 aria-hidden="true" /></Button
-	>
+	<Tooltip.Provider delayDuration={400} skipDelayDuration={0}>
+		<Tooltip.Root disableHoverableContent>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon-lg"
+						href={listHref}
+						{disabled}
+						aria-label="List"
+						aria-current={viewMode === "list" ? "page" : undefined}
+						class={viewMode === "list"
+							? "bg-foreground/10 text-foreground hover:bg-foreground/20 dark:hover:bg-foreground/20"
+							: "hover:bg-foreground/10 dark:hover:bg-foreground/10"}
+						><List aria-hidden="true" /></Button
+					>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content side="right" sideOffset={8}>List view</Tooltip.Content>
+		</Tooltip.Root>
+		<Tooltip.Root disableHoverableContent>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon-lg"
+						href={kanbanHref}
+						{disabled}
+						aria-label="Kanban"
+						aria-current={viewMode === "kanban" ? "page" : undefined}
+						class={viewMode === "kanban"
+							? "bg-foreground/10 text-foreground hover:bg-foreground/20 dark:hover:bg-foreground/20"
+							: "hover:bg-foreground/10 dark:hover:bg-foreground/10"}
+						><Columns3 aria-hidden="true" /></Button
+					>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content side="right" sideOffset={8}>Kanban view</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
 </nav>
