@@ -12,6 +12,7 @@
 	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
 	import WorkspaceRail from "#lib/modules/workspace/ui/WorkspaceRail.svelte";
 	import WorkspaceCreationDialog from "#lib/modules/workspace/ui/WorkspaceCreationDialog.svelte";
+	import type { WorkspaceViewMode } from "#lib/modules/workspace/domain/workspace.js";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	let {
@@ -25,13 +26,13 @@
 		observation?: TodoFileObservation;
 		shell?: boolean;
 		restoration?: boolean;
-		viewMode?: "list" | "kanban";
+		viewMode?: WorkspaceViewMode;
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const app = fixture.createApp();
-	const ui = new WorkspaceUiState(app);
+	const ui = new WorkspaceUiState(app, () => viewMode);
 	setSavedViews(fixture.savedViews);
 	onMount(() => {
 		const stop =

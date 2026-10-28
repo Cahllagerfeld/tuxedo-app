@@ -22,7 +22,7 @@
 	setShortcutScope();
 	const { workspace, savedViews, routes, navigation } = workspaceRouting();
 	const appState = new AppState(workspace, routes, navigation);
-	const ui = new WorkspaceUiState(appState);
+	const ui = new WorkspaceUiState(appState, () => workspaceViewMode(page.route.id));
 	setAppState(appState);
 	setWorkspaceUi(ui);
 	setSavedViews(savedViews);
@@ -49,10 +49,7 @@
 			readerShown={showsActiveWorkspace}
 			workspaceShown={!!page.params.id}
 		/>
-		<div
-			data-slot="app-inset"
-			class="relative m-1 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
-		>
+		<div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
 			{#if page.params.id}
 				<WorkspaceRail
 					bind:switcherOpen={ui.isWorkspaceSwitcherOpen}
@@ -67,27 +64,34 @@
 					deleteWorkspace={appState.navigation.deleteWorkspace}
 					openCreationDialog={ui.openWorkspaceCreationDialog}
 				/>
-				<div class="relative flex min-h-0 shrink-0">
-					<WorkspaceSidebar
-						activeWorkspaceId={appState.activeWorkspace?.id ?? null}
-						todoSummary={appState.todos}
-						todoFilter={ui.todoFilter}
-						todoFileLoaded={showsActiveWorkspace && appState.todoFile !== null}
-						disabled={busy}
-					/>
-				</div>
 			{/if}
-			<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-				{@render children()}
-				{#if showsActiveWorkspace}
-					<ReaderStatusBar
-						activeWorkspace={appState.activeWorkspace}
-						todoFile={appState.todoFile}
-						todoSummary={appState.todos}
-						pendingOperation={appState.workspace.pendingOperation}
-					/>
+			<div
+				data-slot="app-inset"
+				class="relative m-1 flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+			>
+				{#if page.params.id}
+					<div class="relative flex min-h-0 shrink-0">
+						<WorkspaceSidebar
+							activeWorkspaceId={appState.activeWorkspace?.id ?? null}
+							todoSummary={appState.todos}
+							todoFilter={ui.todoFilter}
+							todoFileLoaded={showsActiveWorkspace && appState.todoFile !== null}
+							disabled={busy}
+						/>
+					</div>
 				{/if}
-			</main>
+				<main data-slot="app-content" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+					{@render children()}
+					{#if showsActiveWorkspace}
+						<ReaderStatusBar
+							activeWorkspace={appState.activeWorkspace}
+							todoFile={appState.todoFile}
+							todoSummary={appState.todos}
+							pendingOperation={appState.workspace.pendingOperation}
+						/>
+					{/if}
+				</main>
+			</div>
 		</div>
 	{/if}
 	<WorkspaceCreationDialog

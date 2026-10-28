@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import { localToday } from "#lib/modules/todo/domain/todo-due.js";
+	import type { WorkspaceViewMode } from "../domain/workspace.js";
 	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
@@ -12,7 +13,7 @@
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
 	type Props = {
-		viewMode?: "list" | "kanban";
+		viewMode?: WorkspaceViewMode;
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
@@ -35,11 +36,6 @@
 		openWorkspaceCreationDialog,
 	}: Props = $props();
 	let emptyState = $state<ReturnType<typeof WorkspaceEmptyState>>();
-	// A committed route change retires list-only selection and its confirmation.
-	$effect(() => {
-		if (viewMode === "kanban" && !workspace.isOperating && bulkSelection.active)
-			bulkSelection.exit();
-	});
 	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
 	$effect.pre(() => {
 		if (

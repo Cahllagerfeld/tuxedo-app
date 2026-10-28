@@ -12,6 +12,7 @@
 	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { WorkspaceView } from "../state/workspace-view.js";
+	import type { WorkspaceViewMode } from "../domain/workspace.js";
 	import * as Resizable from "#lib/shared/ui/resizable/index.js";
 	import * as Sheet from "#lib/shared/ui/sheet/index.js";
 	import * as Empty from "#lib/shared/ui/empty/index.js";
@@ -29,7 +30,7 @@
 		bulkSelection,
 		onCreate,
 	}: {
-		viewMode?: "list" | "kanban";
+		viewMode?: WorkspaceViewMode;
 		workspace: WorkspaceCommands;
 		view: WorkspaceView;
 		todoFilter: TodoFilterState;

@@ -25,6 +25,7 @@ test("visibility arrivals retain confirmation, while hidden selections are prune
 	const dispose = $effect.root(() => {
 		selection = createTodoBulkSelection({
 			getWorkspace: () => ({ isOperating: false, writesBlocked: false }),
+			getViewMode: () => "list",
 			getData: () => ({
 				activeWorkspace: {
 					id: "work",

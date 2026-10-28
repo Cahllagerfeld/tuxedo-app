@@ -1,6 +1,5 @@
 import { resolve } from "$app/paths";
-
-export type WorkspaceViewMode = "list" | "kanban";
+import type { WorkspaceViewMode } from "#lib/modules/workspace/domain/workspace.js";
 
 export function workspaceViewMode(routeId: string | null | undefined): WorkspaceViewMode {
 	return routeId === "/workspaces/[id]/kanban" ? "kanban" : "list";

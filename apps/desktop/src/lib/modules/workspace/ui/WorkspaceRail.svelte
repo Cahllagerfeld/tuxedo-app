@@ -2,7 +2,7 @@
 	import List from "@lucide/svelte/icons/list";
 	import Columns3 from "@lucide/svelte/icons/columns-3";
 	import { Button } from "#lib/shared/ui/button/index.js";
-	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
+	import type { Workspace, WorkspaceViewMode } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
 		WorkspaceSessionOperation,
@@ -25,7 +25,7 @@
 		switcherOpen?: boolean;
 		workspaces: readonly Workspace[];
 		activeWorkspaceId: string | null;
-		viewMode: "list" | "kanban";
+		viewMode: WorkspaceViewMode;
 		listHref: string;
 		kanbanHref: string;
 		selectWorkspace: (workspaceId: string) => void;
@@ -38,7 +38,7 @@
 
 <nav
 	aria-label="Workspace navigation"
-	class="flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 text-sidebar-foreground"
+	class="flex w-14 shrink-0 flex-col items-center gap-2 py-3 text-sidebar-foreground"
 >
 	<WorkspaceSwitcher
 		bind:open={switcherOpen}

@@ -86,6 +86,20 @@ describe("TodoBoard", () => {
 		expect(onOpen).toHaveBeenCalledWith(open, card.element());
 	});
 
+	it("opens details when the card padding is clicked", async () => {
+		const onOpen = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen,
+			onToggleComplete: vi.fn(),
+		});
+		const card = page.getByRole("button", { name: "Open Plan" }).element().closest("article")!;
+		await userEvent.click(card, { position: { x: 4, y: 4 } });
+		expect(onOpen).toHaveBeenCalledOnce();
+	});
+
 	it("scrolls the board horizontally and each column independently while headers stay visible", async () => {
 		const openItems = Array.from({ length: 12 }, (_, index) => ({
 			...open,
@@ -118,6 +132,21 @@ describe("TodoBoard", () => {
 		expect(openScroll.scrollTop).toBeGreaterThan(0);
 		expect(doneScroll.scrollTop).toBe(0);
 		expect(header.getBoundingClientRect().top).toBe(top);
+	});
+
+	it("lets keyboard users scroll to empty off-screen columns", async () => {
+		render(TodoBoard, {
+			items: [],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+		});
+		const board = page.getByRole("region", { name: "Kanban board" });
+		await userEvent.keyboard("{Tab}");
+		await expect.element(board).toHaveFocus();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.poll(() => (board.element() as HTMLElement).scrollLeft).toBeGreaterThan(0);
 	});
 
 	it("returns focus to a card after completion moves it to Done, or to the board after a conflict", async () => {

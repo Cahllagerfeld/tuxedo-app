@@ -36,7 +36,7 @@
 <article
 	data-board-line={todo.line_number}
 	class={cn(
-		"flex items-start gap-2 rounded-md border bg-background p-3 shadow-sm",
+		"relative isolate flex items-start gap-2 rounded-md border bg-background p-3 shadow-sm",
 		selected && "ring-2 ring-ring",
 		deferred && "border-amber-500/40"
 	)}
@@ -46,7 +46,7 @@
 		{disabled}
 		data-board-completion
 		aria-label={`Mark ${todo.description} ${todo.completed ? "incomplete" : "complete"}`}
-		class="mt-0.5 size-4 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
+		class="relative z-10 mt-0.5 size-4 rounded-full data-checked:border-[var(--completed)] data-checked:bg-[var(--completed)]"
 		onCheckedChange={() => {
 			confirmedChecked = todo.completed;
 			onToggleComplete(todo);
@@ -59,7 +59,7 @@
 		aria-describedby={indicatorsId}
 		aria-expanded={selected}
 		{disabled}
-		class="min-w-0 flex-1 rounded text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed"
+		class="min-w-0 flex-1 rounded text-left before:absolute before:inset-0 before:-z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed"
 		onclick={(event) => onOpen(todo, event.currentTarget)}
 	>
 		<span

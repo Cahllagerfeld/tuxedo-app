@@ -23,12 +23,13 @@
 	import X from "@lucide/svelte/icons/x";
 	import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 	import type { WorkspaceView } from "../state/workspace-view.js";
+	import type { WorkspaceViewMode } from "../domain/workspace.js";
 	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 	import { searchShortcut } from "./shortcuts";
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 
 	type Props = {
-		viewMode?: "list" | "kanban";
+		viewMode?: WorkspaceViewMode;
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;

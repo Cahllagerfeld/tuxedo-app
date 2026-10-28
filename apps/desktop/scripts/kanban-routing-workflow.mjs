@@ -18,6 +18,38 @@ export async function kanbanRoutingWorkflow(
 
 	await page.goto(kanbanUrl("Route A"));
 	await expectBoard("Route A", "Alpha item");
+	const rail = page.getByRole("navigation", { name: "Workspace navigation" });
+	const inset = page.locator('[data-slot="app-inset"]');
+	assert.equal(
+		await rail.evaluate((node) => !!node.closest('[data-slot="app-inset"]')),
+		false,
+		"The Workspace rail sits outside the inset"
+	);
+	const railBox = await rail.boundingBox();
+	const insetBox = await inset.boundingBox();
+	assert.ok(railBox && insetBox && railBox.x + railBox.width <= insetBox.x);
+	const sidebar = page.locator('[data-slot="sidebar"][data-state]');
+	const sidebarState = await sidebar.getAttribute("data-state");
+	const toggleSidebar = page.getByRole("button", { name: "Toggle Sidebar" });
+	if (sidebarState === "collapsed") {
+		await toggleSidebar.click();
+		await page.waitForFunction(
+			() =>
+				document.querySelector('[data-slot="sidebar"][data-state]')?.getAttribute("data-state") ===
+				"expanded"
+		);
+	}
+	await toggleSidebar.click();
+	await page.waitForFunction(
+		() =>
+			document.querySelector('[data-slot="sidebar"][data-state]')?.getAttribute("data-state") ===
+				"collapsed" &&
+			document.querySelector('[data-slot="sidebar-gap"]')?.getBoundingClientRect().width === 0
+	);
+	assert.ok(await rail.isVisible(), "Collapsing the sidebar keeps the Workspace rail visible");
+	assert.ok(await page.getByRole("link", { name: "Kanban", exact: true }).isVisible());
+	assert.equal((await rail.boundingBox())?.x, railBox.x, "The rail stays in place");
+	if (sidebarState === "expanded") await toggleSidebar.click();
 	await page.reload();
 	await expectBoard("Route A", "Alpha item");
 	await page.getByRole("link", { name: "List", exact: true }).click();
@@ -27,15 +59,51 @@ export async function kanbanRoutingWorkflow(
 	await page.goForward();
 	await expectRoute("Route A", "Alpha item");
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
-	await page.getByText("0 selected", { exact: true }).waitFor();
+	await page.getByRole("checkbox", { name: "Select Alpha item", exact: true }).click();
+	await page.getByText("1 selected", { exact: true }).waitFor();
+	await application.evaluate(({ ipcMain }) => {
+		const channel = "tuxedo:set-workspace-show-deferred";
+		globalThis.heldKanbanPreference = { original: ipcMain._invokeHandlers.get(channel) };
+		ipcMain.removeHandler(channel);
+		ipcMain.handle(
+			channel,
+			() => new Promise((resolve) => (globalThis.heldKanbanPreference.release = resolve))
+		);
+	});
+	try {
+		const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
+		await showDeferred.click();
+		await showDeferred.and(page.locator(":disabled")).waitFor();
+		const pendingUrl = page.url();
+		await page.evaluate(
+			() =>
+				new Promise((resolve) => {
+					window.addEventListener("popstate", resolve, { once: true });
+					history.back();
+				})
+		);
+		await page.waitForURL(pendingUrl);
+		await application.evaluate(() =>
+			globalThis.heldKanbanPreference.release({ status: "rejected", message: "Held preference" })
+		);
+		await page.getByText("Could not save Show deferred", { exact: true }).waitFor();
+		await page.getByText("1 selected", { exact: true }).waitFor();
+	} finally {
+		await application.evaluate(({ ipcMain }) => {
+			const channel = "tuxedo:set-workspace-show-deferred";
+			ipcMain.removeHandler(channel);
+			ipcMain.handle(channel, globalThis.heldKanbanPreference.original);
+			delete globalThis.heldKanbanPreference;
+		});
+	}
 	await page.getByRole("link", { name: "Kanban", exact: true }).click();
 	await expectBoard("Route A", "Alpha item");
 	assert.equal(await page.getByRole("button", { name: "Select items", exact: true }).count(), 0);
-	assert.equal(await page.getByText("0 selected", { exact: true }).count(), 0);
+	assert.equal(await page.getByText("1 selected", { exact: true }).count(), 0);
 	await page.getByRole("link", { name: "List", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
 	await page.getByRole("button", { name: "Select items", exact: true }).waitFor();
-	assert.equal(await page.getByText("0 selected", { exact: true }).count(), 0);
+	assert.equal(await page.getByText("1 selected", { exact: true }).count(), 0);
 	await page.getByRole("link", { name: "Kanban", exact: true }).click();
 	await expectBoard("Route A", "Alpha item");
 	await page.getByRole("button", { name: "Select workspace: Route A" }).click();

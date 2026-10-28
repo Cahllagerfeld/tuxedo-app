@@ -1221,6 +1221,37 @@ test("selection mode completes selected open Todo items through one bulk operati
 	await expect.element(page.getByRole("button", { name: "Exit selection mode" })).toBeVisible();
 });
 
+test("a committed view change retires selection even while a Workspace operation is pending", async () => {
+	await page.viewport(1400, 900);
+	let finish!: (result: Awaited<ReturnType<DesktopAPI["setWorkspaceShowDeferred"]>>) => void;
+	const setWorkspaceShowDeferred = vi.fn<DesktopAPI["setWorkspaceShowDeferred"]>(
+		() => new Promise((resolve) => (finish = resolve))
+	);
+	const props = { desktop: adapter({ setWorkspaceShowDeferred }), viewMode: "list" as const };
+	const view = await render(Harness, props);
+	await page.getByRole("button", { name: "Select items", exact: true }).click();
+	await page.getByRole("checkbox", { name: "Select Plan release", exact: true }).click();
+	await view.rerender(props);
+	await expect.element(page.getByText("1 selected", { exact: true })).toBeVisible();
+
+	await page.getByRole("button", { name: "Show deferred", exact: true }).click();
+	await expect.poll(() => setWorkspaceShowDeferred).toHaveBeenCalledOnce();
+	await view.rerender({ ...props, viewMode: "kanban" });
+	await expect.element(page.getByRole("region", { name: "Unassigned" })).toBeVisible();
+	await view.rerender(props);
+	await expect
+		.element(page.getByRole("button", { name: "Select items", exact: true }))
+		.toBeDisabled();
+	await expect
+		.element(page.getByRole("button", { name: "Exit selection mode" }))
+		.not.toBeInTheDocument();
+
+	finish({ status: "rejected", message: "Preference was not saved" });
+	await expect
+		.element(page.getByRole("button", { name: "Select items", exact: true }))
+		.toBeEnabled();
+});
+
 test("unchanged refresh preserves deletion confirmation; changed contents dismiss it and require fresh selection", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const ready = initial.session;

@@ -83,10 +83,12 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to scroll empty columns.) -->
 <div
 	bind:this={board}
+	role="region"
 	aria-label="Kanban board"
-	tabindex="-1"
+	tabindex="0"
 	class="flex h-full min-h-0 min-w-0 gap-3 overflow-x-auto p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
 >
 	{#each columns as column (column.name)}
