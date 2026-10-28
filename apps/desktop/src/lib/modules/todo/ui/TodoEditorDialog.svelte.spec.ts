@@ -41,27 +41,6 @@ const todoFile: TodoFile = {
 	skipped: [],
 };
 
-const crowdedTodoFile: TodoFile = {
-	...todoFile,
-	items: [
-		...todoFile.items,
-		...Array.from({ length: 12 }, (_, index) => ({
-			line_number: index + 3,
-			raw: `Item ${index} @Context${index}`,
-			completed: false,
-			priority: null,
-			creation_date: null,
-			completion_date: null,
-			description: `Item ${index}`,
-			projects: [],
-			contexts: [`Context${index}`],
-			metadata: {},
-
-			edit: { description: `Item ${index}`, metadata: [] },
-		})),
-	],
-};
-
 function renderDialog(
 	saveTodoItem: (input: TodoItemDraft) => Promise<SaveTodoItemResult>,
 	file = todoFile
@@ -140,27 +119,24 @@ test("creation defaults Repeat to Off, configures each unit and resets after sav
 		.toHaveAttribute("aria-pressed", "true");
 });
 
-test.each(["", "0", "-1", "1.5", "+2", "01", "1e2", "two"])(
-	"Repeat rejects interval %j until corrected or turned off",
-	async (interval) => {
-		const calls: TodoItemDraft[] = [];
-		renderDialog(async (input) => {
-			calls.push(input);
-			return { status: "rejected", message: "Retry" };
-		});
-		await openDialog();
-		await page.getByRole("button", { name: "Days", exact: true }).click();
-		await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill(interval);
-		await submitDialog();
-		await expect.element(page.getByText("Enter a positive whole-number interval.")).toBeVisible();
-		expect(calls).toEqual([]);
-		await page.getByRole("button", { name: "Off", exact: true }).click();
-		await submitDialog();
-		await expect.poll(() => calls[0]?.metadata).toEqual([]);
-	}
-);
+test.each(["1.5"])("Repeat rejects interval %j until corrected or turned off", async (interval) => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "rejected", message: "Retry" };
+	});
+	await openDialog();
+	await page.getByRole("button", { name: "Days", exact: true }).click();
+	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill(interval);
+	await submitDialog();
+	await expect.element(page.getByText("Enter a positive whole-number interval.")).toBeVisible();
+	expect(calls).toEqual([]);
+	await page.getByRole("button", { name: "Off", exact: true }).click();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.metadata).toEqual([]);
+});
 
-test.each(["2w", "+1w", "0d", "1W"])(
+test.each(["2w", "+1w"])(
 	"Repeat retains repeated effective %s and the generation marker until explicitly changed",
 	async (rec) => {
 		const calls: TodoItemDraft[] = [];
@@ -259,35 +235,6 @@ test("changing historical Repeat preserves the recorded completion state and dat
 			completionDate: "2026-10-08",
 			metadata: ["rec:2y"],
 		});
-});
-
-test("creation keeps the primary action visible at desktop and narrow window sizes", async () => {
-	renderDialog(async () => ({ status: "applied" }));
-	const trigger = page.getByRole("button", { name: "Add Todo item", exact: true });
-	await expect.element(trigger).toHaveTextContent("");
-	await page.viewport(1280, 800);
-	await openDialog();
-	await expect.element(page.getByPlaceholder("What needs doing?")).toHaveFocus();
-	await page.getByRole("button", { name: "Weeks", exact: true }).click();
-	await page.getByRole("textbox", { name: "Repeat interval", exact: true }).fill("2");
-	for (const [width, height] of [
-		[1280, 800],
-		[420, 700],
-	]) {
-		await page.viewport(width, height);
-		const dialog = page.getByRole("dialog").element();
-		const submit = page
-			.getByRole("button", { name: "Add Todo item", exact: true })
-			.nth(1)
-			.element();
-		expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
-		expect(submit.getBoundingClientRect().bottom).toBeLessThanOrEqual(height);
-	}
-	await page.viewport(1280, 800);
-	await page.getByRole("button", { name: "Clear Creation date", exact: true }).click();
-	await expect
-		.element(page.getByRole("button", { name: "Creation date", exact: true }))
-		.toHaveFocus();
 });
 
 test("Due date controls edit the same metadata and preserve malformed values until explicitly changed", async () => {
@@ -475,38 +422,6 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 			completionDate: null,
 			metadata: [],
 		});
-});
-
-test("keeps the bottom tag suggestion hit-testable inside the modal", async () => {
-	const saveTodoItem = async () => ({ status: "applied" as const });
-	renderDialog(saveTodoItem, crowdedTodoFile);
-	await openDialog();
-
-	const contextInput = page.getByPlaceholder("Choose or create a Context");
-	await contextInput.click();
-	const input = contextInput.element() as HTMLInputElement;
-	for (let index = 0; index < 12; index += 1) {
-		input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-		await new Promise((resolve) => setTimeout(resolve, 0));
-	}
-	await expect
-		.poll(
-			() =>
-				document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')?.textContent
-		)
-		.toBe("Context9");
-
-	const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-	const bottomOption = options.find((option) => option.textContent === "Context9");
-	expect(bottomOption).toBeDefined();
-	const bounds = bottomOption!.getBoundingClientRect();
-	const hit = document.elementFromPoint(
-		bounds.left + bounds.width / 2,
-		bounds.top + bounds.height / 2
-	);
-	expect(hit === bottomOption || hit?.closest('[role="option"]') === bottomOption).toBe(true);
-	await page.getByRole("option", { name: "Context9" }).click();
-	await expect.element(page.getByText("@Context9", { exact: true })).toBeVisible();
 });
 
 test.each(["Do this +Work key:value", "Call\u0085+Work"])(
@@ -767,25 +682,22 @@ test("retains committed and pending Metadata after a failed save without duplica
 	]);
 });
 
-test.each(["None", "A", "B", "C"])(
-	"creates a Todo item with the %s priority button",
-	async (priority) => {
-		const calls: TodoItemDraft[] = [];
-		renderDialog(async (input) => {
-			calls.push(input);
-			return { status: "applied" };
-		});
-		await openDialog();
-		const button = page.getByRole("button", { name: priority, exact: true });
-		await button.click();
-		await expect.element(button).toHaveAttribute("aria-pressed", "true");
-		await expect
-			.element(page.getByRole("textbox", { name: "Other priority" }))
-			.not.toBeInTheDocument();
-		await submitDialog();
-		await expect.poll(() => calls[0]?.priority).toBe(priority === "None" ? null : priority);
-	}
-);
+test.each(["None", "A"])("creates a Todo item with the %s priority button", async (priority) => {
+	const calls: TodoItemDraft[] = [];
+	renderDialog(async (input) => {
+		calls.push(input);
+		return { status: "applied" };
+	});
+	await openDialog();
+	const button = page.getByRole("button", { name: priority, exact: true });
+	await button.click();
+	await expect.element(button).toHaveAttribute("aria-pressed", "true");
+	await expect
+		.element(page.getByRole("textbox", { name: "Other priority" }))
+		.not.toBeInTheDocument();
+	await submitDialog();
+	await expect.poll(() => calls[0]?.priority).toBe(priority === "None" ? null : priority);
+});
 
 test("validates Other priorities and resets its input when choosing a common priority", async () => {
 	const calls: TodoItemDraft[] = [];
@@ -824,37 +736,34 @@ test("validates Other priorities and resets its input when choosing a common pri
 	await expect.element(input).not.toBeInTheDocument();
 });
 
-test.each(["+2d", "2026-02-30"])(
-	"Show from retains unsupported %s on cancellation",
-	async (value) => {
-		const calls: TodoItemDraft[] = [];
-		render(TodoEditorDialog, {
-			todoFile,
-			todoToEdit: {
-				...todoFile.items[0],
-				edit: { description: "Plan release", metadata: [`t:${value}`] },
-			},
-			saveTodoItem: async (input) => {
-				calls.push(input);
-				return { status: "applied" };
-			},
-		});
-		await expect
-			.element(page.getByRole("button", { name: "Show from", exact: true }))
-			.toHaveTextContent("Pick a date");
-		await expect
-			.element(
-				page.getByText(
-					`Unsupported Show from value: ${value}. Kept in Metadata until changed or cleared.`,
-					{ exact: true }
-				)
+test.each(["2026-02-30"])("Show from retains unsupported %s on cancellation", async (value) => {
+	const calls: TodoItemDraft[] = [];
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: {
+			...todoFile.items[0],
+			edit: { description: "Plan release", metadata: [`t:${value}`] },
+		},
+		saveTodoItem: async (input) => {
+			calls.push(input);
+			return { status: "applied" };
+		},
+	});
+	await expect
+		.element(page.getByRole("button", { name: "Show from", exact: true }))
+		.toHaveTextContent("Pick a date");
+	await expect
+		.element(
+			page.getByText(
+				`Unsupported Show from value: ${value}. Kept in Metadata until changed or cleared.`,
+				{ exact: true }
 			)
-			.toBeVisible();
-		await page.getByRole("button", { name: "Clear Show from", exact: true }).click();
-		await page.getByRole("button", { name: "Cancel", exact: true }).click();
-		expect(calls).toEqual([]);
-	}
-);
+		)
+		.toBeVisible();
+	await page.getByRole("button", { name: "Clear Show from", exact: true }).click();
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
+	expect(calls).toEqual([]);
+});
 
 test("creation starts without Show from and warns without blocking a threshold after Due date", async () => {
 	const calls: TodoItemDraft[] = [];

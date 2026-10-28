@@ -225,8 +225,8 @@ importers:
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
       '@tanstack/svelte-hotkeys':
-        specifier: 0.16.0
-        version: 0.16.0(svelte@5.57.2)
+        specifier: 0.17.0
+        version: 0.17.0(svelte@5.57.2)
       '@tanstack/svelte-virtual':
         specifier: 3.13.48
         version: 3.13.48(svelte@5.57.2)
@@ -809,15 +809,15 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
 
-  '@tanstack/hotkeys@0.17.0':
-    resolution: {integrity: sha512-HhgfF+Wqz3ofCQaDHXSkItRbLXmigoHsxJsQGbGc3Kgu/gunwcFLqVubfoUmdRK/YN7fuZYN2vEOk3oMGxSWTg==}
+  '@tanstack/hotkeys@0.18.0':
+    resolution: {integrity: sha512-QQjRgnpz0xrTbhKiuia+ACGzO4PsxEsTVH2ls01fM2LJ8uISrWVq/9ILB3bd4eFdWzj9I6K7qZM6swoDDiKcRQ==}
     engines: {node: '>=20'}
 
   '@tanstack/store@0.11.2':
     resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
 
-  '@tanstack/svelte-hotkeys@0.16.0':
-    resolution: {integrity: sha512-XGI8dFo0A8Fw2u7F14Fdn8W/RQ15ADavH4bSZYAM6Ujf8uNWs6U86R9mu23IY+7Qi8EINY7y+rrqQdAtByTJlQ==}
+  '@tanstack/svelte-hotkeys@0.17.0':
+    resolution: {integrity: sha512-sYPN8olyR5N7K6pslaLBQFpy0FUP2XNPO9IeLTig2vVEtuJFErZbcMihGl0HxhWOgmEtneCPgOzAXtMDnOebRg==}
     engines: {node: '>=20'}
     peerDependencies:
       svelte: ^5.25.0
@@ -2708,15 +2708,15 @@ snapshots:
       tailwindcss: 4.3.3
       vite: 8.3.5(@types/node@24.19.2)(jiti@2.7.0)
 
-  '@tanstack/hotkeys@0.17.0':
+  '@tanstack/hotkeys@0.18.0':
     dependencies:
       '@tanstack/store': 0.11.2
 
   '@tanstack/store@0.11.2': {}
 
-  '@tanstack/svelte-hotkeys@0.16.0(svelte@5.57.2)':
+  '@tanstack/svelte-hotkeys@0.17.0(svelte@5.57.2)':
     dependencies:
-      '@tanstack/hotkeys': 0.17.0
+      '@tanstack/hotkeys': 0.18.0
       svelte: 5.57.2
 
   '@tanstack/svelte-virtual@3.13.48(svelte@5.57.2)':
