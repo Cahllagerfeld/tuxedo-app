@@ -1,10 +1,13 @@
 import { page } from "vitest/browser";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ConfirmedSession, DesktopAPI, TodoFile } from "@tuxedo/contracts";
 import Harness from "./WorkspaceFilteringHarness.svelte";
 import { loaderDesktop } from "#lib/modules/workspace/state/testing/loader-desktop.js";
 import "#lib/../routes/layout.css";
+
+// A narrow viewport lets the Todo reader cover toolbar clicks until they time out.
+beforeEach(() => page.viewport(1400, 900));
 
 const scope = "9426bd98-a6dd-48eb-b1ab-037d82983ae1";
 const workspaceId = "550e8400-e29b-41d4-a716-446655440000";
