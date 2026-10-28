@@ -28,6 +28,7 @@
 	import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 
 	type Props = {
+		viewMode?: "list" | "kanban";
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
@@ -39,6 +40,7 @@
 	};
 
 	let {
+		viewMode = "list",
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
@@ -71,7 +73,8 @@
 	let deleteButton = $state<HTMLButtonElement | null>(null);
 	let doneButton = $state<HTMLButtonElement | null>(null);
 	const deleting = $derived(bulkSelection.deleting);
-	const deleteOpen = $derived(!!bulkSelection.deletionItems);
+	const selectionMode = $derived(viewMode === "list" && bulkSelection.active);
+	const deleteOpen = $derived(selectionMode && !!bulkSelection.deletionItems);
 	let deletionError = $state<string | null>(null);
 	let deletionFocus: { scope: symbol; index: number } | null = null;
 	let deleteScope: symbol | undefined;
@@ -171,7 +174,7 @@
 		() => bulkSelection.exit(),
 		() => ({
 			enabled:
-				bulkSelection.active &&
+				selectionMode &&
 				!deleteOpen &&
 				!workspace.writesBlocked &&
 				(shortcutScope?.available ?? true),
@@ -231,8 +234,8 @@
 {#if view.todoFile}
 	<div class="flex h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
 		<div>
-			<p class="text-sm font-medium" aria-live={bulkSelection.active ? "polite" : undefined}>
-				{#if bulkSelection.active}
+			<p class="text-sm font-medium" aria-live={selectionMode ? "polite" : undefined}>
+				{#if selectionMode}
 					{bulkSelection.count} selected
 				{:else}
 					Todo items
@@ -243,7 +246,7 @@
 			</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
-			{#if bulkSelection.active}
+			{#if selectionMode}
 				<ButtonGroup.Root aria-label="Selection controls">
 					<Tooltip.Provider>
 						<Tooltip.Root disableHoverableContent>
@@ -348,7 +351,7 @@
 						<Tooltip.Content>Exit selection mode (Esc)</Tooltip.Content>
 					</Tooltip.Root>
 				</Tooltip.Provider>
-			{:else}
+			{:else if viewMode === "list"}
 				<Tooltip.Provider>
 					<Tooltip.Root disableHoverableContent>
 						<Tooltip.Trigger>
@@ -486,7 +489,7 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			</Tooltip.Provider>
-			{#if !bulkSelection.active}
+			{#if !selectionMode}
 				<TodoEditorDialog
 					bind:open={creationOpen}
 					todoFile={view.todoFile}

@@ -149,9 +149,12 @@ try {
 	await restored.getByRole("button", { name: "Undo completion", exact: true }).click();
 	await checkbox.and(restored.locator(":enabled")).waitFor();
 	assert.equal(await readFile(todoPath, "utf8"), contents);
-	console.log(
-		"Packaged persistence, restart, native Workspace reload, completion and Undo passed."
-	);
+	await restored.getByRole("link", { name: "Kanban", exact: true }).click();
+	await restored.waitForURL(`tuxedo://app/workspaces/${workspaceId}/kanban`);
+	await restored.getByRole("button", { name: "Open Packaged item", exact: true }).waitFor();
+	await restored.reload();
+	await restored.getByRole("button", { name: "Open Packaged item", exact: true }).waitFor();
+	console.log("Packaged persistence, restart, List and Kanban reload, completion and Undo passed.");
 } finally {
 	await application?.close();
 	await rm(directory, { recursive: true, force: true });

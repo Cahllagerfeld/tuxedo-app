@@ -90,3 +90,7 @@ Choose Repeat and its paired interval in the compact editor +Home @review
 Change Repeat to replace all recurrence tokens with one supported rule +Home rec:1d rec:+1w
 Turn Repeat Off to clear all recurrence tokens while keeping generation history +Home rec:2w tuxedo-generated:1
 x 2026-10-14 Edit historical Repeat without generating another occurrence +Home rec:1y
+
+(A) Open the Kanban view to see this unassigned item and its indicators +Kanban @review due:2026-11-01
+x 2026-10-14 See this completed item in the Kanban Done column +Kanban
+x See a legacy completed item without a Completion date in Kanban Done +Kanban

@@ -84,6 +84,86 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+
+test("Kanban cards open the existing details and completion follows confirmed Workspace data", async () => {
+	await page.viewport(1400, 900);
+	const completed = {
+		...todo,
+		completed: true,
+		completion_date: "2026-10-14",
+		raw: "x 2026-10-14 Plan release +Work",
+	};
+	const setTodoCompletion = vi.fn<DesktopAPI["setTodoCompletion"]>(async () => ({
+		status: "applied",
+		confirmed: confirmedTodo([completed]),
+	}));
+	render(Harness, { viewMode: "kanban", desktop: adapter({ setTodoCompletion }) });
+	const unassigned = page.getByRole("region", { name: "Unassigned" });
+	const done = page.getByRole("region", { name: "Done" });
+	await unassigned.getByRole("button", { name: "Open Plan release" }).click();
+	const details = page.getByRole("complementary", { name: "Todo item details" });
+	await expect.element(details.getByRole("heading", { name: "Plan release" })).toBeVisible();
+	await unassigned.getByRole("checkbox", { name: "Mark Plan release complete" }).click();
+	await expect.element(done.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	await expect.element(details.getByRole("button", { name: "Mark incomplete" })).toBeVisible();
+	await details.getByRole("button", { name: "Close details" }).click();
+	await expect.element(done.getByRole("button", { name: "Open Plan release" })).toHaveFocus();
+	expect(setTodoCompletion).toHaveBeenCalledExactlyOnceWith({
+		scope,
+		revision: 1,
+		workspaceId,
+		lineNumber: 1,
+		expectedRaw: "Plan release +Work",
+		completed: true,
+	});
+});
+
+test("a rejected Kanban completion keeps the confirmed card and reports the failure", async () => {
+	const setTodoCompletion = vi.fn<DesktopAPI["setTodoCompletion"]>(async () => ({
+		status: "rejected",
+		message: "Todo file is read-only",
+	}));
+	render(Harness, { viewMode: "kanban", desktop: adapter({ setTodoCompletion }) });
+	const unassigned = page.getByRole("region", { name: "Unassigned" });
+	const checkbox = unassigned.getByRole("checkbox", { name: "Mark Plan release complete" });
+	await checkbox.click();
+	await expect.element(page.getByText("Could not update Todo item")).toBeVisible();
+	await expect.element(page.getByText("Todo file is read-only")).toBeVisible();
+	await expect.element(checkbox).not.toBeChecked();
+	await expect.element(unassigned.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	expect(setTodoCompletion).toHaveBeenCalledTimes(1);
+});
+
+test("sidebar filters narrow Kanban cards using the same Workspace data", async () => {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	await page.viewport(1400, 900);
+	const personal = {
+		...todo,
+		line_number: 2,
+		raw: "Read a book +Home",
+		description: "Read a book",
+		projects: ["Home"],
+		edit: { description: "Read a book", metadata: [] },
+	};
+	const session = {
+		...initial,
+		session: {
+			...initial.session,
+			todo_file: { ...initial.session.todo_file, items: [todo, personal] },
+		},
+	};
+	render(Harness, {
+		viewMode: "kanban",
+		shell: true,
+		desktop: adapter({ readSession: async () => session }),
+	});
+	await expect.element(page.getByRole("button", { name: "Open Read a book" })).toBeVisible();
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await expect.element(page.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	await expect
+		.element(page.getByRole("button", { name: "Open Read a book" }))
+		.not.toBeInTheDocument();
+});
 test("Due-date sorting changes only the view and restores reordering in File order", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const ready = initial.session;

@@ -21,6 +21,20 @@ const personal = {
 };
 
 describe("WorkspaceSwitcher", () => {
+	it("shows the active Workspace initial with its full name available", async () => {
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+		});
+
+		const switcher = page.getByRole("button", { name: "Select workspace: Work" });
+		await expect.element(switcher).toHaveAttribute("title", "Work");
+		await expect.element(switcher).toHaveTextContent("W");
+	});
+
 	it("lists workspaces oldest first, identifies the active one, and selects another", async () => {
 		const selectWorkspace = vi.fn(async () => ({ status: "applied" as const }));
 		render(WorkspaceSwitcher, {

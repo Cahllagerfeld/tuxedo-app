@@ -8,6 +8,7 @@ import { SavedViewsResource } from "#lib/modules/workspace/state/saved-views-res
 import { invalidateDisplayedData } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import { workspaceNavigation } from "./workspace-navigation.svelte.js";
 import { observeTodoFileChanges } from "./observation-invalidation.js";
+import { workspacePath, workspaceViewMode } from "./workspace-paths.js";
 
 export function workspaceRouting() {
 	const routes = {
@@ -21,7 +22,7 @@ export function workspaceRouting() {
 	const navigation = workspaceNavigation(commands, {
 		...routes,
 		navigate: (id, replace = false) =>
-			goto(id ? resolve("/workspaces/[id]", { id }) : resolve("/"), { replace }),
+			goto(id ? workspacePath(id, workspaceViewMode(page.route.id)) : resolve("/"), { replace }),
 	});
 	const savedViews = new SavedViewsResource(window.desktop, commands, {
 		workspaceId: routes.destination,

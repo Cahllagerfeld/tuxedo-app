@@ -12,6 +12,7 @@
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
 	type Props = {
+		viewMode?: "list" | "kanban";
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
@@ -23,6 +24,7 @@
 	};
 
 	let {
+		viewMode = "list",
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
@@ -33,6 +35,11 @@
 		openWorkspaceCreationDialog,
 	}: Props = $props();
 	let emptyState = $state<ReturnType<typeof WorkspaceEmptyState>>();
+	// A committed route change retires list-only selection and its confirmation.
+	$effect(() => {
+		if (viewMode === "kanban" && !workspace.isOperating && bulkSelection.active)
+			bulkSelection.exit();
+	});
 	// A session becoming Empty removes the reader and its focused surface. Transfer owned focus after the replacement mounts.
 	$effect.pre(() => {
 		if (
@@ -66,6 +73,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceToolbar
+		{viewMode}
 		{workspace}
 		{view}
 		{todoFilter}
@@ -77,6 +85,7 @@
 	/>
 	{#if view.todoFile}
 		<WorkspaceTodoReader
+			{viewMode}
 			bind:this={reader}
 			{workspace}
 			{view}

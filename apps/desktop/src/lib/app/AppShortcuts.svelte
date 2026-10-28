@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { tick } from "svelte";
 	import { createHotkey, detectPlatform } from "@tanstack/svelte-hotkeys";
 	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import { rowShortcuts, undoTodoShortcut } from "#lib/modules/todo/ui/shortcuts.js";
@@ -57,10 +56,7 @@
 	);
 	const idle = $derived(!app.isLoading && !app.workspace.isOperating);
 	const actions = {
-		workspace: async () => {
-			if (sidebar.isMobile) sidebar.setOpenMobile(true);
-			else sidebar.setOpen(true);
-			await tick();
+		workspace: () => {
 			ui.isWorkspaceSwitcherOpen = true;
 		},
 		createWorkspace: () => ui.openWorkspaceCreationDialog(),

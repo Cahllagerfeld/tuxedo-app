@@ -21,17 +21,12 @@
 
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">
 	<WorkspaceSidebar
-		workspaces={app.catalogue?.workspaces ?? []}
 		activeWorkspaceId={app.activeWorkspace?.id ?? null}
 		todoSummary={app.todos}
 		todoFilter={ui.todoFilter}
 		todoFileLoaded={app.todoFile !== null}
 		collapsible="none"
 		disabled={app.workspace.isOperating || app.isLoading}
-		pendingOperation={app.workspace.pendingOperation}
-		selectWorkspace={fixture.navigate}
-		deleteWorkspace={app.navigation.deleteWorkspace}
-		openCreationDialog={() => {}}
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
