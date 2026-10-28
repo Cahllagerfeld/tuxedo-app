@@ -40,3 +40,29 @@ it("offers Workspace view links and marks the current view", async () => {
 		.toHaveAttribute("aria-disabled", "true");
 	await expect.element(page.getByRole("link", { name: "Kanban" })).not.toHaveAttribute("href");
 });
+
+it("keeps the selected view highlighted on hover in dark mode", async () => {
+	document.documentElement.classList.add("dark");
+	try {
+		render(WorkspaceRail, {
+			workspaces: [],
+			activeWorkspaceId: null,
+			viewMode: "kanban",
+			listHref: "/workspaces/example",
+			kanbanHref: "/workspaces/example/kanban",
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+		});
+		const link = page.getByRole("link", { name: "Kanban" });
+		const element = link.element();
+		const selectedColor = getComputedStyle(element).backgroundColor;
+		await link.hover();
+		// Flush the hover style before waiting for its transition.
+		void getComputedStyle(element).backgroundColor;
+		await Promise.all(element.getAnimations().map((animation) => animation.finished));
+		expect(getComputedStyle(element).backgroundColor).toBe(selectedColor);
+	} finally {
+		document.documentElement.classList.remove("dark");
+	}
+});

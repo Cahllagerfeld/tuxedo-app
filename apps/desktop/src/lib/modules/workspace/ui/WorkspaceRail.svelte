@@ -59,8 +59,9 @@
 		aria-label="List"
 		title="List"
 		aria-current={viewMode === "list" ? "page" : undefined}
-		class={viewMode === "list" ? "bg-foreground/10 text-foreground hover:bg-foreground/10" : ""}
-		><List aria-hidden="true" /></Button
+		class={viewMode === "list"
+			? "bg-foreground/10 text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
+			: ""}><List aria-hidden="true" /></Button
 	>
 	<Button
 		variant="ghost"
@@ -70,7 +71,8 @@
 		aria-label="Kanban"
 		title="Kanban"
 		aria-current={viewMode === "kanban" ? "page" : undefined}
-		class={viewMode === "kanban" ? "bg-foreground/10 text-foreground hover:bg-foreground/10" : ""}
-		><Columns3 aria-hidden="true" /></Button
+		class={viewMode === "kanban"
+			? "bg-foreground/10 text-foreground hover:bg-foreground/10 dark:hover:bg-foreground/10"
+			: ""}><Columns3 aria-hidden="true" /></Button
 	>
 </nav>
