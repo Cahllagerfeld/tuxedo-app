@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, tick } from "svelte";
 	import type { TodoItem } from "../domain/todo";
-	import TodoBoardCard from "./TodoBoardCard.svelte";
+	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
+	import TodoBoardColumn from "./TodoBoardColumn.svelte";
 
 	let {
 		items,
@@ -26,6 +27,7 @@
 		{ name: "Done", items: items.filter((todo) => todo.completed) },
 	]);
 	let board = $state<HTMLElement | null>(null);
+	let columnViews = $state<Record<string, ReturnType<typeof TodoBoardColumn>>>({});
 	let destroyed = false;
 	const pending = new Set<() => void>();
 	onDestroy(() => {
@@ -38,6 +40,10 @@
 			`[data-board-line="${line}"] [data-board-${completion ? "completion" : "open"}]`
 		);
 	}
+	async function reveal(line: number) {
+		const column = columns.find((column) => column.items.some((item) => item.line_number === line));
+		if (column) await columnViews[column.name]?.reveal(line);
+	}
 
 	export async function focusTodo(todo: TodoItem) {
 		await tick();
@@ -45,7 +51,12 @@
 		const found = items.find(
 			(item) => item.line_number === todo.line_number && item.raw === todo.raw
 		);
-		(control(found?.line_number ?? -1) ?? board)?.focus();
+		if (found) await reveal(found.line_number);
+		if (destroyed) return;
+		const current = items.some(
+			(item) => item.line_number === todo.line_number && item.raw === todo.raw
+		);
+		(control(current ? todo.line_number : -1) ?? board)?.focus();
 	}
 
 	export function captureFocus(todo: TodoItem, editing = false, trigger?: HTMLElement | null) {
@@ -72,6 +83,9 @@
 			cancel: stop,
 			async restore(uncertain = false, deleted = false) {
 				await tick();
+				if (!destroyed && owned && !cancelled && !uncertain && !deleted) {
+					await reveal(todo.line_number);
+				}
 				document.removeEventListener("focusin", moved);
 				pending.delete(stop);
 				if (destroyed || !owned || cancelled) return;
@@ -83,28 +97,25 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to scroll empty columns.) -->
-<div
-	bind:this={board}
-	role="region"
-	aria-label="Kanban board"
-	tabindex="0"
-	class="flex h-full min-h-0 min-w-0 gap-3 overflow-x-auto p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+<ScrollArea
+	bind:viewportRef={board}
+	viewportLabel="Kanban board"
+	viewportTabIndex={0}
+	orientation="horizontal"
+	class="h-full w-full min-w-0 [&>[data-slot=scroll-area-viewport]>[data-scroll-area-content]]:h-full"
 >
-	{#each columns as column (column.name)}
-		<section
-			aria-label={column.name}
-			class="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/30"
-		>
-			<header class="flex shrink-0 items-center justify-between border-b px-3 py-3">
-				<h2 class="text-sm font-semibold">{column.name}</h2>
-				<span aria-hidden="true" class="text-xs text-muted-foreground">{column.items.length}</span>
-			</header>
-			<div class="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-				{#each column.items as todo (todo.line_number)}
-					<TodoBoardCard {todo} {today} {disabled} {selectedTodo} {onOpen} {onToggleComplete} />
-				{/each}
-			</div>
-		</section>
-	{/each}
-</div>
+	<div class="flex h-full min-w-max gap-3 p-4">
+		{#each columns as column (column.name)}
+			<TodoBoardColumn
+				bind:this={columnViews[column.name]}
+				name={column.name}
+				items={column.items}
+				{today}
+				{disabled}
+				{selectedTodo}
+				{onOpen}
+				{onToggleComplete}
+			/>
+		{/each}
+	</div>
+</ScrollArea>

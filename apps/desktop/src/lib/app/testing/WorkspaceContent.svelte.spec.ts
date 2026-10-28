@@ -118,6 +118,38 @@ test("Kanban cards open the existing details and completion follows confirmed Wo
 	});
 });
 
+test("Kanban checkbox and item expose separate keyboard actions", async () => {
+	await page.viewport(1400, 900);
+	const completed = {
+		...todo,
+		completed: true,
+		completion_date: "2026-10-14",
+		raw: "x 2026-10-14 Plan release +Work",
+	};
+	const setTodoCompletion = vi.fn<DesktopAPI["setTodoCompletion"]>(async () => ({
+		status: "applied",
+		confirmed: confirmedTodo([completed]),
+	}));
+	render(Harness, { viewMode: "kanban", desktop: adapter({ setTodoCompletion }) });
+	const checkbox = page.getByRole("checkbox", { name: "Mark Plan release complete" });
+	await expect.element(checkbox).toBeEnabled();
+	(checkbox.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}");
+	const completedCheckbox = page.getByRole("checkbox", { name: "Mark Plan release incomplete" });
+	await expect.element(completedCheckbox).toBeChecked();
+	await expect.element(completedCheckbox).toHaveFocus();
+	const details = page.getByRole("complementary", { name: "Todo item details" });
+	await expect.element(details).not.toBeInTheDocument();
+
+	const open = page.getByRole("button", { name: "Open Plan release" });
+	await expect.element(open).toHaveAttribute("aria-expanded", "false");
+	(open.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Enter}");
+	await expect.element(details.getByRole("heading", { name: "Plan release" })).toBeVisible();
+	await expect.element(open).toHaveAttribute("aria-expanded", "true");
+	expect(setTodoCompletion).toHaveBeenCalledOnce();
+});
+
 test("a rejected Kanban completion keeps the confirmed card and reports the failure", async () => {
 	const setTodoCompletion = vi.fn<DesktopAPI["setTodoCompletion"]>(async () => ({
 		status: "rejected",

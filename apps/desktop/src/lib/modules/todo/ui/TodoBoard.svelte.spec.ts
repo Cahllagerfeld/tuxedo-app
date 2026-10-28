@@ -100,6 +100,30 @@ describe("TodoBoard", () => {
 		expect(onOpen).toHaveBeenCalledOnce();
 	});
 
+	it("keeps the item and checkbox click targets separate", async () => {
+		const onOpen = vi.fn();
+		const onToggleComplete = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen,
+			onToggleComplete,
+		});
+		const openButton = page.getByRole("button", { name: "Open Plan" });
+		const buttonRect = openButton.element().getBoundingClientRect();
+		const card = openButton.element().closest("article")!;
+		const cardRect = card.getBoundingClientRect();
+		await userEvent.click(card, {
+			position: { x: buttonRect.left - cardRect.left + 2, y: buttonRect.top - cardRect.top + 8 },
+		});
+		expect(onOpen).toHaveBeenCalledOnce();
+		expect(onToggleComplete).not.toHaveBeenCalled();
+		await page.getByRole("checkbox", { name: "Mark Plan complete" }).click();
+		expect(onToggleComplete).toHaveBeenCalledOnce();
+		expect(onOpen).toHaveBeenCalledOnce();
+	});
+
 	it("scrolls the board horizontally and each column independently while headers stay visible", async () => {
 		const openItems = Array.from({ length: 12 }, (_, index) => ({
 			...open,
@@ -120,16 +144,33 @@ describe("TodoBoard", () => {
 		});
 		const board = page.getByLabelText("Kanban board").element() as HTMLElement;
 		const unassigned = page.getByRole("region", { name: "Unassigned", exact: true }).element();
-		const done = page.getByRole("region", { name: "Done", exact: true }).element();
-		const openScroll = unassigned.querySelector("div")!;
-		const doneScroll = done.querySelector("div")!;
+		const openScroll = page.getByRole("region", { name: "Unassigned Todo items" }).element();
+		const doneScroll = page.getByRole("region", { name: "Done Todo items" }).element();
 		const header = unassigned.querySelector("header")!;
 		const top = header.getBoundingClientRect().top;
 
 		expect(board.scrollWidth).toBeGreaterThan(board.clientWidth);
 		expect(openScroll.scrollHeight).toBeGreaterThan(openScroll.clientHeight);
-		openScroll.scrollTop = openScroll.scrollHeight;
-		expect(openScroll.scrollTop).toBeGreaterThan(0);
+		await page.getByRole("region", { name: "Unassigned Todo items" }).hover();
+		await expect
+			.poll(
+				() =>
+					!!board.parentElement?.querySelector(
+						':scope > [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"]'
+					)
+			)
+			.toBe(true);
+		await expect
+			.poll(
+				() =>
+					!!openScroll.parentElement?.querySelector(
+						':scope > [data-slot="scroll-area-scrollbar"][data-orientation="vertical"]'
+					)
+			)
+			.toBe(true);
+		(openScroll as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}");
+		await expect.poll(() => openScroll.scrollTop).toBeGreaterThan(0);
 		expect(doneScroll.scrollTop).toBe(0);
 		expect(header.getBoundingClientRect().top).toBe(top);
 	});
@@ -175,5 +216,135 @@ describe("TodoBoard", () => {
 			.element(page.getByRole("checkbox", { name: "Mark Plan incomplete" }))
 			.toBeVisible();
 		await expect.element(other).toHaveFocus();
+	});
+
+	it("virtualizes each column, measures card heights, and clamps scrolling after filtering", async () => {
+		const openItems = Array.from({ length: 200 }, (_, index) => ({
+			...open,
+			line_number: index + 1,
+			description: `Open item ${index + 1}${index === 0 ? " with a much longer description that wraps over several lines of the card" : ""}`,
+		}));
+		const doneItems = Array.from({ length: 200 }, (_, index) => ({
+			...legacyCompleted,
+			line_number: index + 201,
+			description: `Completed item ${index + 1}`,
+		}));
+		const props = {
+			items: [...openItems, ...doneItems],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+		};
+		const view = await render(TodoBoard, props);
+		const unassigned = page.getByRole("region", { name: "Unassigned", exact: true }).element();
+		const done = page.getByRole("region", { name: "Done", exact: true }).element();
+		const openScroll = page
+			.getByRole("region", { name: "Unassigned Todo items" })
+			.element() as HTMLElement;
+		const doneScroll = page
+			.getByRole("region", { name: "Done Todo items" })
+			.element() as HTMLElement;
+		await expect.element(page.getByRole("button", { name: /^Open Open item 1 / })).toBeVisible();
+		expect(unassigned.querySelector("header span")?.textContent).toBe("200");
+		expect(done.querySelector("header span")?.textContent).toBe("200");
+		expect(openScroll.querySelectorAll("li").length).toBeLessThan(20);
+		expect(doneScroll.querySelectorAll("li").length).toBeLessThan(20);
+		expect(openScroll.querySelector("li")?.getAttribute("aria-setsize")).toBe("200");
+		await expect
+			.poll(() => {
+				const cards = openScroll.querySelectorAll("article");
+				const first = cards[0]?.getBoundingClientRect();
+				const second = cards[1]?.getBoundingClientRect();
+				return first && second ? Math.round(second.top - first.bottom) : -1;
+			})
+			.toBeGreaterThanOrEqual(8);
+		const initialHeight = openScroll.querySelector("article")!.getBoundingClientRect().height;
+		const resized = {
+			...openItems[0],
+			description: `${openItems[0].description} ${"More wrapping text ".repeat(12)}`,
+		};
+		await view.rerender({ ...props, items: [resized, ...openItems.slice(1), ...doneItems] });
+		await expect
+			.poll(() => openScroll.querySelector("article")!.getBoundingClientRect().height)
+			.toBeGreaterThan(initialHeight);
+		await expect
+			.poll(() => {
+				const cards = openScroll.querySelectorAll("article");
+				return Math.round(
+					cards[1].getBoundingClientRect().top - cards[0].getBoundingClientRect().bottom
+				);
+			})
+			.toBeGreaterThanOrEqual(8);
+
+		await view.component.focusTodo(openItems[150]);
+		await expect.element(page.getByRole("button", { name: "Open Open item 151" })).toHaveFocus();
+		expect(openScroll.scrollTop).toBeGreaterThan(0);
+		openScroll.scrollTop = openScroll.scrollHeight;
+		await expect.element(page.getByRole("button", { name: "Open Open item 200" })).toBeVisible();
+		expect(doneScroll.scrollTop).toBe(0);
+		doneScroll.scrollTop = doneScroll.scrollHeight;
+		await expect
+			.element(page.getByRole("button", { name: "Open Completed item 200" }))
+			.toBeInTheDocument();
+		expect(doneScroll.querySelectorAll("li").length).toBeLessThan(20);
+
+		await view.rerender({ ...props, items: [openItems[1]] });
+		await expect.element(page.getByRole("button", { name: "Open Open item 2" })).toBeVisible();
+		await expect.poll(() => openScroll.scrollTop).toBe(0);
+	});
+
+	it("keeps a focused card and its neighbors available across the virtual window", async () => {
+		const items = Array.from({ length: 100 }, (_, index) => ({
+			...open,
+			line_number: index + 1,
+			description: `Item ${index + 1}`,
+		}));
+		await render(TodoBoard, {
+			items,
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+		});
+		const first = page.getByRole("button", { name: "Open Item 1" });
+		(first.element() as HTMLElement).focus();
+		const viewport = page
+			.getByRole("region", { name: "Unassigned Todo items" })
+			.element() as HTMLElement;
+		viewport.scrollTop = viewport.scrollHeight;
+		await expect.element(page.getByRole("button", { name: "Open Item 100" })).toBeVisible();
+		await expect.element(first).toHaveFocus();
+		await userEvent.keyboard("{Tab}");
+		await expect
+			.element(page.getByRole("checkbox", { name: "Mark Item 2 complete" }))
+			.toHaveFocus();
+		await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+		await expect.element(first).toHaveFocus();
+	});
+
+	it("reveals and focuses a completed card outside the destination column's window", async () => {
+		const doneItems = Array.from({ length: 150 }, (_, index) => ({
+			...legacyCompleted,
+			line_number: index + 1,
+			description: `Completed item ${index + 1}`,
+		}));
+		const target = { ...open, line_number: 151 };
+		render(TodoBoardFocusHarness, {
+			initialItems: [...doneItems, target],
+			complete: async () => "applied",
+		});
+		await page.getByRole("checkbox", { name: "Mark Plan complete" }).click();
+		const completed = page.getByRole("checkbox", { name: "Mark Plan incomplete" });
+		await expect.element(completed).toHaveFocus();
+		const doneScroll = page.getByRole("region", { name: "Done Todo items" }).element();
+		expect(doneScroll.scrollTop).toBeGreaterThan(0);
+		await expect
+			.poll(() => {
+				const card = completed.element().getBoundingClientRect();
+				const viewport = doneScroll.getBoundingClientRect();
+				return card.top >= viewport.top && card.bottom <= viewport.bottom;
+			})
+			.toBe(true);
 	});
 });

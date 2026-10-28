@@ -8,6 +8,7 @@
 		ref = $bindable(null),
 		viewportRef = $bindable(null),
 		viewportTabIndex,
+		viewportLabel,
 		class: className,
 		orientation = "vertical",
 		scrollbarXClasses = "",
@@ -20,6 +21,7 @@
 		scrollbarYClasses?: string | undefined;
 		viewportRef?: HTMLElement | null;
 		viewportTabIndex?: number;
+		viewportLabel?: string;
 	} = $props();
 </script>
 
@@ -32,6 +34,8 @@
 	<ScrollAreaPrimitive.Viewport
 		bind:ref={viewportRef}
 		tabindex={viewportTabIndex}
+		role={viewportLabel ? "region" : undefined}
+		aria-label={viewportLabel}
 		data-slot="scroll-area-viewport"
 		class="cn-scroll-area-viewport size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
 	>
