@@ -63,17 +63,26 @@ export async function kanbanRoutingWorkflow(
 	await page.getByText("1 selected", { exact: true }).waitFor();
 	await application.evaluate(({ ipcMain }) => {
 		const channel = "tuxedo:set-workspace-show-deferred";
-		globalThis.heldKanbanPreference = { original: ipcMain._invokeHandlers.get(channel) };
+		let entered;
+		const state = (globalThis.heldKanbanPreference = {
+			original: ipcMain._invokeHandlers.get(channel),
+			entered: new Promise((resolve) => (entered = resolve)),
+		});
 		ipcMain.removeHandler(channel);
 		ipcMain.handle(
 			channel,
-			() => new Promise((resolve) => (globalThis.heldKanbanPreference.release = resolve))
+			() =>
+				new Promise((resolve) => {
+					state.release = resolve;
+					entered();
+				})
 		);
 	});
 	try {
 		const showDeferred = page.getByRole("button", { name: "Show deferred", exact: true });
 		await showDeferred.click();
 		await showDeferred.and(page.locator(":disabled")).waitFor();
+		await application.evaluate(() => globalThis.heldKanbanPreference.entered);
 		const pendingUrl = page.url();
 		await page.evaluate(
 			() =>
