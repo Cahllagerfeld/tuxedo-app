@@ -2,6 +2,7 @@ import type { TodoFileSummary } from "#lib/modules/todo/domain/todo-file-summary
 import { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 import type { WorkspaceView } from "../state/workspace-view";
+import type { WorkspaceViewMode } from "../domain/workspace";
 import { createTodoBulkSelection } from "./todo-bulk-selection.svelte";
 import { toast } from "svelte-sonner";
 
@@ -18,7 +19,7 @@ export class WorkspaceUiState {
 	readonly filteredTodoItems: ReturnType<TodoFilterState["filterItems"]>;
 	readonly bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 
-	constructor(source: Source) {
+	constructor(source: Source, getViewMode: () => WorkspaceViewMode = () => "list") {
 		this.todoFilter = new TodoFilterState(
 			() => source.todos.items,
 			() => source.activeWorkspace ?? {}
@@ -27,6 +28,7 @@ export class WorkspaceUiState {
 		this.bulkSelection = createTodoBulkSelection({
 			getWorkspace: () => source.workspace,
 			getData: () => source,
+			getViewMode,
 			getMatchingItems: () => this.filteredTodoItems,
 			getFilterSignature: () => JSON.stringify(this.todoFilter.snapshot()),
 			onInvalidated: (message) => toast.info(message),

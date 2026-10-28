@@ -1,41 +1,23 @@
 <script lang="ts">
-	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
-	import type {
-		WorkspaceSessionActionResult,
-		WorkspaceSessionOperation,
-	} from "#lib/modules/workspace/state/workspace-session-types.js";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import type { TodoFileSummary } from "#lib/modules/todo/domain/todo-file-summary.js";
-	import WorkspaceSwitcher from "../WorkspaceSwitcher.svelte";
 	import Overview from "./Overview.svelte";
 	import SidebarFilters from "./SidebarFilters.svelte";
 	import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 
 	type Props = {
-		switcherOpen?: boolean;
-		workspaces: readonly Workspace[];
 		todoSummary: TodoFileSummary;
 		activeWorkspaceId: string | null;
-		selectWorkspace: (workspaceId: string) => void;
-		deleteWorkspace: (workspaceId: string) => Promise<WorkspaceSessionActionResult>;
-		openCreationDialog: () => void;
 		disabled?: boolean;
-		pendingOperation?: WorkspaceSessionOperation | null;
 		todoFilter: TodoFilterState;
 		todoFileLoaded?: boolean;
 		collapsible?: "offcanvas" | "icon" | "none";
 	};
 
 	let {
-		switcherOpen = $bindable(false),
-		workspaces,
 		todoSummary,
 		activeWorkspaceId,
-		selectWorkspace,
-		deleteWorkspace,
-		openCreationDialog,
 		disabled = false,
-		pendingOperation = null,
 		todoFilter,
 		todoFileLoaded = false,
 		collapsible = "offcanvas",
@@ -47,19 +29,7 @@
 	{collapsible}
 	class={collapsible === "none" ? "workspace-sidebar" : "workspace-sidebar md:absolute md:h-full"}
 >
-	<Sidebar.Header class="p-3">
-		<WorkspaceSwitcher
-			bind:open={switcherOpen}
-			{workspaces}
-			{activeWorkspaceId}
-			{disabled}
-			{pendingOperation}
-			{selectWorkspace}
-			{deleteWorkspace}
-			{openCreationDialog}
-		/>
-	</Sidebar.Header>
-	<Sidebar.Content class="min-w-0 gap-0 overflow-hidden px-2">
+	<Sidebar.Content class="min-w-0 gap-0 overflow-hidden px-2 pt-3">
 		<div class="shrink-0">
 			<Overview {todoSummary} {todoFilter} disabled={!todoFileLoaded || disabled} />
 		</div>

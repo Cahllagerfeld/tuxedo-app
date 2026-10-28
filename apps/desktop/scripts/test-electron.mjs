@@ -1,6 +1,7 @@
 import { readConfirmation, activateWorkspace } from "./read-confirmation.mjs";
 import { rpcWorkflow } from "./rpc-workflow.mjs";
 import { workspaceSetupWorkflow } from "./workspace-setup-workflow.mjs";
+import { kanbanRoutingWorkflow } from "./kanban-routing-workflow.mjs";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import electronPath from "electron";
@@ -682,6 +683,7 @@ try {
 	};
 	await reopen();
 	await expectRoute("Route B", "Beta item");
+	await kanbanRoutingWorkflow(application, page, routeIds, routeUrl, activeId, expectRoute);
 	await recoverHome();
 	await page.waitForURL(routeUrl("/"));
 	await page.getByRole("navigation", { name: "Saved workspaces" }).waitFor();

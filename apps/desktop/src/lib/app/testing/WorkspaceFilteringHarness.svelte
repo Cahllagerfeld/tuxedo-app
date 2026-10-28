@@ -6,6 +6,7 @@
 	import { workspaceFixture } from "./workspace-fixture.svelte";
 	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import WorkspaceTodoList from "#lib/modules/workspace/ui/WorkspaceTodoList.svelte";
 	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
@@ -21,17 +22,12 @@
 
 <Sidebar.Provider class="flex h-128 min-h-0 overflow-hidden" style="--sidebar-width: 14rem;">
 	<WorkspaceSidebar
-		workspaces={app.catalogue?.workspaces ?? []}
 		activeWorkspaceId={app.activeWorkspace?.id ?? null}
 		todoSummary={app.todos}
 		todoFilter={ui.todoFilter}
 		todoFileLoaded={app.todoFile !== null}
 		collapsible="none"
 		disabled={app.workspace.isOperating || app.isLoading}
-		pendingOperation={app.workspace.pendingOperation}
-		selectWorkspace={fixture.navigate}
-		deleteWorkspace={app.navigation.deleteWorkspace}
-		openCreationDialog={() => {}}
 	/>
 	<Sidebar.Inset class="min-h-0 flex-1 overflow-hidden">
 		<WorkspaceContent
@@ -42,6 +38,8 @@
 			todoFilter={ui.todoFilter}
 			filteredTodoItems={ui.filteredTodoItems}
 			openWorkspaceCreationDialog={() => {}}
-		/>
+		>
+			<WorkspaceTodoList />
+		</WorkspaceContent>
 	</Sidebar.Inset>
 </Sidebar.Provider>

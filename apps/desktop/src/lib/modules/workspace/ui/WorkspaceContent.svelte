@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { onMount, tick, type Snippet } from "svelte";
 	import { localToday } from "#lib/modules/todo/domain/todo-due.js";
+	import type { WorkspaceViewMode } from "../domain/workspace.js";
 	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 	import WorkspaceTodoReader from "./WorkspaceTodoReader.svelte";
 	import WorkspaceEmptyState from "./WorkspaceEmptyState.svelte";
@@ -12,6 +13,8 @@
 	import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
 	type Props = {
+		children: Snippet;
+		viewMode?: WorkspaceViewMode;
 		creationOpen?: boolean;
 		bulkSelection: ReturnType<typeof createTodoBulkSelection>;
 		workspace: WorkspaceCommands;
@@ -23,6 +26,8 @@
 	};
 
 	let {
+		children,
+		viewMode = "list",
 		creationOpen = $bindable(false),
 		bulkSelection,
 		workspace,
@@ -66,6 +71,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 	<WorkspaceToolbar
+		{viewMode}
 		{workspace}
 		{view}
 		{todoFilter}
@@ -77,6 +83,7 @@
 	/>
 	{#if view.todoFile}
 		<WorkspaceTodoReader
+			{viewMode}
 			bind:this={reader}
 			{workspace}
 			{view}
@@ -84,7 +91,9 @@
 			{filteredTodoItems}
 			{bulkSelection}
 			onCreate={() => (creationOpen = true)}
-		/>
+		>
+			{@render children()}
+		</WorkspaceTodoReader>
 	{:else}
 		<WorkspaceEmptyState
 			bind:this={emptyState}

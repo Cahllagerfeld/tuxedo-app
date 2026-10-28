@@ -8,9 +8,13 @@
 	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import WorkspaceTodoList from "#lib/modules/workspace/ui/WorkspaceTodoList.svelte";
+	import WorkspaceTodoBoard from "#lib/modules/workspace/ui/WorkspaceTodoBoard.svelte";
 	import AppNavbar from "#lib/app/AppNavbar.svelte";
 	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
+	import WorkspaceRail from "#lib/modules/workspace/ui/WorkspaceRail.svelte";
 	import WorkspaceCreationDialog from "#lib/modules/workspace/ui/WorkspaceCreationDialog.svelte";
+	import type { WorkspaceViewMode } from "#lib/modules/workspace/domain/workspace.js";
 	import * as Sidebar from "#lib/shared/ui/sidebar/index.js";
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	let {
@@ -18,17 +22,19 @@
 		observation,
 		shell = false,
 		restoration = false,
+		viewMode = "list",
 	}: {
 		desktop: DesktopAPI;
 		observation?: TodoFileObservation;
 		shell?: boolean;
 		restoration?: boolean;
+		viewMode?: WorkspaceViewMode;
 	} = $props();
 	setShortcutScope();
 	// svelte-ignore state_referenced_locally
 	const fixture = workspaceFixture(desktop);
 	const app = fixture.createApp();
-	const ui = new WorkspaceUiState(app);
+	const ui = new WorkspaceUiState(app, () => viewMode);
 	setSavedViews(fixture.savedViews);
 	onMount(() => {
 		const stop =
@@ -55,18 +61,27 @@
 	{/if}
 	<div class="relative flex min-h-0">
 		{#if shell}
-			<WorkspaceSidebar
+			<WorkspaceRail
 				bind:switcherOpen={ui.isWorkspaceSwitcherOpen}
 				workspaces={app.catalogue?.workspaces ?? []}
 				activeWorkspaceId={app.activeWorkspace?.id ?? null}
-				todoSummary={app.todos}
-				todoFilter={ui.todoFilter}
-				todoFileLoaded={!!app.todoFile}
+				{viewMode}
+				listHref="/workspaces/test"
+				kanbanHref="/workspaces/test/kanban"
 				disabled={app.workspace.isOperating || app.isLoading}
 				selectWorkspace={fixture.navigate}
 				deleteWorkspace={app.navigation.deleteWorkspace}
 				openCreationDialog={ui.openWorkspaceCreationDialog}
 			/>
+			<div class="relative flex min-h-0 shrink-0">
+				<WorkspaceSidebar
+					activeWorkspaceId={app.activeWorkspace?.id ?? null}
+					todoSummary={app.todos}
+					todoFilter={ui.todoFilter}
+					todoFileLoaded={!!app.todoFile}
+					disabled={app.workspace.isOperating || app.isLoading}
+				/>
+			</div>
 			<WorkspaceCreationDialog
 				bind:open={ui.isWorkspaceCreationDialogOpen}
 				disabled={app.workspace.isOperating || app.isLoading}
@@ -75,6 +90,7 @@
 		{/if}
 		<div class="flex h-96 min-w-0 flex-1 flex-col">
 			<WorkspaceContent
+				{viewMode}
 				bulkSelection={ui.bulkSelection}
 				bind:creationOpen={ui.isTodoCreationOpen}
 				workspace={app.workspace}
@@ -83,7 +99,13 @@
 				todoFilter={ui.todoFilter}
 				filteredTodoItems={ui.filteredTodoItems}
 				openWorkspaceCreationDialog={ui.openWorkspaceCreationDialog}
-			/>
+			>
+				{#if viewMode === "kanban"}
+					<WorkspaceTodoBoard />
+				{:else}
+					<WorkspaceTodoList />
+				{/if}
+			</WorkspaceContent>
 		</div>
 	</div>
 </Sidebar.Provider>

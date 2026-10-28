@@ -3,6 +3,7 @@ import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte";
 import type { WorkspaceView } from "../state/workspace-view";
 import type { WorkspaceSessionActionResult } from "../state/workspace-session-types";
+import type { WorkspaceViewMode } from "../domain/workspace";
 
 const todoKey = (todo: TodoItem) => `${todo.line_number}\0${todo.raw}`;
 
@@ -21,6 +22,7 @@ function cell<T>(initial: T) {
 type Inputs = {
 	readonly getWorkspace: () => Pick<WorkspaceCommands, "isOperating" | "writesBlocked">;
 	readonly getData: () => Pick<WorkspaceView, "activeWorkspace" | "todoFile">;
+	readonly getViewMode: () => WorkspaceViewMode;
 	readonly getMatchingItems: () => readonly TodoItem[];
 	readonly getFilterSignature: () => string;
 	readonly onInvalidated: (message: string) => void;
@@ -29,19 +31,23 @@ type Inputs = {
 type Change = (items: readonly TodoItem[]) => Promise<WorkspaceSessionActionResult>;
 
 export function createTodoBulkSelection(inputs: Inputs) {
-	const workspaceKey = $derived(
-		`${inputs.getData().activeWorkspace?.id ?? ""}:${inputs.getData().todoFile?.path ?? ""}`
+	const selectionKey = $derived(
+		JSON.stringify([
+			inputs.getData().activeWorkspace?.id,
+			inputs.getData().todoFile?.path,
+			inputs.getViewMode(),
+		])
 	);
 	const fileSignature = $derived(JSON.stringify(inputs.getData().todoFile));
 	const filterSignature = $derived(inputs.getFilterSignature());
 	const matchingSignature = $derived(JSON.stringify(inputs.getMatchingItems().map(todoKey).sort()));
-	const scope = $derived(Symbol(workspaceKey));
+	const scope = $derived(Symbol(selectionKey));
 	const mode = $derived.by(() => {
-		workspaceKey;
+		selectionKey;
 		return cell(false);
 	});
 	const selection = $derived.by(() => {
-		workspaceKey;
+		selectionKey;
 		fileSignature;
 		filterSignature;
 		return cell(new Set<string>());

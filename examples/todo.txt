@@ -74,6 +74,7 @@ Restart Tuxedo to resume the last Workspace without flashing Home +TuxedoApp @re
 Remove a saved Workspace from its Home row options and confirm without deleting its Todo file +TuxedoApp @review
 Return Home to see the last-opened Workspace first while other Workspaces keep their creation order +TuxedoApp @review
 Use the switcher for everyday navigation and return to the entry page when a Todo file cannot open +TuxedoApp @review
+Pause over or focus the Workspace rail icons to identify the switcher, List, and Kanban views +TuxedoApp @review
 See a helpful missing-file message on the entry page when a Todo file is moved or deleted +TuxedoApp @review
 Retry a failed refresh after a Todo file disappears to return Home with its missing-file message +TuxedoApp @review
 Click anywhere in a Workspace row to open it; its separate options trigger opens only the menu +TuxedoApp @review
@@ -90,3 +91,8 @@ Choose Repeat and its paired interval in the compact editor +Home @review
 Change Repeat to replace all recurrence tokens with one supported rule +Home rec:1d rec:+1w
 Turn Repeat Off to clear all recurrence tokens while keeping generation history +Home rec:2w tuxedo-generated:1
 x 2026-10-14 Edit historical Repeat without generating another occurrence +Home rec:1y
+
+(A) Open the Kanban view to see this unassigned item and its indicators +Kanban @review due:2026-11-01
+Use the keyboard to navigate a long Kanban column while its cards scroll into view +Kanban @review
+x 2026-10-14 See this completed item in the Kanban Done column +Kanban
+x See a legacy completed item without a Completion date in Kanban Done +Kanban

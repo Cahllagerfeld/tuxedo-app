@@ -1,11 +1,12 @@
 <script lang="ts">
-	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import Plus from "@lucide/svelte/icons/plus";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import WorkspaceOptionsMenu from "./WorkspaceOptionsMenu.svelte";
 	import WorkspaceRemovalDialog from "./WorkspaceRemovalDialog.svelte";
 	import { Button } from "#lib/shared/ui/button/index.js";
 	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
+	import * as Tooltip from "#lib/shared/ui/tooltip/index.js";
+	import { mergeProps } from "bits-ui";
 	import type { Workspace } from "#lib/modules/workspace/domain/workspace.js";
 	import type {
 		WorkspaceSessionActionResult,
@@ -37,40 +38,78 @@
 	}: Props = $props();
 	let isDeleteDialogOpen = $state(false);
 	let workspaceToDelete = $state<Workspace | null>(null);
+	let tooltipOpen = $state(false);
+	let restoringMenuFocus = false;
 	const sortedWorkspaces = $derived(
 		[...workspaces].sort((left, right) => left.created_at.localeCompare(right.created_at))
 	);
 	const activeWorkspace = $derived(workspaces.find(({ id }) => id === activeWorkspaceId) ?? null);
+	const isPending = $derived(
+		pendingOperation === "open_workspace" || pendingOperation === "delete_workspace"
+	);
 </script>
 
 <DropdownMenu.Root bind:open>
-	<DropdownMenu.Trigger
-		>{#snippet child({ props })}<Button
-				{...props}
-				variant="ghost"
-				{disabled}
-				class="h-10 w-full max-w-full justify-between gap-2 px-2 hover:bg-sidebar-accent"
-			>
-				{#if activeWorkspace}
-					<span
-						class={`size-2.5 shrink-0 rounded-full ${workspaceColorClasses[activeWorkspace.color]}`}
-						aria-hidden="true"
-					></span>
-				{/if}
-				<span class="min-w-0 flex-1 truncate text-left text-sm font-semibold">
-					{activeWorkspace?.name ?? "No workspace selected"}
-				</span>
-				{#if pendingOperation === "open_workspace" || pendingOperation === "delete_workspace"}
-					<LoaderCircle class="shrink-0 animate-spin" aria-hidden="true" />
-				{:else}
-					<ChevronDown class="shrink-0" aria-hidden="true" />
-				{/if}
-				<span class="sr-only"
-					>Select workspace: {activeWorkspace?.name ?? "No workspace selected"}</span
+	<DropdownMenu.Trigger>
+		{#snippet child({ props: menuProps })}
+			<Tooltip.Provider delayDuration={400} skipDelayDuration={0}>
+				<Tooltip.Root
+					bind:open={() => tooltipOpen, (value) => (tooltipOpen = value && !restoringMenuFocus)}
+					disableHoverableContent
+					disabled={open}
 				>
-			</Button>{/snippet}</DropdownMenu.Trigger
+					<Tooltip.Trigger>
+						{#snippet child({ props: tooltipProps })}
+							<Button
+								{...mergeProps(menuProps, tooltipProps)}
+								variant="ghost"
+								size="icon-lg"
+								{disabled}
+								aria-label={`Select workspace: ${activeWorkspace?.name ?? "No workspace selected"}`}
+								class="hover:bg-foreground/10 hover:ring-2 hover:ring-foreground/20 dark:hover:bg-foreground/10"
+							>
+								{#if activeWorkspace}
+									<span
+										class={[
+											"flex size-9 items-center justify-center rounded-lg text-sm font-semibold",
+											workspaceColorClasses[activeWorkspace.color],
+											["green", "amber", "cyan", "orange"].includes(activeWorkspace.color)
+												? "text-slate-950"
+												: "text-white dark:text-slate-950",
+										]}
+										aria-hidden="true"
+									>
+										{#if isPending}
+											<LoaderCircle class="size-4 animate-spin" />
+										{:else}
+											{Array.from(activeWorkspace.name.trim())[0]?.toLocaleUpperCase() ?? "?"}
+										{/if}
+									</span>
+								{:else if isPending}
+									<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+								{:else}
+									<span aria-hidden="true">?</span>
+								{/if}
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content side="right" sideOffset={8}>
+						Switch workspace: {activeWorkspace?.name ?? "No workspace selected"}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			</Tooltip.Provider>
+		{/snippet}
+	</DropdownMenu.Trigger>
+	<DropdownMenu.Content
+		side="right"
+		align="start"
+		class="w-64 max-w-[calc(100vw-2rem)]"
+		onCloseAutoFocus={() => {
+			// Restoring menu focus should not open the tooltip.
+			restoringMenuFocus = true;
+			queueMicrotask(() => (restoringMenuFocus = false));
+		}}
 	>
-	<DropdownMenu.Content class="w-64 max-w-[calc(100vw-2rem)]">
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}
 			{#each sortedWorkspaces as workspace (workspace.id)}
