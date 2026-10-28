@@ -6,6 +6,7 @@
 	import { workspaceFixture } from "./workspace-fixture.svelte";
 	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import WorkspaceTodoList from "#lib/modules/workspace/ui/WorkspaceTodoList.svelte";
 	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
 
 	let { desktop }: { desktop: DesktopAPI } = $props();
@@ -37,6 +38,8 @@
 			todoFilter={ui.todoFilter}
 			filteredTodoItems={ui.filteredTodoItems}
 			openWorkspaceCreationDialog={() => {}}
-		/>
+		>
+			<WorkspaceTodoList />
+		</WorkspaceContent>
 	</Sidebar.Inset>
 </Sidebar.Provider>

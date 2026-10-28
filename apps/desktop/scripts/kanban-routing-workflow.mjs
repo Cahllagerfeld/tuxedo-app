@@ -12,7 +12,7 @@ export async function kanbanRoutingWorkflow(
 	const expectBoard = async (name, item) => {
 		await page.waitForURL(kanbanUrl(name));
 		await page.getByRole("heading", { name: "Unassigned", exact: true }).waitFor();
-		await page.getByText(item, { exact: true }).waitFor();
+		await page.getByRole("button", { name: `Open ${item}`, exact: true }).waitFor();
 		assert.equal(await activeId(), routeIds[name]);
 	};
 
@@ -57,6 +57,27 @@ export async function kanbanRoutingWorkflow(
 	await page.goBack();
 	await expectBoard("Route A", "Alpha item");
 	await page.goForward();
+	await expectRoute("Route A", "Alpha item");
+	await page.getByRole("button", { name: "Navigate Alpha item", exact: true }).click();
+	const details = page.getByRole("complementary", { name: "Todo item details" });
+	await details.getByRole("heading", { name: "Alpha item", exact: true }).waitFor();
+	await details.getByRole("button", { name: "Edit", exact: true }).click();
+	const editor = page.getByRole("dialog", { name: "Edit Todo item" });
+	const description = editor.getByRole("textbox", { name: /Description/ });
+	await description.fill("Unsaved Alpha draft");
+	await page.goBack();
+	await page.waitForURL(kanbanUrl("Route A"));
+	assert.equal(await description.inputValue(), "Unsaved Alpha draft");
+	await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
+	await details.getByRole("heading", { name: "Alpha item", exact: true }).waitFor();
+	await details.getByRole("button", { name: "Close details", exact: true }).click();
+	await details.waitFor({ state: "detached" });
+	await expectBoard("Route A", "Alpha item");
+	await page.waitForFunction(
+		() => document.activeElement?.getAttribute("aria-label") === "Open Alpha item"
+	);
+	await page.getByRole("link", { name: "List", exact: true }).click();
 	await expectRoute("Route A", "Alpha item");
 	await page.getByRole("button", { name: "Select items", exact: true }).click();
 	await page.getByRole("checkbox", { name: "Select Alpha item", exact: true }).click();

@@ -28,7 +28,9 @@
 		</div>
 	{/if}
 	{#key page.params.id}
-		{#if appState.showsDestination(page.params.id)}
+		{#if page.status >= 400}
+			{@render children()}
+		{:else if appState.showsDestination(page.params.id)}
 			<WorkspaceContent
 				bind:creationOpen={ui.isTodoCreationOpen}
 				bulkSelection={ui.bulkSelection}
@@ -39,10 +41,11 @@
 				filteredTodoItems={ui.filteredTodoItems}
 				openWorkspaceCreationDialog={ui.openWorkspaceCreationDialog}
 				viewMode={workspaceViewMode(page.route.id)}
-			/>
+			>
+				{@render children()}
+			</WorkspaceContent>
 		{:else}
 			<WorkspaceLoading />
 		{/if}
 	{/key}
-	{@render children()}
 </div>

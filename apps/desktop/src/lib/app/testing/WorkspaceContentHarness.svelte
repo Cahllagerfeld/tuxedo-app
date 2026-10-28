@@ -8,6 +8,8 @@
 	import { WorkspaceUiState } from "#lib/modules/workspace/ui/workspace-ui-state.svelte.js";
 	import ReaderStatusBar from "#lib/app/ReaderStatusBar.svelte";
 	import WorkspaceContent from "#lib/modules/workspace/ui/WorkspaceContent.svelte";
+	import WorkspaceTodoList from "#lib/modules/workspace/ui/WorkspaceTodoList.svelte";
+	import WorkspaceTodoBoard from "#lib/modules/workspace/ui/WorkspaceTodoBoard.svelte";
 	import AppNavbar from "#lib/app/AppNavbar.svelte";
 	import WorkspaceSidebar from "#lib/modules/workspace/ui/sidebar/index.svelte";
 	import WorkspaceRail from "#lib/modules/workspace/ui/WorkspaceRail.svelte";
@@ -97,7 +99,13 @@
 				todoFilter={ui.todoFilter}
 				filteredTodoItems={ui.filteredTodoItems}
 				openWorkspaceCreationDialog={ui.openWorkspaceCreationDialog}
-			/>
+			>
+				{#if viewMode === "kanban"}
+					<WorkspaceTodoBoard />
+				{:else}
+					<WorkspaceTodoList />
+				{/if}
+			</WorkspaceContent>
 		</div>
 	</div>
 </Sidebar.Provider>

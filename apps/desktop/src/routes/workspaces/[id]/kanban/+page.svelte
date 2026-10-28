@@ -1,1 +1,5 @@
-<!-- The shared Workspace layout renders the Kanban destination. -->
+<script lang="ts">
+	import WorkspaceTodoBoard from "#lib/modules/workspace/ui/WorkspaceTodoBoard.svelte";
+</script>
+
+<WorkspaceTodoBoard />
