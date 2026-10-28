@@ -59,6 +59,37 @@ describe("WorkspaceSwitcher", () => {
 		expect(selectWorkspace).toHaveBeenCalledWith(work.id);
 	});
 
+	it("does not immediately show a tooltip when the Workspace menu closes", async () => {
+		render(WorkspaceSwitcher, {
+			workspaces: [work],
+			activeWorkspaceId: work.id,
+			selectWorkspace: vi.fn(),
+			deleteWorkspace: vi.fn(),
+			openCreationDialog: vi.fn(),
+		});
+
+		const switcher = page.getByRole("button", { name: "Select workspace: Work" });
+		await switcher.click();
+		await expect.element(page.getByRole("menuitem", { name: "Work, active" })).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(switcher).toHaveFocus();
+		expect(document.querySelector('[role="tooltip"]')).toBeNull();
+
+		await switcher.unhover();
+		vi.useFakeTimers();
+		try {
+			switcher.element().dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
+			await vi.advanceTimersByTimeAsync(399);
+			expect(document.querySelector('[role="tooltip"]')).toBeNull();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+				"Switch workspace: Work"
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("offers an intelligible empty-state entry point", async () => {
 		const openCreationDialog = vi.fn();
 		render(WorkspaceSwitcher, {

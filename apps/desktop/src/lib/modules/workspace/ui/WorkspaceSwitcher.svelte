@@ -38,6 +38,8 @@
 	}: Props = $props();
 	let isDeleteDialogOpen = $state(false);
 	let workspaceToDelete = $state<Workspace | null>(null);
+	let tooltipOpen = $state(false);
+	let restoringMenuFocus = false;
 	const sortedWorkspaces = $derived(
 		[...workspaces].sort((left, right) => left.created_at.localeCompare(right.created_at))
 	);
@@ -51,7 +53,11 @@
 	<DropdownMenu.Trigger>
 		{#snippet child({ props: menuProps })}
 			<Tooltip.Provider delayDuration={400} skipDelayDuration={0}>
-				<Tooltip.Root disableHoverableContent>
+				<Tooltip.Root
+					bind:open={() => tooltipOpen, (value) => (tooltipOpen = value && !restoringMenuFocus)}
+					disableHoverableContent
+					disabled={open}
+				>
 					<Tooltip.Trigger>
 						{#snippet child({ props: tooltipProps })}
 							<Button
@@ -94,7 +100,16 @@
 			</Tooltip.Provider>
 		{/snippet}
 	</DropdownMenu.Trigger>
-	<DropdownMenu.Content side="right" align="start" class="w-64 max-w-[calc(100vw-2rem)]">
+	<DropdownMenu.Content
+		side="right"
+		align="start"
+		class="w-64 max-w-[calc(100vw-2rem)]"
+		onCloseAutoFocus={() => {
+			// Restoring menu focus should not open the tooltip.
+			restoringMenuFocus = true;
+			queueMicrotask(() => (restoringMenuFocus = false));
+		}}
+	>
 		<DropdownMenu.Label>Workspaces</DropdownMenu.Label>
 		{#if sortedWorkspaces.length}
 			{#each sortedWorkspaces as workspace (workspace.id)}
