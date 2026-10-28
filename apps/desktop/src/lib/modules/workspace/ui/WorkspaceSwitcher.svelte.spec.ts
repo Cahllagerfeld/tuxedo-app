@@ -221,7 +221,7 @@ it("opens Workspace options on activation, never on hover", async () => {
 	await expect
 		.element(page.getByRole("menuitem", { name: "Remove workspace", exact: true }))
 		.toBeVisible();
-	await options.click();
+	await userEvent.keyboard("{Escape}");
 	await expect.element(options).toHaveAttribute("aria-expanded", "false");
 	expect(selectWorkspace).not.toHaveBeenCalled();
 });
