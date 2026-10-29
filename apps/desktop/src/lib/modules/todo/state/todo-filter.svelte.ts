@@ -163,6 +163,19 @@ export class TodoFilterState {
 		this.selectedPriority = filters.priority;
 		this.selectedDue = filters.due;
 	};
+	/** Applies a destination's explicit filters; `sync` then keeps them for that Workspace. */
+	restore = (workspaceKey: string, filters: SavedViewFilterValues) => {
+		const differs = () => {
+			const current = this.snapshot();
+			return (Object.keys(filters) as (keyof SavedViewFilterValues)[]).some(
+				(key) => filters[key] !== current[key]
+			);
+		};
+		if (workspaceKey === this.workspaceKey && !differs()) return;
+		this.workspaceKey = workspaceKey;
+		this.reset();
+		if (differs()) this.applyView(filters);
+	};
 
 	private matchesFilters = (item: TodoItem) => {
 		if (

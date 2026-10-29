@@ -387,3 +387,24 @@ it("reads published Workspace preferences without a copied filter preference sna
 	expect(filter.sortOrder).toBe("due");
 	expect(filter.showDeferred).toBe(true);
 });
+
+it("restores destination filters through later reloads and resets them for a fresh destination", () => {
+	const { filter, publish } = filterFixture();
+	const restored = {
+		status: "open",
+		search: "",
+		project: "Missing",
+		context: null,
+		priority: null,
+		due: null,
+	} as const;
+	filter.restore("work", restored);
+	publish("work", [open, completed]);
+	expect(filter.snapshot()).toEqual(restored);
+	filter.restore("work", restored);
+	filter.toggleContext("Home");
+	expect(filter.selectedContext).toBe("Home");
+	filter.restore("personal", { ...restored, status: "all", project: null });
+	publish("personal", [open]);
+	expect(filter.snapshot()).toEqual({ ...restored, status: "all", project: null });
+});
