@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
 
 export async function kanbanRoutingWorkflow(
 	application,
@@ -171,6 +172,45 @@ export async function kanbanRoutingWorkflow(
 	const sidebarNav = page.locator('[data-slot="sidebar"]');
 	const alphaCard = page.getByRole("button", { name: "Open Alpha item", exact: true });
 	const historyLength = () => page.evaluate(() => history.length);
+	const { session } = await page.evaluate(() => window.desktop.readSession({}));
+	const todoPath = session.catalogue.workspaces.find(
+		(workspace) => workspace.id === routeIds["Route A"]
+	).todo_path;
+	const original = await readFile(todoPath, "utf8");
+	await application.evaluate(({ ipcMain }) => {
+		const channel = "tuxedo:read-workspace";
+		let entered;
+		const state = (globalThis.heldFilterRead = {
+			original: ipcMain._invokeHandlers.get(channel),
+			entered: new Promise((resolve) => (entered = resolve)),
+		});
+		ipcMain.removeHandler(channel);
+		ipcMain.handle(channel, async (event, input) => {
+			entered();
+			await new Promise((resolve) => (state.release = resolve));
+			return state.original(event, input);
+		});
+	});
+	try {
+		await writeFile(todoPath, `${original}External item\n`);
+		await application.evaluate(() => globalThis.heldFilterRead.entered);
+		await sidebarNav.getByRole("button", { name: /^Completed/ }).click();
+	} finally {
+		await application.evaluate(({ ipcMain }) => {
+			const channel = "tuxedo:read-workspace";
+			ipcMain.removeHandler(channel);
+			ipcMain.handle(channel, globalThis.heldFilterRead.original);
+			globalThis.heldFilterRead.release();
+			delete globalThis.heldFilterRead;
+		});
+	}
+	await page.waitForURL(`${kanbanUrl("Route A")}?status=completed`);
+	await sidebarNav.getByRole("button", { name: /^All/ }).click();
+	await page.waitForURL(kanbanUrl("Route A"));
+	const externalCard = page.getByRole("button", { name: "Open External item", exact: true });
+	await externalCard.waitFor();
+	await writeFile(todoPath, original);
+	await externalCard.waitFor({ state: "detached" });
 	const entries = await historyLength();
 	await sidebarNav.getByRole("button", { name: /^Completed/ }).click();
 	await page.waitForURL(`${kanbanUrl("Route A")}?status=completed`);

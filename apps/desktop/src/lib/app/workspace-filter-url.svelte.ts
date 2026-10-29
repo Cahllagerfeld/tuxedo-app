@@ -1,7 +1,7 @@
-import { untrack } from "svelte";
 import { afterNavigate, goto } from "$app/navigation";
-import { page, navigating } from "$app/state";
+import { page } from "$app/state";
 import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
+import { serializeWithInvalidations } from "#lib/modules/workspace/state/invalidate-displayed-data.js";
 import { workspaceFilterQuery, workspaceFilters } from "./workspace-paths.js";
 
 /** Keeps explicit filter selections in the Workspace destination URL. Call during component initialisation. */
@@ -16,14 +16,17 @@ export function syncWorkspaceFilterUrl(filter: TodoFilterState) {
 	afterNavigate((event) => {
 		if (!(event.shallow && event.type === "goto")) restore();
 	});
-	// History is an external system: filter edits replace the current entry.
-	$effect(() => {
-		const query = workspaceFilterQuery(filter.snapshot());
-		untrack(() => {
+	// History is an external system: filter edits replace the current entry with the latest query,
+	// once queued invalidations and committed destinations (which restore their own URL) settle.
+	const replaceUrl = () =>
+		serializeWithInvalidations(async () => {
 			const url = currentUrl();
-			// A committed destination restores its own URL filters.
-			if (!page.params.id || (navigating.to && !navigating.shallow) || url.search === query) return;
-			void goto(url.pathname + query, { shallow: true, replace: true, state: page.state });
+			const query = workspaceFilterQuery(filter.snapshot());
+			if (!page.params.id || url.search === query) return;
+			await goto(url.pathname + query, { shallow: true, replace: true, state: page.state });
 		});
+	$effect(() => {
+		workspaceFilterQuery(filter.snapshot());
+		void replaceUrl();
 	});
 }
