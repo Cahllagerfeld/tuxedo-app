@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { onDestroy, tick } from "svelte";
-	import { boardAssignment, type BoardDestination } from "@tuxedo/contracts/board";
+	import {
+		boardAssignment,
+		boardPlacement,
+		sortBoardColumn,
+		type BoardDestination,
+	} from "@tuxedo/contracts/board";
 	import { SOURCES, TRIGGERS, type DndEvent } from "svelte-dnd-action";
 	import type { TodoItem } from "../domain/todo";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
@@ -14,6 +19,7 @@
 		onOpen,
 		onToggleComplete,
 		onMove,
+		onReorderColumn,
 	}: {
 		items: readonly TodoItem[];
 		today: string;
@@ -22,6 +28,12 @@
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
 		onMove?: (todo: TodoItem, column: BoardDestination, trigger?: HTMLElement | null) => void;
+		onReorderColumn?: (
+			todo: TodoItem,
+			column: BoardDestination,
+			items: readonly TodoItem[],
+			trigger?: HTMLElement | null
+		) => void;
 	} = $props();
 
 	const columns = $derived.by(() => {
@@ -31,13 +43,17 @@
 			"in-progress": [],
 			done: [],
 		};
-		for (const todo of items)
-			grouped[todo.completed ? "done" : boardAssignment(todo.metadata.board).column].push(todo);
+		for (const todo of items) grouped[boardPlacement(todo).column].push(todo);
+		// Board order is independent of List sorting.
 		return [
-			{ name: "Unassigned", id: "unassigned" as const, items: grouped.unassigned },
-			{ name: "To do", id: "to-do" as const, items: grouped["to-do"] },
-			{ name: "In progress", id: "in-progress" as const, items: grouped["in-progress"] },
-			{ name: "Done", id: "done" as const, items: grouped.done },
+			{ name: "Unassigned", id: "unassigned" as const, items: sortBoardColumn(grouped.unassigned) },
+			{ name: "To do", id: "to-do" as const, items: sortBoardColumn(grouped["to-do"]) },
+			{
+				name: "In progress",
+				id: "in-progress" as const,
+				items: sortBoardColumn(grouped["in-progress"]),
+			},
+			{ name: "Done", id: "done" as const, items: sortBoardColumn(grouped.done) },
 		];
 	});
 	let board = $state<HTMLElement | null>(null);
@@ -79,20 +95,20 @@
 			boardItem
 		) {
 			keyboardDropRequested = true;
-		} else if (drag.source === SOURCES.KEYBOARD && boardItem && event.key.startsWith("Arrow")) {
-			// Board ordering is independent of List ordering and is added separately.
-			event.preventDefault();
-			event.stopPropagation();
 		}
 	}
 	function updatePreview(column: BoardDestination, next: BoardDragItem[]) {
 		if (!preview || !drag) return;
-		const { order } = drag;
+		const { order, from } = drag;
 		preview = {
 			...preview,
-			[column]: [...next].sort(
-				(a, b) => order.get(a.todo.line_number)! - order.get(b.todo.line_number)!
-			),
+			// Cards reorder within their own column; another column only receives the card at its end.
+			[column]:
+				column === from
+					? next
+					: [...next].sort(
+							(a, b) => order.get(a.todo.line_number)! - order.get(b.todo.line_number)!
+						),
 		};
 	}
 	function finish(column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) {
@@ -109,16 +125,33 @@
 			!disabled &&
 			items === original &&
 			(source !== SOURCES.KEYBOARD || keyboardDropRequested);
+		const current = columns.find((value) => value.id === column)!;
+		const ordered = from === column ? arranged(preview?.[column] ?? []) : [];
+		const reordered =
+			ordered.length === current.items.length &&
+			ordered.some((item, index) => item !== current.items[index]);
 		const changed =
 			from !== column || (column !== "done" && boardAssignment(todo.metadata.board).invalid);
 		preview = null;
 		drag = null;
-		announcement =
-			valid && changed
-				? `Moving ${todo.description} to ${columns.find((value) => value.id === column)?.name}.`
-				: "Move cancelled.";
-		if (valid && changed) onMove?.(todo, column, trigger);
-		else if (source === SOURCES.KEYBOARD) void restoreDragFocus(todo.line_number);
+		if (valid && from === column && reordered && onReorderColumn) {
+			const position = ordered.indexOf(todo) + 1;
+			announcement = `Moving ${todo.description} to position ${position} of ${ordered.length} in ${current.name}.`;
+			onReorderColumn(todo, column, ordered, trigger);
+		} else if (valid && changed) {
+			announcement = `Moving ${todo.description} to ${current.name}.`;
+			onMove?.(todo, column, trigger);
+		} else {
+			announcement = "Move cancelled.";
+			if (source === SOURCES.KEYBOARD) void restoreDragFocus(todo.line_number);
+		}
+	}
+	// The shadow item stands in for the dragged card at its current drop position.
+	function arranged(next: readonly BoardDragItem[]) {
+		const seen = new Set<number>();
+		return next.flatMap(({ todo }) =>
+			seen.has(todo.line_number) ? [] : (seen.add(todo.line_number), [todo])
+		);
 	}
 	async function restoreDragFocus(line: number) {
 		await tick();
@@ -141,7 +174,9 @@
 			drag = {
 				todo,
 				items,
-				order: new Map(items.map((item, index) => [item.line_number, index])),
+				order: new Map(
+					columns.flatMap((group) => group.items).map((item, index) => [item.line_number, index])
+				),
 				from: column,
 				source: info.source,
 				height: element?.getBoundingClientRect().height ?? 88,
@@ -160,7 +195,7 @@
 				[column]: preview[column].map((item) => mounted.get(item.todo.line_number) ?? item),
 			};
 			if (info.source === SOURCES.KEYBOARD)
-				announcement = `Picked up ${todo.description}. Tab to another column, then press Space to drop. Press Escape to cancel.`;
+				announcement = `Picked up ${todo.description}. Use the arrow keys to reorder it, or Tab to another column, then press Space to drop. Press Escape to cancel.`;
 		} else if (info.trigger === TRIGGERS.DRAG_STOPPED) {
 			finish(column, event);
 		} else updatePreview(column, next);
@@ -242,8 +277,8 @@
 <svelte:window onkeydowncapture={handleDragKeydown} />
 
 <p id={instructionsId} class="sr-only">
-	Press Space to pick up this card. Tab to another column and press Space to drop, or Escape to
-	cancel.
+	Press Space to pick up this card. Use the arrow keys to reorder it within its column, or Tab to
+	another column, then press Space to drop. Press Escape to cancel.
 </p>
 <p class="sr-only" role="status">{announcement}</p>
 
@@ -283,7 +318,8 @@
 			aria-hidden="true"
 			class="pointer-events-none absolute right-4 bottom-4 left-4 z-20 mx-auto w-fit rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
 		>
-			Moving {drag.todo.description} · Tab to a column · Space to drop · Escape to cancel
+			Moving {drag.todo.description} · Arrows to reorder · Tab to a column · Space to drop · Escape to
+			cancel
 		</div>
 	{/if}
 </div>

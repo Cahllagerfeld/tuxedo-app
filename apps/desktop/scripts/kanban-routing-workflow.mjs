@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
 
 export async function kanbanRoutingWorkflow(
 	application,
@@ -49,6 +50,8 @@ export async function kanbanRoutingWorkflow(
 	await page.mouse.up();
 	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
 	await page.getByRole("button", { name: "Undo move", exact: true }).click();
+	await expectBoard("Route A", "Alpha item");
+	await pointerReorderWorkflow(page);
 	await expectBoard("Route A", "Alpha item");
 	const rail = page.getByRole("navigation", { name: "Workspace navigation" });
 	const inset = page.locator('[data-slot="app-inset"]');
@@ -234,4 +237,45 @@ export async function kanbanRoutingWorkflow(
 	console.log(
 		"Kanban direct navigation, reload, history, Workspace switching, Undo and recovery passed."
 	);
+}
+
+// Drags a card below another in the same column through real pointer events and IPC.
+async function pointerReorderWorkflow(page) {
+	const session = await page.evaluate(() => window.desktop.readSession({}));
+	const todoPath = session.session.todo_file.path;
+	await writeFile(todoPath, "Alpha item\nGamma item\n");
+	const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
+	const cards = unassigned.getByRole("list", { name: "Unassigned cards" }).getByRole("listitem");
+	await unassigned.getByRole("listitem", { name: "Gamma item", exact: true }).waitFor();
+	const source = await unassigned
+		.getByRole("listitem", { name: "Alpha item", exact: true })
+		.locator("article")
+		.boundingBox();
+	const target = await unassigned
+		.getByRole("listitem", { name: "Gamma item", exact: true })
+		.boundingBox();
+	assert.ok(source && target);
+	await page.mouse.move(source.x + 60, source.y + 20);
+	await page.mouse.down();
+	await page.mouse.move(source.x + 70, source.y + 30, { steps: 3 });
+	await page.locator("#dnd-action-dragged-el article").waitFor();
+	await page.mouse.move(target.x + 60, target.y + target.height - 4, { steps: 12 });
+	await page.mouse.up();
+	await page.getByRole("button", { name: "Undo reordering", exact: true }).waitFor();
+	assert.deepEqual(await cards.evaluateAll((items) => items.map((item) => item.ariaLabel)), [
+		"Gamma item",
+		"Alpha item",
+	]);
+	assert.equal(
+		await readFile(todoPath, "utf8"),
+		"Alpha item board:unassigned/1\nGamma item board:unassigned/0\n",
+		"Board order is saved without changing line order"
+	);
+	await page.getByRole("button", { name: "Undo reordering", exact: true }).click();
+	await unassigned.locator('li[aria-label="Alpha item"][aria-posinset="1"]').waitFor();
+	assert.equal(await readFile(todoPath, "utf8"), "Alpha item\nGamma item\n");
+	await writeFile(todoPath, "Alpha item\n");
+	await unassigned
+		.getByRole("listitem", { name: "Gamma item", exact: true })
+		.waitFor({ state: "detached" });
 }

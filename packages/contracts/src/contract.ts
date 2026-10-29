@@ -231,6 +231,14 @@ const BulkTodoMutationRequest = Schema.Struct({
 export const bulkSetTodoCompletionRequestSchema = effectValidator(
 	Schema.Struct({ ...BulkTodoMutationRequest.fields, completed: Schema.Boolean })
 );
+/** Displayed cards of one board column in their new order; hidden cards keep their slots. */
+export const reorderTodosOnBoardRequestSchema = effectValidator(
+	Schema.Struct({ ...BulkTodoMutationRequest.fields, column: BoardDestination }).check(
+		Schema.makeFilter((input) =>
+			input.targets.length < 2 ? "Reordering needs at least two Todo items" : undefined
+		)
+	)
+);
 export const bulkDeleteTodosRequestSchema = effectValidator(
 	BulkTodoMutationRequest.check(
 		Schema.makeFilter((input) =>
@@ -411,6 +419,11 @@ export const desktopContract = {
 		request: moveTodoOnBoardRequestSchema,
 		response: todoOutcomeSchema,
 	},
+	reorderTodosOnBoard: {
+		channel: "tuxedo:reorder-todos-on-board",
+		request: reorderTodosOnBoardRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	deleteWorkspace: {
 		channel: "tuxedo:delete-workspace",
 		request: deleteWorkspaceRequestSchema,
@@ -515,6 +528,7 @@ export function createDesktopClient(
 		editTodo: (request) => call("editTodo", request),
 		reorderTodo: (request) => call("reorderTodo", request),
 		moveTodoOnBoard: (request) => call("moveTodoOnBoard", request),
+		reorderTodosOnBoard: (request) => call("reorderTodosOnBoard", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		bulkSetTodoCompletion: (request) => call("bulkSetTodoCompletion", request),

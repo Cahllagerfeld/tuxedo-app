@@ -63,6 +63,7 @@ function adapter(completion: DesktopAPI["setTodoCompletion"]): DesktopAPI {
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
+		reorderTodosOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		setWorkspaceSortOrder: async () => ({ status: "rejected", message: "unused" }),
 		setWorkspaceShowDeferred: async () => ({ status: "rejected", message: "unused" }),

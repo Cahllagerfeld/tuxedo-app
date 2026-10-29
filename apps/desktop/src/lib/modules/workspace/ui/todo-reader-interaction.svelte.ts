@@ -167,6 +167,18 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 				todo.line_number,
 				inputs.list?.captureFocus(todo, false, trigger)
 			),
+		reorderOnBoard: (
+			todo: TodoItem,
+			column: BoardDestination,
+			items: readonly TodoItem[],
+			trigger?: HTMLElement | null
+		) =>
+			change(
+				todo,
+				() => inputs.workspace.reorderTodosOnBoard(column, items, todo),
+				todo.line_number,
+				inputs.list?.captureFocus(todo, false, trigger)
+			),
 		deleteTodo: (todo: TodoItem, trigger?: HTMLButtonElement | null) =>
 			change(
 				todo,

@@ -47,7 +47,9 @@ describe("TodoBoard", () => {
 		const card = page.getByRole("listitem", { name: "Plan" });
 		(card.element() as HTMLElement).focus();
 		await userEvent.keyboard("{Space}{Tab}");
-		await expect.element(page.getByText(/Moving Plan · Tab to a column/)).toBeVisible();
+		await expect
+			.element(page.getByText(/Moving Plan · Arrows to reorder · Tab to a column/))
+			.toBeVisible();
 		expect(onMove).not.toHaveBeenCalled();
 		await userEvent.keyboard("{Space}");
 		await expect.poll(() => onMove.mock.calls.length).toBe(1);
@@ -339,9 +341,50 @@ describe("TodoBoard", () => {
 		await expect.element(page.getByText("Move cancelled.")).toBeInTheDocument();
 	});
 
-	it("does not suggest that a same-column keyboard drag reorders cards", async () => {
+	it("orders cards by board position instead of list order and reorders them by keyboard", async () => {
+		const positioned = (line_number: number, description: string, board?: string): TodoItem => ({
+			...open,
+			line_number,
+			description,
+			raw: description,
+			metadata: board ? { board } : {},
+		});
+		const first = positioned(1, "First", "to-do/1");
+		const second = positioned(2, "Second");
+		const third = positioned(3, "Third", "to-do/0");
+		const onMove = vi.fn();
+		const onReorderColumn = vi.fn();
+		render(TodoBoard, {
+			// The List's sort order must not affect the board.
+			items: [second, first, third],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+			onReorderColumn,
+		});
+		const list = page.getByRole("list", { name: "To do cards" });
+		expect(
+			list
+				.getByRole("listitem")
+				.elements()
+				.map((element) => element.getAttribute("aria-label"))
+		).toEqual(["Third", "First"]);
+		(page.getByRole("listitem", { name: "Third" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{ArrowDown}{Space}");
+		await expect.poll(() => onReorderColumn.mock.calls.length).toBe(1);
+		expect(onReorderColumn.mock.calls[0].slice(0, 3)).toEqual([third, "to-do", [first, third]]);
+		expect(onMove).not.toHaveBeenCalled();
+		await expect
+			.element(page.getByRole("status"))
+			.toHaveTextContent("Moving Third to position 2 of 2 in To do.");
+	});
+
+	it("does not save a same-column keyboard drag that keeps the order", async () => {
 		const other = { ...open, line_number: 2, description: "Second", raw: "Second" };
 		const onMove = vi.fn();
+		const onReorderColumn = vi.fn();
 		render(TodoBoard, {
 			items: [open, other],
 			today: "2026-10-28",
@@ -349,17 +392,13 @@ describe("TodoBoard", () => {
 			onOpen: vi.fn(),
 			onToggleComplete: vi.fn(),
 			onMove,
+			onReorderColumn,
 		});
 		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
-		await userEvent.keyboard("{Space}{ArrowDown}{Space}");
+		await userEvent.keyboard("{Space}{ArrowDown}{ArrowUp}{Space}");
+		await expect.element(page.getByRole("status")).toHaveTextContent("Move cancelled.");
 		expect(onMove).not.toHaveBeenCalled();
-		const list = page.getByRole("list", { name: "Unassigned cards" });
-		expect(
-			list
-				.getByRole("listitem")
-				.elements()
-				.map((element) => element.getAttribute("aria-label"))
-		).toEqual(["Plan", "Second"]);
+		expect(onReorderColumn).not.toHaveBeenCalled();
 	});
 
 	it("moves a card from a virtualized column without losing other cards", async () => {

@@ -2,6 +2,7 @@ import { CalendarDate, parseDate } from "@internationalized/date";
 import { todoDateSchema } from "@tuxedo/contracts";
 import { todoRepeatRuleSchema } from "@tuxedo/contracts/todo-creation";
 import type { TodoItem } from "@tuxedo/contracts/todo";
+import { boardDoneKey } from "@tuxedo/contracts/board";
 import { createTodoLine } from "./create-todo";
 import { parseTodoFile } from "./todo-file";
 import { replaceTodoLines } from "./replace-todo-lines";
@@ -100,6 +101,7 @@ export function planRecurringCompletion(
 		(token) =>
 			!token.startsWith("due:") &&
 			!token.startsWith("board:") &&
+			!token.startsWith(`${boardDoneKey}:`) &&
 			!token.startsWith(`${generationMarker}:`) &&
 			!(priority && token === `pri:${priority}`) &&
 			!(show && !showFrom && absoluteThreshold(token))

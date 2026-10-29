@@ -139,6 +139,19 @@
 		else if (result.status === "rejected")
 			toast.error("Could not move Todo item", { description: result.message });
 	}
+	async function reorderTodosOnBoard(
+		todo: TodoItem,
+		column: BoardDestination,
+		items: readonly TodoItem[],
+		trigger?: HTMLElement | null
+	) {
+		const result = await reader.reorderOnBoard(todo, column, items, trigger);
+		if (result.status === "applied" && result.notice) toast.info(result.notice);
+		if (result.status === "conflict")
+			toast.error("Todo file changed", { description: result.message });
+		else if (result.status === "rejected")
+			toast.error("Could not reorder Todo items", { description: result.message });
+	}
 	setWorkspaceTodoReader({
 		get workspace() {
 			return workspace;
@@ -176,6 +189,7 @@
 		deleteTodoItem,
 		reorderTodoItems,
 		moveTodoOnBoard,
+		reorderTodosOnBoard,
 	});
 </script>
 

@@ -1,4 +1,6 @@
 import type { TodoItem } from "@tuxedo/contracts/todo";
+import { boardDoneKey } from "@tuxedo/contracts/board";
+import { removeMetadataToken } from "./board-order";
 
 export function setTodoCompletionLine(item: TodoItem, completed: boolean, date: Date): string {
 	if (item.completed === completed)
@@ -25,6 +27,8 @@ export function setTodoCompletionLine(item: TodoItem, completed: boolean, date: 
 	} else {
 		let rest = item.raw.slice(2);
 		if (item.completion_date) rest = rest.slice(11);
+		// A Done position is meaningless once open; the Board assignment keeps the open position.
+		rest = removeMetadataToken(rest, boardDoneKey);
 		if (!item.priority && /^[A-Z]$/.test(item.metadata.pri ?? "")) {
 			if (priorities.some((priority) => priority !== item.metadata.pri))
 				throw Error(

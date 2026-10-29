@@ -73,6 +73,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
+		reorderTodosOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	});
@@ -354,6 +355,102 @@ test("sidebar filters narrow Kanban cards using the same Workspace data", async 
 		.element(page.getByRole("button", { name: "Open Read a book" }))
 		.not.toBeInTheDocument();
 });
+function boardSession(items: TodoFile["items"]) {
+	if (initial.session.status !== "ready") throw Error("Expected Ready");
+	return {
+		...initial,
+		session: { ...initial.session, todo_file: { ...initial.session.todo_file, items } },
+	};
+}
+const hiddenPersonal = {
+	...todo,
+	line_number: 2,
+	raw: "Read a book +Home",
+	description: "Read a book",
+	projects: ["Home"],
+	edit: { description: "Read a book", metadata: [] },
+};
+const notes = {
+	...todo,
+	line_number: 3,
+	raw: "Write notes +Work",
+	description: "Write notes",
+	edit: { description: "Write notes", metadata: [] },
+};
+const cardOrder = () =>
+	page
+		.getByRole("list", { name: "Unassigned cards" })
+		.getByRole("listitem")
+		.elements()
+		.map((element) => element.getAttribute("aria-label"));
+
+test("filtered Kanban reordering sends only displayed cards and offers Undo", async () => {
+	await page.viewport(1400, 900);
+	const response = Promise.withResolvers<Awaited<ReturnType<DesktopAPI["reorderTodosOnBoard"]>>>();
+	const reorderTodosOnBoard = vi.fn<DesktopAPI["reorderTodosOnBoard"]>(() => response.promise);
+	render(Harness, {
+		viewMode: "kanban",
+		shell: true,
+		desktop: adapter({
+			readSession: async () => boardSession([todo, hiddenPersonal, notes]),
+			reorderTodosOnBoard,
+		}),
+	});
+	await page.getByRole("button", { name: "+Work", exact: true }).click();
+	await expect.poll(cardOrder).toEqual(["Plan release", "Write notes"]);
+	(page.getByRole("listitem", { name: "Write notes" }).element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowUp}{Space}");
+	await expect.poll(() => reorderTodosOnBoard.mock.calls.length).toBe(1);
+	expect(reorderTodosOnBoard).toHaveBeenCalledWith({
+		scope,
+		revision: 1,
+		workspaceId,
+		column: "unassigned",
+		targets: [
+			{ lineNumber: 3, expectedRaw: notes.raw },
+			{ lineNumber: 1, expectedRaw: todo.raw },
+		],
+	});
+	// The confirmed order stays visible until the write is confirmed.
+	await expect.poll(cardOrder).toEqual(["Plan release", "Write notes"]);
+	const positioned = (item: typeof todo, position: number) => ({
+		...item,
+		raw: `${item.raw} board:unassigned/${position}`,
+		metadata: { board: `unassigned/${position}` },
+		edit: { ...item.edit, metadata: [`board:unassigned/${position}`] },
+	});
+	response.resolve({
+		status: "applied",
+		confirmed: {
+			...confirmedTodo([positioned(todo, 2), positioned(hiddenPersonal, 1), positioned(notes, 0)]),
+			undoLabel: "Undo reordering",
+		},
+	});
+	await expect.poll(cardOrder).toEqual(["Write notes", "Plan release"]);
+	await expect.element(page.getByRole("button", { name: "Undo reordering" })).toBeEnabled();
+});
+
+test("a failed Kanban reordering keeps the confirmed order and reports the error", async () => {
+	await page.viewport(1400, 900);
+	const reorderTodosOnBoard = vi.fn<DesktopAPI["reorderTodosOnBoard"]>(async () => ({
+		status: "rejected",
+		message: "Write failed",
+	}));
+	render(Harness, {
+		viewMode: "kanban",
+		desktop: adapter({
+			readSession: async () => boardSession([todo, notes]),
+			reorderTodosOnBoard,
+		}),
+	});
+	await expect.poll(cardOrder).toEqual(["Plan release", "Write notes"]);
+	(page.getByRole("listitem", { name: "Plan release" }).element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{ArrowDown}{Space}");
+	await expect.element(page.getByText("Could not reorder Todo items")).toBeVisible();
+	expect(cardOrder()).toEqual(["Plan release", "Write notes"]);
+	expect(reorderTodosOnBoard).toHaveBeenCalledOnce();
+});
+
 test("Due-date sorting changes only the view and restores reordering in File order", async () => {
 	if (initial.session.status !== "ready") throw Error("Expected Ready");
 	const ready = initial.session;
