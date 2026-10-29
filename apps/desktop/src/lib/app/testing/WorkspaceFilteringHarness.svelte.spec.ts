@@ -220,6 +220,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
 		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
+		reorderTodosOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	};

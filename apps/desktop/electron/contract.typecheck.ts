@@ -70,6 +70,16 @@ registerDesktopOperation(ipc, getWindow, () => true, "moveTodoOnBoard", api.move
 // @ts-expect-error Board moves require a scoped item target and a supported destination.
 api.moveTodoOnBoard({ column: "archived" });
 
+registerDesktopOperation(
+	ipc,
+	getWindow,
+	() => true,
+	"reorderTodosOnBoard",
+	api.reorderTodosOnBoard
+);
+// @ts-expect-error Board reordering requires a scoped session and its displayed targets.
+api.reorderTodosOnBoard({ column: "done" });
+
 registerDesktopOperation(ipc, getWindow, () => true, "editTodo", api.editTodo);
 // @ts-expect-error Editing needs the original physical line and raw content.
 api.editTodo({ description: "Updated", projects: [], contexts: [] });

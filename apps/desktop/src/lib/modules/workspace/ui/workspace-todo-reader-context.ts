@@ -27,6 +27,12 @@ type WorkspaceTodoReaderContext = {
 		column: BoardDestination,
 		trigger?: HTMLElement | null
 	) => Promise<void>;
+	reorderTodosOnBoard: (
+		todo: TodoItem,
+		column: BoardDestination,
+		items: readonly TodoItem[],
+		trigger?: HTMLElement | null
+	) => Promise<void>;
 };
 
 export const [getWorkspaceTodoReader, setWorkspaceTodoReader] =

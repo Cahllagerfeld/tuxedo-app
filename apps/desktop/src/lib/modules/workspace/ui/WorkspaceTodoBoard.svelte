@@ -15,5 +15,6 @@
 		onOpen={context.reader.select}
 		onToggleComplete={context.toggleTodoCompletion}
 		onMove={context.moveTodoOnBoard}
+		onReorderColumn={context.reorderTodosOnBoard}
 	/>
 </div>

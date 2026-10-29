@@ -85,6 +85,7 @@ export function loaderDesktop(api: Omit<DesktopAPI, "readWorkspace">): DesktopAP
 		deleteTodo: (request) => remember(api.deleteTodo(request)),
 		reorderTodo: (request) => remember(api.reorderTodo(request)),
 		moveTodoOnBoard: (request) => remember(api.moveTodoOnBoard(request)),
+		reorderTodosOnBoard: (request) => remember(api.reorderTodosOnBoard(request)),
 		createTodo: (request) => remember(api.createTodo(request)),
 	};
 	return desktop;

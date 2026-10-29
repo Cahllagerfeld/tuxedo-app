@@ -8,6 +8,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as PlatformError from "effect/PlatformError";
 import { WorkspaceSession, workspaceSessionLayer, Identity } from "@tuxedo/backend";
 import type { DesktopRequest } from "@tuxedo/contracts";
+import { boardPlacement, sortBoardColumn } from "@tuxedo/contracts/board";
 
 const cases = [
 	{
@@ -39,6 +40,12 @@ const cases = [
 		operation: "reorder",
 		initial: "First\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
 		expected: "Last\r\n\n2026-13-01 Invalid\nx Hidden\r\nFirst",
+	},
+	{
+		operation: "board-reorder",
+		initial: "First\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
+		expected:
+			"First board:unassigned/1\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast board:unassigned/0",
 	},
 ] as const;
 type MutationCase = (typeof cases)[number];
@@ -115,6 +122,17 @@ function mutation(
 					workspaceId: target.workspaceId,
 					lineNumbers: [lastLine, 1],
 				});
+			case "board-reorder":
+				return session.reorderTodosOnBoard({
+					scope: target.scope,
+					revision: target.revision,
+					workspaceId: target.workspaceId,
+					column: "unassigned",
+					targets: [
+						{ lineNumber: lastLine, expectedRaw: "Last" },
+						{ lineNumber: target.lineNumber, expectedRaw: target.expectedRaw },
+					],
+				});
 		}
 	});
 }
@@ -138,6 +156,109 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			expect(yield* fs.readFileString(todoPath)).toBe(
 				"Externally changed board:to-do\nx Finished\n"
 			);
+		})
+	);
+	it.effect(
+		"board reordering moves displayed cards among their slots and Undo restores the file",
+		() =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem;
+				// Hidden stays filtered out; D sits after the last changed slot without a position.
+				const initial =
+					"A board:to-do/0 custom:keep\r\nHidden board:to-do/1\n\nB board:to-do\nC board:to-do\nD board:to-do\nOther board:in-progress/0\n";
+				const { todoPath, session, target } = yield* setup(initial, fs);
+				const reordered = yield* session.reorderTodosOnBoard({
+					scope: target.scope,
+					revision: target.revision,
+					workspaceId: target.workspaceId,
+					column: "to-do",
+					targets: [
+						{ lineNumber: 5, expectedRaw: "C board:to-do" },
+						{ lineNumber: 1, expectedRaw: "A board:to-do/0 custom:keep" },
+						{ lineNumber: 4, expectedRaw: "B board:to-do" },
+						{ lineNumber: 6, expectedRaw: "D board:to-do" },
+					],
+				});
+				if (reordered.status !== "applied") throw Error("Reordering failed");
+				expect(reordered.confirmed.undoLabel).toBe("Undo reordering");
+				expect(yield* fs.readFileString(todoPath)).toBe(
+					"A board:to-do/2 custom:keep\r\nHidden board:to-do/1\n\nB board:to-do/3\nC board:to-do/0\nD board:to-do\nOther board:in-progress/0\n"
+				);
+				expect(
+					sortBoardColumn(
+						reordered.confirmed.todo_file.items.filter(
+							(item) => boardPlacement(item).column === "to-do"
+						)
+					).map((item) => item.description)
+				).toEqual(["C", "Hidden", "A", "B", "D"]);
+				const undone = yield* session.undoTodo({
+					scope: reordered.confirmed.scope,
+					revision: reordered.confirmed.revision,
+					workspaceId: target.workspaceId,
+				});
+				expect(undone.status).toBe("applied");
+				expect(yield* fs.readFileString(todoPath)).toBe(initial);
+			})
+	);
+	it.effect("Done reordering keeps the open position that uncompletion restores", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const initial =
+				"x 2030-01-01 First board:in-progress/1\nx 2030-01-01 Second board:to-do\nOpen board:to-do/0\n";
+			const { todoPath, session, target } = yield* setup(initial, fs);
+			const reordered = yield* session.reorderTodosOnBoard({
+				scope: target.scope,
+				revision: target.revision,
+				workspaceId: target.workspaceId,
+				column: "done",
+				targets: [
+					{ lineNumber: 2, expectedRaw: "x 2030-01-01 Second board:to-do" },
+					{ lineNumber: 1, expectedRaw: "x 2030-01-01 First board:in-progress/1" },
+				],
+			});
+			if (reordered.status !== "applied") throw Error("Reordering failed");
+			expect(yield* fs.readFileString(todoPath)).toBe(
+				"x 2030-01-01 First board:in-progress/1 board-done:1\nx 2030-01-01 Second board:to-do board-done:0\nOpen board:to-do/0\n"
+			);
+			const reopened = yield* session.setTodoCompletion({
+				...target,
+				revision: reordered.confirmed.revision,
+				expectedRaw: "x 2030-01-01 First board:in-progress/1 board-done:1",
+				completed: false,
+			});
+			expect(reopened.status).toBe("applied");
+			expect(yield* fs.readFileString(todoPath)).toBe(
+				"First board:in-progress/1\nx 2030-01-01 Second board:to-do board-done:0\nOpen board:to-do/0\n"
+			);
+		})
+	);
+	it.effect("board reordering rejects cards outside the column and reports stale targets", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const initial = "First board:to-do\nSecond board:to-do\nx 2030-01-01 Done board:to-do\n";
+			const { todoPath, session, target } = yield* setup(initial, fs);
+			const request = {
+				scope: target.scope,
+				revision: target.revision,
+				workspaceId: target.workspaceId,
+				column: "to-do" as const,
+				targets: [
+					{ lineNumber: 2, expectedRaw: "Second board:to-do" },
+					{ lineNumber: 1, expectedRaw: "First board:to-do" },
+				],
+			};
+			expect(
+				yield* session.reorderTodosOnBoard({
+					...request,
+					targets: [
+						...request.targets,
+						{ lineNumber: 3, expectedRaw: "x 2030-01-01 Done board:to-do" },
+					],
+				})
+			).toMatchObject({ status: "rejected" });
+			yield* fs.writeFileString(todoPath, "First board:to-do\nChanged board:to-do\n");
+			expect(yield* session.reorderTodosOnBoard(request)).toMatchObject({ status: "conflict" });
+			expect(yield* fs.readFileString(todoPath)).toBe("First board:to-do\nChanged board:to-do\n");
 		})
 	);
 	it.effect(

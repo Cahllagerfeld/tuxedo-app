@@ -12,11 +12,13 @@ import { parseTodoFile } from "./todo-file";
 import { attempt, readContents, OperationFailure, type OperationError } from "./operation";
 import type { SessionState, UndoChange } from "./session";
 import { bulkCompleteTodos } from "./bulk-complete-todos";
+import { reorderBoardColumn, setMetadataToken } from "./board-order";
 import {
 	createTodoRequestSchema,
 	editTodoRequestSchema,
 	reorderTodoRequestSchema,
 	moveTodoOnBoardRequestSchema,
+	reorderTodosOnBoardRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	bulkSetTodoCompletionRequestSchema,
@@ -141,7 +143,8 @@ export function createTodoOperations(state: SessionState) {
 		input:
 			| Pick<DesktopRequest<"createTodo">, "scope" | "revision" | "workspaceId">
 			| DesktopRequest<"bulkSetTodoCompletion">
-			| DesktopRequest<"bulkDeleteTodos">,
+			| DesktopRequest<"bulkDeleteTodos">
+			| DesktopRequest<"reorderTodosOnBoard">,
 		label: UndoLabel,
 		transform: (
 			contents: string,
@@ -215,22 +218,24 @@ export function createTodoOperations(state: SessionState) {
 								);
 					// Reopening keeps the item's content and only replaces its board assignment.
 					const open = item.completed ? setTodoCompletionLine(item, false, today) : item.raw;
-					let replaced = false;
-					let raw = open.replace(
-						/(^|\p{White_Space})board:[^\p{White_Space}]*/gu,
-						(_token, whitespace: string) => {
-							if (replaced) return whitespace;
-							replaced = true;
-							return `${whitespace}board:${column}`;
-						}
-					);
-					if (!replaced)
-						raw = raw.replace(
-							/(\p{White_Space}*)$/u,
-							(_suffix, whitespace: string) => ` board:${column}${whitespace}`
-						);
+					const raw = setMetadataToken(open, "board", column);
 					return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
 				});
+			}),
+		reorderTodosOnBoard: (request: DesktopRequest<"reorderTodosOnBoard">) =>
+			Effect.gen(function* () {
+				const parsed = reorderTodosOnBoardRequestSchema.safeParse(request);
+				if (!parsed.success)
+					return { status: "rejected" as const, message: "Invalid board reordering." };
+				const input = parsed.data;
+				return yield* mutateTodoFile(input, "Undo reordering", (contents, todoFile) =>
+					reorderBoardColumn(
+						contents,
+						todoFile,
+						input.column,
+						input.targets.map((target) => target.lineNumber)
+					)
+				);
 			}),
 		undoTodo: (request: DesktopRequest<"undoTodo">) =>
 			Effect.gen(function* () {

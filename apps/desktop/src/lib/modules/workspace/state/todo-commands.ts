@@ -101,6 +101,15 @@ export function todoCommands({ desktop, gate, reader }: WorkspaceCommandContext)
 				(target) => desktop.moveTodoOnBoard({ ...target, ...line(todo), column }),
 				todo
 			),
+		reorderTodosOnBoard: (column: BoardDestination, items: readonly TodoItem[], todo: TodoItem) =>
+			mutate(
+				"reorder_todos_on_board",
+				(target) => {
+					validateCurrentItems(items);
+					return desktop.reorderTodosOnBoard({ ...target, column, targets: items.map(line) });
+				},
+				todo
+			),
 		createTodo: (draft: CreateTodoDraft) =>
 			mutate("create_todo_item", (target) => desktop.createTodo({ ...target, ...draft })),
 	};
