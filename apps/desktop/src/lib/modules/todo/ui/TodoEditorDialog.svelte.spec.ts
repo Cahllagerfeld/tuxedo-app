@@ -317,11 +317,11 @@ test("an unrelated edit preserves repeated and unsupported board tokens", async 
 		todoFile,
 		todoToEdit: {
 			...todoFile.items[0],
-			raw: "Plan release +Work @Office board:to-do board: board:future:invalid",
-			metadata: { board: "future:invalid" },
+			raw: "Plan release +Work @Office board:to-do board: board:future:invalid\uFEFF",
+			metadata: { board: "future:invalid\uFEFF" },
 			edit: {
 				description: "Plan release",
-				metadata: ["board:to-do", "board:", "board:future:invalid"],
+				metadata: ["board:to-do", "board:", "board:future:invalid\uFEFF"],
 			},
 		},
 		saveTodoItem: async (input) => {
@@ -333,7 +333,7 @@ test("an unrelated edit preserves repeated and unsupported board tokens", async 
 	await page.getByRole("button", { name: "Save changes", exact: true }).click();
 	await expect
 		.poll(() => calls[0]?.metadata)
-		.toEqual(["board:to-do", "board:", "board:future:invalid"]);
+		.toEqual(["board:to-do", "board:", "board:future:invalid\uFEFF"]);
 });
 
 test("editing retains the Todo item's tags instead of creation defaults", async () => {
@@ -449,7 +449,7 @@ test("opens focused, suggests completed-item tags, and preserves typed tag casin
 		});
 });
 
-test.each(["Do this +Work key:value", "Call\u0085+Work"])(
+test.each(["Do this +Work key:value", "Call\u0085+Work", "board:", "board:a:b"])(
 	"rejects Todo tokens in Description (%s) and invalid tags",
 	async (description) => {
 		const calls: TodoItemDraft[] = [];

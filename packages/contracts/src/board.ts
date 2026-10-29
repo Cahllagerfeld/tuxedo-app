@@ -15,11 +15,13 @@ const BoardAssignment = Schema.Struct({
 });
 const boardAssignmentSchema = effectValidator(BoardAssignment);
 
-/** Read the last board token, including malformed values. */
-export function boardAssignment(raw: string): { column: BoardColumn; invalid: boolean } {
-	const token = raw.split(/\p{White_Space}+/u).findLast((part) => part.startsWith("board:"));
-	if (token === undefined) return { column: "unassigned", invalid: false };
-	const [column, position, ...extra] = token.slice(6).split("/");
+/** Decode the effective board metadata value, retaining unsupported values as invalid. */
+export function boardAssignment(value: string | undefined): {
+	column: BoardColumn;
+	invalid: boolean;
+} {
+	if (value === undefined) return { column: "unassigned", invalid: false };
+	const [column, position, ...extra] = value.split("/");
 	if (extra.length || (position !== undefined && !/^(?:0|[1-9]\d*)$/u.test(position)))
 		return { column: "unassigned", invalid: true };
 	const parsed = boardAssignmentSchema.safeParse({

@@ -33,7 +33,7 @@
 		onDragEnd: () => void;
 	} = $props();
 	let moveTrigger = $state<HTMLButtonElement | null>(null);
-	const assignment = $derived(boardAssignment(todo.raw));
+	const assignment = $derived(boardAssignment(todo.metadata.board));
 	const destinations = [
 		{ id: "unassigned", name: "Unassigned" },
 		{ id: "to-do", name: "To do" },

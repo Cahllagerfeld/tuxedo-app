@@ -31,7 +31,7 @@
 			done: [],
 		};
 		for (const todo of items)
-			grouped[todo.completed ? "done" : boardAssignment(todo.raw).column].push(todo);
+			grouped[todo.completed ? "done" : boardAssignment(todo.metadata.board).column].push(todo);
 		return [
 			{ name: "Unassigned", id: "unassigned" as const, items: grouped.unassigned },
 			{ name: "To do", id: "to-do" as const, items: grouped["to-do"] },
@@ -95,7 +95,7 @@
 		if (!dragged || disabled) return;
 		event.preventDefault();
 		const { todo, items: original } = dragged;
-		const assignment = boardAssignment(todo.raw);
+		const assignment = boardAssignment(todo.metadata.board);
 		stopDrag();
 		if (items === original && (assignment.column !== column || assignment.invalid))
 			onMove?.(todo, column);

@@ -8,6 +8,9 @@ Move this card from To do to In progress +Kanban board:to-do
 Review this work in progress +Kanban board:in-progress
 Repair this imported board value by moving the card +Kanban board:unknown
 The last repeated board value determines its column +Kanban board:to-do board:in-progress
+An explicit Unassigned value keeps this card in the first column +Kanban board:unassigned
+An empty imported board value is retained until the card moves +Kanban board:
+A positioned assignment is recognized as To do +Kanban board:to-do/2
 Create an empty Todo file from New workspace, open it after setup, and add your first Todo item +TuxedoApp @computer
 Open an existing work.txt without changing its contents +TuxedoApp @computer
 Capture inbox item @home @computer +TuxedoApp +Ideas
@@ -42,7 +45,7 @@ Repair an impossible Show from date with the editor calendar +Imported @review t
 Edit another field to preserve repeated Show from tokens, or choose a date to replace them +TuxedoApp @computer t:2026-10-14 t:2099-01-01
 x 2026-10-14 Keep completed Todo items visible despite a future Show from date +TuxedoApp @computer t:2099-01-01
 
-(A) 2026-10-01 Repeat a chore one month after recorded completion +Home @desk rec:1m
+(A) 2026-10-01 Repeat a chore one month after recorded completion +Home @desk rec:1m board:in-progress
 Repeat two weeks after completion even without an original Due date +Home rec:2w
 Use the last recurrence token +Home rec:1d rec:1y due:2026-12-31
 Complete unsupported recurrence normally with a notice +Imported rec:+1w

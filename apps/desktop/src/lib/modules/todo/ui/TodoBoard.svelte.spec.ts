@@ -106,12 +106,14 @@ describe("TodoBoard", () => {
 			line_number: 3,
 			description: "Assigned",
 			raw: "Assigned board:to-do board:in-progress/2",
+			metadata: { ...open.metadata, board: "in-progress/2" },
 		};
 		const invalid = {
 			...open,
 			line_number: 4,
 			description: "Imported",
 			raw: "Imported board:future",
+			metadata: { ...open.metadata, board: "future" },
 		};
 		render(TodoBoard, {
 			items: [open, assigned, invalid],

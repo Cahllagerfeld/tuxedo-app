@@ -6,6 +6,55 @@ import { join } from "node:path";
 import { WorkspaceSession, workspaceSessionLayer, identityLayer } from "@tuxedo/backend";
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("backend public operations", (it) => {
+	it.effect(
+		"a recurring successor starts Unassigned while the original retains its board tokens",
+		() =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem;
+				const directory = yield* fs.makeTempDirectoryScoped();
+				const todoPath = join(directory, "todo.txt");
+				const original = "Clean rec:1w board:to-do board:future:invalid custom:keep\n";
+				yield* fs.writeFileString(todoPath, original);
+				yield* Effect.gen(function* () {
+					const session = yield* WorkspaceSession;
+					const created = yield* session.createWorkspace({ name: "Work", color: "blue", todoPath });
+					if (created.status !== "applied" || created.confirmed.session.status !== "ready")
+						throw Error("Workspace creation failed");
+					const workspaceId = created.confirmed.session.catalogue.active_workspace_id!;
+					const item = created.confirmed.session.todo_file.items[0];
+					expect(item.metadata.board).toBe("future:invalid");
+					const completed = yield* session.setTodoCompletion({
+						scope: created.confirmed.scope,
+						revision: created.confirmed.revision,
+						workspaceId,
+						lineNumber: item.line_number,
+						expectedRaw: item.raw,
+						completed: true,
+					});
+					if (completed.status !== "applied") throw Error("Completion failed");
+					const [source, successor] = completed.confirmed.todo_file.items;
+					expect(source.edit.metadata).toContain("board:to-do");
+					expect(source.edit.metadata).toContain("board:future:invalid");
+					expect(successor.edit.metadata).not.toContain("board:to-do");
+					expect(successor.edit.metadata).not.toContain("board:future:invalid");
+					expect(successor.metadata).toMatchObject({ rec: "1w", custom: "keep" });
+					expect(
+						yield* session.undoTodo({
+							scope: completed.confirmed.scope,
+							revision: completed.confirmed.revision,
+							workspaceId,
+						})
+					).toMatchObject({ status: "applied" });
+					expect(yield* fs.readFileString(todoPath)).toBe(original);
+				}).pipe(
+					Effect.provide(
+						workspaceSessionLayer(join(directory, "workspaces.json")).pipe(
+							Layer.provide(identityLayer)
+						)
+					)
+				);
+			})
+	);
 	it.effect("an unrelated edit retains malformed and repeated board tokens", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
@@ -13,7 +62,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("backend public opera
 			const todoPath = join(directory, "todo.txt");
 			yield* fs.writeFileString(
 				todoPath,
-				"Plan board:to-do board: board:future:invalid custom:keep\n"
+				"Plan board:to-do board: board:future:invalid\uFEFF custom:keep\n"
 			);
 			yield* Effect.gen(function* () {
 				const session = yield* WorkspaceSession;
@@ -23,7 +72,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("backend public opera
 				const item = created.confirmed.session.todo_file.items[0];
 				expect(item.edit).toEqual({
 					description: "Plan",
-					metadata: ["board:to-do", "board:", "board:future:invalid", "custom:keep"],
+					metadata: ["board:to-do", "board:", "board:future:invalid\uFEFF", "custom:keep"],
 				});
 				const edited = yield* session.editTodo({
 					scope: created.confirmed.scope,
@@ -42,7 +91,7 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("backend public opera
 				});
 				expect(edited.status).toBe("applied");
 				expect(yield* fs.readFileString(todoPath)).toBe(
-					"Changed plan board:to-do board: board:future:invalid custom:keep\n"
+					"Changed plan board:to-do board: board:future:invalid\uFEFF custom:keep\n"
 				);
 			}).pipe(
 				Effect.provide(
