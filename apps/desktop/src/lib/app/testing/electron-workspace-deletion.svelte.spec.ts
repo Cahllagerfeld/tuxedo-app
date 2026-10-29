@@ -34,6 +34,7 @@ function adapter(
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
+		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		readSavedViews: async () => ({ status: "applied", workspaceId: workspace.id, views: [] }),
 		saveView: async () => ({ status: "rejected", message: "unused" }),
 		deleteView: async () => ({ status: "rejected", message: "unused" }),

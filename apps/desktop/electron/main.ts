@@ -249,6 +249,7 @@ const startup = Effect.gen(function* () {
 	yield* register("deleteTodo", backend.deleteTodo);
 	yield* register("editTodo", backend.editTodo);
 	yield* register("reorderTodo", backend.reorderTodo);
+	yield* register("moveTodoOnBoard", backend.moveTodoOnBoard);
 	yield* register("createTodo", backend.createTodo);
 	yield* register("switchWorkspace", backend.switchWorkspace);
 	yield* register("createWorkspace", backend.createWorkspace);

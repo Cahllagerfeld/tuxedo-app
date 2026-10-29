@@ -37,8 +37,14 @@ Replacing one Todo item's content through the shared Todo-item editor while reta
 **Todo-item reordering**:
 Moving the displayed Todo items among their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place.
 
+**Board assignment**:
+An open Todo item's location in a Workspace's Kanban board: Unassigned, To do, or In progress. Absent or unsupported assignments appear in Unassigned, and unsupported values are retained until the Todo item is deliberately moved.
+
+**Kanban move**:
+Changing an open Todo item's Board assignment without changing its position in the Todo file.
+
 **Undo last change**:
-Restoring the Active workspace's Todo file to its state before the most recent successful Todo-item creation, edit, completion, uncompletion, deletion, or reordering. Only one change can be undone; switching Workspaces, closing the app, or discovering an external Todo-file change clears that opportunity.
+Restoring the Active workspace's Todo file to its state before the most recent successful Todo-item creation, edit, completion, uncompletion, deletion, reordering, or Kanban move. Only one change can be undone; switching Workspaces, closing the app, or discovering an external Todo-file change clears that opportunity.
 
 **Completion date**:
 The local calendar date on which an open Todo item became completed.
@@ -86,7 +92,7 @@ The coherent state returned after a Workspace lifecycle operation: the persisted
 The current in-app state of the Workspace catalogue and whether the Active workspace's Todo file is loaded. It is Loading, Empty, Ready, or unavailable because the Workspace catalogue cannot be read.
 
 **Workspace session operation**:
-An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, or reordering. Workspace session operations do not overlap; a saved change awaiting a usable screen refresh permits read-only recovery.
+An operation that updates confirmed Workspace session data, including restoration, Workspace creation, switching or deletion, and Todo-item creation, editing, completion, deletion, reordering, or Kanban moves. Workspace session operations do not overlap; a saved change awaiting a usable screen refresh permits read-only recovery.
 
 **Workspace session restoration**:
 The startup attempt to return the Workspace session snapshot for the saved Active workspace. If its Todo file cannot open, the Workspace catalogue remains available and the app enters the Empty state with a warning.

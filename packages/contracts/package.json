@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/contract.ts",
 		"./todo": "./src/todo.ts",
+		"./board": "./src/board.ts",
 		"./todo-creation": "./src/todo-creation.ts",
 		"./effect-validation": "./src/effect-validation.ts"
 	},

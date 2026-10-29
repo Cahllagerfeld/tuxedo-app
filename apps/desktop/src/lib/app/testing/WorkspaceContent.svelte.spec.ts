@@ -72,6 +72,7 @@ function adapter(overrides: Partial<DesktopAPI> = {}): DesktopAPI {
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
+		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		createTodo: async () => ({ status: "rejected", message: "unused" }),
 		...overrides,
 	});
@@ -84,6 +85,123 @@ function confirmedTodo(items: TodoFile["items"]) {
 		todo_file: { path: "/tmp/work.todo", items, skipped: [] },
 	};
 }
+
+async function keyboardBoardMove(destination: "to-do" | "in-progress") {
+	const card = page.getByRole("listitem", { name: "Plan release" });
+	await expect.element(card).toBeVisible();
+	(card.element() as HTMLElement).focus();
+	await userEvent.keyboard(
+		destination === "to-do" ? "{Space}{Tab}{Space}" : "{Space}{Tab}{Tab}{Space}"
+	);
+}
+
+test("a keyboard board move keeps confirmed contents while saving, then updates selection and Undo", async () => {
+	await page.viewport(1400, 900);
+	const response = Promise.withResolvers<Awaited<ReturnType<DesktopAPI["moveTodoOnBoard"]>>>();
+	const moveTodoOnBoard = vi.fn<DesktopAPI["moveTodoOnBoard"]>(() => response.promise);
+	render(Harness, { viewMode: "kanban", shell: true, desktop: adapter({ moveTodoOnBoard }) });
+	const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
+	const todoColumn = page.getByRole("region", { name: "To do", exact: true });
+	await unassigned.getByRole("button", { name: "Open Plan release" }).click();
+	await keyboardBoardMove("to-do");
+	await expect.element(unassigned.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	const moved = {
+		...todo,
+		raw: `${todo.raw} board:to-do`,
+		metadata: { board: "to-do" },
+		edit: { ...todo.edit, metadata: ["board:to-do"] },
+	};
+	response.resolve({
+		status: "applied",
+		confirmed: { ...confirmedTodo([moved]), undoLabel: "Undo move" },
+	});
+	await expect.element(todoColumn.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	await expect.element(todoColumn.getByRole("button", { name: "Open Plan release" })).toHaveFocus();
+	await expect
+		.element(
+			page
+				.getByRole("complementary", { name: "Todo item details" })
+				.getByRole("heading", { name: "Plan release" })
+		)
+		.toBeVisible();
+	await expect.element(page.getByRole("button", { name: "Undo move" })).toBeEnabled();
+	expect(moveTodoOnBoard).toHaveBeenCalledExactlyOnceWith({
+		scope,
+		revision: 1,
+		workspaceId,
+		lineNumber: 1,
+		expectedRaw: todo.raw,
+		column: "to-do",
+	});
+});
+
+test("a failed board move retains confirmed state and reports the error", async () => {
+	await page.viewport(1400, 900);
+	const moveTodoOnBoard = vi.fn<DesktopAPI["moveTodoOnBoard"]>(async () => ({
+		status: "rejected",
+		message: "Write failed",
+	}));
+	render(Harness, { viewMode: "kanban", desktop: adapter({ moveTodoOnBoard }) });
+	const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
+	await keyboardBoardMove("in-progress");
+	await expect.element(unassigned.getByRole("button", { name: "Open Plan release" })).toBeVisible();
+	await expect.element(page.getByText("Could not move Todo item")).toBeVisible();
+	expect(moveTodoOnBoard).toHaveBeenCalledOnce();
+});
+
+test("a pending board move does not steal focus if the user moves elsewhere", async () => {
+	await page.viewport(1400, 900);
+	const response = Promise.withResolvers<Awaited<ReturnType<DesktopAPI["moveTodoOnBoard"]>>>();
+	render(Harness, {
+		viewMode: "kanban",
+		desktop: adapter({ moveTodoOnBoard: () => response.promise }),
+	});
+	await keyboardBoardMove("to-do");
+	const other = page.getByRole("region", { name: "Kanban board" });
+	(other.element() as HTMLElement).focus();
+	const moved = {
+		...todo,
+		raw: `${todo.raw} board:to-do`,
+		metadata: { board: "to-do" },
+		edit: { ...todo.edit, metadata: ["board:to-do"] },
+	};
+	response.resolve({ status: "applied", confirmed: confirmedTodo([moved]) });
+	await expect
+		.element(
+			page
+				.getByRole("region", { name: "To do", exact: true })
+				.getByRole("button", { name: "Open Plan release" })
+		)
+		.toBeVisible();
+	await expect.element(other).toHaveFocus();
+});
+
+test("a conflicting board move displays the refreshed Todo item without retrying", async () => {
+	await page.viewport(1400, 900);
+	const changed = {
+		...todo,
+		raw: "Externally changed board:in-progress",
+		description: "Externally changed",
+		metadata: { board: "in-progress" },
+		edit: { description: "Externally changed", metadata: ["board:in-progress"] },
+	};
+	const moveTodoOnBoard = vi.fn<DesktopAPI["moveTodoOnBoard"]>(async () => ({
+		status: "conflict",
+		message: "Changed on disk",
+		confirmed: confirmedTodo([changed]),
+	}));
+	render(Harness, { viewMode: "kanban", desktop: adapter({ moveTodoOnBoard }) });
+	await keyboardBoardMove("to-do");
+	await expect
+		.element(
+			page
+				.getByRole("region", { name: "In progress" })
+				.getByRole("button", { name: "Open Externally changed" })
+		)
+		.toBeVisible();
+	await expect.element(page.getByText("Todo file changed")).toBeVisible();
+	expect(moveTodoOnBoard).toHaveBeenCalledOnce();
+});
 
 test("Kanban cards open the existing details and completion follows confirmed Workspace data", async () => {
 	await page.viewport(1400, 900);

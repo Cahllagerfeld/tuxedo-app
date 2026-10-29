@@ -1,6 +1,7 @@
 import { page, userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { DRAGGED_ELEMENT_ID } from "svelte-dnd-action";
 import type { TodoItem } from "../domain/todo";
 import TodoBoard from "./TodoBoardHarness.svelte";
 import TodoBoardFocusHarness from "./TodoBoardFocusHarness.svelte";
@@ -33,6 +34,362 @@ const legacyCompleted: TodoItem = {
 };
 
 describe("TodoBoard", () => {
+	it("moves a whole card between columns using the keyboard without a menu", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		const card = page.getByRole("listitem", { name: "Plan" });
+		(card.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}");
+		await expect.element(page.getByText(/Moving Plan · Tab to a column/)).toBeVisible();
+		expect(onMove).not.toHaveBeenCalled();
+		await userEvent.keyboard("{Space}");
+		await expect.poll(() => onMove.mock.calls.length).toBe(1);
+		expect(onMove.mock.calls[0].slice(0, 2)).toEqual([open, "to-do"]);
+		expect(page.getByRole("menuitem").elements()).toHaveLength(0);
+	});
+
+	it("scrolls a long column when a dragged card reaches its lower edge", async () => {
+		const items = Array.from({ length: 30 }, (_, index) => ({
+			...open,
+			line_number: index + 1,
+			description: `Item ${index + 1}`,
+		}));
+		render(TodoBoard, {
+			items,
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove: vi.fn(),
+		});
+		const card = page.getByRole("button", { name: "Open Item 1" }).element().closest("article")!;
+		const viewport = page
+			.getByRole("region", { name: "Unassigned Todo items" })
+			.element() as HTMLElement;
+		const start = card.getBoundingClientRect();
+		document.elementFromPoint(start.left + 5, start.top + 5)!.dispatchEvent(
+			new MouseEvent("mousedown", {
+				bubbles: true,
+				clientX: start.left + 5,
+				clientY: start.top + 5,
+			})
+		);
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: start.left + 15,
+				clientY: start.top + 15,
+			})
+		);
+		await expect.poll(() => !!document.getElementById(DRAGGED_ELEMENT_ID)).toBe(true);
+		const rect = viewport.getBoundingClientRect();
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: rect.left + 50,
+				clientY: rect.bottom - 2,
+			})
+		);
+		await expect.poll(() => viewport.scrollTop).toBeGreaterThan(0);
+		window.dispatchEvent(
+			new MouseEvent("mouseup", {
+				bubbles: true,
+				clientX: rect.left + 50,
+				clientY: rect.bottom - 2,
+			})
+		);
+	});
+
+	it("drops an open card onto another column and scrolls at the board edge", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		const card = page.getByRole("button", { name: "Open Plan" }).element().closest("article")!;
+		const board = page.getByRole("region", { name: "Kanban board" }).element() as HTMLElement;
+		const target = page.getByRole("list", { name: "To do cards" }).element();
+		const start = card.getBoundingClientRect();
+		document.elementFromPoint(start.left + 5, start.top + 5)!.dispatchEvent(
+			new MouseEvent("mousedown", {
+				bubbles: true,
+				clientX: start.left + 5,
+				clientY: start.top + 5,
+			})
+		);
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: start.left + 15,
+				clientY: start.top + 15,
+			})
+		);
+		await expect
+			.poll(
+				() => document.getElementById(DRAGGED_ELEMENT_ID)?.querySelector("article")?.textContent
+			)
+			.toContain("Plan");
+		const rect = board.getBoundingClientRect();
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: rect.right - 2,
+				clientY: rect.top + 80,
+			})
+		);
+		await expect.poll(() => board.scrollLeft).toBeGreaterThan(0);
+		const destination = target.getBoundingClientRect();
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: destination.left + 40,
+				clientY: destination.top + 30,
+			})
+		);
+		await expect.poll(() => target.querySelector("[data-board-placeholder]") !== null).toBe(true);
+		expect(
+			getComputedStyle(target.querySelector<HTMLElement>("[data-board-placeholder]")!).visibility
+		).toBe("visible");
+		window.dispatchEvent(
+			new MouseEvent("mouseup", {
+				bubbles: true,
+				clientX: destination.left + 40,
+				clientY: destination.top + 30,
+			})
+		);
+		await expect.poll(() => onMove.mock.calls.length).toBe(1);
+		expect(onMove.mock.calls[0].slice(0, 2)).toEqual([open, "to-do"]);
+	});
+
+	it("shows the last assignment, flags unknown values, and offers a keyboard move", async () => {
+		const onMove = vi.fn();
+		const assigned = {
+			...open,
+			line_number: 3,
+			description: "Assigned",
+			raw: "Assigned board:to-do board:in-progress/2",
+			metadata: { ...open.metadata, board: "in-progress/2" },
+		};
+		const invalid = {
+			...open,
+			line_number: 4,
+			description: "Imported",
+			raw: "Imported board:future",
+			metadata: { ...open.metadata, board: "future" },
+		};
+		render(TodoBoard, {
+			items: [open, assigned, invalid],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		await expect
+			.element(
+				page
+					.getByRole("region", { name: "In progress" })
+					.getByRole("button", { name: "Open Assigned" })
+			)
+			.toBeVisible();
+		const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
+		await expect
+			.element(unassigned.getByRole("button", { name: "Open Imported" }))
+			.toHaveAccessibleDescription(/Invalid board assignment/);
+		const card = unassigned.getByRole("listitem", { name: "Imported" });
+		(card.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}{Space}");
+		await expect.poll(() => onMove.mock.calls.length).toBe(1);
+		expect(onMove.mock.calls[0].slice(0, 2)).toEqual([invalid, "to-do"]);
+	});
+
+	it("Escape cancels a keyboard move without changing the confirmed columns", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}{Escape}");
+		expect(onMove).not.toHaveBeenCalled();
+		await expect
+			.element(
+				page
+					.getByRole("region", { name: "Unassigned", exact: true })
+					.getByRole("button", { name: "Open Plan" })
+			)
+			.toBeVisible();
+		await expect.element(page.getByRole("listitem", { name: "Plan" })).toHaveFocus();
+	});
+
+	it("leaves arrow keys available to controls outside a keyboard drag", async () => {
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove: vi.fn(),
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}");
+		const input = document.createElement("input");
+		document.body.append(input);
+		try {
+			input.focus();
+			const arrow = new KeyboardEvent("keydown", {
+				key: "ArrowLeft",
+				bubbles: true,
+				cancelable: true,
+			});
+			expect(input.dispatchEvent(arrow)).toBe(true);
+			await userEvent.keyboard("{Escape}");
+			expect(document.activeElement).toBe(input);
+		} finally {
+			input.remove();
+		}
+	});
+
+	it("ends a pointer drag immediately on Escape without saving", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		const card = page.getByRole("button", { name: "Open Plan" }).element().closest("article")!;
+		const rect = card.getBoundingClientRect();
+		document.elementFromPoint(rect.left + 5, rect.top + 5)!.dispatchEvent(
+			new MouseEvent("mousedown", {
+				bubbles: true,
+				clientX: rect.left + 5,
+				clientY: rect.top + 5,
+			})
+		);
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: rect.left + 15,
+				clientY: rect.top + 15,
+			})
+		);
+		try {
+			await expect.poll(() => !!document.getElementById(DRAGGED_ELEMENT_ID)).toBe(true);
+			await userEvent.keyboard("{Escape}");
+			expect(document.getElementById(DRAGGED_ELEMENT_ID)).toBeNull();
+			expect(onMove).not.toHaveBeenCalled();
+		} finally {
+			window.dispatchEvent(new MouseEvent("mouseup"));
+		}
+	});
+
+	it("cancels a keyboard move when focus and a click leave the card", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}");
+		const board = page.getByRole("region", { name: "Kanban board" }).element() as HTMLElement;
+		board.focus();
+		board.click();
+		await expect.element(page.getByText("Move cancelled.")).toBeInTheDocument();
+		expect(onMove).not.toHaveBeenCalled();
+	});
+
+	it("does not save a drag if the Todo items change before it is dropped", async () => {
+		const onMove = vi.fn();
+		const props = {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		};
+		const view = await render(TodoBoard, props);
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}");
+		await view.rerender({ ...props, items: [{ ...open, raw: "Updated Plan" }] });
+		await userEvent.keyboard("{Space}");
+		expect(onMove).not.toHaveBeenCalled();
+		await expect.element(page.getByText("Move cancelled.")).toBeInTheDocument();
+	});
+
+	it("does not suggest that a same-column keyboard drag reorders cards", async () => {
+		const other = { ...open, line_number: 2, description: "Second", raw: "Second" };
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open, other],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{ArrowDown}{Space}");
+		expect(onMove).not.toHaveBeenCalled();
+		const list = page.getByRole("list", { name: "Unassigned cards" });
+		expect(
+			list
+				.getByRole("listitem")
+				.elements()
+				.map((element) => element.getAttribute("aria-label"))
+		).toEqual(["Plan", "Second"]);
+	});
+
+	it("moves a card from a virtualized column without losing other cards", async () => {
+		const items = Array.from({ length: 100 }, (_, index) => ({
+			...open,
+			line_number: index + 1,
+			description: `Item ${index + 1}`,
+			raw: `Item ${index + 1}`,
+		}));
+		const onMove = vi.fn();
+		const view = await render(TodoBoard, {
+			items,
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		await view.component.focusTodo(items[79]);
+		const card = page.getByRole("listitem", { name: "Item 80" });
+		await expect.element(card).toBeVisible();
+		(card.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}{Space}");
+		await expect.poll(() => onMove.mock.calls.length).toBe(1);
+		expect(onMove.mock.calls[0].slice(0, 2)).toEqual([items[79], "to-do"]);
+		await expect
+			.poll(() => page.getByRole("list", { name: "Unassigned cards" }).element().children.length)
+			.toBeLessThan(20);
+	});
+
 	it("places open and legacy completed Todo items in the fixed columns", async () => {
 		render(TodoBoard, {
 			items: [open, legacyCompleted],
@@ -94,6 +451,7 @@ describe("TodoBoard", () => {
 			disabled: false,
 			onOpen,
 			onToggleComplete: vi.fn(),
+			onMove: vi.fn(),
 		});
 		const card = page.getByRole("button", { name: "Open Plan" }).element().closest("article")!;
 		await userEvent.click(card, { position: { x: 4, y: 4 } });
@@ -109,6 +467,7 @@ describe("TodoBoard", () => {
 			disabled: false,
 			onOpen,
 			onToggleComplete,
+			onMove: vi.fn(),
 		});
 		const openButton = page.getByRole("button", { name: "Open Plan" });
 		const buttonRect = openButton.element().getBoundingClientRect();

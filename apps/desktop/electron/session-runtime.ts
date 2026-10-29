@@ -84,6 +84,7 @@ export function desktopSessionBackend(runtime: ReturnType<typeof createSessionRu
 		bulkDeleteTodos: (request) => run("bulkDeleteTodos", request),
 		deleteTodo: (request) => run("deleteTodo", request),
 		reorderTodo: (request) => run("reorderTodo", request),
+		moveTodoOnBoard: (request) => run("moveTodoOnBoard", request),
 	};
 	return {
 		...application,

@@ -370,6 +370,8 @@ export function sessionLayer(
 				createTodo: (request) =>
 					operation("createTodo", "Cannot create Todo item: ", todos.createTodo(request)),
 				undoTodo: (request) => operation("undoTodo", "Cannot undo: ", todos.undoTodo(request)),
+				moveTodoOnBoard: (request) =>
+					operation("moveTodoOnBoard", "Cannot move Todo item: ", todos.moveTodoOnBoard(request)),
 				editTodo: (request) =>
 					operation("editTodo", "Cannot edit Todo item: ", todos.editTodo(request)),
 				deleteTodo: (request) =>

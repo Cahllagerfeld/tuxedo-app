@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { TodoItem } from "../domain/todo";
+	import { boardAssignment } from "@tuxedo/contracts/board";
+	import GripVertical from "@lucide/svelte/icons/grip-vertical";
 	import { dueCategory, validDueDate } from "../domain/todo-due";
 	import { recurrenceLabel } from "../domain/todo-recurrence";
 	import { isDeferred, showFromDate } from "../domain/todo-threshold";
@@ -13,6 +15,7 @@
 		selectedTodo,
 		onOpen,
 		onToggleComplete,
+		movable,
 	}: {
 		todo: TodoItem;
 		today: string;
@@ -20,7 +23,9 @@
 		selectedTodo: TodoItem | null;
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
+		movable: boolean;
 	} = $props();
+	const assignment = $derived(boardAssignment(todo.metadata.board));
 	let confirmedChecked = $derived(todo.completed);
 	const due = $derived(validDueDate(todo.metadata.due));
 	const category = $derived(dueCategory(todo.metadata.due, today));
@@ -59,12 +64,13 @@
 		aria-describedby={indicatorsId}
 		aria-expanded={selected}
 		{disabled}
-		class="min-w-0 flex-1 rounded text-left before:absolute before:inset-0 before:-z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed"
+		class="min-w-0 flex-1 rounded text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed"
 		onclick={(event) => onOpen(todo, event.currentTarget)}
 	>
+		<span aria-hidden="true" class="absolute inset-0 z-[1]"></span>
 		<span
 			class={cn(
-				"block text-sm font-medium break-words",
+				"relative z-[2] block text-sm font-medium break-words",
 				todo.completed && "text-muted-foreground line-through"
 			)}
 		>
@@ -72,7 +78,7 @@
 		</span>
 		<span
 			id={indicatorsId}
-			class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+			class="relative z-[2] mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
 		>
 			{#if todo.priority}<span title="Priority"
 					><span class="sr-only">Priority </span>({todo.priority})</span
@@ -80,6 +86,13 @@
 			{#each [...new Set(todo.projects)] as project (project)}<span>+{project}</span>{/each}
 			{#each [...new Set(todo.contexts)] as context (context)}<span>@{context}</span>{/each}
 			{#if recurrence}<span title={`Recurrence: ${recurrence}`}>Recurring</span>{/if}
+			{#if assignment.invalid}
+				<span
+					class="text-destructive"
+					title="Move this Todo item to replace its invalid board assignment"
+					>Invalid board assignment</span
+				>
+			{/if}
 			{#if showFrom}
 				<span title={`Show from ${showFrom}${deferred ? " · Deferred" : ""}`}>
 					{deferred ? "Deferred · " : ""}Show from {showFrom}
@@ -103,4 +116,7 @@
 			{/if}
 		</span>
 	</button>
+	{#if movable}
+		<GripVertical aria-hidden="true" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+	{/if}
 </article>

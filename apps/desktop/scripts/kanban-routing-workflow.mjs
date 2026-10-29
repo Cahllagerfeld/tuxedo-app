@@ -18,6 +18,38 @@ export async function kanbanRoutingWorkflow(
 
 	await page.goto(kanbanUrl("Route A"));
 	await expectBoard("Route A", "Alpha item");
+	const alpha = page.getByRole("listitem", { name: "Alpha item", exact: true });
+	const todoColumn = page.getByRole("region", { name: "To do", exact: true });
+	await alpha.focus();
+	await alpha.press("Space");
+	await page.keyboard.press("Tab");
+	await page.keyboard.press("Space");
+	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
+	await page.getByRole("button", { name: "Undo move", exact: true }).click();
+	await page
+		.getByRole("region", { name: "Unassigned", exact: true })
+		.getByRole("listitem", { name: "Alpha item", exact: true })
+		.waitFor();
+	const card = alpha.locator("article");
+	const destination = todoColumn.getByRole("list", { name: "To do cards" });
+	const cardBox = await card.boundingBox();
+	const destinationBox = await destination.boundingBox();
+	assert.ok(cardBox && destinationBox);
+	await page.mouse.move(cardBox.x + 60, cardBox.y + 20);
+	await page.mouse.down();
+	await page.mouse.move(cardBox.x + 70, cardBox.y + 30, { steps: 3 });
+	const dragged = page.locator("#dnd-action-dragged-el article");
+	await dragged.waitFor();
+	assert.ok(
+		(await dragged.textContent()).includes("Alpha item"),
+		"The entire card follows the pointer"
+	);
+	await page.mouse.move(destinationBox.x + 40, destinationBox.y + 40, { steps: 12 });
+	await destination.locator("[data-board-placeholder]").waitFor();
+	await page.mouse.up();
+	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
+	await page.getByRole("button", { name: "Undo move", exact: true }).click();
+	await expectBoard("Route A", "Alpha item");
 	const rail = page.getByRole("navigation", { name: "Workspace navigation" });
 	const inset = page.locator('[data-slot="app-inset"]');
 	assert.equal(

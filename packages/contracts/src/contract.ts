@@ -11,6 +11,7 @@ import {
 	TodoTag,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
+import { BoardColumn } from "./board";
 
 const UUID = TodoCreationRequest.fields.scope;
 const Revision = TodoCreationRequest.fields.revision;
@@ -121,6 +122,7 @@ const UndoLabel = Schema.Literals([
 	"Undo uncompletion",
 	"Undo deletion",
 	"Undo reordering",
+	"Undo move",
 ]);
 export type UndoLabel = typeof UndoLabel.Type;
 const ConfirmedSessionSchema = Schema.Struct({
@@ -204,6 +206,9 @@ export const todoOutcomeSchema = effectValidator(
 );
 export const setTodoCompletionRequestSchema = effectValidator(
 	Schema.Struct({ ...TodoMutationRequest.fields, completed: Schema.Boolean })
+);
+export const moveTodoOnBoardRequestSchema = effectValidator(
+	Schema.Struct({ ...TodoMutationRequest.fields, column: BoardColumn })
 );
 const TodoMutationTarget = Schema.Struct({
 	lineNumber: TodoMutationRequest.fields.lineNumber,
@@ -401,6 +406,11 @@ export const desktopContract = {
 		request: reorderTodoRequestSchema,
 		response: todoOutcomeSchema,
 	},
+	moveTodoOnBoard: {
+		channel: "tuxedo:move-todo-on-board",
+		request: moveTodoOnBoardRequestSchema,
+		response: todoOutcomeSchema,
+	},
 	deleteWorkspace: {
 		channel: "tuxedo:delete-workspace",
 		request: deleteWorkspaceRequestSchema,
@@ -504,6 +514,7 @@ export function createDesktopClient(
 		writeClipboardText: (request) => call("writeClipboardText", request),
 		editTodo: (request) => call("editTodo", request),
 		reorderTodo: (request) => call("reorderTodo", request),
+		moveTodoOnBoard: (request) => call("moveTodoOnBoard", request),
 		deleteWorkspace: (request) => call("deleteWorkspace", request),
 		setTodoCompletion: (request) => call("setTodoCompletion", request),
 		bulkSetTodoCompletion: (request) => call("bulkSetTodoCompletion", request),

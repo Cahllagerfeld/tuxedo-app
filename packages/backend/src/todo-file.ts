@@ -29,7 +29,9 @@ function parseLine(line_number: number, raw: string): TodoFile["items"][number] 
 		if (token.startsWith("+") && token.length > 1) projects.push(token.slice(1));
 		else if (token.startsWith("@") && token.length > 1) contexts.push(token.slice(1));
 		else {
-			const match = /^([^:\p{White_Space}]+):([^:\p{White_Space}]+)$/u.exec(token);
+			const match =
+				/^([^:\p{White_Space}]+):([^:\p{White_Space}]+)$/u.exec(token) ??
+				(token.startsWith("board:") ? [token, "board", token.slice(6)] : null);
 			if (match) {
 				metadataTokens.push(token);
 				Object.defineProperty(metadata, match[1], {

@@ -99,6 +99,7 @@ export function planRecurringCompletion(
 	const metadata = completed.edit.metadata.filter(
 		(token) =>
 			!token.startsWith("due:") &&
+			!token.startsWith("board:") &&
 			!token.startsWith(`${generationMarker}:`) &&
 			!(priority && token === `pri:${priority}`) &&
 			!(show && !showFrom && absoluteThreshold(token))

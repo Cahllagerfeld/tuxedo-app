@@ -5,6 +5,7 @@
 	import type { Snippet } from "svelte";
 	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+	import type { BoardColumn } from "@tuxedo/contracts/board";
 	import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 	import TodoDetails from "#lib/modules/todo/ui/TodoDetails.svelte";
 	import TodoEditorDialog from "#lib/modules/todo/ui/TodoEditorDialog.svelte";
@@ -105,6 +106,18 @@
 		else if (result?.status === "rejected")
 			toast.error("Could not reorder Todo items", { description: result.message });
 	}
+	async function moveTodoOnBoard(
+		todo: TodoItem,
+		column: BoardColumn,
+		trigger?: HTMLElement | null
+	) {
+		const result = await reader.moveOnBoard(todo, column, trigger);
+		if (result.status === "applied" && result.notice) toast.info(result.notice);
+		if (result.status === "conflict")
+			toast.error("Todo file changed", { description: result.message });
+		else if (result.status === "rejected")
+			toast.error("Could not move Todo item", { description: result.message });
+	}
 	setWorkspaceTodoReader({
 		get workspace() {
 			return workspace;
@@ -141,6 +154,7 @@
 		toggleTodoCompletion,
 		deleteTodoItem,
 		reorderTodoItems,
+		moveTodoOnBoard,
 	});
 </script>
 

@@ -387,6 +387,31 @@ test("desktop transport validates a reorder and rejects duplicate positions befo
 	expect(invoked).toBeUndefined();
 });
 
+test("desktop transport validates board destinations and the scoped item target", async () => {
+	let invoked: { channel: string; request: unknown } | undefined;
+	const desktop = createDesktopClient(async (channel, request) => {
+		invoked = { channel, request };
+		return { status: "rejected", message: "Read-only file" };
+	});
+	const request = {
+		scope,
+		revision: 1,
+		workspaceId,
+		lineNumber: 1,
+		expectedRaw: "Plan",
+		column: "to-do" as const,
+	};
+	await desktop.moveTodoOnBoard(request);
+	expect(invoked).toEqual({ channel: "tuxedo:move-todo-on-board", request });
+	for (const invalid of [
+		{ ...request, column: "done" },
+		{ ...request, column: "in-progress/2" },
+		{ ...request, lineNumber: 0 },
+		{ ...request, extra: true },
+	])
+		expect(() => desktopContract.moveTodoOnBoard.request.parse(invalid)).toThrow();
+});
+
 test("desktop transport validates and forwards an edit with its original line target", async () => {
 	const input = { ...createTodoRequest, lineNumber: 2, expectedRaw: "Old +Home" };
 	let invoked: { channel: string; request: unknown } | undefined;
