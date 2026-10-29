@@ -13,7 +13,12 @@
 	import { Toaster } from "#lib/shared/ui/sonner/index.js";
 	import { ModeWatcher } from "mode-watcher";
 	import { workspaceRouting } from "#lib/app/workspace-routing.svelte.js";
-	import { workspacePath, workspaceViewMode } from "#lib/app/workspace-paths.js";
+	import {
+		workspaceFilterQuery,
+		workspacePath,
+		workspaceViewMode,
+	} from "#lib/app/workspace-paths.js";
+	import { syncWorkspaceFilterUrl } from "#lib/app/workspace-filter-url.svelte.js";
 	import { goto } from "$app/navigation";
 	import { page, navigating } from "$app/state";
 	import "./layout.css";
@@ -26,11 +31,15 @@
 	setAppState(appState);
 	setWorkspaceUi(ui);
 	setSavedViews(savedViews);
-	const busy = $derived(appState.workspace.isOperating || appState.isLoading || !!navigating.to);
+	syncWorkspaceFilterUrl(ui.todoFilter);
+	const busy = $derived(
+		appState.workspace.isOperating || appState.isLoading || (!!navigating.to && !navigating.shallow)
+	);
 	const showsActiveWorkspace = $derived(appState.showsDestination(page.params.id));
 	const viewMode = $derived(workspaceViewMode(page.route.id));
 	const openWorkspace = (id: string, replace = false) =>
 		goto(workspacePath(id, viewMode), { replace });
+	const filterQuery = $derived(workspaceFilterQuery(ui.todoFilter.snapshot()));
 </script>
 
 <!-- app.html sets the initial theme; ModeWatcher follows system changes after mount. -->
@@ -56,8 +65,8 @@
 					workspaces={appState.catalogue?.workspaces ?? []}
 					activeWorkspaceId={appState.activeWorkspace?.id ?? null}
 					{viewMode}
-					listHref={workspacePath(page.params.id, "list")}
-					kanbanHref={workspacePath(page.params.id, "kanban")}
+					listHref={workspacePath(page.params.id, "list") + filterQuery}
+					kanbanHref={workspacePath(page.params.id, "kanban") + filterQuery}
 					disabled={busy}
 					pendingOperation={appState.workspace.pendingOperation}
 					selectWorkspace={(id) => void openWorkspace(id)}

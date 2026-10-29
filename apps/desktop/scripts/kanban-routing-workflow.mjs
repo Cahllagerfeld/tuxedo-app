@@ -168,6 +168,27 @@ export async function kanbanRoutingWorkflow(
 	assert.equal(await page.getByText("1 selected", { exact: true }).count(), 0);
 	await page.getByRole("link", { name: "Kanban", exact: true }).click();
 	await expectBoard("Route A", "Alpha item");
+	const sidebarNav = page.locator('[data-slot="sidebar"]');
+	const alphaCard = page.getByRole("button", { name: "Open Alpha item", exact: true });
+	const historyLength = () => page.evaluate(() => history.length);
+	const entries = await historyLength();
+	await sidebarNav.getByRole("button", { name: /^Completed/ }).click();
+	await page.waitForURL(`${kanbanUrl("Route A")}?status=completed`);
+	await alphaCard.waitFor({ state: "detached" });
+	assert.equal(await historyLength(), entries, "Filter edits replace the history entry");
+	await page.getByRole("link", { name: "List", exact: true }).click();
+	await page.waitForURL(routeUrl(`/workspaces/${routeIds["Route A"]}?status=completed`));
+	await page.getByRole("button", { name: "Navigate Alpha item", exact: true }).waitFor({
+		state: "detached",
+	});
+	await page.goBack();
+	await page.waitForURL(`${kanbanUrl("Route A")}?status=completed`);
+	await sidebarNav.getByRole("button", { name: /^All/ }).click();
+	await page.waitForURL(kanbanUrl("Route A"));
+	await alphaCard.waitFor();
+	await page.goto(`${kanbanUrl("Route A")}?status=completed&due=later&project=two%20words`);
+	await alphaCard.waitFor({ state: "detached" });
+	await page.waitForURL(`${kanbanUrl("Route A")}?status=completed`);
 	await page.getByRole("button", { name: "Select workspace: Route A" }).click();
 	await page.getByRole("menuitem", { name: "Route B", exact: true }).click();
 	await expectBoard("Route B", "Beta item");
