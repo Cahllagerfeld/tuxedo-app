@@ -1,5 +1,10 @@
 <script lang="ts">
 	import type { TodoItem } from "../domain/todo";
+	import { boardAssignment, type BoardColumn } from "@tuxedo/contracts/board";
+	import * as DropdownMenu from "#lib/shared/ui/dropdown-menu/index.js";
+	import { Button } from "#lib/shared/ui/button/index.js";
+	import GripVertical from "@lucide/svelte/icons/grip-vertical";
+	import Ellipsis from "@lucide/svelte/icons/ellipsis";
 	import { dueCategory, validDueDate } from "../domain/todo-due";
 	import { recurrenceLabel } from "../domain/todo-recurrence";
 	import { isDeferred, showFromDate } from "../domain/todo-threshold";
@@ -13,6 +18,9 @@
 		selectedTodo,
 		onOpen,
 		onToggleComplete,
+		onMove,
+		onDragStart,
+		onDragEnd,
 	}: {
 		todo: TodoItem;
 		today: string;
@@ -20,7 +28,17 @@
 		selectedTodo: TodoItem | null;
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
+		onMove?: (todo: TodoItem, column: BoardColumn, trigger?: HTMLButtonElement | null) => void;
+		onDragStart: (todo: TodoItem, event: DragEvent) => void;
+		onDragEnd: () => void;
 	} = $props();
+	let moveTrigger = $state<HTMLButtonElement | null>(null);
+	const assignment = $derived(boardAssignment(todo.raw));
+	const destinations = [
+		{ id: "unassigned", name: "Unassigned" },
+		{ id: "to-do", name: "To do" },
+		{ id: "in-progress", name: "In progress" },
+	] as const;
 	let confirmedChecked = $derived(todo.completed);
 	const due = $derived(validDueDate(todo.metadata.due));
 	const category = $derived(dueCategory(todo.metadata.due, today));
@@ -80,6 +98,13 @@
 			{#each [...new Set(todo.projects)] as project (project)}<span>+{project}</span>{/each}
 			{#each [...new Set(todo.contexts)] as context (context)}<span>@{context}</span>{/each}
 			{#if recurrence}<span title={`Recurrence: ${recurrence}`}>Recurring</span>{/if}
+			{#if assignment.invalid}
+				<span
+					class="text-destructive"
+					title="Move this Todo item to replace its invalid board assignment"
+					>Invalid board assignment</span
+				>
+			{/if}
 			{#if showFrom}
 				<span title={`Show from ${showFrom}${deferred ? " · Deferred" : ""}`}>
 					{deferred ? "Deferred · " : ""}Show from {showFrom}
@@ -103,4 +128,40 @@
 			{/if}
 		</span>
 	</button>
+	{#if !todo.completed && onMove}
+		<span
+			aria-hidden="true"
+			title={`Drag ${todo.description}`}
+			draggable={!disabled}
+			ondragstart={(event) => onDragStart(todo, event)}
+			ondragend={onDragEnd}
+			class="relative z-10 cursor-grab text-muted-foreground active:cursor-grabbing"
+			><GripVertical class="size-4" /></span
+		>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						bind:ref={moveTrigger}
+						variant="ghost"
+						size="icon-xs"
+						{disabled}
+						aria-label={`Move ${todo.description}`}
+						class="relative z-10"><Ellipsis aria-hidden="true" /></Button
+					>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="end">
+				<DropdownMenu.Label>Move to</DropdownMenu.Label>
+				{#each destinations as destination}
+					<DropdownMenu.Item
+						disabled={disabled || (assignment.column === destination.id && !assignment.invalid)}
+						onSelect={() => onMove?.(todo, destination.id, moveTrigger)}
+						>{destination.name}</DropdownMenu.Item
+					>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	{/if}
 </article>

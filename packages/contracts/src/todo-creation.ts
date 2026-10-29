@@ -47,7 +47,7 @@ export const TodoDate = Schema.String.check(
 );
 export const TodoMetadata = Schema.String.check(
 	Schema.makeFilter((value) =>
-		!/^[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+$/u.test(value)
+		!/^(?:[^:\s\p{White_Space}]+:[^:\s\p{White_Space}]+|board:[^\s\p{White_Space}]*)$/u.test(value)
 			? "Use key:value without spaces or extra colons."
 			: /^[+@]/u.test(value)
 				? "Metadata keys must not start with + or @."

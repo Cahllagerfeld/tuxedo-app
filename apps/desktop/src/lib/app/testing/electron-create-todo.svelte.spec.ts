@@ -65,6 +65,7 @@ function desktop(createTodo: CreateTodoDesktop["createTodo"]): CreateTodoDesktop
 		editTodo: async () => ({ status: "rejected", message: "unused" }),
 		deleteTodo: async () => ({ status: "rejected", message: "unused" }),
 		reorderTodo: async () => ({ status: "rejected", message: "unused" }),
+		moveTodoOnBoard: async () => ({ status: "rejected", message: "unused" }),
 		createTodo,
 	});
 }

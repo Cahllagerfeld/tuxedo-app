@@ -11,6 +11,11 @@ import type { DesktopRequest } from "@tuxedo/contracts";
 
 const cases = [
 	{
+		operation: "move",
+		initial: "First board:unknown\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
+		expected: "First board:to-do\r\n\n2026-13-01 Invalid\nx Hidden\r\nLast",
+	},
+	{
 		operation: "complete",
 		initial: "(A) 2026-01-01 First  \r\n\n2026-13-01 Invalid\nLast",
 		expected: "x 2030-01-02 2026-01-01 First pri:A  \r\n\n2026-13-01 Invalid\nLast",
@@ -86,6 +91,8 @@ function mutation(
 ) {
 	return WorkspaceSession.use((session) => {
 		switch (operation) {
+			case "move":
+				return session.moveTodoOnBoard({ ...target, column: "to-do" });
 			case "complete":
 			case "uncomplete":
 				return session.setTodoCompletion({ ...target, completed: operation === "complete" });
@@ -113,6 +120,35 @@ function mutation(
 }
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mutations", (it) => {
+	it.effect("board moves report external conflicts and reject completed or stale targets", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const { todoPath, session, target } = yield* setup("First board:to-do\nx Finished\n", fs);
+			yield* fs.writeFileString(todoPath, "Externally changed board:to-do\nx Finished\n");
+			const conflict = yield* session.moveTodoOnBoard({ ...target, column: "in-progress" });
+			expect(conflict.status).toBe("conflict");
+			expect(yield* fs.readFileString(todoPath)).toBe(
+				"Externally changed board:to-do\nx Finished\n"
+			);
+			expect(yield* session.moveTodoOnBoard({ ...target, column: "in-progress" })).toMatchObject({
+				status: "rejected",
+			});
+			if (conflict.status !== "conflict") throw Error("expected conflict");
+			expect(conflict.confirmed.todo_file.items[0].raw).toBe("Externally changed board:to-do");
+			expect(
+				yield* session.moveTodoOnBoard({
+					...target,
+					revision: conflict.confirmed.revision,
+					lineNumber: 2,
+					expectedRaw: "x Finished",
+					column: "to-do",
+				})
+			).toMatchObject({ status: "rejected" });
+			expect(yield* fs.readFileString(todoPath)).toBe(
+				"Externally changed board:to-do\nx Finished\n"
+			);
+		})
+	);
 	it.effect(
 		"failed Undo retains confirmed data and its slot, cleans temporary files, and can be retried",
 		() =>

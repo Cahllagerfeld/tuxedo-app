@@ -18,6 +18,23 @@ export async function kanbanRoutingWorkflow(
 
 	await page.goto(kanbanUrl("Route A"));
 	await expectBoard("Route A", "Alpha item");
+	const alpha = page.getByRole("button", { name: "Move Alpha item", exact: true });
+	const todoColumn = page.getByRole("region", { name: "To do", exact: true });
+	await alpha.focus();
+	await alpha.press("Enter");
+	await page.getByRole("menuitem", { name: "To do", exact: true }).press("Enter");
+	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
+	await page.getByRole("button", { name: "Undo move", exact: true }).click();
+	await page
+		.getByRole("region", { name: "Unassigned", exact: true })
+		.getByRole("button", { name: "Move Alpha item", exact: true })
+		.waitFor();
+	await page
+		.getByTitle("Drag Alpha item")
+		.dragTo(todoColumn, { targetPosition: { x: 100, y: 80 } });
+	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
+	await page.getByRole("button", { name: "Undo move", exact: true }).click();
+	await expectBoard("Route A", "Alpha item");
 	const rail = page.getByRole("navigation", { name: "Workspace navigation" });
 	const inset = page.locator('[data-slot="app-inset"]');
 	assert.equal(

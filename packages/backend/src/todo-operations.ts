@@ -16,6 +16,7 @@ import {
 	createTodoRequestSchema,
 	editTodoRequestSchema,
 	reorderTodoRequestSchema,
+	moveTodoOnBoardRequestSchema,
 	todoMutationRequestSchema,
 	setTodoCompletionRequestSchema,
 	bulkSetTodoCompletionRequestSchema,
@@ -194,6 +195,31 @@ export function createTodoOperations(state: SessionState) {
 			return { ...result, ...(notice ? { notice } : {}) };
 		});
 	return {
+		moveTodoOnBoard: (request: DesktopRequest<"moveTodoOnBoard">) =>
+			Effect.gen(function* () {
+				const parsed = moveTodoOnBoardRequestSchema.safeParse(request);
+				if (!parsed.success) return { status: "rejected" as const, message: "Invalid board move." };
+				const { column, ...target } = parsed.data;
+				return yield* mutateTodo(target, "Undo move", (contents, item) => {
+					if (item.completed)
+						throw Error("Only open Todo items can be moved between open columns.");
+					let replaced = false;
+					let raw = item.raw.replace(
+						/(^|\p{White_Space})board:[^\p{White_Space}]*/gu,
+						(_token, whitespace: string) => {
+							if (replaced) return whitespace;
+							replaced = true;
+							return `${whitespace}board:${column}`;
+						}
+					);
+					if (!replaced)
+						raw = raw.replace(
+							/(\p{White_Space}*)$/u,
+							(_suffix, whitespace: string) => ` board:${column}${whitespace}`
+						);
+					return replaceTodoLines(contents, [{ lineNumber: item.line_number, raw }]);
+				});
+			}),
 		undoTodo: (request: DesktopRequest<"undoTodo">) =>
 			Effect.gen(function* () {
 				const input = yield* attempt(() => undoTodoRequestSchema.parse(request));

@@ -14,5 +14,6 @@
 		selectedTodo={context.reader.selectedTodo}
 		onOpen={context.reader.select}
 		onToggleComplete={context.toggleTodoCompletion}
+		onMove={context.moveTodoOnBoard}
 	/>
 </div>

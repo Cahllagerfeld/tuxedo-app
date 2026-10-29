@@ -1,5 +1,6 @@
 import { onDestroy, tick } from "svelte";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
+import type { BoardColumn } from "@tuxedo/contracts/board";
 import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 import type { TodoItemDraft, SaveTodoItemResult } from "#lib/modules/todo/ui/todo-editor-types.js";
 import type { ShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
@@ -158,6 +159,13 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 				() => inputs.workspace.setCompletion(todo),
 				todo.line_number,
 				inputs.list?.captureFocus(todo)
+			),
+		moveOnBoard: (todo: TodoItem, column: BoardColumn, trigger?: HTMLButtonElement | null) =>
+			change(
+				todo,
+				() => inputs.workspace.moveTodoOnBoard(todo, column),
+				todo.line_number,
+				inputs.list?.captureFocus(todo, false, trigger)
 			),
 		deleteTodo: (todo: TodoItem, trigger?: HTMLButtonElement | null) =>
 			change(

@@ -65,6 +65,7 @@ export class WorkspaceCommands implements WorkspaceReader {
 	readonly editTodo;
 	readonly deleteTodo;
 	readonly reorderTodo;
+	readonly moveTodoOnBoard;
 	readonly createTodo;
 
 	constructor(
@@ -88,6 +89,7 @@ export class WorkspaceCommands implements WorkspaceReader {
 		this.editTodo = todo.editTodo;
 		this.deleteTodo = todo.deleteTodo;
 		this.reorderTodo = todo.reorderTodo;
+		this.moveTodoOnBoard = todo.moveTodoOnBoard;
 		this.createTodo = todo.createTodo;
 	}
 	get current() {

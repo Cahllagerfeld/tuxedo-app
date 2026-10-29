@@ -311,6 +311,31 @@ test("Show from preserves unsupported and repeated metadata until the calendar c
 	await expect.poll(() => calls[2]?.metadata).toEqual(["custom:keep"]);
 });
 
+test("an unrelated edit preserves repeated and unsupported board tokens", async () => {
+	const calls: TodoItemDraft[] = [];
+	render(TodoEditorDialog, {
+		todoFile,
+		todoToEdit: {
+			...todoFile.items[0],
+			raw: "Plan release +Work @Office board:to-do board: board:future:invalid",
+			metadata: { board: "future:invalid" },
+			edit: {
+				description: "Plan release",
+				metadata: ["board:to-do", "board:", "board:future:invalid"],
+			},
+		},
+		saveTodoItem: async (input) => {
+			calls.push(input);
+			return { status: "applied" };
+		},
+	});
+	await page.getByPlaceholder("What needs doing?").fill("Plan the next release");
+	await page.getByRole("button", { name: "Save changes", exact: true }).click();
+	await expect
+		.poll(() => calls[0]?.metadata)
+		.toEqual(["board:to-do", "board:", "board:future:invalid"]);
+});
+
 test("editing retains the Todo item's tags instead of creation defaults", async () => {
 	let saved: TodoItemDraft | undefined;
 	render(TodoEditorDialog, {

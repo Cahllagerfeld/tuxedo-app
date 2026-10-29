@@ -15,7 +15,8 @@ export type WorkspaceSessionOperation =
 	| "delete_todo_item"
 	| "create_todo_item"
 	| "edit_todo_item"
-	| "reorder_todo_items";
+	| "reorder_todo_items"
+	| "move_todo_on_board";
 
 export type WorkspaceSessionActionResult =
 	| {

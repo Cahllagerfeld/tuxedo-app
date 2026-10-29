@@ -4,6 +4,10 @@
 (D) Confirm overflow priority is hidden by default +TuxedoApp @computer
 2026-05-24 Document parser behavior +TuxedoApp @computer
 Plan next feature
+Move this card from To do to In progress +Kanban board:to-do
+Review this work in progress +Kanban board:in-progress
+Repair this imported board value by moving the card +Kanban board:unknown
+The last repeated board value determines its column +Kanban board:to-do board:in-progress
 Create an empty Todo file from New workspace, open it after setup, and add your first Todo item +TuxedoApp @computer
 Open an existing work.txt without changing its contents +TuxedoApp @computer
 Capture inbox item @home @computer +TuxedoApp +Ideas

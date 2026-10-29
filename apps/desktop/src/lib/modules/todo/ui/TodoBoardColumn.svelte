@@ -4,24 +4,39 @@
 	import { tick } from "svelte";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
 	import type { TodoItem } from "../domain/todo";
+	import type { BoardColumn } from "@tuxedo/contracts/board";
 	import TodoBoardCard from "./TodoBoardCard.svelte";
 
 	let {
 		name,
+		column,
+		isDropTarget,
 		items,
 		today,
 		disabled,
 		selectedTodo,
 		onOpen,
 		onToggleComplete,
+		onMove,
+		onDragStart,
+		onDragEnd,
+		onDragOver,
+		onDrop,
 	}: {
 		name: string;
+		column: BoardColumn | null;
+		isDropTarget: boolean;
 		items: readonly TodoItem[];
 		today: string;
 		disabled: boolean;
 		selectedTodo: TodoItem | null;
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
+		onMove?: (todo: TodoItem, column: BoardColumn, trigger?: HTMLButtonElement | null) => void;
+		onDragStart: (todo: TodoItem, event: DragEvent) => void;
+		onDragEnd: () => void;
+		onDragOver: (event: DragEvent) => void;
+		onDrop: (column: BoardColumn, event: DragEvent) => void;
 	} = $props();
 
 	let viewport = $state<HTMLElement | null>(null);
@@ -109,6 +124,15 @@
 
 <section
 	aria-label={name}
+	data-board-column={column ?? undefined}
+	class:ring-2={isDropTarget}
+	class:ring-primary={isDropTarget}
+	ondragover={(event) => {
+		if (column) onDragOver(event);
+	}}
+	ondrop={(event) => {
+		if (column) onDrop(column, event);
+	}}
 	class="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/30"
 >
 	<header class="flex shrink-0 items-center justify-between border-b px-3 py-3">
@@ -140,6 +164,12 @@
 						{selectedTodo}
 						{onOpen}
 						{onToggleComplete}
+						{onMove}
+						onDragStart={(todo, event) => {
+							focusedLine = todo.line_number;
+							onDragStart(todo, event);
+						}}
+						{onDragEnd}
 					/>
 				</li>
 			{/each}

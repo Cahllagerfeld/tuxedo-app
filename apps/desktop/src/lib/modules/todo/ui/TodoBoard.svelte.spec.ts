@@ -33,6 +33,112 @@ const legacyCompleted: TodoItem = {
 };
 
 describe("TodoBoard", () => {
+	it("scrolls a long column when a dragged card reaches its lower edge", async () => {
+		const items = Array.from({ length: 30 }, (_, index) => ({
+			...open,
+			line_number: index + 1,
+			description: `Item ${index + 1}`,
+		}));
+		render(TodoBoard, {
+			items,
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove: vi.fn(),
+		});
+		const handle = page.getByTitle("Drag Item 1").element();
+		const viewport = page
+			.getByRole("region", { name: "Unassigned Todo items" })
+			.element() as HTMLElement;
+		const transfer = new DataTransfer();
+		handle.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer }));
+		const rect = viewport.getBoundingClientRect();
+		viewport.dispatchEvent(
+			new DragEvent("dragover", {
+				bubbles: true,
+				cancelable: true,
+				dataTransfer: transfer,
+				clientX: rect.left + 50,
+				clientY: rect.bottom - 2,
+			})
+		);
+		await expect.poll(() => viewport.scrollTop).toBeGreaterThan(0);
+		handle.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: transfer }));
+	});
+
+	it("drops an open card onto another column and scrolls at the board edge", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		const handle = page.getByTitle("Drag Plan").element();
+		const board = page.getByRole("region", { name: "Kanban board" }).element() as HTMLElement;
+		const target = page.getByRole("region", { name: "To do", exact: true }).element();
+		const transfer = new DataTransfer();
+		handle.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer }));
+		const rect = board.getBoundingClientRect();
+		target.dispatchEvent(
+			new DragEvent("dragover", {
+				bubbles: true,
+				cancelable: true,
+				dataTransfer: transfer,
+				clientX: rect.right - 2,
+				clientY: rect.top + 40,
+			})
+		);
+		await expect.poll(() => board.scrollLeft).toBeGreaterThan(0);
+		target.dispatchEvent(
+			new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer })
+		);
+		expect(onMove).toHaveBeenCalledExactlyOnceWith(open, "to-do");
+	});
+
+	it("shows the last assignment, flags unknown values, and offers a keyboard move", async () => {
+		const onMove = vi.fn();
+		const assigned = {
+			...open,
+			line_number: 3,
+			description: "Assigned",
+			raw: "Assigned board:to-do board:in-progress/2",
+		};
+		const invalid = {
+			...open,
+			line_number: 4,
+			description: "Imported",
+			raw: "Imported board:future",
+		};
+		render(TodoBoard, {
+			items: [open, assigned, invalid],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		await expect
+			.element(
+				page
+					.getByRole("region", { name: "In progress" })
+					.getByRole("button", { name: "Open Assigned" })
+			)
+			.toBeVisible();
+		const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
+		await expect
+			.element(unassigned.getByRole("button", { name: "Open Imported" }))
+			.toHaveAccessibleDescription(/Invalid board assignment/);
+		const trigger = unassigned.getByRole("button", { name: "Move Imported" });
+		(trigger.element() as HTMLElement).focus();
+		await userEvent.keyboard("{Enter}");
+		await page.getByRole("menuitem", { name: "To do" }).click();
+		expect(onMove).toHaveBeenCalledExactlyOnceWith(invalid, "to-do", trigger.element());
+	});
+
 	it("places open and legacy completed Todo items in the fixed columns", async () => {
 		render(TodoBoard, {
 			items: [open, legacyCompleted],
