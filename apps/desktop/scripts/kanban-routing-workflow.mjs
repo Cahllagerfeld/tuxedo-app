@@ -35,9 +35,9 @@ export async function kanbanRoutingWorkflow(
 	const cardBox = await card.boundingBox();
 	const destinationBox = await destination.boundingBox();
 	assert.ok(cardBox && destinationBox);
-	await page.mouse.move(cardBox.x + 5, cardBox.y + 5);
+	await page.mouse.move(cardBox.x + 60, cardBox.y + 20);
 	await page.mouse.down();
-	await page.mouse.move(cardBox.x + 15, cardBox.y + 15, { steps: 3 });
+	await page.mouse.move(cardBox.x + 70, cardBox.y + 30, { steps: 3 });
 	const dragged = page.locator("#dnd-action-dragged-el article");
 	await dragged.waitFor();
 	assert.ok(
@@ -45,7 +45,7 @@ export async function kanbanRoutingWorkflow(
 		"The entire card follows the pointer"
 	);
 	await page.mouse.move(destinationBox.x + 40, destinationBox.y + 40, { steps: 12 });
-	await destination.locator("[data-board-placeholder] > div").waitFor();
+	await destination.locator("[data-board-placeholder]").waitFor();
 	await page.mouse.up();
 	await todoColumn.getByRole("button", { name: "Open Alpha item", exact: true }).waitFor();
 	await page.getByRole("button", { name: "Undo move", exact: true }).click();

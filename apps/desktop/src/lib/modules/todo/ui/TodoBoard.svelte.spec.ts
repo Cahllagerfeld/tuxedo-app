@@ -159,8 +159,7 @@ describe("TodoBoard", () => {
 		);
 		await expect.poll(() => target.querySelector("[data-board-placeholder]") !== null).toBe(true);
 		expect(
-			getComputedStyle(target.querySelector<HTMLElement>("[data-board-placeholder] > div")!)
-				.visibility
+			getComputedStyle(target.querySelector<HTMLElement>("[data-board-placeholder]")!).visibility
 		).toBe("visible");
 		window.dispatchEvent(
 			new MouseEvent("mouseup", {
@@ -235,6 +234,71 @@ describe("TodoBoard", () => {
 					.getByRole("button", { name: "Open Plan" })
 			)
 			.toBeVisible();
+		await expect.element(page.getByRole("listitem", { name: "Plan" })).toHaveFocus();
+	});
+
+	it("leaves arrow keys available to controls outside a keyboard drag", async () => {
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove: vi.fn(),
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}");
+		const input = document.createElement("input");
+		document.body.append(input);
+		try {
+			input.focus();
+			const arrow = new KeyboardEvent("keydown", {
+				key: "ArrowLeft",
+				bubbles: true,
+				cancelable: true,
+			});
+			expect(input.dispatchEvent(arrow)).toBe(true);
+			await userEvent.keyboard("{Escape}");
+			expect(document.activeElement).toBe(input);
+		} finally {
+			input.remove();
+		}
+	});
+
+	it("ends a pointer drag immediately on Escape without saving", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		const card = page.getByRole("button", { name: "Open Plan" }).element().closest("article")!;
+		const rect = card.getBoundingClientRect();
+		document.elementFromPoint(rect.left + 5, rect.top + 5)!.dispatchEvent(
+			new MouseEvent("mousedown", {
+				bubbles: true,
+				clientX: rect.left + 5,
+				clientY: rect.top + 5,
+			})
+		);
+		window.dispatchEvent(
+			new MouseEvent("mousemove", {
+				bubbles: true,
+				clientX: rect.left + 15,
+				clientY: rect.top + 15,
+			})
+		);
+		try {
+			await expect.poll(() => !!document.getElementById(DRAGGED_ELEMENT_ID)).toBe(true);
+			await userEvent.keyboard("{Escape}");
+			expect(document.getElementById(DRAGGED_ELEMENT_ID)).toBeNull();
+			expect(onMove).not.toHaveBeenCalled();
+		} finally {
+			window.dispatchEvent(new MouseEvent("mouseup"));
+		}
 	});
 
 	it("cancels a keyboard move when focus and a click leave the card", async () => {

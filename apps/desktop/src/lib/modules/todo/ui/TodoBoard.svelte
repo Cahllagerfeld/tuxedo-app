@@ -64,18 +64,22 @@
 
 	function handleDragKeydown(event: KeyboardEvent) {
 		if (!drag) return;
+		const boardItem =
+			event.target instanceof HTMLElement &&
+			event.target.matches("[data-board-drag-item]") &&
+			board?.contains(event.target);
 		if (event.key === "Escape") {
 			cancelled = true;
 			event.preventDefault();
+			// Let the library clean up its pointer drag immediately; the cancelled flag prevents a save.
+			if (drag.source === SOURCES.POINTER) window.dispatchEvent(new MouseEvent("mouseup"));
 		} else if (
 			drag.source === SOURCES.KEYBOARD &&
 			(event.key === " " || event.key === "Enter") &&
-			event.target instanceof HTMLElement &&
-			event.target.matches("[data-board-drag-item]") &&
-			board?.contains(event.target)
+			boardItem
 		) {
 			keyboardDropRequested = true;
-		} else if (drag.source === SOURCES.KEYBOARD && event.key.startsWith("Arrow")) {
+		} else if (drag.source === SOURCES.KEYBOARD && boardItem && event.key.startsWith("Arrow")) {
 			// Board ordering is independent of List ordering and is added separately.
 			event.preventDefault();
 			event.stopPropagation();
@@ -113,6 +117,14 @@
 				? `Moving ${todo.description} to ${columns.find((value) => value.id === column)?.name}.`
 				: "Move cancelled.";
 		if (valid && changed) onMove?.(todo, column, trigger);
+		else if (source === SOURCES.KEYBOARD) void restoreDragFocus(todo.line_number);
+	}
+	async function restoreDragFocus(line: number) {
+		await tick();
+		if (destroyed || document.activeElement !== document.body) return;
+		await reveal(line);
+		if (!destroyed && document.activeElement === document.body)
+			(control(line)?.closest("li") ?? board)?.focus();
 	}
 	function consider(column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) {
 		const { info, items: next } = event.detail;

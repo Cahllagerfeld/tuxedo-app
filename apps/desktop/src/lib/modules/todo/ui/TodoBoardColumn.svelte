@@ -190,7 +190,6 @@
 					animate:flip={{ duration: preview && !prefersReducedMotion.current ? 120 : 0 }}
 					data-board-drag-item
 					data-index={index}
-					data-board-placeholder={item.isDndShadowItem ? "" : undefined}
 					aria-label={item.todo.description}
 					aria-describedby={column && canMove ? instructionsId : undefined}
 					aria-hidden={item.isDndShadowItem ? "true" : undefined}
@@ -205,6 +204,7 @@
 				>
 					{#if item.isDndShadowItem}
 						<div
+							data-board-placeholder
 							class="visible rounded-md border-2 border-dashed border-primary/50 bg-primary/5"
 							style:height={`${ghostHeight}px`}
 						></div>
