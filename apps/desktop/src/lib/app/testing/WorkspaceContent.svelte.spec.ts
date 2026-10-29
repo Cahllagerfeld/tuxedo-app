@@ -135,6 +135,46 @@ test("a keyboard board move keeps confirmed contents while saving, then updates 
 	});
 });
 
+test("a move to Done hidden by the Open filter confirms it and Undo restores the card", async () => {
+	await page.viewport(1400, 900);
+	const completed = {
+		...todo,
+		raw: `x 2026-10-29 ${todo.raw}`,
+		completed: true,
+		completion_date: "2026-10-29",
+	};
+	const moveTodoOnBoard = vi.fn<DesktopAPI["moveTodoOnBoard"]>(async () => ({
+		status: "applied",
+		confirmed: { ...confirmedTodo([completed]), undoLabel: "Undo completion" },
+	}));
+	const undoTodo = vi.fn<DesktopAPI["undoTodo"]>(async () => ({
+		status: "applied",
+		confirmed: { ...confirmedTodo([todo]), revision: 3 },
+	}));
+	render(Harness, {
+		viewMode: "kanban",
+		shell: true,
+		desktop: adapter({ moveTodoOnBoard, undoTodo }),
+	});
+	await page.getByRole("button", { name: /^Open \d+$/ }).click();
+	const card = page.getByRole("listitem", { name: "Plan release" });
+	await expect.element(card).toBeVisible();
+	(card.element() as HTMLElement).focus();
+	await userEvent.keyboard("{Space}{Tab}{Tab}{Tab}{Space}");
+	await expect.element(page.getByText("Todo item completed")).toBeVisible();
+	expect(moveTodoOnBoard.mock.calls[0][0]).toMatchObject({ column: "done" });
+	expect(page.getByRole("button", { name: "Open Plan release" }).elements()).toHaveLength(0);
+	await page.getByRole("button", { name: "Undo", exact: true }).click();
+	await expect
+		.element(
+			page
+				.getByRole("region", { name: "Unassigned", exact: true })
+				.getByRole("button", { name: "Open Plan release" })
+		)
+		.toBeVisible();
+	expect(undoTodo).toHaveBeenCalledExactlyOnceWith({ scope, revision: 2, workspaceId });
+});
+
 test("a failed board move retains confirmed state and reports the error", async () => {
 	await page.viewport(1400, 900);
 	const moveTodoOnBoard = vi.fn<DesktopAPI["moveTodoOnBoard"]>(async () => ({

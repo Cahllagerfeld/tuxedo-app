@@ -11,7 +11,7 @@
 	import { fromStore, get } from "svelte/store";
 	import { tick } from "svelte";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
-	import type { BoardColumn } from "@tuxedo/contracts/board";
+	import type { BoardDestination } from "@tuxedo/contracts/board";
 	import TodoBoardCard from "./TodoBoardCard.svelte";
 
 	let {
@@ -32,7 +32,7 @@
 		onFinalize,
 	}: {
 		name: string;
-		column: BoardColumn | null;
+		column: BoardDestination;
 		items: readonly TodoItem[];
 		preview: BoardDragItem[] | null;
 		dragging: boolean;
@@ -44,8 +44,8 @@
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
 		canMove: boolean;
-		onConsider: (column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
-		onFinalize: (column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
+		onConsider: (column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
+		onFinalize: (column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
 	} = $props();
 
 	let viewport = $state<HTMLElement | null>(null);
@@ -79,11 +79,10 @@
 	);
 	const zone = $derived({
 		items: rows.map((row) => row.item),
-		type: column ? "kanban-open" : "kanban-done",
-		dragDisabled: disabled || !canMove || !column,
-		dropFromOthersDisabled: !column,
+		type: "kanban",
+		dragDisabled: disabled || !canMove,
 		zoneTabIndex: -1,
-		zoneItemTabIndex: column && canMove && !disabled ? 0 : -1,
+		zoneItemTabIndex: canMove && !disabled ? 0 : -1,
 		autoAriaDisabled: true,
 		morphDisabled: true,
 		dropAnimationDisabled: true,
@@ -156,7 +155,7 @@
 
 <section
 	aria-label={name}
-	data-board-column={column ?? undefined}
+	data-board-column={column}
 	class="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/30"
 >
 	<header class="flex shrink-0 items-center justify-between border-b px-3 py-3">
@@ -175,10 +174,10 @@
 			aria-label={`${name} cards`}
 			use:dndzone={zone}
 			onconsider={(event) => {
-				if (column) onConsider(column, event);
+				onConsider(column, event);
 			}}
 			onfinalize={(event) => {
-				if (column) onFinalize(column, event);
+				onFinalize(column, event);
 			}}
 			class={preview ? "relative mx-2 flex flex-col gap-2 py-2" : "relative mx-2"}
 			style:height={preview ? undefined : `${instance.current.getTotalSize()}px`}
@@ -191,7 +190,7 @@
 					data-board-drag-item
 					data-index={index}
 					aria-label={item.todo.description}
-					aria-describedby={column && canMove ? instructionsId : undefined}
+					aria-describedby={canMove ? instructionsId : undefined}
 					aria-hidden={item.isDndShadowItem ? "true" : undefined}
 					aria-posinset={index + 1}
 					aria-setsize={preview?.length ?? items.length}
@@ -216,7 +215,7 @@
 							{selectedTodo}
 							{onOpen}
 							{onToggleComplete}
-							movable={!!column && canMove}
+							movable={canMove}
 						/>
 					{/if}
 				</li>

@@ -3,6 +3,9 @@ import { effectValidator } from "./effect-validation";
 
 export const BoardColumn = Schema.Literals(["unassigned", "to-do", "in-progress"]);
 export type BoardColumn = typeof BoardColumn.Type;
+/** A board move destination; Done completes the Todo item instead of assigning a column. */
+export const BoardDestination = Schema.Literals([...BoardColumn.literals, "done"]);
+export type BoardDestination = typeof BoardDestination.Type;
 
 const BoardAssignment = Schema.Struct({
 	column: BoardColumn,

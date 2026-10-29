@@ -390,6 +390,26 @@ describe("TodoBoard", () => {
 			.toBeLessThan(20);
 	});
 
+	it("moves cards into Done to complete them and out of Done to reopen them", async () => {
+		const onMove = vi.fn();
+		render(TodoBoard, {
+			items: [open, legacyCompleted],
+			today: "2026-10-28",
+			disabled: false,
+			onOpen: vi.fn(),
+			onToggleComplete: vi.fn(),
+			onMove,
+		});
+		(page.getByRole("listitem", { name: "Plan" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Tab}{Tab}{Tab}{Space}");
+		await expect.poll(() => onMove.mock.calls.length).toBe(1);
+		expect(onMove.mock.calls[0].slice(0, 2)).toEqual([open, "done"]);
+		(page.getByRole("listitem", { name: "Ship release" }).element() as HTMLElement).focus();
+		await userEvent.keyboard("{Space}{Shift>}{Tab}{/Shift}{Space}");
+		await expect.poll(() => onMove.mock.calls.length).toBe(2);
+		expect(onMove.mock.calls[1].slice(0, 2)).toEqual([legacyCompleted, "in-progress"]);
+	});
+
 	it("places open and legacy completed Todo items in the fixed columns", async () => {
 		render(TodoBoard, {
 			items: [open, legacyCompleted],

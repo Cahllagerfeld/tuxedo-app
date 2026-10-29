@@ -404,7 +404,7 @@ test("desktop transport validates board destinations and the scoped item target"
 	await desktop.moveTodoOnBoard(request);
 	expect(invoked).toEqual({ channel: "tuxedo:move-todo-on-board", request });
 	for (const invalid of [
-		{ ...request, column: "done" },
+		{ ...request, column: "archived" },
 		{ ...request, column: "in-progress/2" },
 		{ ...request, lineNumber: 0 },
 		{ ...request, extra: true },

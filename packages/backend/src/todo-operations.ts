@@ -200,11 +200,23 @@ export function createTodoOperations(state: SessionState) {
 				const parsed = moveTodoOnBoardRequestSchema.safeParse(request);
 				if (!parsed.success) return { status: "rejected" as const, message: "Invalid board move." };
 				const { column, ...target } = parsed.data;
-				return yield* mutateTodo(target, "Undo move", (contents, item) => {
-					if (item.completed)
-						throw Error("Only open Todo items can be moved between open columns.");
+				const identity = yield* Identity;
+				const label = column === "done" ? "Undo completion" : "Undo move";
+				return yield* mutateTodo(target, label, (contents, item) => {
+					const today = new Date(identity.now());
+					if (column === "done")
+						return item.completed
+							? contents
+							: recurringCompletion(
+									contents,
+									item,
+									setTodoCompletionLine(item, true, today),
+									today
+								);
+					// Reopening keeps the item's content and only replaces its board assignment.
+					const open = item.completed ? setTodoCompletionLine(item, false, today) : item.raw;
 					let replaced = false;
-					let raw = item.raw.replace(
+					let raw = open.replace(
 						/(^|\p{White_Space})board:[^\p{White_Space}]*/gu,
 						(_token, whitespace: string) => {
 							if (replaced) return whitespace;

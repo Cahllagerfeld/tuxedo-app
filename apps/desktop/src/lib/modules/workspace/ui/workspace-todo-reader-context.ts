@@ -1,6 +1,6 @@
 import { createContext } from "svelte";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
-import type { BoardColumn } from "@tuxedo/contracts/board";
+import type { BoardDestination } from "@tuxedo/contracts/board";
 import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 import type { TodoFilterState } from "#lib/modules/todo/state/todo-filter.svelte.js";
 import type { WorkspaceCommands } from "../state/workspace-commands.svelte.js";
@@ -24,7 +24,7 @@ type WorkspaceTodoReaderContext = {
 	reorderTodoItems: (items: readonly TodoItem[]) => Promise<void>;
 	moveTodoOnBoard: (
 		todo: TodoItem,
-		column: BoardColumn,
+		column: BoardDestination,
 		trigger?: HTMLElement | null
 	) => Promise<void>;
 };

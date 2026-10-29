@@ -5,7 +5,7 @@
 	import type { Snippet } from "svelte";
 	import { getShortcutScope } from "#lib/shared/shortcuts/shortcut-scope.svelte.js";
 	import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
-	import type { BoardColumn } from "@tuxedo/contracts/board";
+	import type { BoardDestination } from "@tuxedo/contracts/board";
 	import type TodoList from "#lib/modules/todo/ui/TodoList.svelte";
 	import TodoDetails from "#lib/modules/todo/ui/TodoDetails.svelte";
 	import TodoEditorDialog from "#lib/modules/todo/ui/TodoEditorDialog.svelte";
@@ -108,11 +108,32 @@
 	}
 	async function moveTodoOnBoard(
 		todo: TodoItem,
-		column: BoardColumn,
+		column: BoardDestination,
 		trigger?: HTMLElement | null
 	) {
 		const result = await reader.moveOnBoard(todo, column, trigger);
 		if (result.status === "applied" && result.notice) toast.info(result.notice);
+		if (
+			result.status === "applied" &&
+			!filteredTodoItems.some((item) => item.line_number === todo.line_number)
+		) {
+			const moved = workspace.confirmed;
+			toast.success(column === "done" ? "Todo item completed" : "Todo item moved", {
+				description: `${todo.description} no longer matches the current filters.`,
+				action: {
+					label: "Undo",
+					onClick: async () => {
+						// Undo only this move; a later change owns the single Undo slot.
+						if (workspace.confirmed !== moved || !workspace.canMutate)
+							return toast.error("Undo is no longer available for this move.");
+						const outcome = await workspace.undoTodo();
+						if (outcome.status === "applied" && outcome.notice) toast.info(outcome.notice);
+						if (outcome.status === "conflict") toast.warning(outcome.message);
+						else if (outcome.status === "rejected") toast.error(outcome.message);
+					},
+				},
+			});
+		}
 		if (result.status === "conflict")
 			toast.error("Todo file changed", { description: result.message });
 		else if (result.status === "rejected")

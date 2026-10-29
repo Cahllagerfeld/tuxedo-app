@@ -38,10 +38,10 @@ Replacing one Todo item's content through the shared Todo-item editor while reta
 Moving the displayed Todo items among their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place.
 
 **Board assignment**:
-An open Todo item's location in a Workspace's Kanban board: Unassigned, To do, or In progress. Absent or unsupported assignments appear in Unassigned, and unsupported values are retained until the Todo item is deliberately moved.
+An open Todo item's location in a Workspace's Kanban board: Unassigned, To do, or In progress. Absent or unsupported assignments appear in Unassigned, and unsupported values are retained until the Todo item is deliberately moved. Completed Todo items appear in Done and retain their Board assignment, which uncompletion restores.
 
 **Kanban move**:
-Changing an open Todo item's Board assignment without changing its position in the Todo file.
+Changing a Todo item's Board assignment without changing its position in the Todo file. Moving to Done completes the Todo item, including recurrence; moving a completed Todo item out of Done uncompletes it with the chosen Board assignment.
 
 **Undo last change**:
 Restoring the Active workspace's Todo file to its state before the most recent successful Todo-item creation, edit, completion, uncompletion, deletion, reordering, or Kanban move. Only one change can be undone; switching Workspaces, closing the app, or discovering an external Todo-file change clears that opportunity.

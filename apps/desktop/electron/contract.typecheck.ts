@@ -67,8 +67,8 @@ registerDesktopOperation(ipc, getWindow, () => true, "reorderTodo", api.reorderT
 api.reorderTodo({ lineNumbers: [2, 1] });
 
 registerDesktopOperation(ipc, getWindow, () => true, "moveTodoOnBoard", api.moveTodoOnBoard);
-// @ts-expect-error Board moves require a scoped item target and an open column.
-api.moveTodoOnBoard({ column: "done" });
+// @ts-expect-error Board moves require a scoped item target and a supported destination.
+api.moveTodoOnBoard({ column: "archived" });
 
 registerDesktopOperation(ipc, getWindow, () => true, "editTodo", api.editTodo);
 // @ts-expect-error Editing needs the original physical line and raw content.
