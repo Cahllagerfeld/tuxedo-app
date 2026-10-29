@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick } from "svelte";
-	import { boardAssignment, type BoardColumn } from "@tuxedo/contracts/board";
+	import { boardAssignment, type BoardDestination } from "@tuxedo/contracts/board";
 	import { SOURCES, TRIGGERS, type DndEvent } from "svelte-dnd-action";
 	import type { TodoItem } from "../domain/todo";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
@@ -21,11 +21,11 @@
 		selectedTodo?: TodoItem | null;
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
-		onMove?: (todo: TodoItem, column: BoardColumn, trigger?: HTMLElement | null) => void;
+		onMove?: (todo: TodoItem, column: BoardDestination, trigger?: HTMLElement | null) => void;
 	} = $props();
 
 	const columns = $derived.by(() => {
-		const grouped: Record<BoardColumn | "done", TodoItem[]> = {
+		const grouped: Record<BoardDestination, TodoItem[]> = {
 			unassigned: [],
 			"to-do": [],
 			"in-progress": [],
@@ -37,18 +37,18 @@
 			{ name: "Unassigned", id: "unassigned" as const, items: grouped.unassigned },
 			{ name: "To do", id: "to-do" as const, items: grouped["to-do"] },
 			{ name: "In progress", id: "in-progress" as const, items: grouped["in-progress"] },
-			{ name: "Done", id: null, items: grouped.done },
+			{ name: "Done", id: "done" as const, items: grouped.done },
 		];
 	});
 	let board = $state<HTMLElement | null>(null);
 	let columnViews = $state<Record<string, ReturnType<typeof TodoBoardColumn>>>({});
 	let destroyed = false;
-	let preview = $state.raw<Record<BoardColumn, BoardDragItem[]> | null>(null);
+	let preview = $state.raw<Record<BoardDestination, BoardDragItem[]> | null>(null);
 	let drag = $state.raw<{
 		todo: TodoItem;
 		items: readonly TodoItem[];
 		order: Map<number, number>;
-		from: BoardColumn;
+		from: BoardDestination;
 		source: SOURCES;
 		height: number;
 	} | null>(null);
@@ -85,7 +85,7 @@
 			event.stopPropagation();
 		}
 	}
-	function updatePreview(column: BoardColumn, next: BoardDragItem[]) {
+	function updatePreview(column: BoardDestination, next: BoardDragItem[]) {
 		if (!preview || !drag) return;
 		const { order } = drag;
 		preview = {
@@ -95,7 +95,7 @@
 			),
 		};
 	}
-	function finish(column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) {
+	function finish(column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) {
 		if (!drag) return;
 		const { todo, items: original, from, source } = drag;
 		const trigger =
@@ -109,7 +109,8 @@
 			!disabled &&
 			items === original &&
 			(source !== SOURCES.KEYBOARD || keyboardDropRequested);
-		const changed = from !== column || boardAssignment(todo.metadata.board).invalid;
+		const changed =
+			from !== column || (column !== "done" && boardAssignment(todo.metadata.board).invalid);
 		preview = null;
 		drag = null;
 		announcement =
@@ -126,7 +127,7 @@
 		if (!destroyed && document.activeElement === document.body)
 			(control(line)?.closest("li") ?? board)?.focus();
 	}
-	function consider(column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) {
+	function consider(column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) {
 		const { info, items: next } = event.detail;
 		if (info.trigger === TRIGGERS.DRAG_STARTED) {
 			const todo = items.find((item) => String(item.line_number) === String(info.id));
@@ -148,14 +149,12 @@
 			cancelled = false;
 			keyboardDropRequested = false;
 			const mounted = new Map(next.map((item) => [item.todo.line_number, item]));
-			preview = {
-				unassigned: [],
-				"to-do": [],
-				"in-progress": [],
-			};
-			for (const group of columns)
-				if (group.id)
-					preview[group.id] = group.items.map((item) => ({ id: item.line_number, todo: item }));
+			preview = Object.fromEntries(
+				columns.map((group) => [
+					group.id,
+					group.items.map((item) => ({ id: item.line_number, todo: item })),
+				])
+			) as Record<BoardDestination, BoardDragItem[]>;
 			preview = {
 				...preview,
 				[column]: preview[column].map((item) => mounted.get(item.todo.line_number) ?? item),
@@ -166,7 +165,7 @@
 			finish(column, event);
 		} else updatePreview(column, next);
 	}
-	function finalize(column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) {
+	function finalize(column: BoardDestination, event: CustomEvent<DndEvent<BoardDragItem>>) {
 		if (!drag) return;
 		updatePreview(column, event.detail.items);
 		if (event.detail.info.source === SOURCES.KEYBOARD) {
@@ -263,7 +262,7 @@
 					name={column.name}
 					column={column.id}
 					items={column.items}
-					preview={column.id ? (preview?.[column.id] ?? null) : null}
+					preview={preview?.[column.id] ?? null}
 					dragging={drag !== null}
 					ghostHeight={drag?.height ?? 88}
 					{instructionsId}

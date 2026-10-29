@@ -11,6 +11,9 @@ The last repeated board value determines its column +Kanban board:to-do board:in
 Use Space and Tab to move this Unassigned card +Kanban board:unassigned
 An empty imported board value is retained until the card moves +Kanban board:
 A positioned assignment is recognized as To do +Kanban board:to-do/2
+Drag this card to Done to complete it +Kanban board:in-progress
+x 2026-10-28 Uncomplete this card in the list to return it to In progress +Kanban board:in-progress
+x 2026-10-28 Drag this completed card out of Done to reopen it in the chosen column +Kanban
 Create an empty Todo file from New workspace, open it after setup, and add your first Todo item +TuxedoApp @computer
 Open an existing work.txt without changing its contents +TuxedoApp @computer
 Capture inbox item @home @computer +TuxedoApp +Ideas

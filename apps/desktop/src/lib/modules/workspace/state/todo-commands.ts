@@ -1,5 +1,5 @@
 import type { DesktopAPI, DesktopRequest } from "@tuxedo/contracts";
-import type { BoardColumn } from "@tuxedo/contracts/board";
+import type { BoardDestination } from "@tuxedo/contracts/board";
 import type { TodoItem } from "#lib/modules/todo/domain/todo.js";
 import type { CreateTodoDraft, WorkspaceCommandContext } from "./workspace-commands.svelte";
 import type {
@@ -95,7 +95,7 @@ export function todoCommands({ desktop, gate, reader }: WorkspaceCommandContext)
 					lineNumbers: items.map((item) => item.line_number),
 				});
 			}),
-		moveTodoOnBoard: (todo: TodoItem, column: BoardColumn) =>
+		moveTodoOnBoard: (todo: TodoItem, column: BoardDestination) =>
 			mutate(
 				"move_todo_on_board",
 				(target) => desktop.moveTodoOnBoard({ ...target, ...line(todo), column }),

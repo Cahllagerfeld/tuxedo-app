@@ -11,7 +11,7 @@ import {
 	TodoTag,
 } from "./todo-creation";
 import { TodoFileSchema, TodoItemSchema } from "./todo";
-import { BoardColumn } from "./board";
+import { BoardDestination } from "./board";
 
 const UUID = TodoCreationRequest.fields.scope;
 const Revision = TodoCreationRequest.fields.revision;
@@ -208,7 +208,7 @@ export const setTodoCompletionRequestSchema = effectValidator(
 	Schema.Struct({ ...TodoMutationRequest.fields, completed: Schema.Boolean })
 );
 export const moveTodoOnBoardRequestSchema = effectValidator(
-	Schema.Struct({ ...TodoMutationRequest.fields, column: BoardColumn })
+	Schema.Struct({ ...TodoMutationRequest.fields, column: BoardDestination })
 );
 const TodoMutationTarget = Schema.Struct({
 	lineNumber: TodoMutationRequest.fields.lineNumber,

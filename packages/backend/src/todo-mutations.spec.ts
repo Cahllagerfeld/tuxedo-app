@@ -120,7 +120,7 @@ function mutation(
 }
 
 layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mutations", (it) => {
-	it.effect("board moves report external conflicts and reject completed or stale targets", () =>
+	it.effect("board moves report external conflicts and reject stale targets", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;
 			const { todoPath, session, target } = yield* setup("First board:to-do\nx Finished\n", fs);
@@ -135,19 +135,57 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 			});
 			if (conflict.status !== "conflict") throw Error("expected conflict");
 			expect(conflict.confirmed.todo_file.items[0].raw).toBe("Externally changed board:to-do");
-			expect(
-				yield* session.moveTodoOnBoard({
-					...target,
-					revision: conflict.confirmed.revision,
-					lineNumber: 2,
-					expectedRaw: "x Finished",
-					column: "to-do",
-				})
-			).toMatchObject({ status: "rejected" });
 			expect(yield* fs.readFileString(todoPath)).toBe(
 				"Externally changed board:to-do\nx Finished\n"
 			);
 		})
+	);
+	it.effect(
+		"Done completes with recurrence as one undoable change and reopening restores or chooses a column",
+		() =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem;
+				const initial =
+					"(B) Chore rec:1w board:to-do/2 custom:keep\r\nx 2029-12-01 Legacy\nx 2029-12-02 Plan board:in-progress\n";
+				const { todoPath, session, target } = yield* setup(initial, fs);
+				const done = yield* session.moveTodoOnBoard({ ...target, column: "done" });
+				if (done.status !== "applied") throw Error("Completion failed");
+				expect(done.confirmed.undoLabel).toBe("Undo completion");
+				const [source, successor] = done.confirmed.todo_file.items;
+				expect(source.raw).toBe(
+					"x 2030-01-02 Chore rec:1w board:to-do/2 custom:keep pri:B tuxedo-generated:1"
+				);
+				expect(successor.raw).not.toContain("board:");
+				expect(successor.metadata).toMatchObject({ rec: "1w", custom: "keep" });
+				const next = { ...target, scope: done.confirmed.scope };
+				const undone = yield* session.undoTodo({
+					scope: done.confirmed.scope,
+					revision: done.confirmed.revision,
+					workspaceId: target.workspaceId,
+				});
+				if (undone.status !== "applied") throw Error("Undo failed");
+				expect(yield* fs.readFileString(todoPath)).toBe(initial);
+				const reopened = yield* session.moveTodoOnBoard({
+					...next,
+					revision: undone.confirmed.revision,
+					lineNumber: 2,
+					expectedRaw: "x 2029-12-01 Legacy",
+					column: "in-progress",
+				});
+				if (reopened.status !== "applied") throw Error("Reopening failed");
+				expect(reopened.confirmed.undoLabel).toBe("Undo move");
+				const restored = yield* session.setTodoCompletion({
+					...next,
+					revision: reopened.confirmed.revision,
+					lineNumber: 3,
+					expectedRaw: "x 2029-12-02 Plan board:in-progress",
+					completed: false,
+				});
+				expect(restored.status).toBe("applied");
+				expect(yield* fs.readFileString(todoPath)).toBe(
+					"(B) Chore rec:1w board:to-do/2 custom:keep\r\nLegacy board:in-progress\nPlan board:in-progress\n"
+				);
+			})
 	);
 	it.effect(
 		"failed Undo retains confirmed data and its slot, cleans temporary files, and can be retried",
