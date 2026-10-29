@@ -200,6 +200,26 @@ layer(NodeFileSystem.layer, { excludeTestServices: true })("Todo-item Effect mut
 				expect(yield* fs.readFileString(todoPath)).toBe(initial);
 			})
 	);
+	it.effect("board reordering retains a hidden card's unsupported board value", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem;
+			const { todoPath, session, target } = yield* setup("A\nHidden board:future/7\nB\n", fs);
+			const reordered = yield* session.reorderTodosOnBoard({
+				scope: target.scope,
+				revision: target.revision,
+				workspaceId: target.workspaceId,
+				column: "unassigned",
+				targets: [
+					{ lineNumber: 3, expectedRaw: "B" },
+					{ lineNumber: 1, expectedRaw: "A" },
+				],
+			});
+			expect(reordered.status).toBe("applied");
+			expect(yield* fs.readFileString(todoPath)).toBe(
+				"A board:unassigned/2\nHidden board:future/7\nB board:unassigned/0\n"
+			);
+		})
+	);
 	it.effect("Done reordering keeps the open position that uncompletion restores", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem;

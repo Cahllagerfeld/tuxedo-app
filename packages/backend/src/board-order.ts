@@ -1,5 +1,7 @@
 import {
+	boardAssignment,
 	boardDoneKey,
+	boardDonePosition,
 	boardPlacement,
 	sortBoardColumn,
 	type BoardDestination,
@@ -37,11 +39,18 @@ export function removeMetadataToken(raw: string, key: string): string {
 	);
 }
 
+const unsupported = (item: TodoFile["items"][number], column: BoardDestination) =>
+	column === "done"
+		? item.metadata[boardDoneKey] !== undefined &&
+			boardDonePosition(item.metadata[boardDoneKey]) === undefined
+		: boardAssignment(item.metadata.board).invalid;
+
 /**
  * Move one column's displayed items among their existing board slots, leaving hidden items in
  * place, without changing physical line order. Positions are renumbered from the column's
  * effective order; items after the last changed slot that have no explicit position keep none,
- * so untouched items are not rewritten.
+ * so untouched items are not rewritten. A hidden item with an unsupported value is never
+ * rewritten; it orders after positioned items instead.
  */
 export function reorderBoardColumn(
 	contents: string,
@@ -65,6 +74,7 @@ export function reorderBoardColumn(
 		next.flatMap((item, index) => {
 			const { position } = boardPlacement(item);
 			if (position === index || (index > last && position === undefined)) return [];
+			if (!shown.has(item.line_number) && unsupported(item, column)) return [];
 			const raw =
 				column === "done"
 					? setMetadataToken(item.raw, boardDoneKey, String(index))

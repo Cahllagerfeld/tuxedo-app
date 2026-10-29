@@ -44,7 +44,7 @@ An open Todo item's location in a Workspace's Kanban board: Unassigned, To do, o
 The manual order of cards within one Kanban column, independent of physical line order and List sorting. Explicitly positioned Todo items come first, then the rest in Todo-file order; equal positions also follow Todo-file order. Completed Todo items keep a separate Done order, so reordering Done does not change the Board assignment that uncompletion restores.
 
 **Kanban reordering**:
-Moving the displayed cards of one Kanban column among their existing places in its Board order. Hidden cards keep their places, and physical line order and unrelated content are unchanged.
+Moving the displayed cards of one Kanban column among their existing places in its Board order. Hidden cards keep their places, and physical line order and unrelated content are unchanged. A hidden card with an unsupported board value has no position and is never rewritten, so it stays among the unpositioned cards after those the reordering positions.
 
 **Kanban move**:
 Changing a Todo item's Board assignment without changing its position in the Todo file. Moving to Done completes the Todo item, including recurrence; moving a completed Todo item out of Done uncompletes it with the chosen Board assignment.
