@@ -4,11 +4,11 @@
 (D) Confirm overflow priority is hidden by default +TuxedoApp @computer
 2026-05-24 Document parser behavior +TuxedoApp @computer
 Plan next feature
-Move this card from To do to In progress +Kanban board:to-do
+Drag this card from To do to In progress +Kanban board:to-do
 Review this work in progress +Kanban board:in-progress
 Repair this imported board value by moving the card +Kanban board:unknown
 The last repeated board value determines its column +Kanban board:to-do board:in-progress
-An explicit Unassigned value keeps this card in the first column +Kanban board:unassigned
+Use Space and Tab to move this Unassigned card +Kanban board:unassigned
 An empty imported board value is retained until the card moves +Kanban board:
 A positioned assignment is recognized as To do +Kanban board:to-do/2
 Create an empty Todo file from New workspace, open it after setup, and add your first Todo item +TuxedoApp @computer

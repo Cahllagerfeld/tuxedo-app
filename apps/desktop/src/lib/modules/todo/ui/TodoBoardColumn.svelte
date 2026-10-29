@@ -1,46 +1,56 @@
+<script lang="ts" module>
+	import type { TodoItem } from "../domain/todo";
+	export type BoardDragItem = { id: string | number; todo: TodoItem; isDndShadowItem?: boolean };
+</script>
+
 <script lang="ts">
 	import { createVirtualizer, defaultRangeExtractor } from "@tanstack/svelte-virtual";
+	import { dndzone, type DndEvent } from "svelte-dnd-action";
+	import { flip } from "svelte/animate";
+	import { prefersReducedMotion } from "svelte/motion";
 	import { fromStore, get } from "svelte/store";
 	import { tick } from "svelte";
 	import { ScrollArea } from "#lib/shared/ui/scroll-area/index.js";
-	import type { TodoItem } from "../domain/todo";
 	import type { BoardColumn } from "@tuxedo/contracts/board";
 	import TodoBoardCard from "./TodoBoardCard.svelte";
 
 	let {
 		name,
 		column,
-		isDropTarget,
 		items,
+		preview,
+		dragging,
+		ghostHeight,
+		instructionsId,
 		today,
 		disabled,
 		selectedTodo,
 		onOpen,
 		onToggleComplete,
-		onMove,
-		onDragStart,
-		onDragEnd,
-		onDragOver,
-		onDrop,
+		canMove,
+		onConsider,
+		onFinalize,
 	}: {
 		name: string;
 		column: BoardColumn | null;
-		isDropTarget: boolean;
 		items: readonly TodoItem[];
+		preview: BoardDragItem[] | null;
+		dragging: boolean;
+		ghostHeight: number;
+		instructionsId: string;
 		today: string;
 		disabled: boolean;
 		selectedTodo: TodoItem | null;
 		onOpen: (todo: TodoItem, trigger: HTMLElement) => void;
 		onToggleComplete: (todo: TodoItem) => void;
-		onMove?: (todo: TodoItem, column: BoardColumn, trigger?: HTMLButtonElement | null) => void;
-		onDragStart: (todo: TodoItem, event: DragEvent) => void;
-		onDragEnd: () => void;
-		onDragOver: (event: DragEvent) => void;
-		onDrop: (column: BoardColumn, event: DragEvent) => void;
+		canMove: boolean;
+		onConsider: (column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
+		onFinalize: (column: BoardColumn, event: CustomEvent<DndEvent<BoardDragItem>>) => void;
 	} = $props();
 
 	let viewport = $state<HTMLElement | null>(null);
 	let focusedLine = $state<number | null>(null);
+	const draggable = (todo: TodoItem): BoardDragItem => ({ id: todo.line_number, todo });
 	const getItemKey = $derived.by(() => {
 		const currentItems = items;
 		return (index: number) => currentItems[index].line_number;
@@ -58,11 +68,30 @@
 	});
 	const instance = fromStore(virtualizer);
 	const rows = $derived(
-		instance.current.getVirtualItems().flatMap((row) => {
-			const item = items[row.index];
-			return item ? [{ row, item }] : [];
-		})
+		preview
+			? preview.map((item, index) => ({ item, index, start: 0, key: `preview:${item.id}` }))
+			: instance.current.getVirtualItems().flatMap((row) => {
+					const item = items[row.index];
+					return item
+						? [{ item: draggable(item), index: row.index, start: row.start, key: row.key }]
+						: [];
+				})
 	);
+	const zone = $derived({
+		items: rows.map((row) => row.item),
+		type: column ? "kanban-open" : "kanban-done",
+		dragDisabled: disabled || !canMove || !column,
+		dropFromOthersDisabled: !column,
+		zoneTabIndex: -1,
+		zoneItemTabIndex: column && canMove && !disabled ? 0 : -1,
+		autoAriaDisabled: true,
+		morphDisabled: true,
+		dropAnimationDisabled: true,
+		useCursorForDetection: true,
+		dropTargetStyle: {},
+		dropTargetClasses: ["bg-primary/5", "rounded-md", "ring-1", "ring-primary/30"],
+		flipDurationMs: prefersReducedMotion.current ? 0 : 120,
+	});
 
 	// Keep the virtualizer in sync with the column's filtered items and viewport.
 	$effect(() => {
@@ -95,10 +124,13 @@
 		}
 	});
 
-	function measure(node: HTMLLIElement) {
+	function measure(node: HTMLLIElement, enabled: boolean) {
 		const current = get(virtualizer);
-		current.measureElement(node);
+		if (enabled) current.measureElement(node);
 		return {
+			update: (next: boolean) => {
+				if (next) current.measureElement(node);
+			},
 			destroy: () => queueMicrotask(() => current.measureElement(null)),
 		};
 	}
@@ -125,52 +157,68 @@
 <section
 	aria-label={name}
 	data-board-column={column ?? undefined}
-	class:ring-2={isDropTarget}
-	class:ring-primary={isDropTarget}
-	ondragover={(event) => {
-		if (column) onDragOver(event);
-	}}
-	ondrop={(event) => {
-		if (column) onDrop(column, event);
-	}}
 	class="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/30"
 >
 	<header class="flex shrink-0 items-center justify-between border-b px-3 py-3">
 		<h2 class="text-sm font-semibold">{name}</h2>
-		<span aria-hidden="true" class="text-xs text-muted-foreground">{items.length}</span>
+		<span aria-hidden="true" class="text-xs text-muted-foreground"
+			>{preview?.length ?? items.length}</span
+		>
 	</header>
 	<ScrollArea
 		bind:viewportRef={viewport}
 		class="min-h-0 flex-1"
 		viewportLabel={`${name} Todo items`}
-		viewportTabIndex={0}
+		viewportTabIndex={dragging ? -1 : 0}
 	>
-		<ul class="relative mx-2" style:height={`${instance.current.getTotalSize()}px`}>
-			{#each rows as { row, item } (row.key)}
+		<ul
+			aria-label={`${name} cards`}
+			use:dndzone={zone}
+			onconsider={(event) => {
+				if (column) onConsider(column, event);
+			}}
+			onfinalize={(event) => {
+				if (column) onFinalize(column, event);
+			}}
+			class={preview ? "relative mx-2 flex flex-col gap-2 py-2" : "relative mx-2"}
+			style:height={preview ? undefined : `${instance.current.getTotalSize()}px`}
+			style:min-height={`${instance.current.scrollRect?.height ?? 80}px`}
+		>
+			{#each rows as { item, index, start, key } (key)}
 				<li
-					use:measure
-					data-index={row.index}
-					aria-posinset={row.index + 1}
-					aria-setsize={items.length}
-					class="absolute top-0 right-0 left-0"
-					style:transform={`translateY(${row.start}px)`}
-					onfocusin={() => (focusedLine = item.line_number)}
+					use:measure={!preview}
+					animate:flip={{ duration: preview && !prefersReducedMotion.current ? 120 : 0 }}
+					data-board-drag-item
+					data-index={index}
+					data-board-placeholder={item.isDndShadowItem ? "" : undefined}
+					aria-label={item.todo.description}
+					aria-describedby={column && canMove ? instructionsId : undefined}
+					aria-hidden={item.isDndShadowItem ? "true" : undefined}
+					aria-posinset={index + 1}
+					aria-setsize={preview?.length ?? items.length}
+					class={preview
+						? "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						: "absolute right-0 left-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"}
+					style:top={preview ? undefined : `${start}px`}
+					onfocusin={() => (focusedLine = item.todo.line_number)}
 					onfocusout={clearFocus}
 				>
-					<TodoBoardCard
-						todo={item}
-						{today}
-						{disabled}
-						{selectedTodo}
-						{onOpen}
-						{onToggleComplete}
-						{onMove}
-						onDragStart={(todo, event) => {
-							focusedLine = todo.line_number;
-							onDragStart(todo, event);
-						}}
-						{onDragEnd}
-					/>
+					{#if item.isDndShadowItem}
+						<div
+							class="visible rounded-md border-2 border-dashed border-primary/50 bg-primary/5"
+							style:height={`${ghostHeight}px`}
+						></div>
+					{:else}
+						<TodoBoardCard
+							todo={item.todo}
+							{today}
+							disabled={disabled || dragging}
+							{selectedTodo}
+							{onOpen}
+							{onToggleComplete}
+							movable={!!column && canMove}
+						/>
+					{/if}
 				</li>
 			{/each}
 		</ul>

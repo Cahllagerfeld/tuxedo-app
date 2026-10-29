@@ -160,7 +160,7 @@ export function createTodoReaderInteraction(inputs: Inputs) {
 				todo.line_number,
 				inputs.list?.captureFocus(todo)
 			),
-		moveOnBoard: (todo: TodoItem, column: BoardColumn, trigger?: HTMLButtonElement | null) =>
+		moveOnBoard: (todo: TodoItem, column: BoardColumn, trigger?: HTMLElement | null) =>
 			change(
 				todo,
 				() => inputs.workspace.moveTodoOnBoard(todo, column),

@@ -109,7 +109,7 @@
 	async function moveTodoOnBoard(
 		todo: TodoItem,
 		column: BoardColumn,
-		trigger?: HTMLButtonElement | null
+		trigger?: HTMLElement | null
 	) {
 		const result = await reader.moveOnBoard(todo, column, trigger);
 		if (result.status === "applied" && result.notice) toast.info(result.notice);

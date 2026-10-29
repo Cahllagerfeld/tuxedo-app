@@ -25,7 +25,7 @@ type WorkspaceTodoReaderContext = {
 	moveTodoOnBoard: (
 		todo: TodoItem,
 		column: BoardColumn,
-		trigger?: HTMLButtonElement | null
+		trigger?: HTMLElement | null
 	) => Promise<void>;
 };
 

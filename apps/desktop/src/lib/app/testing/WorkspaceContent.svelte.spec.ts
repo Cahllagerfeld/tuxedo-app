@@ -86,6 +86,15 @@ function confirmedTodo(items: TodoFile["items"]) {
 	};
 }
 
+async function keyboardBoardMove(destination: "to-do" | "in-progress") {
+	const card = page.getByRole("listitem", { name: "Plan release" });
+	await expect.element(card).toBeVisible();
+	(card.element() as HTMLElement).focus();
+	await userEvent.keyboard(
+		destination === "to-do" ? "{Space}{Tab}{Space}" : "{Space}{Tab}{Tab}{Space}"
+	);
+}
+
 test("a keyboard board move keeps confirmed contents while saving, then updates selection and Undo", async () => {
 	await page.viewport(1400, 900);
 	const response = Promise.withResolvers<Awaited<ReturnType<DesktopAPI["moveTodoOnBoard"]>>>();
@@ -94,8 +103,7 @@ test("a keyboard board move keeps confirmed contents while saving, then updates 
 	const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
 	const todoColumn = page.getByRole("region", { name: "To do", exact: true });
 	await unassigned.getByRole("button", { name: "Open Plan release" }).click();
-	await unassigned.getByRole("button", { name: "Move Plan release" }).click();
-	await page.getByRole("menuitem", { name: "To do" }).click();
+	await keyboardBoardMove("to-do");
 	await expect.element(unassigned.getByRole("button", { name: "Open Plan release" })).toBeVisible();
 	const moved = {
 		...todo,
@@ -135,8 +143,7 @@ test("a failed board move retains confirmed state and reports the error", async 
 	}));
 	render(Harness, { viewMode: "kanban", desktop: adapter({ moveTodoOnBoard }) });
 	const unassigned = page.getByRole("region", { name: "Unassigned", exact: true });
-	await unassigned.getByRole("button", { name: "Move Plan release" }).click();
-	await page.getByRole("menuitem", { name: "In progress" }).click();
+	await keyboardBoardMove("in-progress");
 	await expect.element(unassigned.getByRole("button", { name: "Open Plan release" })).toBeVisible();
 	await expect.element(page.getByText("Could not move Todo item")).toBeVisible();
 	expect(moveTodoOnBoard).toHaveBeenCalledOnce();
@@ -149,8 +156,7 @@ test("a pending board move does not steal focus if the user moves elsewhere", as
 		viewMode: "kanban",
 		desktop: adapter({ moveTodoOnBoard: () => response.promise }),
 	});
-	await page.getByRole("button", { name: "Move Plan release" }).click();
-	await page.getByRole("menuitem", { name: "To do" }).click();
+	await keyboardBoardMove("to-do");
 	const other = page.getByRole("region", { name: "Kanban board" });
 	(other.element() as HTMLElement).focus();
 	const moved = {
@@ -185,8 +191,7 @@ test("a conflicting board move displays the refreshed Todo item without retrying
 		confirmed: confirmedTodo([changed]),
 	}));
 	render(Harness, { viewMode: "kanban", desktop: adapter({ moveTodoOnBoard }) });
-	await page.getByRole("button", { name: "Move Plan release" }).click();
-	await page.getByRole("menuitem", { name: "To do" }).click();
+	await keyboardBoardMove("to-do");
 	await expect
 		.element(
 			page
