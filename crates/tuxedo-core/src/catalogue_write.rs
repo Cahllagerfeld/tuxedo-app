@@ -73,6 +73,8 @@ pub(crate) fn serialize_catalogue(path: &Path, catalogue: &Catalogue) -> Result<
         active_workspace_id: catalogue.active_workspace_id.as_deref(),
         workspaces,
     };
+    // Keys follow schema order. Electron may emit preference keys in insertion order instead
+    // (after a preference update); both orders decode identically in either app.
     // serde_json's pretty printer matches `JSON.stringify(value, null, 2)`: two-space indent,
     // `"key": value`, `[]` for an empty array, and the same string escapes (only `"`, `\`, and
     // control characters, with lowercase `\u00xx`).

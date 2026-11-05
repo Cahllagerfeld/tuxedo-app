@@ -5,14 +5,14 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
 
 use crate::date::TodoDate;
 use crate::CoreError;
 
 /// A Workspace's distinguishing color, as persisted in the catalogue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkspaceColor {
     Blue,
     Green,
@@ -63,8 +63,7 @@ pub struct Workspace {
     pub show_deferred: Option<bool>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoSortOrder {
     File,
     Due,
@@ -105,10 +104,11 @@ struct RawCatalogue {
 struct RawWorkspace {
     id: String,
     name: String,
+    #[serde(deserialize_with = "color")]
     color: WorkspaceColor,
     todo_path: String,
     created_at: String,
-    #[serde(default, deserialize_with = "present")]
+    #[serde(default, deserialize_with = "sort_order")]
     sort_order: Option<TodoSortOrder>,
     #[serde(default, deserialize_with = "present")]
     show_deferred: Option<bool>,
@@ -123,6 +123,31 @@ fn required_nullable<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, 
 /// An optional key whose value, when present, must not be `null` (Effect `optional`).
 fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
+}
+
+/// A string literal (Effect `Literals`): only a JSON string, never serde's externally tagged
+/// `{"blue": null}` enum form.
+fn literal<'de, D: Deserializer<'de>, T>(
+    d: D,
+    parse: impl FnOnce(&str) -> Option<T>,
+) -> Result<T, D::Error> {
+    let value = String::deserialize(d)?;
+    parse(&value).ok_or_else(|| D::Error::custom(format!("unsupported value {value:?}")))
+}
+
+fn color<'de, D: Deserializer<'de>>(d: D) -> Result<WorkspaceColor, D::Error> {
+    literal(d, |s| {
+        WorkspaceColor::ALL.into_iter().find(|c| c.as_str() == s)
+    })
+}
+
+fn sort_order<'de, D: Deserializer<'de>>(d: D) -> Result<Option<TodoSortOrder>, D::Error> {
+    literal(d, |s| match s {
+        "file" => Some(TodoSortOrder::File),
+        "due" => Some(TodoSortOrder::Due),
+        _ => None,
+    })
+    .map(Some)
 }
 
 /// Loads the catalogue at `path`. An absent file is an empty catalogue, as in the
@@ -157,10 +182,23 @@ pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, Core
             path: path.to_path_buf(),
             source,
         })?;
-    let raw = RawCatalogue::deserialize(value).map_err(|source| CoreError::InvalidCatalogue {
+    let invalid = |issue: String| CoreError::InvalidCatalogue {
         path: path.to_path_buf(),
-        issues: vec![source.to_string()],
-    })?;
+        issues: vec![issue],
+    };
+    // serde would also decode structs from arrays; Effect `Struct` requires objects.
+    let objects = value
+        .as_object()
+        .is_some_and(|root| match root.get("workspaces") {
+            Some(serde_json::Value::Array(workspaces)) => workspaces.iter().all(|w| w.is_object()),
+            _ => true,
+        });
+    if !objects {
+        return Err(invalid(
+            "the catalogue and each Workspace must be JSON objects".into(),
+        ));
+    }
+    let raw = RawCatalogue::deserialize(value).map_err(|source| invalid(source.to_string()))?;
     // `Schema.Literal(1)` compares JavaScript numbers, so `1.0` is version 1 as well.
     if raw.version.as_f64() != Some(1.0) {
         return Err(CoreError::UnsupportedVersion {
