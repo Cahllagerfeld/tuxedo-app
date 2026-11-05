@@ -263,4 +263,3 @@ fn writes_atomically_and_refuses_invalid_catalogues() {
     let entries: Vec<_> = fs::read_dir(path.parent().unwrap()).unwrap().collect();
     assert_eq!(entries.len(), 1, "no temporary file is left behind");
 }
-

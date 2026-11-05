@@ -12,6 +12,7 @@ mod session;
 mod todo;
 mod todo_query;
 mod todo_write;
+mod workspace_write;
 
 pub use catalogue::{load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
 pub use date::TodoDate;
@@ -26,6 +27,7 @@ pub use todo_query::{
     CompletionView, DueGroup, DueGroupKind, FacetValue, Facets, TodoFilters,
 };
 pub use todo_write::{TodoTarget, TodoWriteRequest, TodoWriteResult, TodoWriteStatus, UndoToken};
+pub use workspace_write::{WorkspaceChange, WorkspaceWriteRequest, WorkspaceWriteResult};
 
 /// Test-only fault injection for crates that test against this one; never in release builds.
 #[cfg(all(feature = "fault-injection", debug_assertions))]

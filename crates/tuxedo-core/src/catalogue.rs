@@ -128,7 +128,7 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
 /// Loads the catalogue at `path`. An absent file is an empty catalogue, as in the
 /// Electron app; any other read, decode, or validation failure is an error.
 pub fn load_catalogue(path: &Path) -> Result<Catalogue, CoreError> {
-    read_catalogue(path)?.map_or_else(|| Ok(Catalogue::default()), Ok)
+    Ok(read_catalogue(path)?.unwrap_or_default())
 }
 
 /// Reads the catalogue at `path`; `None` when no file exists. Only startup restoration and the

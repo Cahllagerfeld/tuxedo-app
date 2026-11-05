@@ -2,11 +2,6 @@
 //! (`packages/backend/src/workspace-catalogue.ts`): `JSON.stringify(catalogue, null, 2)` plus a
 //! final LF, keys in schema order, absent preferences omitted, written atomically at `0600`.
 
-#![allow(
-    dead_code,
-    reason = "used by the Workspace commands in workspace_write (next commit)"
-)]
-
 use std::path::Path;
 
 use serde::Serialize;

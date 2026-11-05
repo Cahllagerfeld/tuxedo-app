@@ -6,6 +6,7 @@ mod session;
 mod todo;
 mod todo_query;
 mod todo_write;
+mod workspace_write;
 
 const ID_A: &str = "b0cb4064-d525-4edf-ad56-bc5a78832039";
 const ID_B: &str = "760893da-3602-40cf-8fee-593e3a80ae85";
