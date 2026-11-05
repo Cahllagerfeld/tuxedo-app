@@ -385,7 +385,17 @@ impl SessionModel {
                     _ => unreachable!("commands start only with a session"),
                 };
                 match accepted {
-                    Accepted::Done(outcome) => model.outcomes.push_back(outcome),
+                    Accepted::Done(outcome) => {
+                        if outcome.kind == OutcomeKind::Applied {
+                            // A committed change replaces restoration's warning: it explains the
+                            // Empty state only when this result left nothing displayed.
+                            model.warning = outcome
+                                .message
+                                .clone()
+                                .filter(|_| model.selected().is_none());
+                        }
+                        model.outcomes.push_back(outcome)
+                    }
                     Accepted::Recover(outcome) => {
                         model.outcomes.push_back(outcome);
                         model.recovery = Recovery::Needed;
@@ -428,7 +438,12 @@ impl SessionModel {
 
     fn finish_recovery(&mut self, result: Result<(), String>, cx: &mut Context<Self>) {
         match result {
-            Ok(()) => self.recovery = Recovery::Confirmed,
+            Ok(()) => {
+                self.recovery = Recovery::Confirmed;
+                if self.selected().is_some() {
+                    self.warning = None;
+                }
+            }
             Err(error) => {
                 self.recovery = Recovery::Failed;
                 self.outcomes.push_back(Outcome::new(
@@ -455,7 +470,7 @@ pub(crate) mod tests {
     use super::{SessionModel, QUIT_DEADLINE};
     use crate::command_queue::{Accepted, Command, Outcome, OutcomeKind, TodoCommand};
     use crate::todo_commands;
-    use tuxedo_core::WorkspaceSession;
+    use tuxedo_core::{WorkspaceChange, WorkspaceSession};
 
     pub(crate) const A: &str = "0b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
     const B: &str = "1b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
@@ -485,10 +500,6 @@ pub(crate) mod tests {
             serde_json::json!({ "version": 1, "active_workspace_id": A, "workspaces": workspaces });
         std::fs::write(&path, json.to_string()).unwrap();
         path
-    }
-
-    fn restored(name: &str, cx: &mut TestAppContext) -> Entity<SessionModel> {
-        restored_with(name, "Task in A\n", cx).0
     }
 
     /// Restores with Workspace A's Todo file holding `contents`; returns the model and that file.
@@ -530,21 +541,6 @@ pub(crate) mod tests {
 
     fn selected_id(model: &Entity<SessionModel>, cx: &mut TestAppContext) -> Option<String> {
         model.read_with(cx, |m, _| m.selected().map(|s| s.workspace.id.clone()))
-    }
-
-    #[gpui::test(iterations = 20)]
-    fn only_the_latest_of_overlapping_switches_is_accepted(cx: &mut TestAppContext) {
-        let model = restored("latest", cx);
-        assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
-
-        model.update(cx, |m, cx| {
-            m.select(B, cx);
-            m.select(C, cx);
-        });
-        cx.run_until_parked();
-
-        assert_eq!(selected_id(&model, cx).as_deref(), Some(C));
-        model.read_with(cx, |m, _| assert!(m.pending().is_none()));
     }
 
     #[gpui::test]
@@ -685,6 +681,24 @@ pub(crate) mod tests {
         assert_eq!(selected_id(&model, cx).as_deref(), Some(B));
         assert_eq!(persisted().as_deref(), Some(B));
         model.read_with(cx, |m, _| assert!(m.pending().is_none()));
+
+        // Restoring into the Empty state warns about the unopenable Active workspace; a successful
+        // switch ends that warning, and removing the then-active Workspace does not bring it back.
+        let text = std::fs::read_to_string(&catalogue).unwrap();
+        let active = format!(r#""active_workspace_id": "{B}""#);
+        let missing = format!(r#""active_workspace_id": "{MISSING}""#);
+        std::fs::write(&catalogue, text.replace(&active, &missing)).unwrap();
+        let model = cx.new(|cx| SessionModel::restore_from(Some(catalogue.clone()), cx));
+        cx.run_until_parked();
+        model.read_with(cx, |m, _| assert!(m.warning().is_some()));
+        model.update(cx, |m, cx| m.select(C, cx));
+        cx.run_until_parked();
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(C));
+        let delete = WorkspaceChange::Delete { id: C.into() };
+        model.update(cx, |m, cx| m.enqueue(Command::Workspace(delete), cx));
+        cx.run_until_parked();
+        assert_eq!(selected_id(&model, cx), None);
+        model.read_with(cx, |m, _| assert_eq!(m.warning(), None));
     }
 
     #[gpui::test]

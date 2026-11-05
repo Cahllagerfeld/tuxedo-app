@@ -3,6 +3,7 @@
 //! They open in gpui-kit's window dialog layer; confirming enqueues a Workspace command, whose
 //! failure the app shows like every other command outcome.
 
+use std::cell::Cell;
 use std::path::PathBuf;
 
 use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants};
@@ -11,12 +12,12 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{h_flex, v_flex, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use tuxedo_core::{Workspace, WorkspaceChange, WorkspaceColor};
+use tuxedo_core::{js_trim, Workspace, WorkspaceChange, WorkspaceColor};
 
 use crate::command_queue::Command;
 use crate::model::SessionModel;
 use crate::theme::{hex, Palette};
-use crate::workspace_commands;
+use crate::workspace_commands::{self, WorkspaceCommand};
 
 /// Opens the Workspace creation dialog.
 pub fn open_create(session: Entity<SessionModel>, window: &mut Window, cx: &mut App) {
@@ -73,11 +74,13 @@ fn open_form(
 ) {
     let editing = existing.is_some();
     let form = cx.new(|cx| WorkspaceForm::new(session, existing, window, cx));
-    form.read(cx)
-        .name
-        .clone()
-        .update(cx, |name, cx| name.focus(window, cx));
-    window.open_dialog(cx, move |dialog, _, _| {
+    let name = form.read(cx).name.clone();
+    // `open_dialog` focuses the dialog shell; focus the name once, on the first build only.
+    let initial_focus = Cell::new(true);
+    window.open_dialog(cx, move |dialog, window, cx| {
+        if initial_focus.replace(false) {
+            name.update(cx, |name, cx| name.focus(window, cx));
+        }
         let submit = form.clone();
         dialog
             .title(if editing {
@@ -134,29 +137,22 @@ impl WorkspaceForm {
 
     /// Enqueues the command; `false` keeps the dialog open to show what is missing.
     fn submit(&mut self, cx: &mut Context<Self>) -> bool {
-        let name = self.name.read(cx).value().trim().to_owned();
-        self.error = match (&self.todo_file, name.is_empty()) {
-            (_, true) => Some("Enter a workspace name."),
-            (None, _) => Some("Choose the exact Todo file for this workspace."),
-            _ => None,
-        };
-        let (Some(todo_file), None) = (self.todo_file.clone(), self.error) else {
-            cx.notify();
-            return false;
-        };
-        let command = match self.editing.clone() {
-            Some(id) => WorkspaceChange::Update {
-                id,
-                name,
-                color: self.color,
-                todo_file,
-            },
-            None => workspace_commands::create(name, self.color, todo_file),
-        };
-        self.session.update(cx, |model, cx| {
-            model.enqueue(Command::Workspace(command), cx)
-        });
-        true
+        let name = self.name.read(cx).value().to_string();
+        let todo_file = self.todo_file.clone();
+        match form_command(self.editing.clone(), name, self.color, todo_file) {
+            Ok(command) => {
+                self.error = None;
+                self.session.update(cx, |model, cx| {
+                    model.enqueue(Command::Workspace(command), cx)
+                });
+                true
+            }
+            Err(error) => {
+                self.error = Some(error);
+                cx.notify();
+                false
+            }
+        }
     }
 
     /// The native open panel for one existing Todo file. This app never creates Todo files.
@@ -191,22 +187,23 @@ impl Render for WorkspaceForm {
         let swatches = WorkspaceColor::ALL.into_iter().map(|color| {
             let (fill, _) = p.workspace(color);
             let selected = color == self.color;
-            div()
-                .id(color.as_str())
-                .size_6()
-                .rounded_full()
+            // A ghost Button keeps focus, keyboard activation, and the label; the swatch is a child,
+            // since a custom variant tints its fill.
+            Button::new(color.as_str())
+                .ghost()
                 .p(px(2.))
+                .size_6()
+                .rounded(px(999.))
                 .border_2()
                 .border_color(if selected {
                     hex(p.ring)
                 } else {
-                    gpui_kit::transparent_black()
+                    hex(p.background)
                 })
-                .cursor_pointer()
                 .child(div().size_full().rounded_full().bg(fill))
-                .tooltip(move |window, cx| {
-                    gpui_kit::component::tooltip::Tooltip::new(color_label(color)).build(window, cx)
-                })
+                .accessibility_label(color_label(color))
+                .toggled(selected)
+                .tooltip(color_label(color))
                 .on_click(cx.listener(move |form, _, _, cx| {
                     form.color = color;
                     cx.notify();
@@ -255,6 +252,29 @@ impl Render for WorkspaceForm {
     }
 }
 
+/// The command a submitted form issues. The name is passed as typed: the core trims it with
+/// JavaScript's whitespace rules, which keep characters such as U+0085 that Rust's `trim` drops.
+fn form_command(
+    editing: Option<String>,
+    name: String,
+    color: WorkspaceColor,
+    todo_file: Option<PathBuf>,
+) -> Result<WorkspaceCommand, &'static str> {
+    if js_trim(&name).is_empty() {
+        return Err("Enter a workspace name.");
+    }
+    let todo_file = todo_file.ok_or("Choose the exact Todo file for this workspace.")?;
+    Ok(match editing {
+        Some(id) => WorkspaceChange::Update {
+            id,
+            name,
+            color,
+            todo_file,
+        },
+        None => workspace_commands::create(name, color, todo_file),
+    })
+}
+
 fn field(label: &'static str, p: &Palette) -> Div {
     v_flex().gap_1p5().child(
         div()
@@ -274,5 +294,47 @@ fn color_label(color: WorkspaceColor) -> &'static str {
         WorkspaceColor::Pink => "Pink",
         WorkspaceColor::Cyan => "Cyan",
         WorkspaceColor::Orange => "Orange",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tuxedo_core::{load_catalogue, WorkspaceColor, WorkspaceSession};
+
+    use super::form_command;
+    use crate::model::tests::{catalogue, A};
+
+    #[test]
+    fn editing_only_the_color_keeps_a_name_javascript_does_not_trim() {
+        let path = catalogue("form-name");
+        let mut session = WorkspaceSession::new(load_catalogue(&path).unwrap());
+        session.open(A).unwrap();
+        let mut save = |name: &str, color| {
+            let a = session.catalogue().workspace(A).unwrap().clone();
+            let command = form_command(Some(A.into()), name.into(), color, Some(a.todo_file))?;
+            let result = session
+                .prepare_workspace_change(&path, command)
+                .unwrap()
+                .execute();
+            session.accept_workspace_change(result.unwrap()).unwrap();
+            Ok::<_, &str>(session.catalogue().workspace(A).unwrap().name.clone())
+        };
+        // Electron can save this name; changing only the color must not rename it.
+        assert_eq!(
+            save("\u{85}Home", WorkspaceColor::Blue),
+            Ok("\u{85}Home".into())
+        );
+        assert_eq!(
+            save("\u{85}Home", WorkspaceColor::Green),
+            Ok("\u{85}Home".into())
+        );
+        assert_eq!(
+            save(" \u{feff}", WorkspaceColor::Green),
+            Err("Enter a workspace name.")
+        );
+        assert!(matches!(
+            form_command(None, "Home".into(), WorkspaceColor::Blue, None),
+            Err("Choose the exact Todo file for this workspace.")
+        ));
     }
 }

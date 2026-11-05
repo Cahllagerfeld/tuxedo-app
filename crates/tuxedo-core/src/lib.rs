@@ -14,7 +14,7 @@ mod todo_query;
 mod todo_write;
 mod workspace_write;
 
-pub use catalogue::{load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
+pub use catalogue::{js_trim, load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
 pub use date::TodoDate;
 pub use error::CoreError;
 pub use session::{OpenRequest, RereadRequest, RereadResult, WorkspaceSession, WorkspaceSnapshot};

@@ -286,7 +286,7 @@ pub(crate) fn validate(catalogue: &Catalogue) -> Result<(), Vec<String>> {
 
 /// JavaScript's `String.prototype.trim`. Its whitespace differs from Rust's: it includes
 /// U+FEFF and excludes U+0085.
-pub(crate) fn js_trim(value: &str) -> &str {
+pub fn js_trim(value: &str) -> &str {
     let is_space = |c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}';
     value.trim_matches(is_space)
 }
