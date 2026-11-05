@@ -1,10 +1,11 @@
-//! Read-only decoding of the Electron app's version-1 Workspace catalogue
-//! (`workspaces.json`, see `packages/contracts/src/contract.ts`). Never written here.
+//! The Electron app's version-1 Workspace catalogue (`workspaces.json`, see
+//! `packages/contracts/src/contract.ts`): strict decoding and the validation every read and
+//! write shares. Writing lives in `catalogue_write`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::date::TodoDate;
 use crate::CoreError;
@@ -87,33 +88,55 @@ impl Catalogue {
     }
 }
 
-// Deliberately lenient while Rust only reads what Electron writes; tighten once Rust writes it.
+// Decoded exactly as strictly as the Electron app's `catalogueSchema` (Effect Schema with
+// excess-property rejection): every key required unless optional, no unknown keys, and optional
+// preferences either absent or a valid value (never `null`).
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawCatalogue {
     version: serde_json::Value,
+    #[serde(deserialize_with = "required_nullable")]
     active_workspace_id: Option<String>,
     workspaces: Vec<RawWorkspace>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawWorkspace {
     id: String,
     name: String,
     color: WorkspaceColor,
     todo_path: String,
     created_at: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     sort_order: Option<TodoSortOrder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     show_deferred: Option<bool>,
+}
+
+/// A key that must be present but may be `null` (Effect `NullOr`). Without `deserialize_with`,
+/// serde would read a missing `Option` key as `None`.
+fn required_nullable<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Option::deserialize(d)
+}
+
+/// An optional key whose value, when present, must not be `null` (Effect `optional`).
+fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
 }
 
 /// Loads the catalogue at `path`. An absent file is an empty catalogue, as in the
 /// Electron app; any other read, decode, or validation failure is an error.
 pub fn load_catalogue(path: &Path) -> Result<Catalogue, CoreError> {
+    read_catalogue(path)?.map_or_else(|| Ok(Catalogue::default()), Ok)
+}
+
+/// Reads the catalogue at `path`; `None` when no file exists. Only startup restoration and the
+/// first Workspace creation may treat that absence as an empty catalogue.
+pub(crate) fn read_catalogue(path: &Path) -> Result<Option<Catalogue>, CoreError> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Catalogue::default()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
             return Err(CoreError::Io {
                 path: path.to_path_buf(),
@@ -124,77 +147,28 @@ pub fn load_catalogue(path: &Path) -> Result<Catalogue, CoreError> {
     let text = String::from_utf8(bytes).map_err(|_| CoreError::InvalidUtf8 {
         path: path.to_path_buf(),
     })?;
-    parse_catalogue(path, &text)
+    parse_catalogue(path, &text).map(Some)
 }
 
 pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, CoreError> {
-    let raw: RawCatalogue = serde_json::from_str(text).map_err(|source| {
-        // Well-formed JSON with the wrong shape is a validation failure, not a syntax error.
-        if source.classify() == serde_json::error::Category::Data {
-            CoreError::InvalidCatalogue {
-                path: path.to_path_buf(),
-                issues: vec![source.to_string()],
-            }
-        } else {
-            CoreError::Json {
-                path: path.to_path_buf(),
-                source,
-            }
-        }
+    // Syntax errors first; anything well-formed but of the wrong shape is a validation failure.
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|source| CoreError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let raw = RawCatalogue::deserialize(value).map_err(|source| CoreError::InvalidCatalogue {
+        path: path.to_path_buf(),
+        issues: vec![source.to_string()],
     })?;
-    if raw.version != serde_json::json!(1) {
+    // `Schema.Literal(1)` compares JavaScript numbers, so `1.0` is version 1 as well.
+    if raw.version.as_f64() != Some(1.0) {
         return Err(CoreError::UnsupportedVersion {
             path: path.to_path_buf(),
             version: raw.version,
         });
     }
-    let mut issues = Vec::new();
-    for w in &raw.workspaces {
-        let label = &w.id;
-        if !is_uuid(&w.id) {
-            issues.push(format!("Workspace id {label} is not a UUID"));
-        }
-        if w.name.is_empty() {
-            issues.push(format!("Workspace {label} has an empty name"));
-        }
-        if w.todo_path.trim().is_empty() {
-            issues.push(format!("Workspace {label} has an empty todo_path"));
-        }
-        if !is_iso_datetime(&w.created_at) {
-            issues.push(format!(
-                "Workspace {label} created_at is not an ISO datetime"
-            ));
-        }
-    }
-    let duplicates = |key: fn(&RawWorkspace) -> String| {
-        let mut seen = HashSet::new();
-        !raw.workspaces.iter().all(|w| seen.insert(key(w)))
-    };
-    if duplicates(|w| w.id.clone()) {
-        issues.push("Duplicate Workspace id".into());
-    }
-    // JS `toLowerCase` vs Rust `to_lowercase` differ only in rare special casings.
-    if duplicates(|w| w.name.to_lowercase()) {
-        issues.push("Duplicate Workspace name".into());
-    }
-    if duplicates(|w| w.todo_path.clone()) {
-        issues.push("Duplicate Workspace todo_path".into());
-    }
-    if let Some(active) = &raw.active_workspace_id {
-        if !is_uuid(active) {
-            issues.push("Active workspace id is not a UUID".into());
-        }
-        if !raw.workspaces.iter().any(|w| &w.id == active) {
-            issues.push("Active workspace is missing".into());
-        }
-    }
-    if !issues.is_empty() {
-        return Err(CoreError::InvalidCatalogue {
-            path: path.to_path_buf(),
-            issues,
-        });
-    }
-    Ok(Catalogue {
+    let catalogue = Catalogue {
         active_workspace_id: raw.active_workspace_id,
         workspaces: raw
             .workspaces
@@ -209,17 +183,90 @@ pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, Core
                 show_deferred: w.show_deferred,
             })
             .collect(),
-    })
+    };
+    validate(&catalogue).map_err(|issues| CoreError::InvalidCatalogue {
+        path: path.to_path_buf(),
+        issues,
+    })?;
+    Ok(catalogue)
 }
 
-/// Effect's `isUUID`: 8-4-4-4-12 hex digits, any version, either case.
-fn is_uuid(value: &str) -> bool {
+/// The Electron app's catalogue rules beyond its shape, checked on every read and before every
+/// write: UUID ids, trimmed non-empty names, non-blank Todo paths, ISO `created_at` with a
+/// timezone, unique ids, names (case-insensitively), and paths, and an existing Active workspace.
+pub(crate) fn validate(catalogue: &Catalogue) -> Result<(), Vec<String>> {
+    let mut issues = Vec::new();
+    for w in &catalogue.workspaces {
+        let label = &w.id;
+        if !is_uuid(&w.id) {
+            issues.push(format!("Workspace id {label} is not a UUID"));
+        }
+        if w.name.is_empty() || js_trim(&w.name) != w.name {
+            issues.push(format!(
+                "Workspace {label} name must be non-empty without surrounding whitespace"
+            ));
+        }
+        match w.todo_file.to_str() {
+            Some(path) if !js_trim(path).is_empty() => {}
+            Some(_) => issues.push(format!("Workspace {label} has an empty todo_path")),
+            None => issues.push(format!("Workspace {label} todo_path is not valid UTF-8")),
+        }
+        if !is_iso_datetime(&w.created_at) {
+            issues.push(format!(
+                "Workspace {label} created_at is not an ISO datetime"
+            ));
+        }
+    }
+    let duplicates = |key: fn(&Workspace) -> String| {
+        let mut seen = HashSet::new();
+        !catalogue.workspaces.iter().all(|w| seen.insert(key(w)))
+    };
+    if duplicates(|w| w.id.clone()) {
+        issues.push("Duplicate Workspace id".into());
+    }
+    // JS `toLowerCase` and Rust `to_lowercase` both apply Unicode's full default case mapping.
+    if duplicates(|w| w.name.to_lowercase()) {
+        issues.push("Duplicate Workspace name".into());
+    }
+    if duplicates(|w| w.todo_file.to_string_lossy().into_owned()) {
+        issues.push("Duplicate Workspace todo_path".into());
+    }
+    if let Some(active) = &catalogue.active_workspace_id {
+        if !is_uuid(active) {
+            issues.push("Active workspace id is not a UUID".into());
+        }
+        if catalogue.workspace(active).is_none() {
+            issues.push("Active workspace is missing".into());
+        }
+    }
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(issues)
+    }
+}
+
+/// JavaScript's `String.prototype.trim`. Its whitespace differs from Rust's: it includes
+/// U+FEFF and excludes U+0085.
+pub(crate) fn js_trim(value: &str) -> &str {
+    let is_space = |c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}';
+    value.trim_matches(is_space)
+}
+
+/// Effect's `isUUID()`: 8-4-4-4-12 hex digits in either case with version 1-8 and the RFC
+/// variant, or the nil or max UUID.
+pub(crate) fn is_uuid(value: &str) -> bool {
     let b = value.as_bytes();
-    b.len() == 36
+    let shaped = b.len() == 36
         && b.iter().enumerate().all(|(i, c)| match i {
             8 | 13 | 18 | 23 => *c == b'-',
             _ => c.is_ascii_hexdigit(),
-        })
+        });
+    shaped
+        && (matches!(b[14], b'1'..=b'8')
+            && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
+            || value == "00000000-0000-0000-0000-000000000000"
+            || value.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff"))
 }
 
 /// `YYYY-MM-DDTHH:MM:SS(.fff)?(Z|±HH:MM)` with a valid calendar date.

@@ -3,6 +3,7 @@
 
 mod atomic_file;
 mod catalogue;
+mod catalogue_write;
 mod completion;
 mod date;
 mod error;
