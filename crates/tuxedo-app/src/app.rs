@@ -21,6 +21,7 @@ use tuxedo_core::WorkspaceSnapshot;
 
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{self, hex, Palette};
+use crate::todo_commands::local_today;
 use list_view::ListView;
 use sidebar::WorkspaceSidebar;
 
@@ -51,16 +52,32 @@ impl TuxedoApp {
         cx: &mut Context<Self>,
     ) -> Self {
         let subscriptions = vec![
-            cx.observe(&session, |_, _, cx| cx.notify()),
+            cx.observe(&session, |this, _, cx| this.session_changed(cx)),
             cx.observe_window_appearance(window, |_, window, cx| theme::init(window, cx)),
         ];
-        Self {
+        let mut app = Self {
             session,
             sidebar_open: true,
             sidebar: WorkspaceSidebar::default(),
             list_view: ListView::default(),
             _subscriptions: subscriptions,
-        }
+        };
+        app.session_changed(cx);
+        app
+    }
+
+    /// Runs whenever the session model notifies: accepted data, command outcomes, pending
+    /// switches. Recomputes the List view's projection (#257 also resets or reconciles its
+    /// filters here on Workspace changes).
+    fn session_changed(&mut self, cx: &mut Context<Self>) {
+        let selected = self.session.read(cx).selected();
+        self.list_view.reproject(selected, local_today());
+        cx.notify();
+    }
+
+    /// Workspace command UI layered over the window: create/edit/delete dialogs (#258).
+    fn render_workspace_ui(&self, _p: &Palette, _cx: &Context<Self>) -> Option<AnyElement> {
+        None
     }
 
     #[cfg(feature = "screenshot")]
@@ -157,6 +174,7 @@ impl Render for TuxedoApp {
                             ),
                     ),
             )
+            .children(self.render_workspace_ui(p, cx))
     }
 }
 

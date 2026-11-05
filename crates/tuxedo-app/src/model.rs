@@ -1,9 +1,13 @@
 //! The retained session entity. Views hold its handle and read projections from it.
 
-use gpui_kit::*;
-use tuxedo_core::{Workspace, WorkspaceSession, WorkspaceSnapshot};
+use std::path::PathBuf;
 
+use gpui_kit::*;
+use tuxedo_core::{CoreError, TodoWriteResult, Workspace, WorkspaceSession, WorkspaceSnapshot};
+
+use crate::command_queue::{Command, CommandQueue};
 use crate::session::{self, Restored};
+use crate::todo_commands;
 
 pub enum SessionState {
     Restoring,
@@ -21,6 +25,10 @@ pub struct SessionModel {
     pending: Option<String>,
     /// The latest request. Replacing it drops the previous Task, so a stale load is never accepted.
     task: Option<Task<()>>,
+    /// Where the catalogue lives; every write command rereads it. `None` when it has no location.
+    catalogue_path: Option<PathBuf>,
+    /// Write commands, run one at a time in admission order.
+    commands: CommandQueue,
 }
 
 impl SessionModel {
@@ -29,7 +37,8 @@ impl SessionModel {
     }
 
     /// Workspace session restoration from the catalogue at `path`.
-    pub fn restore_from(path: Option<std::path::PathBuf>, cx: &mut Context<Self>) -> Self {
+    pub fn restore_from(path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
+        let catalogue_path = path.clone();
         let load = cx.background_spawn(async move { session::restore(path.as_deref()) });
         let task = cx.spawn(async move |this, cx| {
             let restored = load.await;
@@ -51,11 +60,36 @@ impl SessionModel {
             error: None,
             pending: None,
             task: Some(task),
+            catalogue_path,
+            commands: CommandQueue::default(),
         }
     }
 
     pub fn state(&self) -> &SessionState {
         &self.state
+    }
+
+    fn session(&self) -> Option<&WorkspaceSession> {
+        match &self.state {
+            SessionState::Ready(session) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// The session revision Todo targets are captured against.
+    pub fn revision(&self) -> Option<u64> {
+        self.session().map(|s| s.revision())
+    }
+
+    #[allow(dead_code, reason = "read by the Undo control, landing next in #253")]
+    pub fn can_undo(&self) -> bool {
+        self.session().is_some_and(|s| s.can_undo())
+    }
+
+    /// Whether every admitted write command has finished (normal quit waits for this).
+    #[allow(dead_code, reason = "read by the quit drain, landing next in #253")]
+    pub fn commands_drained(&self) -> bool {
+        self.commands.is_drained()
     }
 
     pub fn workspaces(&self) -> &[Workspace] {
@@ -130,6 +164,77 @@ impl SessionModel {
             })
             .ok();
         }));
+    }
+}
+
+impl SessionModel {
+    /// Admits a write command; it runs after every command admitted before it.
+    pub fn enqueue(&mut self, command: Command, cx: &mut Context<Self>) {
+        self.commands.admit(command);
+        self.run_next(cx);
+    }
+
+    /// Starts queued commands until one is running or the queue is empty. A command that fails
+    /// while being prepared reports its error and lets the next one start.
+    fn run_next(&mut self, cx: &mut Context<Self>) {
+        while let Some(command) = self.commands.dequeue() {
+            match self.start(command, cx) {
+                Ok(task) => {
+                    self.commands.start(task);
+                    return;
+                }
+                Err(error) => self.report(Err(error)),
+            }
+            cx.notify();
+        }
+    }
+
+    /// Prepares a dequeued command against the current session and runs its background step.
+    fn start(&mut self, command: Command, cx: &mut Context<Self>) -> Result<Task<()>, CoreError> {
+        let (Some(session), Some(catalogue_path)) = (self.session(), &self.catalogue_path) else {
+            return Err(CoreError::InvalidCommand {
+                message: "No Workspace session is available.".to_owned(),
+            });
+        };
+        // Workspace commands (#258) dispatch here once they join `Command`.
+        let request = todo_commands::prepare(
+            session,
+            catalogue_path,
+            command,
+            todo_commands::local_today(),
+        )?;
+        let execute = cx.background_spawn(async move { request.execute() });
+        Ok(cx.spawn(async move |this, cx| {
+            let result = execute.await;
+            this.update(cx, |model, cx| {
+                model.accept_todo_write(result);
+                model.commands.accept();
+                model.run_next(cx);
+                cx.notify();
+            })
+            .ok();
+        }))
+    }
+
+    /// Foreground acceptance of a Todo-file command's background result.
+    fn accept_todo_write(&mut self, result: Result<TodoWriteResult, CoreError>) {
+        let accepted = match (result, &mut self.state) {
+            (Ok(result), SessionState::Ready(session)) => {
+                let notice = result.notice.clone();
+                session.accept_todo_write(result).map(|_| notice)
+            }
+            (Ok(_), _) => return,
+            (Err(error), _) => Err(error),
+        };
+        self.report(accepted);
+    }
+
+    /// Shows a command's outcome: its error, or its notice when it has one.
+    fn report(&mut self, outcome: Result<Option<String>, CoreError>) {
+        self.error = match outcome {
+            Ok(notice) => notice,
+            Err(error) => Some(error.to_string()),
+        };
     }
 }
 

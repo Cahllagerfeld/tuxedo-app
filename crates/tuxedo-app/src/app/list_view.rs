@@ -6,18 +6,38 @@ use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
+use std::rc::Rc;
+
 use tuxedo_core::{TodoDate, WorkspaceSnapshot};
 
 use super::TuxedoApp;
+use crate::command_queue::Command;
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{hex, Palette};
+use crate::todo_commands::{self, local_today};
 use crate::todo_row::{self, ROW_HEIGHT};
 
-/// List-view-local UI state (none yet). Filters and toolbar state live here.
+/// List-view-local UI state: the projection of the selected Todo file into displayed rows.
+/// Filters, search, sort, and grouping state (#257) live here too.
 #[derive(Default)]
-pub(super) struct ListView {}
+pub(super) struct ListView {
+    /// Indices into the selected file's `items`, in display order.
+    visible: Rc<[usize]>,
+}
 
 impl ListView {
+    /// Recomputes the displayed rows after accepted session data (or, with #257, filter or
+    /// date) changes. Shows every Todo item in file order.
+    pub(super) fn reproject(&mut self, selected: Option<&WorkspaceSnapshot>, _today: TodoDate) {
+        let count = selected.map_or(0, |s| s.file.items.len());
+        self.visible = (0..count).collect();
+    }
+
+    /// The toolbar above the list (#257: search, filters, sort and grouping).
+    fn render_toolbar(&self, _p: &'static Palette) -> Option<AnyElement> {
+        None
+    }
+
     pub(super) fn render(
         &self,
         session: &Entity<SessionModel>,
@@ -56,7 +76,7 @@ impl ListView {
             (SessionState::Ready(_), Some(selected)) => render_list(
                 session.clone(),
                 &selected.workspace.id,
-                selected.file.items.len(),
+                self.visible.clone(),
                 local_today(),
                 p,
             ),
@@ -70,6 +90,7 @@ impl ListView {
             .when_some(model.error(), |main, error| {
                 main.child(error_banner(error, p))
             })
+            .children(self.render_toolbar(p))
             .child(body)
             .when_some(model.selected(), |main, selected| {
                 main.child(render_status_bar(selected, p))
@@ -83,25 +104,31 @@ impl ListView {
 fn render_list(
     session: Entity<SessionModel>,
     workspace_id: &str,
-    count: usize,
+    visible: Rc<[usize]>,
     today: TodoDate,
     p: &'static Palette,
 ) -> AnyElement {
     uniform_list(
         SharedString::from(format!("todo-list:{workspace_id}")),
-        count,
+        visible.len(),
         move |range, _, cx| {
-            let Some(selected) = session.read(cx).selected() else {
+            let model = session.read(cx);
+            let (Some(selected), Some(revision)) = (model.selected(), model.revision()) else {
                 return Vec::new();
             };
             range
-                .filter_map(|index| {
-                    Some(todo_row::render(
-                        index,
-                        selected.file.items.get(index)?,
-                        today,
-                        p,
-                    ))
+                .filter_map(|row| {
+                    let index = *visible.get(row)?;
+                    let item = selected.file.items.get(index)?;
+                    let command = Command::Complete {
+                        target: todo_commands::target(selected, revision, item),
+                        completed: !item.completed,
+                    };
+                    let session = session.clone();
+                    let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                        session.update(cx, |model, cx| model.enqueue(command.clone(), cx));
+                    };
+                    Some(todo_row::render(index, item, today, on_toggle, p))
                 })
                 .collect()
         },
@@ -205,12 +232,4 @@ fn error_banner(error: &str, p: &Palette) -> impl IntoElement {
         .text_color(hex(p.destructive))
         .child(Icon::new(IconName::TriangleAlert).size_4())
         .child(div().truncate().child(error.to_owned()))
-}
-
-fn local_today() -> TodoDate {
-    let today = chrono::Local::now()
-        .date_naive()
-        .format("%Y-%m-%d")
-        .to_string();
-    TodoDate::parse(&today).expect("chrono formats a valid YYYY-MM-DD date")
 }

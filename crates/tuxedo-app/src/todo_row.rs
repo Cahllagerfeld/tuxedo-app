@@ -1,4 +1,4 @@
-//! One List-view row, ported from `lib/modules/todo/ui/TodoItem.svelte` (read-only).
+//! One List-view row, ported from `lib/modules/todo/ui/TodoItem.svelte`.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::h_flex;
@@ -21,7 +21,15 @@ fn unique(values: &[String]) -> Vec<&String> {
     seen
 }
 
-pub fn render(index: usize, todo: &TodoItem, today: TodoDate, p: &Palette) -> AnyElement {
+/// `index` is the item's position in the Todo file's items. `on_toggle` completes an open item
+/// or reopens a completed one.
+pub fn render(
+    index: usize,
+    todo: &TodoItem,
+    today: TodoDate,
+    on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    p: &Palette,
+) -> AnyElement {
     let muted_fg = hex(p.muted_foreground);
     let projects = unique(&todo.projects);
     let contexts = unique(&todo.contexts);
@@ -98,8 +106,14 @@ pub fn render(index: usize, todo: &TodoItem, today: TodoDate, p: &Palette) -> An
         None => div().into_any_element(),
     };
 
-    // Read-only completion indicator: a round checkbox filled with the completed color.
+    // The completion checkbox: a round mark filled with the completed color.
     let checkbox = div()
+        .id(("todo-checkbox", index))
+        .when(cfg!(test), |mark| {
+            mark.debug_selector(move || format!("todo-checkbox-{index}"))
+        })
+        .on_click(on_toggle)
+        .cursor_pointer()
         .size_4()
         .flex_shrink_0()
         .flex()
