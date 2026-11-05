@@ -423,6 +423,7 @@ pub(crate) mod tests {
     use super::SessionModel;
     use crate::command_queue::{Accepted, Command, Outcome, OutcomeKind, TodoCommand};
     use crate::todo_commands;
+    use tuxedo_core::WorkspaceSession;
 
     pub(crate) const A: &str = "0b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
     const B: &str = "1b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
@@ -654,5 +655,57 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
         model.read_with(cx, |m, _| assert!(m.pending().is_none()));
+    }
+
+    #[gpui::test]
+    fn an_unconfirmed_write_pauses_the_queue_until_its_reread_is_accepted(cx: &mut TestAppContext) {
+        let (model, todo) = restored_with("unconfirmed", "First\nSecond\n", cx);
+        tuxedo_core::fail_directory_sync(todo.parent().unwrap());
+        // Both captured at one revision. Had the second run before the reread, it would apply.
+        let (first, second) = (complete(&model, 1, cx), complete(&model, 2, cx));
+        model.update(cx, |m, cx| {
+            m.enqueue(first, cx);
+            m.enqueue(second, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            kinds(&model, cx),
+            [OutcomeKind::Failed, OutcomeKind::Failed]
+        );
+        let disk = std::fs::read_to_string(&todo).unwrap();
+        assert!(
+            disk.starts_with("x ") && disk.ends_with("\nSecond\n"),
+            "{disk}"
+        );
+        model.read_with(cx, |m, _| {
+            assert_eq!(
+                m.selected().unwrap().file.source,
+                disk,
+                "the reread was accepted"
+            );
+            assert_eq!(m.undo_label(), None);
+        });
+    }
+
+    #[test]
+    fn an_executed_write_whose_result_cannot_be_accepted_needs_recovery() {
+        let path = catalogue("guard");
+        let mut session = WorkspaceSession::new(tuxedo_core::load_catalogue(&path).unwrap());
+        session.open(A).unwrap();
+        let selected = session.selected().unwrap();
+        let target = todo_commands::target(selected, session.revision(), &selected.file.items[0]);
+        let command = TodoCommand::Complete {
+            target,
+            completed: true,
+        };
+        let today = todo_commands::local_today();
+        let request = todo_commands::prepare(&session, &path, command, today).unwrap();
+        let result = request.execute();
+        session.open(B).unwrap();
+        assert!(matches!(
+            todo_commands::accept(&mut session, result),
+            Accepted::Recover(_)
+        ));
     }
 }

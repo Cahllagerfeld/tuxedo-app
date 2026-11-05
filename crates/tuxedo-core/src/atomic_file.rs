@@ -44,7 +44,11 @@ pub(crate) fn atomic_replace(path: &Path, contents: &[u8], mode: u32) -> Result<
             source: error.error,
         })?;
 
-    sync_directory(&directory).map_err(|source| CoreError::WriteUnconfirmed {
+    #[cfg(any(test, feature = "fault-injection"))]
+    let synced = fault::check(&directory).and_then(|()| sync_directory(&directory));
+    #[cfg(not(any(test, feature = "fault-injection")))]
+    let synced = sync_directory(&directory);
+    synced.map_err(|source| CoreError::WriteUnconfirmed {
         path: path.to_path_buf(),
         source,
     })
@@ -77,4 +81,27 @@ fn sync_directory(directory: &Path) -> io::Result<()> {
 fn sync_directory(_directory: &Path) -> io::Result<()> {
     // Directories cannot be opened for syncing on Windows; the rename itself is the commit.
     Ok(())
+}
+
+/// Test-only fault injection: fails the parent-directory sync after the rename.
+#[cfg(any(test, feature = "fault-injection"))]
+pub(crate) mod fault {
+    use std::io;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+
+    static FAILING: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+    /// Makes every later atomic replacement in `directory` fail its directory sync, after the
+    /// rename has already replaced the file.
+    pub fn fail_directory_sync(directory: &Path) {
+        FAILING.lock().unwrap().push(directory.to_path_buf());
+    }
+
+    pub(super) fn check(directory: &Path) -> io::Result<()> {
+        if FAILING.lock().unwrap().iter().any(|d| d == directory) {
+            return Err(io::Error::other("injected directory sync failure"));
+        }
+        Ok(())
+    }
 }

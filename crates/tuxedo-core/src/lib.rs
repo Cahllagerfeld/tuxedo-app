@@ -21,5 +21,10 @@ pub use todo::{
 };
 pub use todo_write::{TodoTarget, TodoWriteRequest, TodoWriteResult, TodoWriteStatus, UndoToken};
 
+/// Test-only fault injection for crates that test against this one.
+#[cfg(feature = "fault-injection")]
+#[doc(hidden)]
+pub use atomic_file::fault::fail_directory_sync;
+
 #[cfg(test)]
 mod tests;

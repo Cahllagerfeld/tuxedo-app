@@ -46,3 +46,16 @@ fn atomic_replace_failure_leaves_the_destination_unchanged() {
         .collect();
     assert_eq!(entries, ["occupied"], "the temporary file is removed");
 }
+
+#[test]
+fn a_failed_directory_sync_after_the_rename_is_unconfirmed_with_the_new_bytes_on_disk() {
+    let root = super::temp_dir();
+    let path = root.path().join("todo.txt");
+    fs::write(&path, "old").unwrap();
+    crate::atomic_file::fault::fail_directory_sync(root.path());
+    assert!(matches!(
+        atomic_replace(&path, b"new", 0o600),
+        Err(crate::CoreError::WriteUnconfirmed { .. })
+    ));
+    assert_eq!(fs::read(&path).unwrap(), b"new");
+}
