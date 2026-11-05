@@ -23,7 +23,8 @@ pub enum WorkspaceChange {
     /// supplies its `id` (a UUID) and `created_at` (an ISO datetime); preferences start absent.
     Create { workspace: Workspace },
     /// Renames, recolors, or points a Workspace at another Todo file (Workspace replacement). Its
-    /// id, `created_at`, and preferences are kept, and it is not activated.
+    /// id, `created_at`, and preferences are kept, and it is not activated. Refused when the new
+    /// Todo file or the Active workspace's Todo file cannot be loaded.
     Update {
         id: String,
         name: String,
@@ -215,17 +216,22 @@ impl WorkspaceWriteRequest {
                 };
                 catalogue.workspaces[index] = updated;
                 checked(path, &catalogue)?;
-                let (selected, warning) = match replaced {
-                    Some(snapshot) if catalogue.active_workspace_id.as_ref() == Some(&id) => (
+                // Unlike a deletion, an update is refused before writing when the Active
+                // workspace it would show cannot be loaded.
+                let selected = match replaced {
+                    Some(snapshot) if catalogue.active_workspace_id.as_ref() == Some(&id) => {
                         Some(WorkspaceSnapshot {
                             workspace: catalogue.workspaces[index].clone(),
                             ..snapshot
-                        }),
-                        None,
-                    ),
-                    _ => project(&catalogue),
+                        })
+                    }
+                    _ => catalogue
+                        .active_workspace()
+                        .cloned()
+                        .map(|workspace| OpenRequest { workspace }.load())
+                        .transpose()?,
                 };
-                (catalogue, selected, warning)
+                (catalogue, selected, None)
             }
             WorkspaceChange::Delete { id } => {
                 let mut catalogue = previous;
@@ -304,7 +310,7 @@ fn load_chosen(
     Ok((canonical, snapshot))
 }
 
-/// The selection a committed catalogue implies: its Active workspace's freshly read Todo file,
+/// The selection a committed deletion implies: its Active workspace's freshly read Todo file,
 /// or none. A Todo file that cannot open leaves the Empty state with a warning.
 fn project(catalogue: &Catalogue) -> (Option<WorkspaceSnapshot>, Option<String>) {
     let Some(workspace) = catalogue.active_workspace().cloned() else {

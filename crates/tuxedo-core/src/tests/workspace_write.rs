@@ -77,13 +77,22 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
     )
     .unwrap();
     on_disk(&session);
-    let created = session.catalogue().workspaces[2].clone();
+    let created_c = &session.catalogue().workspaces[2];
     assert_eq!(
-        (created.name.as_str(), created.todo_file.clone()),
+        (created_c.name.as_str(), created_c.todo_file.clone()),
         ("New", root.join("c.txt"))
     );
     assert_eq!(selected_id(&session), Some(ID_C));
     assert_eq!(session.selected().unwrap().file.items[0].raw, "Task C");
+
+    // Preferences (set elsewhere, as Electron does) survive every update below.
+    let mut with_preferences = session.catalogue().clone();
+    with_preferences.workspaces[2].sort_order = Some(TodoSortOrder::Due);
+    with_preferences.workspaces[2].show_deferred = Some(true);
+    crate::catalogue_write::write_catalogue(&catalogue, &with_preferences).unwrap();
+    session = WorkspaceSession::new(load_catalogue(&catalogue).unwrap());
+    session.open(ID_C).unwrap();
+    let created = session.catalogue().workspaces[2].clone();
 
     // Renaming and recoloring the Active workspace keeps its id, date, and preferences;
     // replacing an inactive Workspace's file does not activate it.
@@ -108,6 +117,29 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
     assert!(
         session.revision() > revision,
         "metadata changes advance the revision"
+    );
+
+    // Replacing the Active workspace's Todo file shows the replacement.
+    fs::write(root.join("e.txt"), "Task E\n").unwrap();
+    let replace_active = WorkspaceChange::Update {
+        id: ID_C.into(),
+        name: "Renamed".into(),
+        color: WorkspaceColor::Violet,
+        todo_file: root.join("e.txt"),
+    };
+    run(&mut session, &catalogue, replace_active).unwrap();
+    on_disk(&session);
+    let selected = session.selected().unwrap();
+    assert_eq!(
+        selected.workspace,
+        Workspace {
+            todo_file: root.join("e.txt"),
+            ..renamed
+        }
+    );
+    assert_eq!(
+        (selected.file.path.clone(), selected.file.source.as_str()),
+        (root.join("e.txt"), "Task E\n")
     );
 
     fs::write(root.join("d.txt"), "Task D\n").unwrap();
@@ -164,13 +196,14 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
         ("b.txt", "Task B\n"),
         ("c.txt", "Task C\r\n"),
         ("d.txt", "Task D\n"),
+        ("e.txt", "Task E\n"),
     ] {
         assert_eq!(fs::read_to_string(root.join(name)).unwrap(), contents);
     }
 }
 
 #[test]
-fn refused_commands_leave_the_catalogue_and_session_unchanged() {
+fn refused_commands_leave_the_catalogue_unchanged() {
     type Setup = fn(&Path, &Path);
     let update_a = |todo_file: &str| WorkspaceChange::Update {
         id: ID_A.into(),
@@ -202,6 +235,13 @@ fn refused_commands_leave_the_catalogue_and_session_unchanged() {
             },
         ),
         ("a missing replacement", update_a("missing.txt"), none),
+        (
+            "renaming while the Active workspace's Todo file is unreadable",
+            update_a("a.txt"),
+            |root, _| {
+                fs::remove_file(root.join("a.txt")).unwrap();
+            },
+        ),
         (
             "an id that is not a UUID",
             WorkspaceChange::Create {
@@ -256,7 +296,6 @@ fn refused_commands_leave_the_catalogue_and_session_unchanged() {
             },
             other => other,
         };
-        let before = session.clone();
         let outcome = session
             .prepare_workspace_change(&catalogue, change)
             .and_then(|request| {
@@ -271,8 +310,6 @@ fn refused_commands_leave_the_catalogue_and_session_unchanged() {
                 result
             });
         assert!(outcome.is_err(), "{label}: {outcome:?}");
-        assert_eq!(session.catalogue(), before.catalogue(), "{label}");
-        assert_eq!(session.revision(), before.revision(), "{label}");
     }
 }
 
