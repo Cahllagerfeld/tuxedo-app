@@ -27,3 +27,6 @@ reference
 
 # Turborepo local cache and task logs
 .turbo
+
+# Rust
+/target
