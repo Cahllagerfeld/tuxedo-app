@@ -18,6 +18,10 @@ use crate::command_queue::{Accepted, Command, CommandQueue, Outcome, OutcomeKind
 use crate::session::{self, Restored};
 use crate::todo_commands;
 
+/// How long Quit waits for admitted commands before exiting with a failure status (as in the
+/// Electron app).
+const QUIT_DEADLINE: Duration = Duration::from_secs(10);
+
 pub enum SessionState {
     Restoring,
     Unavailable(String),
@@ -64,6 +68,10 @@ pub struct SessionModel {
     quitting: bool,
     /// Ends the application once quitting has drained the queue (replaced in tests).
     quit_app: fn(&mut App),
+    /// Ends the process when quitting exceeds [`QUIT_DEADLINE`] (replaced in tests).
+    exit_process: fn(i32),
+    /// The quit deadline, running from the first quit request until the queue drains.
+    quit_deadline: Option<Task<()>>,
     /// Whether a command's background step is running, for the best-effort native-quit wait.
     in_flight: Arc<AtomicBool>,
     _app_quit: Subscription,
@@ -123,6 +131,8 @@ impl SessionModel {
             close_requested: false,
             quitting: false,
             quit_app: |cx| cx.quit(),
+            exit_process: |code| std::process::exit(code),
+            quit_deadline: None,
             in_flight,
             _app_quit: app_quit,
         }
@@ -320,14 +330,16 @@ impl SessionModel {
             }
             Recovery::Confirmed => {
                 while let Some(command) = self.commands.dequeue() {
+                    let name = command.name();
                     match self.start(command, cx) {
-                        Ok(task) => return self.commands.start(task),
+                        Ok(task) => return self.commands.start(task, name),
                         Err(outcome) => self.outcomes.push_back(outcome),
                     }
                 }
             }
         }
         if self.quitting {
+            self.quit_deadline = None;
             return (self.quit_app)(cx);
         }
         if let Some(id) = self.deferred_select.take() {
@@ -342,9 +354,32 @@ impl SessionModel {
             return;
         }
         self.quitting = true;
+        // A command or reread that never returns must not keep the app open forever.
+        self.quit_deadline = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(QUIT_DEADLINE).await;
+            this.update(cx, |model, _| model.quit_timed_out()).ok();
+        }));
         self.cancel_read();
         self.deferred_select = None;
         self.run_next(cx);
+    }
+
+    /// Quitting exceeded its deadline: report what is blocked and exit with a failure status. The
+    /// running write is neither accepted nor retried.
+    fn quit_timed_out(&mut self) {
+        let (running, pending) = self.commands.describe();
+        let phase = match (running, self.recovery) {
+            (Some(_), Recovery::Needed) => "rereading the Todo file after an unconfirmed write",
+            (Some(_), _) => "running a command",
+            (None, _) => "waiting for queued commands",
+        };
+        eprintln!(
+            "tuxedo: quit timed out after {}s while {phase}; running: {}; pending: [{}]",
+            QUIT_DEADLINE.as_secs(),
+            running.unwrap_or("none"),
+            pending.join(", ")
+        );
+        (self.exit_process)(1);
     }
 
     /// Prepares a dequeued command against the current session and runs its background step.
@@ -368,6 +403,8 @@ impl SessionModel {
                     Err(error) => Err(self.accept_failure(todo_commands::accept, error)),
                 }
             }
+            #[cfg(test)]
+            Command::Held => Ok(cx.spawn(async |_, _| std::future::pending::<()>().await)),
             #[cfg(test)]
             Command::Scripted(accepted) => Ok(self.run(
                 move || Ok(accepted),
@@ -452,7 +489,7 @@ impl SessionModel {
             })
             .ok();
         });
-        self.commands.start(task);
+        self.commands.start(task, "recovery reread");
     }
 
     fn finish_recovery(&mut self, result: Result<(), String>, cx: &mut Context<Self>) {
@@ -479,7 +516,9 @@ pub(crate) mod tests {
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
     use gpui::{AppContext as _, Entity, TestAppContext};
 
-    use super::SessionModel;
+    use std::time::Duration;
+
+    use super::{SessionModel, QUIT_DEADLINE};
     use crate::command_queue::{Accepted, Command, Outcome, OutcomeKind, TodoCommand};
     use crate::todo_commands;
     use tuxedo_core::WorkspaceSession;
@@ -770,19 +809,26 @@ pub(crate) mod tests {
 
     #[gpui::test]
     fn quitting_closes_admission_and_quits_after_admitted_commands_finish(cx: &mut TestAppContext) {
-        thread_local!(static QUIT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
+        thread_local! {
+            static QUIT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+            static EXIT: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+        }
+        let hooks = |m: &mut SessionModel| {
+            m.quit_app = |_| QUIT.with(|q| q.set(true));
+            m.exit_process = |code| EXIT.with(|e| e.set(Some(code)));
+        };
         let (model, todo) = restored_with("quit", "First\n", cx);
         let first = complete(&model, 1, cx);
         let second = Accepted::Done(Outcome::new(OutcomeKind::Applied, "second", None));
         model.update(cx, |m, cx| {
-            m.quit_app = |_| QUIT.with(|q| q.set(true));
+            hooks(m);
             m.enqueue(first, cx);
             m.enqueue(Command::Scripted(second), cx);
             m.request_quit(cx);
             let late = Outcome::new(OutcomeKind::Applied, "late", None);
             m.enqueue(Command::Scripted(Accepted::Done(late)), cx);
         });
-        // The first command's execution is still held: nothing has finished, so no quit yet.
+        // The first command's execution has not run yet: nothing has finished, so no quit yet.
         assert!(!QUIT.with(|q| q.get()));
         assert_eq!(
             kinds(&model, cx),
@@ -790,6 +836,7 @@ pub(crate) mod tests {
             "the late admission is refused"
         );
 
+        // Released before the deadline: both commands are accepted, then the app quits.
         cx.run_until_parked();
         assert!(QUIT.with(|q| q.get()));
         assert_eq!(
@@ -797,5 +844,30 @@ pub(crate) mod tests {
             [OutcomeKind::Applied, OutcomeKind::Applied]
         );
         assert!(std::fs::read_to_string(&todo).unwrap().starts_with("x "));
+        cx.executor().advance_clock(QUIT_DEADLINE * 2);
+        cx.run_until_parked();
+        assert_eq!(
+            EXIT.with(|e| e.get()),
+            None,
+            "the deadline ended with the drain"
+        );
+
+        // Held past the deadline: the process exits with a failure status instead of quitting.
+        QUIT.with(|q| q.set(false));
+        let (model, _) = restored_with("quit-held", "First\n", cx);
+        model.update(cx, |m, cx| {
+            hooks(m);
+            m.enqueue(Command::Held, cx);
+            m.request_quit(cx);
+        });
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(QUIT_DEADLINE - Duration::from_millis(1));
+        cx.run_until_parked();
+        assert_eq!(EXIT.with(|e| e.get()), None);
+        cx.executor().advance_clock(Duration::from_millis(1));
+        cx.run_until_parked();
+        assert_eq!(EXIT.with(|e| e.get()), Some(1));
+        assert!(!QUIT.with(|q| q.get()));
     }
 }

@@ -44,9 +44,9 @@ pub(crate) fn atomic_replace(path: &Path, contents: &[u8], mode: u32) -> Result<
             source: error.error,
         })?;
 
-    #[cfg(any(test, feature = "fault-injection"))]
+    #[cfg(any(test, all(feature = "fault-injection", debug_assertions)))]
     let synced = fault::check(&directory).and_then(|()| sync_directory(&directory));
-    #[cfg(not(any(test, feature = "fault-injection")))]
+    #[cfg(not(any(test, all(feature = "fault-injection", debug_assertions))))]
     let synced = sync_directory(&directory);
     synced.map_err(|source| CoreError::WriteUnconfirmed {
         path: path.to_path_buf(),
@@ -84,7 +84,7 @@ fn sync_directory(_directory: &Path) -> io::Result<()> {
 }
 
 /// Test-only fault injection: fails the parent-directory sync after the rename.
-#[cfg(any(test, feature = "fault-injection"))]
+#[cfg(any(test, all(feature = "fault-injection", debug_assertions)))]
 pub(crate) mod fault {
     use std::io;
     use std::path::{Path, PathBuf};

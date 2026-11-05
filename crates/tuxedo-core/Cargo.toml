@@ -7,6 +7,7 @@ publish.workspace = true
 
 [features]
 # Test-only: lets dependent crates' tests inject a directory-sync failure after a rename.
+# Compiled only with debug assertions, so a release build cannot contain it.
 fault-injection = []
 
 [dependencies]

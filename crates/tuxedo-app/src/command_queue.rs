@@ -24,6 +24,26 @@ pub enum Command {
     /// Test-only: completes with the given acceptance, without touching any file.
     #[cfg(test)]
     Scripted(Accepted),
+    /// Test-only: a command whose background step never finishes.
+    #[cfg(test)]
+    Held,
+}
+
+impl Command {
+    /// A short name for diagnostics, such as a quit that timed out.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Command::Todo(TodoCommand::Complete {
+                completed: true, ..
+            }) => "complete Todo item",
+            Command::Todo(TodoCommand::Complete { .. }) => "reopen Todo item",
+            Command::Todo(TodoCommand::Undo { .. }) => "undo",
+            #[cfg(test)]
+            Command::Scripted(_) => "scripted",
+            #[cfg(test)]
+            Command::Held => "held",
+        }
+    }
 }
 
 /// Todo-file commands (`todo_commands`).
@@ -79,7 +99,7 @@ pub enum Accepted {
 pub struct CommandQueue {
     pending: VecDeque<Command>,
     /// The command (or recovery read) in flight: its background step and foreground acceptance.
-    running: Option<Task<()>>,
+    running: Option<(Task<()>, &'static str)>,
 }
 
 impl CommandQueue {
@@ -101,16 +121,22 @@ impl CommandQueue {
         self.pending.drain(..).collect()
     }
 
-    /// Retains the task running the command (or recovery) just started.
-    pub fn start(&mut self, task: Task<()>) {
+    /// Retains the task running the command (or recovery) just started, named for diagnostics.
+    pub fn start(&mut self, task: Task<()>, name: &'static str) {
         debug_assert!(self.running.is_none(), "one command at a time");
-        self.running = Some(task);
+        self.running = Some((task, name));
+    }
+
+    /// The running step's name and the pending commands' names, for diagnostics.
+    pub fn describe(&self) -> (Option<&'static str>, Vec<&'static str>) {
+        let running = self.running.as_ref().map(|(_, name)| *name);
+        (running, self.pending.iter().map(Command::name).collect())
     }
 
     /// Called by the running task once the foreground has accepted its result, which frees the
     /// queue for the next command. The finishing task completes on its own.
     pub fn accept(&mut self) {
-        if let Some(task) = self.running.take() {
+        if let Some((task, _)) = self.running.take() {
             task.detach();
         }
     }
