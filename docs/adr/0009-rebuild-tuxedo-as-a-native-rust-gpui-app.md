@@ -16,7 +16,7 @@ The domain crate `tuxedo-core` has no GUI dependency and owns todo.txt parsing, 
 
 ## Lenient catalogue reads
 
-While the native app only reads the Workspace catalogue, decoding is deliberately lenient: anything the Electron app can persist must load, so the two apps never disagree about which Workspaces exist. The rule ends with the first change in which the native app writes the catalogue. From then on, catalogue validation and atomic writes match the Electron app's rules exactly, and a catalogue that cannot be read is preserved and reported rather than replaced.
+While the native app only reads the Workspace catalogue, decoding is deliberately lenient: anything the Electron app can persist must load, so the two apps never disagree about which Workspaces exist. The rule ends with the first change in which the native app writes the catalogue. From then on, catalogue validation and atomic writes match the Electron app's rules exactly, and a catalogue that cannot be read is preserved and reported rather than replaced. That period ended with Workspace management ([issue #258](https://github.com/Cahllagerfeld/tuxedo-app/issues/258)): the native app now writes the catalogue and validates it exactly as strictly as the Electron app.
 
 ## Verification
 
