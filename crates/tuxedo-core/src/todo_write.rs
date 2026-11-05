@@ -9,9 +9,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::atomic_file::atomic_replace;
+use crate::completion::set_completion_line;
+use crate::recurrence::plan_recurring_completion;
 use crate::{
-    load_catalogue, parse_todo_text, CoreError, TodoDate, Workspace, WorkspaceSession,
-    WorkspaceSnapshot,
+    load_catalogue, parse_todo_text, CoreError, LineEnding, TodoDate, TodoFile, Workspace,
+    WorkspaceSession, WorkspaceSnapshot,
 };
 
 /// The Todo item a command addresses, captured when the command is admitted.
@@ -33,6 +35,14 @@ pub struct UndoToken {
     path: PathBuf,
     before: Vec<u8>,
     after: Vec<u8>,
+    label: &'static str,
+}
+
+impl UndoToken {
+    /// What Undo reverts, such as "Undo completion".
+    pub fn label(&self) -> &str {
+        self.label
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,16 +57,14 @@ pub enum TodoWriteStatus {
 #[derive(Debug, Clone)]
 pub struct TodoWriteRequest {
     catalogue_path: PathBuf,
+    /// The selected Workspace's Todo file when the command was prepared.
+    path: PathBuf,
     origin: Origin,
     command: TodoCommand,
 }
 
 #[derive(Debug, Clone)]
 enum TodoCommand {
-    #[allow(
-        dead_code,
-        reason = "read by the completion transformation, landing next in #253"
-    )]
     Completion {
         target: TodoTarget,
         completed: bool,
@@ -80,7 +88,7 @@ pub struct TodoWriteResult {
     pub undo: Option<UndoToken>,
     pub status: TodoWriteStatus,
     /// A message for the person: why a Conflict refused the command, or what an Applied
-    /// command could not do (such as an unsupported recurrence rule).
+    /// command adds (such as the next occurrence, or an unsupported Repeat rule).
     pub notice: Option<String>,
     origin: Origin,
 }
@@ -92,8 +100,14 @@ fn invalid(message: &str) -> CoreError {
 }
 
 impl WorkspaceSession {
+    /// The current Undo step's label, such as "Undo completion".
+    pub fn undo_label(&self) -> Option<&str> {
+        self.undo.as_ref().map(UndoToken::label)
+    }
+
     /// Foreground step: refuses a target from another Workspace or an older revision as
-    /// [`CoreError::StaleCommand`]. Performs no I/O.
+    /// [`CoreError::StaleCommand`], and a target that is not one Todo item's line as
+    /// [`CoreError::InvalidCommand`]. Performs no I/O.
     pub fn prepare_completion(
         &self,
         catalogue_path: &Path,
@@ -101,9 +115,17 @@ impl WorkspaceSession {
         completed: bool,
         today: TodoDate,
     ) -> Result<TodoWriteRequest, CoreError> {
-        let origin = self.current_origin(&target.workspace_id, target.revision)?;
+        let (origin, path) = self.current_origin(&target.workspace_id, target.revision)?;
+        let expected = parse_todo_text(PathBuf::new(), &target.expected_raw);
+        if expected.items.len() != 1
+            || !expected.skipped.is_empty()
+            || target.expected_raw.contains('\n')
+        {
+            return Err(invalid("Invalid Todo item target."));
+        }
         Ok(TodoWriteRequest {
             catalogue_path: catalogue_path.to_path_buf(),
+            path,
             origin,
             command: TodoCommand::Completion {
                 target,
@@ -118,10 +140,11 @@ impl WorkspaceSession {
         let token = self
             .undo
             .clone()
-            .ok_or_else(|| invalid("Nothing to undo."))?;
-        let origin = self.current_origin(&token.workspace_id, self.revision)?;
+            .ok_or_else(|| invalid("There is no change to undo."))?;
+        let (origin, path) = self.current_origin(&token.workspace_id, self.revision)?;
         Ok(TodoWriteRequest {
             catalogue_path: catalogue_path.to_path_buf(),
+            path,
             origin,
             command: TodoCommand::Undo { token },
         })
@@ -140,15 +163,23 @@ impl WorkspaceSession {
         Ok(result.status)
     }
 
-    fn current_origin(&self, workspace_id: &str, revision: u64) -> Result<Origin, CoreError> {
-        let selected = self.selected.as_ref().map(|s| s.workspace.id.as_str());
-        if selected != Some(workspace_id) || revision != self.revision {
-            return Err(CoreError::StaleCommand);
+    fn current_origin(
+        &self,
+        workspace_id: &str,
+        revision: u64,
+    ) -> Result<(Origin, PathBuf), CoreError> {
+        match &self.selected {
+            Some(selected)
+                if selected.workspace.id == workspace_id && revision == self.revision =>
+            {
+                let origin = Origin {
+                    workspace_id: workspace_id.to_owned(),
+                    revision,
+                };
+                Ok((origin, selected.workspace.todo_file.clone()))
+            }
+            _ => Err(CoreError::StaleCommand),
         }
-        Ok(Origin {
-            workspace_id: workspace_id.to_owned(),
-            revision,
-        })
     }
 }
 
@@ -158,43 +189,118 @@ impl TodoWriteRequest {
     pub fn execute(self) -> Result<TodoWriteResult, CoreError> {
         let workspace = load_catalogue(&self.catalogue_path)?
             .active_workspace()
-            .filter(|w| w.id == self.origin.workspace_id)
+            .filter(|w| w.id == self.origin.workspace_id && w.todo_file == self.path)
             .cloned()
-            .ok_or_else(|| invalid("This Workspace is no longer the Active workspace."))?;
-        let path = workspace.todo_file.clone();
-        let before = fs::read(&path).map_err(|source| CoreError::Io {
-            path: path.clone(),
+            .ok_or_else(|| invalid("The Active workspace changed."))?;
+        let before = fs::read(&self.path).map_err(|source| CoreError::Io {
+            path: self.path.clone(),
             source,
         })?;
-        match self.command {
-            TodoCommand::Completion { .. } => {
-                Err(invalid("Completing Todo items is not available yet."))
+        let origin = self.origin;
+        let conflict = |workspace, before, notice: &str| {
+            Ok(TodoWriteResult {
+                snapshot: snapshot(workspace, before)?,
+                undo: None,
+                status: TodoWriteStatus::Conflict,
+                notice: Some(notice.to_owned()),
+                origin: origin.clone(),
+            })
+        };
+        let (after, undo, notice) = match self.command {
+            TodoCommand::Completion {
+                target,
+                completed,
+                today,
+            } => {
+                let current = snapshot(workspace.clone(), before.clone())?;
+                let item = current
+                    .file
+                    .items
+                    .iter()
+                    .find(|item| item.line_number == target.line_number)
+                    .filter(|item| item.raw == target.expected_raw);
+                let Some(item) = item else {
+                    return conflict(
+                        workspace,
+                        before,
+                        "The Todo item changed on disk. Review its current contents.",
+                    );
+                };
+                let raw = set_completion_line(item, completed, today).map_err(invalid)?;
+                let (raw, notice) = if completed {
+                    let index = item.line_number as usize - 1;
+                    let ending = ending_str(current.file.lines[index].ending);
+                    let first = current.file.lines.first().map(|l| ending_str(l.ending));
+                    let plan = plan_recurring_completion(
+                        item,
+                        raw,
+                        today,
+                        ending,
+                        first.filter(|e| !e.is_empty()),
+                    )
+                    .map_err(invalid)?;
+                    (plan.raw, plan.notice)
+                } else {
+                    (raw, None)
+                };
+                let after = replace_line(&current.file, target.line_number, &raw);
+                let token = UndoToken {
+                    workspace_id: workspace.id.clone(),
+                    path: self.path.clone(),
+                    before: before.clone(),
+                    after: after.clone().into_bytes(),
+                    label: if completed {
+                        "Undo completion"
+                    } else {
+                        "Undo uncompletion"
+                    },
+                };
+                (after.into_bytes(), Some(token), notice)
             }
             TodoCommand::Undo { token } => {
-                if token.path != path || token.after != before {
-                    let snapshot = snapshot(workspace, before)?;
-                    return Ok(TodoWriteResult {
-                        snapshot,
-                        undo: None,
-                        status: TodoWriteStatus::Conflict,
-                        notice: Some(
-                            "Cannot undo: the Todo file changed on disk. Showing its current contents."
-                                .to_owned(),
-                        ),
-                        origin: self.origin,
-                    });
+                if token.path != self.path || token.after != before {
+                    return conflict(
+                        workspace,
+                        before,
+                        "The Todo file changed on disk. Undo is no longer available.",
+                    );
                 }
-                atomic_replace(&path, &token.before, file_mode(&path)?)?;
-                Ok(TodoWriteResult {
-                    snapshot: snapshot(workspace, token.before)?,
-                    undo: None,
-                    status: TodoWriteStatus::Applied,
-                    notice: None,
-                    origin: self.origin,
-                })
+                (token.before, None, None)
             }
-        }
+        };
+        atomic_replace(&self.path, &after, file_mode(&self.path)?)?;
+        Ok(TodoWriteResult {
+            snapshot: snapshot(workspace, after)?,
+            undo,
+            status: TodoWriteStatus::Applied,
+            notice,
+            origin,
+        })
     }
+}
+
+fn ending_str(ending: LineEnding) -> &'static str {
+    match ending {
+        LineEnding::Lf => "\n",
+        LineEnding::CrLf => "\r\n",
+        LineEnding::None => "",
+    }
+}
+
+/// The file's source with physical line `line_number` replaced by `raw`, keeping that line's
+/// ending and every other byte.
+fn replace_line(file: &TodoFile, line_number: u32, raw: &str) -> String {
+    let mut out = String::with_capacity(file.source.len() + raw.len());
+    for line in &file.lines {
+        let text = if line.line_number == line_number {
+            raw
+        } else {
+            &line.text
+        };
+        out.push_str(text);
+        out.push_str(ending_str(line.ending));
+    }
+    out
 }
 
 fn snapshot(workspace: Workspace, bytes: Vec<u8>) -> Result<WorkspaceSnapshot, CoreError> {

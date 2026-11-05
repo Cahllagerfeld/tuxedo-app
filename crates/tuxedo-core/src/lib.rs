@@ -3,8 +3,10 @@
 
 mod atomic_file;
 mod catalogue;
+mod completion;
 mod date;
 mod error;
+mod recurrence;
 mod session;
 mod todo;
 mod todo_write;
