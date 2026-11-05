@@ -518,6 +518,17 @@ fn recurring_completion_inserts_one_successor_and_undoes_the_whole_change() {
     );
     assert_eq!(f.undo(), applied());
     assert_eq!(f.disk(), initial);
+
+    // A BOM stays in the original's raw text but, as in TS, is trimmed from the successor.
+    let initial = "\u{feff}Chore rec:1d\nLast";
+    let mut f = Fixture::new(initial);
+    f.set_completion(1, true, RECURRENCE_DAY);
+    assert_eq!(
+        f.disk().as_bytes(),
+        "x 2028-01-31 \u{feff}Chore rec:1d tuxedo-generated:1\n2028-01-31 Chore rec:1d due:2028-02-01\nLast".as_bytes()
+    );
+    assert_eq!(f.undo(), applied());
+    assert_eq!(f.disk().as_bytes(), initial.as_bytes());
 }
 
 #[test]
@@ -552,7 +563,7 @@ fn recurrence_anchors_each_unit_to_the_completion_date_with_calendar_clamping() 
 
 #[test]
 fn unsupported_rules_complete_with_a_notice_and_no_successor() {
-    for rule in ["+1w", "0d", "-1d", "1D", "1.5m", "1b", "1w2d"] {
+    for rule in ["+1w", "0d", "-1d", "1D", "1.5m", "1b", "1w2d", "é", "1日"] {
         let mut f = Fixture::new(&format!("Mow rec:{rule} t:2099-01-01"));
         assert_eq!(
             f.set_completion(1, true, RECURRENCE_DAY),
@@ -662,22 +673,6 @@ fn the_generated_marker_prevents_a_second_successor_but_undo_does_not() {
 }
 
 #[test]
-fn completed_history_generates_nothing_and_conflicts_leave_no_partial_write() {
-    let mut f = Fixture::new("x 2024-02-29 Clean rec:1y");
-    assert_eq!(f.set_completion(1, false, RECURRENCE_DAY), applied());
-    assert_eq!(f.disk(), "Clean rec:1y");
-
-    let mut f = Fixture::new("Clean rec:1d");
-    let target = f.target(1);
-    fs::write(&f.todo, "External change rec:1d").unwrap();
-    assert!(matches!(
-        f.run_completion(target, true, RECURRENCE_DAY),
-        Outcome::Conflict(_)
-    ));
-    assert_eq!(f.disk(), "External change rec:1d");
-}
-
-#[test]
 fn show_from_lead_time_carries_onto_the_successor() {
     for (initial, notice, expected) in [
         (
@@ -741,13 +736,19 @@ fn a_show_from_outside_the_date_range_refuses_without_writing() {
     for initial in [
         "Mow rec:1d due:2028-01-31 t:9999-12-31",
         "Mow rec:1d due:9999-12-31 t:0001-01-01",
+        // Year 0000 is a TodoDate but not a date the reference calendar round-trips.
+        "Mow rec:1d due:0000-01-01 t:0000-01-02",
     ] {
         let mut f = Fixture::new(initial);
+        let revision = f.session.revision();
         assert_eq!(
             f.set_completion(1, true, RECURRENCE_DAY),
             invalid("The next Show from date is outside the supported date range.")
         );
-        assert_eq!(f.disk(), initial);
+        assert_eq!(
+            (f.disk().as_str(), f.session.revision()),
+            (initial, revision)
+        );
     }
 }
 

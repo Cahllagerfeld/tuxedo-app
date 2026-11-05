@@ -97,13 +97,7 @@ pub(crate) fn plan_recurring_completion(
     }
     metadata.push(format!("due:{due}"));
 
-    let description = completed
-        .edit
-        .description
-        .split(char::is_whitespace)
-        .filter(|w| !w.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let description = normalize_description(&completed.edit.description);
     let successor = priority
         .map(|p| format!("({p})"))
         .into_iter()
@@ -131,6 +125,22 @@ pub(crate) fn plan_recurring_completion(
     })
 }
 
+/// `normalizeTodoDescription` from the TS contracts: JavaScript `trim`, then each run of
+/// Unicode White_Space becomes one space, then `trim` again. JavaScript's trim set differs from
+/// White_Space: it also strips U+FEFF and keeps U+0085.
+fn normalize_description(text: &str) -> String {
+    let js_trim = |s: &str| {
+        s.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
+            .to_owned()
+    };
+    let collapsed = js_trim(text)
+        .split(char::is_whitespace)
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    js_trim(&collapsed)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Unit {
     Day,
@@ -141,8 +151,10 @@ enum Unit {
 
 /// A supported Repeat rule, `^[1-9][0-9]*[dwmy]$`. The interval may be too large to compute.
 fn parse_rule(rule: &str) -> Option<(Option<u64>, Unit)> {
-    let (digits, unit) = rule.split_at(rule.len().checked_sub(1)?);
-    let unit = match unit {
+    // Check the suffix before splitting: a multi-byte last character is no supported unit.
+    let unit = rule.chars().next_back()?;
+    let digits = &rule[..rule.len() - unit.len_utf8()];
+    let unit = match unit.to_string().as_str() {
         "d" => Unit::Day,
         "w" => Unit::Week,
         "m" => Unit::Month,
@@ -161,6 +173,9 @@ fn next_due_date(
     unit: Unit,
 ) -> Result<TodoDate, &'static str> {
     let (year, month, day) = civil(anchor);
+    if !representable(anchor) {
+        return Err(RANGE_ERROR);
+    }
     let maximum = days_from_civil(9999, 12, 31);
     let limit = match unit {
         Unit::Year => 9999 - year,
@@ -191,6 +206,9 @@ fn next_show_from(
     source_due: TodoDate,
     due: TodoDate,
 ) -> Result<TodoDate, &'static str> {
+    if ![show, source_due, due].into_iter().all(representable) {
+        return Err(SHOW_FROM_ERROR);
+    }
     let days = |d: TodoDate| {
         let (y, m, day) = civil(d);
         days_from_civil(y, m, day)
@@ -201,6 +219,12 @@ fn next_show_from(
     }
     let (y, m, d) = civil_from_days(shifted);
     Ok(date(y, m, d))
+}
+
+/// Whether the TS reference calendar (`@internationalized/date`, years 0001–9999) round-trips
+/// the date. `TodoDate` also accepts year 0000, which recurrence refuses.
+fn representable(date: TodoDate) -> bool {
+    civil(date).0 >= 1
 }
 
 fn civil(date: TodoDate) -> (i64, i64, i64) {
