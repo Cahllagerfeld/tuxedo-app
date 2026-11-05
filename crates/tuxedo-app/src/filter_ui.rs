@@ -34,7 +34,8 @@ pub enum FilterEdit {
 /// Applies an edit, from any control's click handler.
 pub type OnEdit = Rc<dyn Fn(FilterEdit, &mut Window, &mut App)>;
 
-const TOOLBAR_HEIGHT: f32 = 44.;
+/// One line of controls; a narrow pane wraps them onto more lines.
+const TOOLBAR_MIN_HEIGHT: f32 = 44.;
 /// The due categories in sidebar order; Invalid shows only while some open item has one.
 const DUE_CATEGORIES: [DueCategory; 5] = [
     DueCategory::Overdue,
@@ -103,30 +104,30 @@ pub fn render_toolbar(
         TodoSortOrder::File => ("Sort: File order", TodoSortOrder::Due),
         TodoSortOrder::Due => ("Sort: Due date", TodoSortOrder::File),
     };
-    let toolbar = h_flex()
-        .h(px(TOOLBAR_HEIGHT))
-        .flex_shrink_0()
-        .px_3()
+    // Two groups that wrap onto further lines in a narrow pane instead of being clipped.
+    let view = h_flex()
+        .flex_wrap()
         .gap_1()
-        .border_b_1()
-        .border_color(hex(p.border))
         .child(
-            div().w(px(240.)).flex_shrink_0().child(
+            div().w(px(240.)).min_w(px(160.)).child(
                 Input::new(search)
                     .small()
                     .cleanable(true)
                     .prefix(Icon::new(IconName::Search).size_3p5()),
             ),
         )
-        .child(div().w_2())
         .child(completion("completion-all", "All", CompletionView::All))
         .child(completion("completion-open", "Open", CompletionView::Open))
         .child(completion(
             "completion-completed",
             "Completed",
             CompletionView::Completed,
-        ))
-        .child(div().flex_1())
+        ));
+    let arrange = h_flex()
+        .flex_wrap()
+        .justify_end()
+        .gap_1()
+        .ml_auto()
         .when(filters.has_filters(), |bar| {
             bar.child(edit_button("clear-filters", FilterEdit::Clear, on_edit).label("Clear"))
         })
@@ -152,6 +153,18 @@ pub fn render_toolbar(
             .label("Group by due")
             .selected(projection.grouped()),
         );
+    let toolbar = h_flex()
+        .flex_wrap()
+        .min_h(px(TOOLBAR_MIN_HEIGHT))
+        .flex_shrink_0()
+        .px_3()
+        .py_1p5()
+        .gap_x_3()
+        .gap_y_1()
+        .border_b_1()
+        .border_color(hex(p.border))
+        .child(view)
+        .child(arrange);
     v_flex()
         .flex_shrink_0()
         .child(toolbar)

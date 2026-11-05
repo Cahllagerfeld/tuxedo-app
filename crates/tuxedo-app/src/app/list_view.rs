@@ -40,6 +40,14 @@ pub(super) struct ListView {
 
 impl ListView {
     pub(super) fn new(window: &mut Window, cx: &mut Context<TuxedoApp>) -> Self {
+        // Screenshot mode: `TUXEDO_WIDTH=<px>` narrows the window, e.g. to its 640 px minimum.
+        #[cfg(feature = "screenshot")]
+        if let Some(width) = std::env::var("TUXEDO_WIDTH")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+        {
+            window.resize(size(px(width), window.viewport_size().height));
+        }
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search Todo items…"));
         let typed = cx.subscribe(&search, |app, search, event: &InputEvent, cx| {
             if let InputEvent::Change = event {

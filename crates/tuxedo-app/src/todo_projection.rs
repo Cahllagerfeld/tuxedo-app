@@ -303,6 +303,7 @@ mod tests {
         let work = snapshot("work", text, Some(TodoSortOrder::Due));
         let mut projection = TodoProjection::new(today());
         projection.sync(Some(&work), today());
+        projection.set_completion(CompletionView::Open);
         projection.set_search("open".into());
         projection.toggle_project("Work");
         projection.toggle_context("Home");

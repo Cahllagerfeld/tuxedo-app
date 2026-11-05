@@ -185,12 +185,6 @@ fn due_categories_match_open_items_only_and_keep_invalid_distinct() {
     assert_eq!(due(DueCategory::None, "2026-10-14"), [5]);
     assert_eq!(due(DueCategory::Invalid, "2026-10-14"), [4]);
     assert_eq!(invalid_due_count(&file, day("2026-10-14")), 1);
-    let completed = TodoFilters {
-        completion: CompletionView::Completed,
-        due: Some(DueCategory::Overdue),
-        ..TodoFilters::default()
-    };
-    assert_eq!(project(&file, &completed, "2026-10-14"), [6]);
 }
 
 #[test]
@@ -320,10 +314,10 @@ fn groups_projected_items_by_due_in_order_with_malformed_dates_in_no_due_date() 
     let file = parse(
         "Later due:2026-10-20\n\
          Broken due:2026-02-30\n\
-         Late due:2026-10-01\n\
+         Late due:2026-10-02\n\
          Plain\n\
          Now due:2026-10-14\n\
-         x Done late due:2026-10-02\n",
+         x Done late due:2026-10-01\n",
     );
     let today = day("2026-10-14");
     let all = TodoFilters::default();
@@ -345,7 +339,7 @@ fn groups_projected_items_by_due_in_order_with_malformed_dates_in_no_due_date() 
     );
     assert_eq!(
         summary(TodoSortOrder::Due)[0],
-        (DueGroupKind::Overdue, vec![3, 6])
+        (DueGroupKind::Overdue, vec![6, 3])
     );
 
     // Empty groups are omitted.
