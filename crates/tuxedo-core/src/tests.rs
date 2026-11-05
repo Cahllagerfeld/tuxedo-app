@@ -275,6 +275,9 @@ fn rejects_invalid_catalogues() {
         case("null", &a.replace("blue", "teal")),
         case("null", &a.replace("Home", " Home")),
         case("null", &a.replace(".136Z", "")),
+        // Multibyte characters inside the time or offset must not panic on slicing.
+        case("null", &a.replace("09:11:29.136Z", "0é:0:00Z")),
+        case("null", &a.replace(".136Z", "+0é:0")),
     ];
     for json in invalid {
         assert!(

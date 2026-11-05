@@ -185,6 +185,10 @@ fn is_uuid(value: &str) -> bool {
 
 /// `YYYY-MM-DDTHH:MM:SS(.fff)?(Z|±HH:MM)` with a valid calendar date.
 fn is_iso_datetime(value: &str) -> bool {
+    // Every accepted character is ASCII; checking first keeps the byte slicing below safe.
+    if !value.is_ascii() {
+        return false;
+    }
     let (Some(date), Some(rest)) = (value.get(..10), value.get(10..)) else {
         return false;
     };
@@ -205,7 +209,7 @@ fn is_iso_datetime(value: &str) -> bool {
             && &s[5..6] == ":"
             && two(&s[6..8], 59)
     };
-    if rest.len() < 8 || !rest.is_char_boundary(8) || !time(&rest[..8]) {
+    if rest.len() < 8 || !time(&rest[..8]) {
         return false;
     }
     let mut rest = &rest[8..];
