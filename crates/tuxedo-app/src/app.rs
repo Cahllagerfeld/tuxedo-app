@@ -95,7 +95,7 @@ impl TuxedoApp {
             session,
             sidebar_open: true,
             sidebar: WorkspaceSidebar::default(),
-            list_view: ListView::default(),
+            list_view: ListView::new(window, cx),
             _subscriptions: subscriptions,
         };
         app.session_changed(cx);
@@ -108,6 +108,7 @@ impl TuxedoApp {
     fn session_changed(&mut self, cx: &mut Context<Self>) {
         let selected = self.session.read(cx).selected();
         self.list_view.reproject(selected, local_today());
+        self.list_view.sync_search_field(cx);
         cx.notify();
     }
 

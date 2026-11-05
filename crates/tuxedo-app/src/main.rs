@@ -1,11 +1,13 @@
 mod app;
 mod command_queue;
+mod filter_ui;
 mod model;
 #[cfg(feature = "screenshot")]
 mod screenshot;
 mod session;
 mod theme;
 mod todo_commands;
+mod todo_projection;
 mod todo_row;
 
 use gpui_kit::component::TitleBar;

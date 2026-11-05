@@ -7,35 +7,126 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use std::rc::Rc;
+use std::time::Duration;
+
+use gpui_kit::component::input::{InputEvent, InputState};
 
 use tuxedo_core::{TodoDate, WorkspaceSnapshot};
 
 use super::TuxedoApp;
 use crate::command_queue::{Command, TodoCommand};
+use crate::filter_ui::{self, FilterEdit, OnEdit};
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{hex, Palette};
 use crate::todo_commands::{self, local_today};
+use crate::todo_projection::{Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
-/// List-view-local UI state: the projection of the selected Todo file into displayed rows.
-/// Filters, search, sort, and grouping state (#257) live here too.
-#[derive(Default)]
+/// How often the List view checks whether the local date changed.
+const DATE_POLL: Duration = Duration::from_secs(60);
+
+/// List-view-local UI state: the projection of the selected Todo file into displayed rows,
+/// with its filters, search, sort, and grouping.
 pub(super) struct ListView {
-    /// Indices into the selected file's `items`, in display order.
-    visible: Rc<[usize]>,
+    projection: TodoProjection,
+    search: Entity<InputState>,
+    /// The search field lives in the window; set it there when a reset clears the search.
+    window: AnyWindowHandle,
+    facets_open: bool,
+    _subscriptions: [Subscription; 1],
+    /// Recomputes the projection when the local date changes.
+    _date_watch: Task<()>,
 }
 
 impl ListView {
-    /// Recomputes the displayed rows after accepted session data (or, with #257, filter or
-    /// date) changes. Shows every Todo item in file order.
-    pub(super) fn reproject(&mut self, selected: Option<&WorkspaceSnapshot>, _today: TodoDate) {
-        let count = selected.map_or(0, |s| s.file.items.len());
-        self.visible = (0..count).collect();
+    pub(super) fn new(window: &mut Window, cx: &mut Context<TuxedoApp>) -> Self {
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search Todo items…"));
+        let typed = cx.subscribe(&search, |app, search, event: &InputEvent, cx| {
+            if let InputEvent::Change = event {
+                let text = search.read(cx).value().to_string();
+                app.list_view.edit(FilterEdit::Search(text));
+                app.session_changed(cx);
+            }
+        });
+        let date_watch = cx.spawn(async move |app, cx| loop {
+            cx.background_executor().timer(DATE_POLL).await;
+            let changed = app.update(cx, |app, cx| {
+                if app.list_view.projection.today() != local_today() {
+                    app.session_changed(cx);
+                }
+            });
+            if changed.is_err() {
+                break;
+            }
+        });
+        Self {
+            projection: TodoProjection::new(local_today()),
+            search,
+            window: window.window_handle(),
+            // Screenshot mode: `TUXEDO_FACETS=open` shows the Facet bar.
+            facets_open: cfg!(feature = "screenshot")
+                && std::env::var("TUXEDO_FACETS").as_deref() == Ok("open"),
+            _subscriptions: [typed],
+            _date_watch: date_watch,
+        }
     }
 
-    /// The toolbar above the list (#257: search, filters, sort and grouping).
-    fn render_toolbar(&self, _p: &'static Palette) -> Option<AnyElement> {
-        None
+    /// Recomputes the displayed rows after accepted session data, a filter, or the local date
+    /// changes. A different Workspace resets the filters; the same one keeps and reconciles them.
+    pub(super) fn reproject(&mut self, selected: Option<&WorkspaceSnapshot>, today: TodoDate) {
+        self.projection.sync(selected, today);
+    }
+
+    /// Shows the projection's search in the field after a reset changed it.
+    pub(super) fn sync_search_field(&self, cx: &mut Context<TuxedoApp>) {
+        let wanted = self.projection.filters().search.clone();
+        if self.search.read(cx).value().as_ref() == wanted {
+            return;
+        }
+        let search = self.search.clone();
+        let window = self.window;
+        cx.defer(move |cx| {
+            window
+                .update(cx, |_, window, cx| {
+                    search.update(cx, |state, cx| state.set_value(wanted, window, cx))
+                })
+                .ok();
+        });
+    }
+
+    /// Applies a filter control's edit; the caller then recomputes via `session_changed`.
+    fn edit(&mut self, edit: FilterEdit) {
+        let p = &mut self.projection;
+        match edit {
+            FilterEdit::Completion(view) => p.set_completion(view),
+            FilterEdit::Search(text) => p.set_search(text),
+            FilterEdit::Project(value) => p.toggle_project(&value),
+            FilterEdit::Context(value) => p.toggle_context(&value),
+            FilterEdit::Priority(value) => p.toggle_priority(value),
+            FilterEdit::Due(value) => p.toggle_due(value),
+            FilterEdit::Clear => p.clear(),
+            FilterEdit::Sort(sort) => p.set_sort(sort),
+            FilterEdit::Grouped(grouped) => p.set_grouped(grouped),
+            FilterEdit::ToggleFacets => self.facets_open = !self.facets_open,
+        }
+    }
+
+    /// The toolbar above the list: search, filters, sort and grouping.
+    fn render_toolbar(
+        &self,
+        selected: Option<&WorkspaceSnapshot>,
+        p: &'static Palette,
+        cx: &Context<TuxedoApp>,
+    ) -> Option<AnyElement> {
+        let selected = selected.filter(|s| !s.file.items.is_empty())?;
+        Some(filter_ui::render_toolbar(
+            &self.projection,
+            self.projection.sort(selected),
+            &self.search,
+            self.facets_open,
+            &on_edit(cx),
+            p,
+        ))
     }
 
     pub(super) fn render(
@@ -73,10 +164,13 @@ impl ListView {
                 Some("This Todo file did not contain any parsed Todo items.".into()),
                 p,
             ),
+            (SessionState::Ready(_), Some(_)) if self.projection.shown() == 0 => {
+                filter_ui::render_no_matches(&self.projection, &on_edit(cx), p)
+            }
             (SessionState::Ready(_), Some(selected)) => render_list(
                 session.clone(),
                 &selected.workspace.id,
-                self.visible.clone(),
+                self.projection.rows(),
                 local_today(),
                 p,
             ),
@@ -90,7 +184,7 @@ impl ListView {
             .when_some(model.error(), |main, error| {
                 main.child(error_banner(error, p))
             })
-            .children(self.render_toolbar(p))
+            .children(self.render_toolbar(model.selected(), p, cx))
             .child(body)
             .when_some(model.selected(), |main, selected| {
                 main.child(render_status_bar(selected, p))
@@ -104,13 +198,13 @@ impl ListView {
 fn render_list(
     session: Entity<SessionModel>,
     workspace_id: &str,
-    visible: Rc<[usize]>,
+    rows: Rc<[Row]>,
     today: TodoDate,
     p: &'static Palette,
 ) -> AnyElement {
     uniform_list(
         SharedString::from(format!("todo-list:{workspace_id}")),
-        visible.len(),
+        rows.len(),
         move |range, _, cx| {
             let model = session.read(cx);
             let (Some(selected), Some(revision)) = (model.selected(), model.revision()) else {
@@ -118,7 +212,12 @@ fn render_list(
             };
             range
                 .filter_map(|row| {
-                    let index = *visible.get(row)?;
+                    let index = match *rows.get(row)? {
+                        Row::Header { kind, count } => {
+                            return Some(filter_ui::render_group_header(kind, count, p));
+                        }
+                        Row::Item(index) => index,
+                    };
                     let item = selected.file.items.get(index)?;
                     let command = Command::Todo(TodoCommand::Complete {
                         target: todo_commands::target(selected, revision, item),
@@ -136,6 +235,18 @@ fn render_list(
     .flex_1()
     .min_h(px(ROW_HEIGHT))
     .into_any_element()
+}
+
+/// Routes a filter control's edit to the List view, then recomputes the projection.
+fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
+    let app = cx.entity().downgrade();
+    Rc::new(move |edit, _, cx| {
+        app.update(cx, |app, cx| {
+            app.list_view.edit(edit);
+            app.session_changed(cx);
+        })
+        .ok();
+    })
 }
 
 fn render_status_bar(selected: &WorkspaceSnapshot, p: &Palette) -> impl IntoElement {
