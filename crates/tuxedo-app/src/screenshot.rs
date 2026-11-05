@@ -4,6 +4,8 @@
 //! `TUXEDO_SCREENSHOT=out.png tuxedo`, optionally with
 //! - `TUXEDO_APPEARANCE=light|dark`
 //! - `TUXEDO_SELECT=<Workspace name>`: switch Workspaces the way a sidebar click does
+//! - `TUXEDO_CLICK=<x>,<y>[;<x>,<y>...]`: left-click those window points in order, after any
+//!   `TUXEDO_SELECT`, settling after each click
 //! - `TUXEDO_SIDEBAR=hidden`
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner
 //! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
@@ -66,6 +68,41 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             });
             settle(cx, 1000).await;
         }
+        for position in clicks() {
+            cx.update_window(window, |_, window, cx| {
+                let button = MouseButton::Left;
+                let modifiers = Modifiers::default();
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position,
+                        pressed_button: None,
+                        modifiers,
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        button,
+                        position,
+                        modifiers,
+                        click_count: 1,
+                        first_mouse: false,
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        button,
+                        position,
+                        modifiers,
+                        click_count: 1,
+                    }),
+                    cx,
+                );
+            })
+            .ok();
+            settle(cx, 1000).await;
+        }
         if let Some(offset) = std::env::var("TUXEDO_SCROLL")
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
@@ -125,4 +162,21 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
     })
     .detach();
     true
+}
+
+/// `TUXEDO_CLICK` window points, in logical pixels.
+fn clicks() -> Vec<Point<Pixels>> {
+    let Ok(value) = std::env::var("TUXEDO_CLICK") else {
+        return Vec::new();
+    };
+    value
+        .split(';')
+        .filter_map(|pair| {
+            let (x, y) = pair.split_once(',')?;
+            Some(point(
+                px(x.trim().parse().ok()?),
+                px(y.trim().parse().ok()?),
+            ))
+        })
+        .collect()
 }
