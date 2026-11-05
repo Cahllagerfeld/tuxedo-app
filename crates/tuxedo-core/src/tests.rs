@@ -255,7 +255,7 @@ fn decodes_a_version_1_catalogue() {
     // JS `trim` keeps U+0085, so Electron can persist it; one odd name must not reject the file.
     let json = format!(
         r#"{{"version":1,"active_workspace_id":null,"workspaces":[{}]}}"#,
-        workspace_json(ID_A, "\u0085Home", "/a/todo.txt")
+        workspace_json(ID_A, "\\u0085Home", "/a/todo.txt")
     );
     let catalogue = parse_catalogue(Path::new("/w.json"), &json).unwrap();
     assert_eq!(catalogue.workspaces[0].name, "\u{85}Home");
