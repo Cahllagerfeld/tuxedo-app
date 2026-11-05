@@ -154,7 +154,7 @@ pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, Core
         if !is_uuid(&w.id) {
             issues.push(format!("Workspace id {label} is not a UUID"));
         }
-        if w.name.trim().is_empty() {
+        if w.name.is_empty() {
             issues.push(format!("Workspace {label} has an empty name"));
         }
         if w.todo_path.trim().is_empty() {
