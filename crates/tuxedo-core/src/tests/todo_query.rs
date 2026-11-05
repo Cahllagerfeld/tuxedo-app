@@ -69,6 +69,13 @@ fn facets_keep_exact_values_count_once_per_item_and_follow_the_completion_view()
     // The comparator decides the order; the core never sorts lexically on its own.
     let reversed = todo_facets(&file, CompletionView::All, |a, b| collate(b, a));
     assert_eq!(reversed.projects[0].value, "Work");
+
+    // Values the collation deems equal keep their first-encounter order, as in Electron.
+    let equal = todo_facets(&file, CompletionView::All, |_, _| Ordering::Equal);
+    assert_eq!(
+        values(&equal.projects),
+        [("Work", 2), ("work", 1), ("Personal", 1), ("Done", 1)]
+    );
 }
 
 #[test]
@@ -115,6 +122,14 @@ fn search_ands_literal_lowercase_terms_over_description_tokens_and_effective_met
     assert_eq!(search("client"), [1, 2]);
     assert_eq!(search("rel.*"), Vec::<u32>::new());
     assert_eq!(search(" \n\t "), [1, 2]);
+    // Terms split on JavaScript's `\s`: U+FEFF separates, U+0085 does not.
+    for (text, expected) in [
+        ("\u{feff}client\u{feff}release\u{feff}", vec![1]),
+        ("\u{feff}", vec![1, 2]),
+        ("client\u{85}release", vec![]),
+    ] {
+        assert_eq!(search(text), expected, "{text:?}");
+    }
     let blank = TodoFilters {
         search: " \n\t ".into(),
         ..TodoFilters::default()

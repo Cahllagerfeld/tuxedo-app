@@ -5,7 +5,7 @@
 //! Every index addresses `TodoFile::items`, never a physical line.
 
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use crate::catalogue::TodoSortOrder;
 use crate::date::TodoDate;
@@ -80,15 +80,6 @@ pub enum DueGroupKind {
 impl DueGroupKind {
     pub const ALL: [Self; 4] = [Self::Overdue, Self::Today, Self::Upcoming, Self::NoDueDate];
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Overdue => "Overdue",
-            Self::Today => "Today",
-            Self::Upcoming => "Upcoming",
-            Self::NoDueDate => "No due date",
-        }
-    }
-
     fn of(category: DueCategory) -> Self {
         match category {
             DueCategory::Overdue => Self::Overdue,
@@ -108,44 +99,61 @@ pub struct DueGroup {
 
 /// Counts each exact Project and Context once per Todo item in `completion`, and Priorities
 /// of open Todo items only. Values keep their source spelling; `compare` supplies the locale
-/// collation. Values `compare` deems equal keep their code-point order.
+/// collation. Values `compare` deems equal keep their first-encounter order.
 pub fn todo_facets(
     file: &TodoFile,
     completion: CompletionView,
     mut compare: impl FnMut(&str, &str) -> Ordering,
 ) -> Facets {
-    let mut projects = BTreeMap::<&str, usize>::new();
-    let mut contexts = BTreeMap::<&str, usize>::new();
-    let mut priorities = BTreeMap::<String, usize>::new();
+    let mut projects = Counts::default();
+    let mut contexts = Counts::default();
+    let mut priorities = Counts::default();
     for item in file.items.iter().filter(|item| completion.includes(item)) {
-        count_distinct(&mut projects, &item.projects);
-        count_distinct(&mut contexts, &item.contexts);
+        for (index, value) in item.projects.iter().enumerate() {
+            if !item.projects[..index].contains(value) {
+                projects.add(value);
+            }
+        }
+        for (index, value) in item.contexts.iter().enumerate() {
+            if !item.contexts[..index].contains(value) {
+                contexts.add(value);
+            }
+        }
         if let (false, Some(priority)) = (item.completed, item.priority) {
-            *priorities.entry(priority.to_string()).or_default() += 1;
+            priorities.add(&priority.to_string());
         }
     }
-    let mut sorted = |counts: Vec<(&str, usize)>| {
-        let mut values: Vec<FacetValue> = counts
-            .into_iter()
-            .map(|(value, count)| FacetValue {
-                value: value.to_owned(),
-                count,
-            })
-            .collect();
+    let mut sorted = |counts: Counts| {
+        let mut values = counts.values;
+        // Stable, so values the collation deems equal keep their first-encounter order.
         values.sort_by(|a, b| compare(&a.value, &b.value));
         values
     };
     Facets {
-        projects: sorted(projects.into_iter().collect()),
-        contexts: sorted(contexts.into_iter().collect()),
-        priorities: sorted(priorities.iter().map(|(v, c)| (v.as_str(), *c)).collect()),
+        projects: sorted(projects),
+        contexts: sorted(contexts),
+        priorities: sorted(priorities),
     }
 }
 
-fn count_distinct<'a>(counts: &mut BTreeMap<&'a str, usize>, values: &'a [String]) {
-    for (index, value) in values.iter().enumerate() {
-        if !values[..index].contains(value) {
-            *counts.entry(value).or_default() += 1;
+/// Facet counts in first-encounter order, like the Electron app's insertion-ordered `Map`.
+#[derive(Default)]
+struct Counts {
+    values: Vec<FacetValue>,
+    positions: HashMap<String, usize>,
+}
+
+impl Counts {
+    fn add(&mut self, value: &str) {
+        match self.positions.get(value) {
+            Some(&position) => self.values[position].count += 1,
+            None => {
+                self.positions.insert(value.to_owned(), self.values.len());
+                self.values.push(FacetValue {
+                    value: value.to_owned(),
+                    count: 1,
+                });
+            }
         }
     }
 }
@@ -284,7 +292,8 @@ impl TodoFilters {
     fn search_terms(&self) -> Vec<String> {
         self.search
             .to_lowercase()
-            .split_whitespace()
+            .split(is_js_whitespace)
+            .filter(|term| !term.is_empty())
             .map(str::to_owned)
             .collect()
     }
@@ -336,4 +345,10 @@ fn search_text(item: &TodoItem) -> String {
         }
     }
     parts.join(" ").to_lowercase()
+}
+
+/// JavaScript's `\s`, which the Electron app splits search terms on: Unicode `White_Space`
+/// plus U+FEFF, minus U+0085 (NEXT LINE), which Rust's `char::is_whitespace` includes.
+fn is_js_whitespace(c: char) -> bool {
+    c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
 }
