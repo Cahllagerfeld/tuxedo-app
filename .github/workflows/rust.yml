@@ -6,6 +6,7 @@ on:
       - crates/**
       - Cargo.toml
       - Cargo.lock
+      - examples/todo.txt
       - rust-toolchain
       - rust-toolchain.toml
       - .github/workflows/rust.yml
@@ -17,6 +18,7 @@ on:
       - crates/**
       - Cargo.toml
       - Cargo.lock
+      - examples/todo.txt
       - rust-toolchain
       - rust-toolchain.toml
       - .github/workflows/rust.yml
