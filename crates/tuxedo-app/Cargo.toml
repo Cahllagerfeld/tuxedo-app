@@ -25,5 +25,6 @@ gpui = { package = "gpui-pre", version = "=0.3.11", features = ["test-support"],
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["test-support"], optional = true }
 
 [dev-dependencies]
+tuxedo-core = { path = "../tuxedo-core", features = ["fault-injection"] }
 # `TestAppContext` and `#[gpui::test]` from the GPUI crate gpui-kit already uses.
 gpui = { package = "gpui-pre", version = "=0.3.11", features = ["test-support"] }
