@@ -16,6 +16,11 @@ use crate::todo_row::{self, ROW_HEIGHT};
 const TOOLBAR_HEIGHT: f32 = 40.;
 const RAIL_WIDTH: f32 = 56.;
 const SIDEBAR_WIDTH: f32 = 256.;
+/// The content card's radius (`rounded-xl`).
+const CARD_RADIUS: f32 = 14.;
+/// Children painting into a card corner use this radius: GPUI clips overflow to a rectangle,
+/// not the card's rounded shape. It is the card radius minus its 1px border.
+const CARD_INNER_RADIUS: f32 = CARD_RADIUS - 1.;
 
 pub struct TuxedoApp {
     session: Entity<SessionModel>,
@@ -49,6 +54,7 @@ impl Render for TuxedoApp {
         let model = self.session.read(cx);
         let selected = model.selected();
         let restored = !matches!(model.state(), SessionState::Restoring);
+        let shows_sidebar = restored && self.sidebar_open;
 
         v_flex()
             .size_full()
@@ -75,15 +81,15 @@ impl Render for TuxedoApp {
                             .min_w_0()
                             .m_1()
                             .overflow_hidden()
-                            .rounded(px(14.))
+                            .rounded(px(CARD_RADIUS))
                             .border_1()
                             .border_color(hex(p.border))
                             .bg(hex(p.background))
                             .shadow_sm()
-                            .when(restored && self.sidebar_open, |inset| {
+                            .when(shows_sidebar, |inset| {
                                 inset.child(self.render_sidebar(model, p, cx))
                             })
-                            .child(self.render_main(model, p)),
+                            .child(self.render_main(model, !shows_sidebar, p)),
                     ),
             )
     }
@@ -210,6 +216,7 @@ impl TuxedoApp {
             .w(px(SIDEBAR_WIDTH))
             .flex_shrink_0()
             .h_full()
+            .rounded_l(px(CARD_INNER_RADIUS))
             .bg(hex(p.sidebar))
             .text_color(hex(p.sidebar_foreground))
             .border_r_1()
@@ -266,7 +273,13 @@ impl TuxedoApp {
             )
     }
 
-    fn render_main(&self, model: &SessionModel, p: &'static Palette) -> AnyElement {
+    /// `flush_left`: the pane touches the card's left edge (sidebar hidden).
+    fn render_main(
+        &self,
+        model: &SessionModel,
+        flush_left: bool,
+        p: &'static Palette,
+    ) -> AnyElement {
         let body = match (model.state(), model.selected()) {
             (SessionState::Restoring, _) => message(
                 "Loading workspaces…",
@@ -310,7 +323,7 @@ impl TuxedoApp {
             .min_h_0()
             .overflow_hidden()
             .when_some(model.error(), |main, error| {
-                main.child(error_banner(error, p))
+                main.child(error_banner(error, flush_left, p))
             })
             .child(body)
             .when_some(model.selected(), |main, selected| {
@@ -436,7 +449,7 @@ fn render_status_bar(selected: &WorkspaceSnapshot, p: &Palette) -> impl IntoElem
         .overflow_hidden()
         .border_t_1()
         .border_color(hex(p.border))
-        .bg(hex(p.background))
+        // No background of its own: the card paints it, including the rounded bottom corners.
         .text_size(px(11.))
         .text_color(hex(p.muted_foreground))
         .child(div().truncate().child(parts.join("  ·  ")))
@@ -518,8 +531,12 @@ fn alert(title: &'static str, description: &str, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn error_banner(error: &str, p: &Palette) -> impl IntoElement {
+fn error_banner(error: &str, flush_left: bool, p: &Palette) -> impl IntoElement {
     h_flex()
+        .rounded_tr(px(CARD_INNER_RADIUS))
+        .when(flush_left, |banner| {
+            banner.rounded_tl(px(CARD_INNER_RADIUS))
+        })
         .flex_shrink_0()
         .gap_2()
         .px_4()
