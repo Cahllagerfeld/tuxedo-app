@@ -83,7 +83,9 @@ impl Render for TuxedoApp {
         let model = self.session.read(cx);
         let selected = model.selected();
         let restored = !matches!(model.state(), SessionState::Restoring);
-        let shows_sidebar = restored && (self.sidebar_open || sidebar_width > 0.);
+        // Mounted even when closed, so its scroll state survives a close and reopen. At width 0
+        // the slot's clip leaves it nothing to paint or hit-test.
+        let shows_sidebar = restored;
 
         v_flex()
             .size_full()
@@ -676,6 +678,19 @@ mod tests {
         cx.simulate_click(visible, Modifiers::none());
         cx.run_until_parked();
         assert_eq!(selected(cx).as_deref(), Some(A));
+
+        // Closed, it stays mounted but entirely outside the zero-width slot's clip.
+        cx.executor().advance_clock(SIDEBAR_TRANSITION);
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let slot = cx
+            .debug_bounds("workspace-sidebar-slot")
+            .expect("closed sidebar stays mounted");
+        assert_eq!(slot.size.width, px(0.));
+        let row = cx
+            .debug_bounds("workspace-row-2")
+            .expect("row C stays mounted");
+        assert!(row.right() <= slot.left(), "row C lies outside the clip");
 
         // Reopened, the same row responds again.
         app.update(cx, |app, cx| app.set_sidebar_open(true, cx));
