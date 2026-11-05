@@ -74,7 +74,8 @@ Every launch prompt includes:
 - commit only owned paths, one new commit per change, never amend, never push;
 - verification to run: `~/.nix-profile/bin/devenv shell -- cargo test|clippy -- -D warnings`;
 - report with `hc send <orchestrator-id> "<commit, verified, not verified>"`, writing long reports to a file and sending its path;
-- no sub-agents; ask the orchestrator for decisions.
+- no sub-agents; ask the orchestrator for decisions;
+- the testing rule from `AGENTS.md`: the smallest set of tests that protects meaningful behavior, no low-value or redundant tests that only slow CI or flake. When porting TypeScript parity tests, port the cases that cover distinct risks, not every spec line; prefer table-driven cases over many test functions.
 
 ## Verifying
 
