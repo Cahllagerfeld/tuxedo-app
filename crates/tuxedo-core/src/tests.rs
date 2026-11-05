@@ -297,6 +297,11 @@ fn rejects_invalid_catalogues() {
         parse_catalogue(path, "{"),
         Err(CoreError::Json { .. })
     ));
+    let wrong_shape = r#"{"version":1,"active_workspace_id":null,"workspaces":false}"#;
+    assert!(matches!(
+        parse_catalogue(path, wrong_shape),
+        Err(CoreError::InvalidCatalogue { .. })
+    ));
 }
 
 #[test]

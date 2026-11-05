@@ -91,9 +91,19 @@ pub fn load_catalogue(path: &Path) -> Result<Catalogue, CoreError> {
 }
 
 pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, CoreError> {
-    let raw: RawCatalogue = serde_json::from_str(text).map_err(|source| CoreError::Json {
-        path: path.to_path_buf(),
-        source,
+    let raw: RawCatalogue = serde_json::from_str(text).map_err(|source| {
+        // Well-formed JSON with the wrong shape is a validation failure, not a syntax error.
+        if source.classify() == serde_json::error::Category::Data {
+            CoreError::InvalidCatalogue {
+                path: path.to_path_buf(),
+                issues: vec![source.to_string()],
+            }
+        } else {
+            CoreError::Json {
+                path: path.to_path_buf(),
+                source,
+            }
+        }
     })?;
     if raw.version != serde_json::json!(1) {
         return Err(CoreError::UnsupportedVersion {
