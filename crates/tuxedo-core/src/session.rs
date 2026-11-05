@@ -4,8 +4,11 @@
 //! Extension modules (`todo_write`, and Workspace commands) add `impl WorkspaceSession` blocks
 //! and reach the shared state through the `pub(crate)` fields and helpers below.
 
+use std::path::{Path, PathBuf};
+
 use crate::{
-    read_todo_file, Catalogue, CoreError, TodoFile, TodoFileSummary, UndoToken, Workspace,
+    load_catalogue, read_todo_file, Catalogue, CoreError, TodoFile, TodoFileSummary, UndoToken,
+    Workspace,
 };
 
 #[derive(Debug, Clone)]
@@ -87,8 +90,23 @@ impl WorkspaceSession {
         Ok(self.accept(snapshot))
     }
 
+    /// Foreground step of read recovery: captures what to reread without doing I/O. Used after
+    /// a write could not be confirmed or its result could not be accepted.
+    pub fn prepare_reread(&self, catalogue_path: &Path) -> RereadRequest {
+        RereadRequest {
+            catalogue_path: catalogue_path.to_path_buf(),
+            selected_id: self.selected.as_ref().map(|s| s.workspace.id.clone()),
+        }
+    }
+
+    /// Accepts an authoritative reread as the confirmed state and clears Undo: the disk may hold
+    /// changes this session never confirmed.
+    pub fn accept_reread(&mut self, result: RereadResult) {
+        self.accept_catalogue(result.catalogue, result.selected);
+        self.undo = None;
+    }
+
     /// Installs a committed catalogue and the selection it implies (Workspace commands).
-    #[allow(dead_code, reason = "called by Workspace commands (#258)")]
     pub(crate) fn accept_catalogue(
         &mut self,
         catalogue: Catalogue,
@@ -125,6 +143,37 @@ impl WorkspaceSession {
             self.revision += 1;
         }
         self.selected = selected;
+    }
+}
+
+/// A pending authoritative reread of the catalogue and the selected Workspace's Todo file.
+#[derive(Debug, Clone)]
+pub struct RereadRequest {
+    catalogue_path: PathBuf,
+    selected_id: Option<String>,
+}
+
+/// The reread catalogue and selection, ready for [`WorkspaceSession::accept_reread`].
+#[derive(Debug, Clone)]
+pub struct RereadResult {
+    catalogue: Catalogue,
+    selected: Option<WorkspaceSnapshot>,
+}
+
+impl RereadRequest {
+    /// Background step: reads the catalogue, then the selected Workspace's Todo file when that
+    /// Workspace still exists. A Workspace that no longer exists leaves nothing selected.
+    pub fn execute(self) -> Result<RereadResult, CoreError> {
+        let catalogue = load_catalogue(&self.catalogue_path)?;
+        let selected = self
+            .selected_id
+            .and_then(|id| catalogue.workspace(&id).cloned())
+            .map(|workspace| OpenRequest { workspace }.load())
+            .transpose()?;
+        Ok(RereadResult {
+            catalogue,
+            selected,
+        })
     }
 }
 
