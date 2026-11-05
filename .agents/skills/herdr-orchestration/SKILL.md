@@ -20,8 +20,8 @@ You are the **orchestrator**: you brief, dispatch, relay, triage and verify. Wor
 | Implementer | `claude --model opus --effort medium --permission-mode auto "<task>"` | Owns named paths; commits there |
 | Consultant / reviewer | `codex --no-daemon -m gpt-6.1-sol -c model_reasoning_effort=high "<task>"` | Read-only; design, diagnosis, reviews |
 
-- Ask Codex early and often: architecture before a slice, diagnosis of visual or runtime bugs, and a review after each worker milestone.
-- Codex answers are advice. **Triage** each finding as accept, defer or push back, and reply with your reasons. Example: Codex wanted the Rust catalogue reader to be as strict as Electron's validator. The pushback: a lenient reader is safer while Rust only reads a file Electron writes; tighten it once Rust writes the file.
+- Codex is a consultant, not only a reviewer. Start a fresh Codex whenever a question would benefit from a second opinion: a seam contract or architecture before a slice, a dependency or library choice, a design trade-off a worker raises, diagnosis of a visual or runtime bug, a brief you are about to send, and a review after each worker milestone. Don't hesitate and don't batch questions up: a consult is cheap, runs in parallel with the workers, and costs nothing to ignore.
+- Codex answers are advice, and so are its hints. **Triage** each finding as accept, defer or push back, and reply with your reasons; pushing back is expected whenever a finding conflicts with the ticket, the contract, the user's direction, or what you have verified yourself. Example: Codex wanted the Rust catalogue reader to be as strict as Electron's validator. The pushback: a lenient reader is safer while Rust only reads a file Electron writes; tighten it once Rust writes the file.
 - Forward accepted findings to the worker that owns the path. Never fix code yourself.
 
 ## Herdr mechanics
