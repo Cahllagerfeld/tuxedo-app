@@ -40,13 +40,12 @@ pub enum Restored {
 }
 
 pub fn restore(path: Option<&Path>) -> Restored {
-    let catalogue = match path {
-        // No catalogue yet: the Electron app has never saved a Workspace.
-        Some(path) if path.exists() => match tuxedo_core::load_catalogue(path) {
-            Ok(catalogue) => catalogue,
-            Err(error) => return Restored::Unavailable(error.to_string()),
-        },
-        _ => Catalogue::default(),
+    // Core maps only a missing file to an empty catalogue (the Electron app has never saved a
+    // Workspace); every other read failure must surface instead of looking like absence.
+    let catalogue = match path.map(tuxedo_core::load_catalogue) {
+        Some(Ok(catalogue)) => catalogue,
+        Some(Err(error)) => return Restored::Unavailable(error.to_string()),
+        None => Catalogue::default(),
     };
     let active_id = catalogue.active_workspace_id.clone();
     let mut session = WorkspaceSession::new(catalogue);
@@ -75,6 +74,18 @@ mod tests {
         };
         assert!(session.catalogue().workspaces.is_empty());
         assert!(session.selected().is_none() && warning.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn catalogue_read_error_is_not_mistaken_for_absence() {
+        // A self-referencing symlink: `Path::exists` reports false, but reading fails with a
+        // filesystem loop, not NotFound.
+        let path = temp_dir("read-error").join("workspaces.json");
+        let _ = std::fs::remove_file(&path);
+        std::os::unix::fs::symlink(&path, &path).unwrap();
+        assert!(!path.exists());
+        assert!(matches!(restore(Some(&path)), Restored::Unavailable(_)));
     }
 
     #[test]
