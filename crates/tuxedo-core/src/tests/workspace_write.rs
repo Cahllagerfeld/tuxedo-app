@@ -172,6 +172,13 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
     assert_eq!(session.selected().unwrap().file.items[0].raw, "Task D");
 
     // Deleting an inactive Workspace keeps the Active one; deleting the Active one empties it.
+    // A result executed before the deletion was accepted (reselecting A writes nothing) carries
+    // the old catalogue: accepting it would bring B back, so the catalogue-only change refuses it.
+    let held = session
+        .prepare_workspace_change(&catalogue, WorkspaceChange::Select { id: ID_A.into() })
+        .unwrap()
+        .execute()
+        .unwrap();
     run(
         &mut session,
         &catalogue,
@@ -180,6 +187,11 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
     .unwrap();
     on_disk(&session);
     assert_eq!(selected_id(&session), Some(ID_A));
+    assert!(matches!(
+        session.accept_workspace_change(held),
+        Err(CoreError::StaleCommand)
+    ));
+    assert!(session.catalogue().workspace(ID_B).is_none());
     run(
         &mut session,
         &catalogue,
