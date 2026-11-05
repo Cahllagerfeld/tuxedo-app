@@ -13,12 +13,14 @@ use std::time::Duration;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::{transition, RoundedFrameCover, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::component::{Disableable, Icon, Selectable, Sizable, TitleBar};
+use gpui_kit::component::{Disableable, Icon, Selectable, Sizable, TitleBar, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use tuxedo_core::WorkspaceSnapshot;
 
+use crate::command_queue::OutcomeKind;
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{self, hex, Palette};
 use crate::todo_commands::local_today;
@@ -32,7 +34,16 @@ const SIDEBAR_TRANSITION: Duration = Duration::from_millis(200);
 /// The content card's radius (`rounded-xl`).
 const CARD_RADIUS: f32 = 14.;
 
+actions!(tuxedo, [UndoTodo]);
+
+/// App-wide key bindings.
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([KeyBinding::new("cmd-z", UndoTodo, None)]);
+}
+
 pub struct TuxedoApp {
+    /// Focused at startup so app actions (such as Undo) dispatch with nothing else focused.
+    focus_handle: FocusHandle,
     session: Entity<SessionModel>,
     sidebar_open: bool,
     sidebar: WorkspaceSidebar,
@@ -53,9 +64,22 @@ impl TuxedoApp {
     ) -> Self {
         let subscriptions = vec![
             cx.observe(&session, |this, _, cx| this.session_changed(cx)),
+            cx.observe_in(&session, window, |_, session, window, cx| {
+                present_outcomes(&session, window, cx)
+            }),
             cx.observe_window_appearance(window, |_, window, cx| theme::init(window, cx)),
         ];
+        let model = session.downgrade();
+        // Closing waits for admitted commands; `present_outcomes` closes once they finish.
+        window.on_window_should_close(cx, move |_, cx| {
+            model
+                .update(cx, |model, _| model.request_close())
+                .unwrap_or(true)
+        });
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle, cx);
         let mut app = Self {
+            focus_handle,
             session,
             sidebar_open: true,
             sidebar: WorkspaceSidebar::default(),
@@ -121,10 +145,14 @@ impl Render for TuxedoApp {
 
         v_flex()
             .size_full()
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &UndoTodo, _, cx| {
+                this.session.update(cx, |model, cx| model.undo(cx));
+            }))
             .bg(hex(p.window_background))
             .text_color(hex(p.foreground))
             .font_family(theme::UI_FONT)
-            .child(self.render_title_bar(selected.is_some(), p, cx))
+            .child(self.render_title_bar(selected.is_some(), model.undo_label(), p, cx))
             .child(
                 // Plain rows (not `h_flex`, which centers) so the rail and inset span the height.
                 div()
@@ -182,9 +210,11 @@ impl TuxedoApp {
     fn render_title_bar(
         &self,
         shows_workspace: bool,
+        undo_label: Option<&str>,
         p: &Palette,
         cx: &Context<Self>,
     ) -> impl IntoElement {
+        let undo_tooltip = format!("{} (⌘Z)", undo_label.unwrap_or("Undo last change"));
         TitleBar::new()
             .h(px(TOOLBAR_HEIGHT))
             .bg(hex(p.window_background))
@@ -206,6 +236,17 @@ impl TuxedoApp {
                                     // macOS posts no change notification; re-read the setting here.
                                     gpui_kit::base::apply_system_reduce_motion(cx);
                                     this.set_sidebar_open(!this.sidebar_open, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("undo")
+                                .ghost()
+                                .small()
+                                .icon(Icon::new(IconName::Undo2))
+                                .tooltip(undo_tooltip)
+                                .disabled(undo_label.is_none())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.session.update(cx, |model, cx| model.undo(cx));
                                 })),
                         )
                     })
@@ -243,6 +284,28 @@ impl TuxedoApp {
             .when(!self.sidebar_open, |slot| {
                 slot.child(div().absolute().inset_0().occlude())
             })
+    }
+}
+
+/// Shows each command outcome the model has not presented yet as a notification, and closes the
+/// window once a requested close has waited for the queue to drain.
+fn present_outcomes(session: &Entity<SessionModel>, window: &mut Window, cx: &mut App) {
+    let (outcomes, close) =
+        session.update(cx, |model, _| (model.take_outcomes(), model.close_ready()));
+    for outcome in outcomes {
+        let message = outcome.message.clone().unwrap_or_default();
+        let note = match outcome.kind {
+            // The changed row is the outcome; a notice adds to it.
+            OutcomeKind::Applied if outcome.message.is_none() => continue,
+            OutcomeKind::Applied => Notification::info(message),
+            OutcomeKind::Conflict | OutcomeKind::Failed => {
+                Notification::error(message).title(outcome.title)
+            }
+        };
+        window.push_notification(note, cx);
+    }
+    if close {
+        window.remove_window();
     }
 }
 

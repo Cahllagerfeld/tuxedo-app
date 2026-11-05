@@ -11,7 +11,7 @@ use std::rc::Rc;
 use tuxedo_core::{TodoDate, WorkspaceSnapshot};
 
 use super::TuxedoApp;
-use crate::command_queue::Command;
+use crate::command_queue::{Command, TodoCommand};
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{hex, Palette};
 use crate::todo_commands::{self, local_today};
@@ -120,10 +120,10 @@ fn render_list(
                 .filter_map(|row| {
                     let index = *visible.get(row)?;
                     let item = selected.file.items.get(index)?;
-                    let command = Command::Complete {
+                    let command = Command::Todo(TodoCommand::Complete {
                         target: todo_commands::target(selected, revision, item),
                         completed: !item.completed,
-                    };
+                    });
                     let session = session.clone();
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                         session.update(cx, |model, cx| model.enqueue(command.clone(), cx));

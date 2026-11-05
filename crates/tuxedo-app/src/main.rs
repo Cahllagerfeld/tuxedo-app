@@ -17,6 +17,7 @@ fn main() {
         .run(|cx| {
             gpui_kit::init(cx);
             theme::load_fonts(cx);
+            app::bind_keys(cx);
             let window_size = size(px(1200.), px(780.));
             #[cfg(feature = "screenshot")]
             let bounds = screenshot::window_bounds(window_size, cx);
