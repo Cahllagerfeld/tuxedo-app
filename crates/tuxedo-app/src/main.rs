@@ -28,13 +28,14 @@ fn main() {
                 window_min_size: Some(size(px(640.), px(400.))),
                 ..TitleBar::window_options()
             };
-            let (_window, _root) = gpui_kit::open_window(options, cx, |window, cx| {
+            let (_window, root) = gpui_kit::open_window(options, cx, |window, cx| {
                 theme::init(window, cx);
                 cx.new(|cx| app::TuxedoApp::new(window, cx))
             })
             .expect("failed to open the Tuxedo window");
+            app::install_menu(&root, cx);
             #[cfg(feature = "screenshot")]
-            if screenshot::schedule(_window, _root, cx) {
+            if screenshot::schedule(_window, root, cx) {
                 return;
             }
             cx.activate(true);

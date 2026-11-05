@@ -7,6 +7,9 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_kit::*;
 use tuxedo_core::{CoreError, Workspace, WorkspaceSession, WorkspaceSnapshot};
@@ -57,6 +60,13 @@ pub struct SessionModel {
     outcomes: VecDeque<Outcome>,
     /// The window asked to close while commands were still admitted.
     close_requested: bool,
+    /// Quit was requested: admission is closed and the app quits once the queue drains.
+    quitting: bool,
+    /// Ends the application once quitting has drained the queue (replaced in tests).
+    quit_app: fn(&mut App),
+    /// Whether a command's background step is running, for the best-effort native-quit wait.
+    in_flight: Arc<AtomicBool>,
+    _app_quit: Subscription,
 }
 
 impl SessionModel {
@@ -82,6 +92,21 @@ impl SessionModel {
             })
             .ok();
         });
+        // Native termination (Dock > Quit, logout) cannot be delayed beyond GPUI's short shutdown
+        // timeout, and windows are already gone by then: wait only for a running write's
+        // background step, best effort. Quit Tuxedo (Cmd-Q) drains the queue properly instead.
+        let in_flight = Arc::new(AtomicBool::new(false));
+        let app_quit = cx.on_app_quit({
+            let in_flight = in_flight.clone();
+            move |_, cx| {
+                let (in_flight, executor) = (in_flight.clone(), cx.background_executor().clone());
+                async move {
+                    while in_flight.load(Ordering::Acquire) {
+                        executor.timer(Duration::from_millis(5)).await;
+                    }
+                }
+            }
+        });
         Self {
             state: SessionState::Restoring,
             warning: None,
@@ -96,6 +121,10 @@ impl SessionModel {
             recovery: Recovery::Confirmed,
             outcomes: VecDeque::new(),
             close_requested: false,
+            quitting: false,
+            quit_app: |cx| cx.quit(),
+            in_flight,
+            _app_quit: app_quit,
         }
     }
 
@@ -234,6 +263,15 @@ impl SessionModel {
     /// Admits a write command; it runs after every command admitted before it. A pending switch
     /// is cancelled and resumes once the queue has drained.
     pub fn enqueue(&mut self, command: Command, cx: &mut Context<Self>) {
+        if self.quitting {
+            self.outcomes.push_back(Outcome::new(
+                OutcomeKind::Failed,
+                "Tuxedo is quitting",
+                Some("Nothing was written.".into()),
+            ));
+            cx.notify();
+            return;
+        }
         if self.read.is_some() {
             self.deferred_select = self.pending.clone();
         }
@@ -289,9 +327,24 @@ impl SessionModel {
                 }
             }
         }
+        if self.quitting {
+            return (self.quit_app)(cx);
+        }
         if let Some(id) = self.deferred_select.take() {
             self.select(&id, cx);
         }
+    }
+
+    /// Quit Tuxedo: closes admission, lets every admitted command finish through foreground
+    /// acceptance (and any recovery), then quits the application. Repeated requests share it.
+    pub fn request_quit(&mut self, cx: &mut Context<Self>) {
+        if self.quitting {
+            return;
+        }
+        self.quitting = true;
+        self.cancel_read();
+        self.deferred_select = None;
+        self.run_next(cx);
     }
 
     /// Prepares a dequeued command against the current session and runs its background step.
@@ -346,7 +399,13 @@ impl SessionModel {
         accept: fn(&mut WorkspaceSession, Result<R, CoreError>) -> Accepted,
         cx: &mut Context<Self>,
     ) -> Task<()> {
-        let execute = cx.background_spawn(async move { execute() });
+        let in_flight = self.in_flight.clone();
+        in_flight.store(true, Ordering::Release);
+        let execute = cx.background_spawn(async move {
+            let result = execute();
+            in_flight.store(false, Ordering::Release);
+            result
+        });
         cx.spawn(async move |this, cx| {
             let result = execute.await;
             this.update(cx, |model, cx| {
@@ -707,5 +766,36 @@ pub(crate) mod tests {
             todo_commands::accept(&mut session, result),
             Accepted::Recover(_)
         ));
+    }
+
+    #[gpui::test]
+    fn quitting_closes_admission_and_quits_after_admitted_commands_finish(cx: &mut TestAppContext) {
+        thread_local!(static QUIT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
+        let (model, todo) = restored_with("quit", "First\n", cx);
+        let first = complete(&model, 1, cx);
+        let second = Accepted::Done(Outcome::new(OutcomeKind::Applied, "second", None));
+        model.update(cx, |m, cx| {
+            m.quit_app = |_| QUIT.with(|q| q.set(true));
+            m.enqueue(first, cx);
+            m.enqueue(Command::Scripted(second), cx);
+            m.request_quit(cx);
+            let late = Outcome::new(OutcomeKind::Applied, "late", None);
+            m.enqueue(Command::Scripted(Accepted::Done(late)), cx);
+        });
+        // The first command's execution is still held: nothing has finished, so no quit yet.
+        assert!(!QUIT.with(|q| q.get()));
+        assert_eq!(
+            kinds(&model, cx),
+            [OutcomeKind::Failed],
+            "the late admission is refused"
+        );
+
+        cx.run_until_parked();
+        assert!(QUIT.with(|q| q.get()));
+        assert_eq!(
+            kinds(&model, cx),
+            [OutcomeKind::Applied, OutcomeKind::Applied]
+        );
+        assert!(std::fs::read_to_string(&todo).unwrap().starts_with("x "));
     }
 }

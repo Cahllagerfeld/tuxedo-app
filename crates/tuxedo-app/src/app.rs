@@ -34,11 +34,23 @@ const SIDEBAR_TRANSITION: Duration = Duration::from_millis(200);
 /// The content card's radius (`rounded-xl`).
 const CARD_RADIUS: f32 = 14.;
 
-actions!(tuxedo, [UndoTodo]);
+actions!(tuxedo, [UndoTodo, Quit]);
 
 /// App-wide key bindings.
 pub fn bind_keys(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("cmd-z", UndoTodo, None)]);
+    cx.bind_keys([
+        KeyBinding::new("cmd-z", UndoTodo, None),
+        KeyBinding::new("cmd-q", Quit, None),
+    ]);
+}
+
+/// The app menu, whose Quit (Cmd-Q) lets admitted commands finish before the app quits.
+pub fn install_menu(root: &Entity<TuxedoApp>, cx: &mut App) {
+    let session = root.read(cx).session.clone();
+    cx.on_action(move |_: &Quit, cx| session.update(cx, |model, cx| model.request_quit(cx)));
+    cx.set_menus(vec![
+        Menu::new("Tuxedo").items([MenuItem::action("Quit Tuxedo", Quit)])
+    ]);
 }
 
 pub struct TuxedoApp {
