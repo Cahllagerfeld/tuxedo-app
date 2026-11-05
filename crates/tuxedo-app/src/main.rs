@@ -15,8 +15,13 @@ fn main() {
         .run(|cx| {
             gpui_kit::init(cx);
             theme::load_fonts(cx);
+            let window_size = size(px(1200.), px(780.));
+            #[cfg(feature = "screenshot")]
+            let bounds = screenshot::window_bounds(window_size, cx);
+            #[cfg(not(feature = "screenshot"))]
+            let bounds = WindowBounds::centered(window_size, cx);
             let options = WindowOptions {
-                window_bounds: Some(WindowBounds::centered(size(px(1200.), px(780.)), cx)),
+                window_bounds: Some(bounds),
                 window_min_size: Some(size(px(640.), px(400.))),
                 ..TitleBar::window_options()
             };
@@ -26,7 +31,9 @@ fn main() {
             })
             .expect("failed to open the Tuxedo window");
             #[cfg(feature = "screenshot")]
-            screenshot::schedule(_window, _root.read(cx).session().clone(), cx);
+            if screenshot::schedule(_window, _root, cx) {
+                return;
+            }
             cx.activate(true);
         });
 }

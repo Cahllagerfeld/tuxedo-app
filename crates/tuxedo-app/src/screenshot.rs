@@ -1,30 +1,55 @@
-//! Dev tool (feature `screenshot`): `TUXEDO_SCREENSHOT=out.png [TUXEDO_APPEARANCE=light|dark] tuxedo`
-//! [TUXEDO_SELECT=<Workspace name>] renders the window offscreen once the session has settled, saves the frame, and quits.
+//! Dev tool (feature `screenshot`): renders the window offscreen once the session has settled,
+//! saves the frame, and quits.
+//!
+//! `TUXEDO_SCREENSHOT=out.png tuxedo`, optionally with
+//! - `TUXEDO_APPEARANCE=light|dark`
+//! - `TUXEDO_SELECT=<Workspace name>`: switch Workspaces the way a sidebar click does
+//! - `TUXEDO_SIDEBAR=hidden`
+//! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner
 
 use std::time::Duration;
 
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 
-use crate::model::SessionModel;
+use crate::app::TuxedoApp;
 
-pub fn schedule(window: AnyWindowHandle, session: Entity<SessionModel>, cx: &mut App) {
+/// In screenshot mode the window opens far offscreen, as GPUI's visual tests do, so the real
+/// pointer and keyboard cannot interfere with the injected state.
+pub fn window_bounds(size: Size<Pixels>, cx: &App) -> WindowBounds {
+    if std::env::var_os("TUXEDO_SCREENSHOT").is_none() {
+        return WindowBounds::centered(size, cx);
+    }
+    WindowBounds::Windowed(Bounds {
+        origin: point(px(-10000.), px(-10000.)),
+        size,
+    })
+}
+
+/// Returns whether screenshot mode is on (the caller then leaves the app inactive).
+pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) -> bool {
     let Some(path) = std::env::var_os("TUXEDO_SCREENSHOT") else {
-        return;
+        return false;
     };
     match std::env::var("TUXEDO_APPEARANCE").as_deref() {
         Ok("dark") => Theme::change(ThemeMode::Dark, None, cx),
         Ok("light") => Theme::change(ThemeMode::Light, None, cx),
         _ => {}
     }
+    if std::env::var("TUXEDO_SIDEBAR").as_deref() == Ok("hidden") {
+        root.update(cx, |app, cx| app.set_sidebar_open(false, cx));
+    }
     cx.spawn(async move |cx| {
+        let settle = async |cx: &mut AsyncApp, ms| {
+            cx.background_executor()
+                .timer(Duration::from_millis(ms))
+                .await
+        };
         // Session restoration runs on the background executor; give it and a few frames time.
-        cx.background_executor()
-            .timer(Duration::from_millis(1500))
-            .await;
-        // Switch the way a sidebar click does, then let the background load land.
+        settle(cx, 1500).await;
         if let Ok(name) = std::env::var("TUXEDO_SELECT") {
             cx.update(|cx| {
+                let session = root.read(cx).session().clone();
                 session.update(cx, |model, cx| {
                     let id = model
                         .workspaces()
@@ -37,9 +62,40 @@ pub fn schedule(window: AnyWindowHandle, session: Entity<SessionModel>, cx: &mut
                     }
                 })
             });
-            cx.background_executor()
-                .timer(Duration::from_millis(1000))
-                .await;
+            settle(cx, 1000).await;
+        }
+        if let Some(offset) = std::env::var("TUXEDO_SCROLL")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+        {
+            cx.update_window(window, |_, window, cx| {
+                let size = window.viewport_size();
+                // Inside the List view, just below the card's top edge, near its right corner.
+                let position = point(size.width - px(40.), px(52.));
+                let hover = |window: &mut Window, cx: &mut App| {
+                    window.dispatch_event(
+                        PlatformInput::MouseMove(MouseMoveEvent {
+                            position,
+                            pressed_button: None,
+                            modifiers: Modifiers::default(),
+                        }),
+                        cx,
+                    );
+                };
+                // GPUI hit-tests a scroll against the pointer, so move there first.
+                hover(window, cx);
+                window.dispatch_event(
+                    PlatformInput::Scroll(ScrollEvent {
+                        position,
+                        delta: ScrollDelta::Pixels(point(px(0.), px(-offset))),
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                hover(window, cx);
+            })
+            .ok();
+            settle(cx, 500).await;
         }
         let result = cx.update_window(window, |_, window, _| window.render_to_image());
         match result {
@@ -54,4 +110,5 @@ pub fn schedule(window: AnyWindowHandle, session: Entity<SessionModel>, cx: &mut
         cx.update(|cx| cx.quit());
     })
     .detach();
+    true
 }
