@@ -94,20 +94,28 @@ impl WorkspaceSession {
         catalogue: Catalogue,
         selected: Option<WorkspaceSnapshot>,
     ) {
+        let catalogue_changed = self.catalogue != catalogue;
         self.catalogue = catalogue;
-        self.replace_selected(selected);
+        self.install_selected(selected, catalogue_changed);
     }
 
-    /// Replaces the selected snapshot. A changed snapshot advances the revision. Undo survives
-    /// only when the new snapshot shows the same Workspace's same file contents (a metadata-only
-    /// change); a switch, deselection, or external change clears it.
+    /// Replaces the selected snapshot, keeping the catalogue.
     pub(crate) fn replace_selected(&mut self, selected: Option<WorkspaceSnapshot>) {
+        self.install_selected(selected, false);
+    }
+
+    /// Advances the revision once when the catalogue or the selected snapshot changed. Undo
+    /// survives only when the new snapshot shows the same Workspace's same file contents (a
+    /// metadata-only or inactive-Workspace change); a switch, deselection, or external change
+    /// clears it.
+    fn install_selected(&mut self, selected: Option<WorkspaceSnapshot>, catalogue_changed: bool) {
         let same_file = match (&self.selected, &selected) {
             (Some(old), Some(new)) => old.same_file(new),
             (None, None) => true,
             _ => false,
         };
-        let unchanged = same_file
+        let unchanged = !catalogue_changed
+            && same_file
             && self.selected.as_ref().map(|s| &s.workspace)
                 == selected.as_ref().map(|s| &s.workspace);
         if !same_file {

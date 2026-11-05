@@ -766,3 +766,40 @@ fn accepted_snapshots_advance_the_revision_and_stale_targets_are_refused() {
         Outcome::Stale
     );
 }
+
+// Catalogue acceptance (Workspace commands)
+
+#[test]
+fn a_changed_inactive_workspace_advances_the_revision_and_keeps_undo() {
+    let mut f = Fixture::new("Buy milk\n");
+    assert_eq!(f.set_completion(1, true, COMPLETION_DAY), applied());
+    let revision = f.session.revision();
+    let selected = f.session.selected().cloned();
+    let mut catalogue = f.session.catalogue().clone();
+    catalogue.workspaces[1].name = "Renamed".into();
+    f.session.accept_catalogue(catalogue, selected);
+    assert_eq!(f.session.revision(), revision + 1);
+    assert!(f.session.can_undo());
+}
+
+#[test]
+fn a_changed_catalogue_without_a_selection_advances_the_revision() {
+    let mut f = Fixture::new("Buy milk\n");
+    let mut catalogue = f.session.catalogue().clone();
+    f.session.accept_catalogue(catalogue.clone(), None);
+    let revision = f.session.revision();
+    catalogue.workspaces.pop();
+    f.session.accept_catalogue(catalogue, None);
+    assert_eq!(f.session.revision(), revision + 1);
+}
+
+#[test]
+fn reaccepting_an_identical_catalogue_and_selection_changes_nothing() {
+    let mut f = Fixture::new("Buy milk\n");
+    assert_eq!(f.set_completion(1, true, COMPLETION_DAY), applied());
+    let revision = f.session.revision();
+    let (catalogue, selected) = (f.session.catalogue().clone(), f.session.selected().cloned());
+    f.session.accept_catalogue(catalogue, selected);
+    assert_eq!(f.session.revision(), revision);
+    assert!(f.session.can_undo());
+}
