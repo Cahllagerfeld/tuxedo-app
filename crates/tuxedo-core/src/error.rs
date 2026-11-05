@@ -8,6 +8,21 @@ pub enum CoreError {
         #[source]
         source: std::io::Error,
     },
-    #[error("invalid Workspace catalogue at {path}: {message}")]
-    InvalidCatalogue { path: PathBuf, message: String },
+    #[error("{path} is not valid UTF-8")]
+    InvalidUtf8 { path: PathBuf },
+    #[error("Workspace catalogue at {path} is not valid JSON: {source}")]
+    Json {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("Workspace catalogue at {path} has unsupported version {version}")]
+    UnsupportedVersion {
+        path: PathBuf,
+        version: serde_json::Value,
+    },
+    #[error("invalid Workspace catalogue at {path}: {}", issues.join("; "))]
+    InvalidCatalogue { path: PathBuf, issues: Vec<String> },
+    #[error("no Workspace with id {id}")]
+    UnknownWorkspace { id: String },
 }

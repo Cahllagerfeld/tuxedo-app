@@ -1,10 +1,20 @@
-//! Domain core for the Tuxedo native prototype: todo.txt parsing and the
-//! read-only Workspace catalogue. No UI dependencies.
+//! Domain core for the Tuxedo native prototype: todo.txt parsing, the read-only
+//! Workspace catalogue, and a read-only Workspace session. No UI dependencies.
 
 mod catalogue;
+mod date;
 mod error;
+mod session;
 mod todo;
 
-pub use catalogue::{default_catalogue_path, load_catalogue, Catalogue, Workspace};
+pub use catalogue::{load_catalogue, Catalogue, TodoSortOrder, Workspace, WORKSPACE_COLORS};
+pub use date::TodoDate;
 pub use error::CoreError;
-pub use todo::{parse_todo_text, read_todo_file, SkippedLine, TodoFile, TodoFileSummary, TodoItem};
+pub use session::{WorkspaceSession, WorkspaceSnapshot};
+pub use todo::{
+    parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
+    TodoFileSummary, TodoItem, TodoItemEdit,
+};
+
+#[cfg(test)]
+mod tests;
