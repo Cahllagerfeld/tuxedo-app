@@ -297,6 +297,7 @@ impl TuxedoApp {
             ),
             (SessionState::Ready(_), Some(selected)) => render_list(
                 self.session.clone(),
+                &selected.workspace.id,
                 selected.file.items.len(),
                 local_today(),
                 p,
@@ -376,27 +377,33 @@ fn render_rail(
 }
 
 /// Rows read the Todo items through the session handle, so nothing is cloned per frame.
+/// The element id is scoped to the Workspace so each one gets its own scroll state.
 fn render_list(
     session: Entity<SessionModel>,
+    workspace_id: &str,
     count: usize,
     today: TodoDate,
     p: &'static Palette,
 ) -> AnyElement {
-    uniform_list("todo-list", count, move |range, _, cx| {
-        let Some(selected) = session.read(cx).selected() else {
-            return Vec::new();
-        };
-        range
-            .filter_map(|index| {
-                Some(todo_row::render(
-                    index,
-                    selected.file.items.get(index)?,
-                    today,
-                    p,
-                ))
-            })
-            .collect()
-    })
+    uniform_list(
+        SharedString::from(format!("todo-list:{workspace_id}")),
+        count,
+        move |range, _, cx| {
+            let Some(selected) = session.read(cx).selected() else {
+                return Vec::new();
+            };
+            range
+                .filter_map(|index| {
+                    Some(todo_row::render(
+                        index,
+                        selected.file.items.get(index)?,
+                        today,
+                        p,
+                    ))
+                })
+                .collect()
+        },
+    )
     .flex_1()
     .min_h(px(ROW_HEIGHT))
     .into_any_element()
