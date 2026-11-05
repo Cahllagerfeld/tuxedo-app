@@ -1,9 +1,8 @@
 //! The retained session entity. Views hold its handle and read projections from it.
 //!
-//! Write commands run through one [`CommandQueue`]. Pure reads (a Workspace switch's load) are
-//! replaceable: admitting a command cancels a pending read and a read generation guards its
-//! acceptance, so no read accepts across a command. A switch requested while commands are
-//! queued waits for them and then loads, so the last choice is what ends up displayed.
+//! Write commands run through one [`CommandQueue`], Workspace switches included: a switch loads
+//! and persists the Active workspace in admission order, so the last choice is what ends up both
+//! displayed and persisted, and no read accepts across a command.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -12,11 +11,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::*;
-use tuxedo_core::{CoreError, Workspace, WorkspaceSession, WorkspaceSnapshot};
+use tuxedo_core::{CoreError, Workspace, WorkspaceChange, WorkspaceSession, WorkspaceSnapshot};
 
 use crate::command_queue::{Accepted, Command, CommandQueue, Outcome, OutcomeKind, TodoCommand};
 use crate::session::{self, Restored};
 use crate::todo_commands;
+use crate::workspace_commands;
 
 /// How long Quit waits for admitted commands before exiting with a failure status (as in the
 /// Electron app).
@@ -43,18 +43,10 @@ pub struct SessionModel {
     state: SessionState,
     /// Why the Active workspace is not loaded (Empty state), from restoration.
     warning: Option<String>,
-    /// Workspace operation failure from the last switch; cleared by the next one.
-    error: Option<String>,
     /// The Workspace being opened; the current one stays displayed until it loads.
     pending: Option<String>,
     /// Startup restoration.
     _restore: Task<()>,
-    /// The pending pure read. Replacing or dropping it cancels the load.
-    read: Option<Task<()>>,
-    /// Advances whenever a pending read is invalidated; a read accepts only at its generation.
-    read_generation: u64,
-    /// A switch requested while commands were queued; it loads once they have finished.
-    deferred_select: Option<String>,
     /// Where the catalogue lives; every write command rereads it. `None` when it has no location.
     catalogue_path: Option<PathBuf>,
     /// Write commands, run one at a time in admission order.
@@ -118,12 +110,8 @@ impl SessionModel {
         Self {
             state: SessionState::Restoring,
             warning: None,
-            error: None,
             pending: None,
             _restore: task,
-            read: None,
-            read_generation: 0,
-            deferred_select: None,
             catalogue_path,
             commands: CommandQueue::default(),
             recovery: Recovery::Confirmed,
@@ -190,88 +178,33 @@ impl SessionModel {
     }
 
     pub fn warning(&self) -> Option<&str> {
-        self.warning.as_deref()
-    }
-
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+        // Restoration's warning explains the Empty state until a Workspace is shown.
+        self.warning
+            .as_deref()
+            .filter(|_| self.selected().is_none())
     }
 
     pub fn pending(&self) -> Option<&str> {
         self.pending.as_deref()
     }
 
-    /// Switches the Active workspace in memory once its Todo file has loaded on the background
-    /// executor. A failed switch keeps the current Workspace and reports the error. While write
-    /// commands are queued, the switch waits for them.
+    /// Queues a switch to `workspace_id`: it loads that Workspace and persists it as the Active
+    /// workspace after every command admitted before it, so the last choice is what ends up both
+    /// displayed and persisted. A failed switch keeps the current Workspace and reports why.
     pub fn select(&mut self, workspace_id: &str, cx: &mut Context<Self>) {
-        let SessionState::Ready(session) = &self.state else {
-            return;
-        };
-        if session
-            .selected()
-            .is_some_and(|s| s.workspace.id == workspace_id)
-        {
-            // Returning to the displayed Workspace cancels a pending switch and ends any failure.
-            self.cancel_read();
-            self.deferred_select = None;
-            self.pending = None;
-            self.error = None;
-            cx.notify();
+        if !matches!(self.state, SessionState::Ready(_)) {
             return;
         }
-        let request = match session.prepare_open(workspace_id) {
-            Ok(request) => request,
-            Err(error) => {
-                self.error = Some(error.to_string());
-                cx.notify();
-                return;
-            }
-        };
-        self.error = None;
-        self.pending = Some(workspace_id.to_owned());
-        cx.notify();
-        if !self.commands.is_drained() {
-            self.cancel_read();
-            self.deferred_select = Some(workspace_id.to_owned());
-            return;
+        if !self.quitting {
+            self.pending = Some(workspace_id.to_owned());
         }
-
-        self.cancel_read();
-        let generation = self.read_generation;
-        let load = cx.background_spawn(async move { request.load() });
-        self.read = Some(cx.spawn(async move |this, cx| {
-            let result = load.await;
-            this.update(cx, |model, cx| {
-                if model.read_generation != generation {
-                    return;
-                }
-                model.read = None;
-                model.pending = None;
-                match (result, &mut model.state) {
-                    (Ok(snapshot), SessionState::Ready(session)) => {
-                        session.accept(snapshot);
-                        model.warning = None;
-                    }
-                    (Err(error), _) => model.error = Some(error.to_string()),
-                    _ => {}
-                }
-                cx.notify();
-            })
-            .ok();
-        }));
-    }
-
-    /// Cancels the pending pure read; a load that already finished cannot accept either.
-    fn cancel_read(&mut self) {
-        self.read = None;
-        self.read_generation += 1;
+        let id = workspace_id.to_owned();
+        self.enqueue(Command::Workspace(WorkspaceChange::Select { id }), cx);
     }
 }
 
 impl SessionModel {
-    /// Admits a write command; it runs after every command admitted before it. A pending switch
-    /// is cancelled and resumes once the queue has drained.
+    /// Admits a write command; it runs after every command admitted before it.
     pub fn enqueue(&mut self, command: Command, cx: &mut Context<Self>) {
         if self.quitting {
             self.outcomes.push_back(Outcome::new(
@@ -282,10 +215,6 @@ impl SessionModel {
             cx.notify();
             return;
         }
-        if self.read.is_some() {
-            self.deferred_select = self.pending.clone();
-        }
-        self.cancel_read();
         if self.recovery == Recovery::Failed {
             self.recovery = Recovery::Needed;
         }
@@ -311,8 +240,7 @@ impl SessionModel {
     }
 
     /// Runs the next step: a needed recovery first, then queued commands in order. A command that
-    /// fails while being prepared reports its outcome and lets the next one start. Once the queue
-    /// has drained, a deferred switch loads.
+    /// fails while being prepared reports its outcome and lets the next one start.
     fn run_next(&mut self, cx: &mut Context<Self>) {
         if self.commands.is_running() {
             return;
@@ -338,12 +266,12 @@ impl SessionModel {
                 }
             }
         }
+        if self.commands.is_drained() {
+            self.pending = None;
+        }
         if self.quitting {
             self.quit_deadline = None;
-            return (self.quit_app)(cx);
-        }
-        if let Some(id) = self.deferred_select.take() {
-            self.select(&id, cx);
+            (self.quit_app)(cx);
         }
     }
 
@@ -359,8 +287,6 @@ impl SessionModel {
             cx.background_executor().timer(QUIT_DEADLINE).await;
             this.update(cx, |model, _| model.quit_timed_out()).ok();
         }));
-        self.cancel_read();
-        self.deferred_select = None;
         self.run_next(cx);
     }
 
@@ -401,6 +327,14 @@ impl SessionModel {
                         Ok(self.run(move || request.execute(), todo_commands::accept, cx))
                     }
                     Err(error) => Err(self.accept_failure(todo_commands::accept, error)),
+                }
+            }
+            Command::Workspace(command) => {
+                match workspace_commands::prepare(session, &catalogue_path, command) {
+                    Ok(request) => {
+                        Ok(self.run(move || request.execute(), workspace_commands::accept, cx))
+                    }
+                    Err(error) => Err(self.accept_failure(workspace_commands::accept, error)),
                 }
             }
             #[cfg(test)]
@@ -610,24 +544,7 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         assert_eq!(selected_id(&model, cx).as_deref(), Some(C));
-        model.read_with(cx, |m, _| {
-            assert!(m.pending().is_none() && m.error().is_none())
-        });
-    }
-
-    #[gpui::test]
-    fn failed_switch_keeps_the_previous_selection_until_reselected(cx: &mut TestAppContext) {
-        let model = restored("failed", cx);
-
-        model.update(cx, |m, cx| m.select(MISSING, cx));
-        cx.run_until_parked();
-        assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
-        model.read_with(cx, |m, _| {
-            assert!(m.error().is_some() && m.pending().is_none())
-        });
-
-        model.update(cx, |m, cx| m.select(A, cx));
-        model.read_with(cx, |m, _| assert!(m.error().is_none()));
+        model.read_with(cx, |m, _| assert!(m.pending().is_none()));
     }
 
     #[gpui::test]
@@ -726,32 +643,47 @@ pub(crate) mod tests {
     }
 
     #[gpui::test(iterations = 10)]
-    fn a_command_cancels_a_pending_switch_which_loads_after_the_queue_drains(
+    fn queued_switches_persist_the_last_choice_and_a_failed_one_changes_nothing(
         cx: &mut TestAppContext,
     ) {
-        let (model, todo) = restored_with("read-cancel", "First\n", cx);
-        let command = complete(&model, 1, cx);
-        model.update(cx, |m, cx| {
-            m.select(B, cx);
-            // B's load may already have finished; it must not accept across the command.
-            m.enqueue(command, cx);
-            assert_eq!(m.pending(), Some(B));
-        });
-        cx.run_until_parked();
+        let (model, todo) = restored_with("select-queue", "First\n", cx);
+        let catalogue = todo.with_file_name("workspaces.json");
+        let persisted = || {
+            tuxedo_core::load_catalogue(&catalogue)
+                .unwrap()
+                .active_workspace_id
+        };
 
-        assert_eq!(kinds(&model, cx), [OutcomeKind::Applied]);
-        assert!(std::fs::read_to_string(&todo).unwrap().starts_with("x "));
-        assert_eq!(selected_id(&model, cx).as_deref(), Some(B));
-
-        // A switch requested while a command is queued waits for it; the last choice wins.
-        let command = complete(&model, 1, cx);
-        model.update(cx, |m, cx| {
-            m.enqueue(command, cx);
-            m.select(C, cx);
-            m.select(A, cx);
-        });
+        // A failed switch keeps the displayed Workspace and the catalogue, and says why.
+        let saved = std::fs::read(&catalogue).unwrap();
+        model.update(cx, |m, cx| m.select(MISSING, cx));
         cx.run_until_parked();
+        assert_eq!(kinds(&model, cx), [OutcomeKind::Failed]);
         assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
+        assert_eq!(std::fs::read(&catalogue).unwrap(), saved);
+
+        // Switches run in admission order behind earlier commands: the completion admitted first
+        // still targets A, and choosing the displayed A while B is pending ends on A.
+        let command = complete(&model, 1, cx);
+        model.update(cx, |m, cx| {
+            m.enqueue(command, cx);
+            m.select(B, cx);
+            m.select(A, cx);
+            assert_eq!(m.pending(), Some(A));
+        });
+        cx.run_until_parked();
+        assert_eq!(kinds(&model, cx), [OutcomeKind::Applied; 3]);
+        assert!(std::fs::read_to_string(&todo).unwrap().starts_with("x "));
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
+        assert_eq!(persisted().as_deref(), Some(A));
+
+        model.update(cx, |m, cx| {
+            m.select(C, cx);
+            m.select(B, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(B));
+        assert_eq!(persisted().as_deref(), Some(B));
         model.read_with(cx, |m, _| assert!(m.pending().is_none()));
     }
 

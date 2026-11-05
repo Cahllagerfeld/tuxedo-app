@@ -9,6 +9,8 @@ mod theme;
 mod todo_commands;
 mod todo_projection;
 mod todo_row;
+mod workspace_commands;
+mod workspace_ui;
 
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;

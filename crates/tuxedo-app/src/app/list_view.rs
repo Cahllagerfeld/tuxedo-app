@@ -1,5 +1,5 @@
-//! List view: the main pane's states (loading, unavailable, empty), the Todo item list, the
-//! error banner, and the status bar. Rows themselves render in `todo_row`.
+//! List view: the main pane's states (loading, unavailable, empty), the Todo item list, and the
+//! status bar. Rows themselves render in `todo_row`.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
@@ -189,9 +189,6 @@ impl ListView {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .when_some(model.error(), |main, error| {
-                main.child(error_banner(error, p))
-            })
             .children(self.render_toolbar(model.selected(), p, cx))
             .child(body)
             .when_some(model.selected(), |main, selected| {
@@ -336,19 +333,4 @@ fn alert(title: &'static str, description: &str, p: &Palette) -> AnyElement {
                 ),
         )
         .into_any_element()
-}
-
-fn error_banner(error: &str, p: &Palette) -> impl IntoElement {
-    h_flex()
-        .flex_shrink_0()
-        .gap_2()
-        .px_4()
-        .py_2()
-        .border_b_1()
-        .border_color(hex(p.border))
-        .bg(hex(p.destructive).opacity(0.1))
-        .text_sm()
-        .text_color(hex(p.destructive))
-        .child(Icon::new(IconName::TriangleAlert).size_4())
-        .child(div().truncate().child(error.to_owned()))
 }

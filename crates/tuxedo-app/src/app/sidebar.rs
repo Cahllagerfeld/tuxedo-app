@@ -1,15 +1,19 @@
-//! Workspace sidebar: the Workspaces list (switching Workspaces) and the Overview counts.
+//! Workspace sidebar: the Workspaces list (switching, creating, editing, and removing
+//! Workspaces) and the Overview counts.
 //! The root shell owns its slot and the open/close slide; this module owns what slides.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Icon;
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use super::TuxedoApp;
 use crate::model::SessionModel;
 use crate::theme::{hex, Palette};
+use crate::workspace_ui;
 
 /// The sidebar's full width; the shell's slot animates between 0 and this.
 pub(super) const WIDTH: f32 = 256.;
@@ -77,6 +81,7 @@ impl WorkspaceSidebar {
                                 .child("Opening…"),
                         )
                     })
+                    .child(options_menu(index, workspace, session))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.session
                             .update(cx, |session, cx| session.select(&id, cx));
@@ -118,7 +123,12 @@ impl WorkspaceSidebar {
                     .child(
                         v_flex()
                             .gap_0p5()
-                            .child(group_label("Workspaces", p))
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .child(group_label("Workspaces", p))
+                                    .child(create_button(session)),
+                            )
                             .children(items)
                             .when(model.workspaces().is_empty(), |group| {
                                 group.child(
@@ -157,6 +167,45 @@ impl WorkspaceSidebar {
                     .child("Your Todo files, in one place."),
             )
     }
+}
+
+/// Starts Workspace creation.
+fn create_button(session: &Entity<SessionModel>) -> impl IntoElement {
+    let session = session.clone();
+    Button::new("create-workspace")
+        .ghost()
+        .xsmall()
+        .icon(Icon::new(IconName::Plus))
+        .tooltip("Create workspace")
+        .on_click(move |_, window, cx| workspace_ui::open_create(session.clone(), window, cx))
+}
+
+/// A Workspace's own options: edit it or remove it, without opening its Todo file.
+fn options_menu(
+    index: usize,
+    workspace: &tuxedo_core::Workspace,
+    session: &Entity<SessionModel>,
+) -> impl IntoElement {
+    let (session, workspace) = (session.clone(), workspace.clone());
+    Button::new(("workspace-options", index))
+        .ghost()
+        .xsmall()
+        .icon(Icon::new(IconName::Ellipsis))
+        .tooltip(format!("Options for {}", workspace.name))
+        .dropdown_menu(move |menu, _, _| {
+            let (edit_session, edit_workspace) = (session.clone(), workspace.clone());
+            let (remove_session, remove_workspace) = (session.clone(), workspace.clone());
+            menu.item(
+                PopupMenuItem::new("Edit workspace…").on_click(move |_, window, cx| {
+                    workspace_ui::open_edit(edit_session.clone(), &edit_workspace, window, cx)
+                }),
+            )
+            .item(
+                PopupMenuItem::new("Remove workspace…").on_click(move |_, window, cx| {
+                    workspace_ui::open_delete(remove_session.clone(), &remove_workspace, window, cx)
+                }),
+            )
+        })
 }
 
 fn group_label(label: &'static str, p: &Palette) -> impl IntoElement {

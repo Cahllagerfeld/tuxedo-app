@@ -14,13 +14,15 @@ use std::collections::VecDeque;
 use gpui_kit::Task;
 use tuxedo_core::TodoTarget;
 
+use crate::workspace_commands::WorkspaceCommand;
+
 /// A command the person issued, with the expectations captured at admission. A command whose
 /// expectations no longer hold when it is dequeued fails visibly; it is never retargeted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Todo(TodoCommand),
-    // #258: `Workspace(WorkspaceCommand)` (Create/Update/Delete/Select), dispatched in
-    // `SessionModel::start` to `workspace_commands::{prepare, accept}`.
+    /// Workspace commands (`workspace_commands`): create, update, delete, select.
+    Workspace(WorkspaceCommand),
     /// Test-only: completes with the given acceptance, without touching any file.
     #[cfg(test)]
     Scripted(Accepted),
@@ -38,6 +40,10 @@ impl Command {
             }) => "complete Todo item",
             Command::Todo(TodoCommand::Complete { .. }) => "reopen Todo item",
             Command::Todo(TodoCommand::Undo { .. }) => "undo",
+            Command::Workspace(WorkspaceCommand::Create { .. }) => "create Workspace",
+            Command::Workspace(WorkspaceCommand::Update { .. }) => "update Workspace",
+            Command::Workspace(WorkspaceCommand::Delete { .. }) => "remove Workspace",
+            Command::Workspace(WorkspaceCommand::Select { .. }) => "switch Workspace",
             #[cfg(test)]
             Command::Scripted(_) => "scripted",
             #[cfg(test)]
