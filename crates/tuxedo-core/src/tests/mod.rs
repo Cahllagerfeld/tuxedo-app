@@ -15,9 +15,7 @@ fn workspace_json(id: &str, name: &str, path: &str) -> String {
     )
 }
 
-/// A fresh, empty directory for one test.
-fn temp_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("tuxedo-core-{name}-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// A fresh, empty directory for one test, removed when dropped.
+fn temp_dir() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap()
 }

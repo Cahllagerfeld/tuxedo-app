@@ -4,7 +4,8 @@ use crate::atomic_file::atomic_replace;
 
 #[test]
 fn atomic_replace_creates_parents_replaces_contents_and_leaves_no_temporary_file() {
-    let root = super::temp_dir("atomic-replace");
+    let root = super::temp_dir();
+    let root = root.path();
     let dir = root.join("nested/dir");
     let path = dir.join("todo.txt");
 
@@ -24,12 +25,12 @@ fn atomic_replace_creates_parents_replaces_contents_and_leaves_no_temporary_file
         .map(|e| e.unwrap().file_name())
         .collect();
     assert_eq!(entries, ["todo.txt"]);
-    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn atomic_replace_failure_leaves_the_destination_unchanged() {
-    let root = super::temp_dir("atomic-replace-failure");
+    let root = super::temp_dir();
+    let root = root.path();
     // Renaming a file over a non-empty directory fails after the temporary file is written.
     let path = root.join("occupied");
     fs::create_dir_all(path.join("child")).unwrap();
@@ -39,10 +40,9 @@ fn atomic_replace_failure_leaves_the_destination_unchanged() {
         Err(crate::CoreError::Io { .. })
     ));
     assert!(path.join("child").is_dir());
-    let entries: Vec<_> = fs::read_dir(&root)
+    let entries: Vec<_> = fs::read_dir(root)
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
     assert_eq!(entries, ["occupied"], "the temporary file is removed");
-    fs::remove_dir_all(root).unwrap();
 }

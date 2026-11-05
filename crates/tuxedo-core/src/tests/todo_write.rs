@@ -1,12 +1,13 @@
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
 use super::{workspace_json, ID_A, ID_B};
 use crate::*;
 
 /// A catalogue with Workspaces A (active) and B, each with its own Todo file.
-fn session(name: &str) -> (WorkspaceSession, std::path::PathBuf) {
-    let root = super::temp_dir(name);
+fn session() -> (WorkspaceSession, PathBuf, tempfile::TempDir) {
+    let dir = super::temp_dir();
+    let root = dir.path();
     let (a, b) = (root.join("a.txt"), root.join("b.txt"));
     fs::write(&a, "Task A\n").unwrap();
     fs::write(&b, "Task B\n").unwrap();
@@ -19,7 +20,7 @@ fn session(name: &str) -> (WorkspaceSession, std::path::PathBuf) {
     fs::write(&catalogue_path, json).unwrap();
     let mut session = WorkspaceSession::new(load_catalogue(&catalogue_path).unwrap());
     session.open(ID_A).unwrap();
-    (session, catalogue_path)
+    (session, catalogue_path, dir)
 }
 
 fn target(session: &WorkspaceSession, workspace_id: &str) -> TodoTarget {
@@ -33,7 +34,7 @@ fn target(session: &WorkspaceSession, workspace_id: &str) -> TodoTarget {
 
 #[test]
 fn accepted_snapshots_advance_the_revision_and_stale_targets_are_refused() {
-    let (mut session, catalogue) = session("todo-write-revision");
+    let (mut session, catalogue, _dir) = session();
     let today = TodoDate::parse("2026-11-05").unwrap();
     assert!(!session.can_undo());
     let opened = session.revision();
@@ -62,5 +63,4 @@ fn accepted_snapshots_advance_the_revision_and_stale_targets_are_refused() {
         session.prepare_undo(&catalogue),
         Err(CoreError::InvalidCommand { .. })
     ));
-    fs::remove_dir_all(Path::new(&catalogue).parent().unwrap()).unwrap();
 }
