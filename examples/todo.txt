@@ -61,6 +61,12 @@ Carry a Show from lead time onto the next occurrence +Home rec:1w due:2026-10-17
 Keep a Show from after its Due date on a recurring chore +Home rec:1w due:2026-10-14 t:2026-10-17
 Omit an absolute Show from when a recurring chore has no Due date +Home rec:1w t:2099-01-01
 Keep an unsupported Show from on a recurring chore +Imported rec:1w t:+2d
+Complete this to see an out-of-range Repeat interval refused without changing the file +Imported rec:9999y
+Complete this to see an out-of-range next Show from refused without changing the file +Imported rec:1d due:2026-10-14 t:9999-12-31
+(A) Complete this to see conflicting priority metadata refused +Imported pri:B
+Reopen the bare completed line below to see an empty reopen refused +Imported
+x 2026-10-14
+Complete this, then press Cmd-Z or the title-bar Undo to restore the exact line +TuxedoApp @review
 
 (A) Use the checklist icon to select and complete this with another open item +BulkReview @computer
 Keep existing selections when this item becomes visible; select it explicitly to include it +BulkReview t:2099-01-01
