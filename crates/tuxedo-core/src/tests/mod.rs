@@ -4,6 +4,7 @@ mod atomic_file;
 mod catalogue;
 mod session;
 mod todo;
+mod todo_query;
 mod todo_write;
 
 const ID_A: &str = "b0cb4064-d525-4edf-ad56-bc5a78832039";

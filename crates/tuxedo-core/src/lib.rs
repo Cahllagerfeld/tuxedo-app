@@ -9,6 +9,7 @@ mod error;
 mod recurrence;
 mod session;
 mod todo;
+mod todo_query;
 mod todo_write;
 
 pub use catalogue::{load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
@@ -18,6 +19,10 @@ pub use session::{OpenRequest, RereadRequest, RereadResult, WorkspaceSession, Wo
 pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
     TodoFileSummary, TodoItem, TodoItemEdit,
+};
+pub use todo_query::{
+    deferred_count, group_todos_by_due, invalid_due_count, is_deferred, project_todos, todo_facets,
+    CompletionView, DueGroup, DueGroupKind, FacetValue, Facets, TodoFilters,
 };
 pub use todo_write::{TodoTarget, TodoWriteRequest, TodoWriteResult, TodoWriteStatus, UndoToken};
 
