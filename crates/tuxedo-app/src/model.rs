@@ -90,7 +90,9 @@ impl SessionModel {
             .selected()
             .is_some_and(|s| s.workspace.id == workspace_id)
         {
+            // Returning to the displayed Workspace cancels a pending switch and ends any failure.
             self.pending = None;
+            self.error = None;
             self.task = None;
             cx.notify();
             return;
