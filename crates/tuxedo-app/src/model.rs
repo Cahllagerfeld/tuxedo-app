@@ -134,7 +134,7 @@ impl SessionModel {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::{Path, PathBuf};
 
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
@@ -142,13 +142,13 @@ mod tests {
 
     use super::SessionModel;
 
-    const A: &str = "0b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+    pub(crate) const A: &str = "0b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
     const B: &str = "1b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
-    const C: &str = "2b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+    pub(crate) const C: &str = "2b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
     const MISSING: &str = "3b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 
     /// A catalogue with Workspaces A, B, C (readable) and MISSING (no Todo file); A is active.
-    fn catalogue(name: &str) -> PathBuf {
+    pub(crate) fn catalogue(name: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("tuxedo-app-model-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

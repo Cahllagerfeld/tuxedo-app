@@ -6,6 +6,8 @@
 //! - `TUXEDO_SELECT=<Workspace name>`: switch Workspaces the way a sidebar click does
 //! - `TUXEDO_SIDEBAR=hidden`
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner
+//! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
+//!   transition (the most recent frame drawn by then)
 
 use std::time::Duration;
 
@@ -96,6 +98,18 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             })
             .ok();
             settle(cx, 500).await;
+        }
+        if let Some(ms) = std::env::var("TUXEDO_SIDEBAR_TOGGLE")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            cx.update(|cx| {
+                root.update(cx, |app, cx| {
+                    let open = app.sidebar_open();
+                    app.set_sidebar_open(!open, cx);
+                })
+            });
+            settle(cx, ms).await;
         }
         let result = cx.update_window(window, |_, window, _| window.render_to_image());
         match result {

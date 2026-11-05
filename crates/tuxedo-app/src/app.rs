@@ -1,8 +1,10 @@
 //! App shell: title bar, navigation rail, Workspace sidebar, List view, and status bar.
 //! Mirrors `routes/+layout.svelte` and its children; read-only.
 
+use std::time::Duration;
+
 use gpui_kit::assets::IconName;
-use gpui_kit::base::RoundedFrameCover;
+use gpui_kit::base::{transition, RoundedFrameCover, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::component::{Disableable, Icon, Selectable, Sizable, TitleBar};
@@ -17,6 +19,8 @@ use crate::todo_row::{self, ROW_HEIGHT};
 const TOOLBAR_HEIGHT: f32 = 40.;
 const RAIL_WIDTH: f32 = 56.;
 const SIDEBAR_WIDTH: f32 = 256.;
+/// The sidebar's open/close slide (Electron's `duration-200 ease-linear`).
+const SIDEBAR_TRANSITION: Duration = Duration::from_millis(200);
 /// The content card's radius (`rounded-xl`).
 const CARD_RADIUS: f32 = 14.;
 
@@ -29,6 +33,14 @@ pub struct TuxedoApp {
 impl TuxedoApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let session = cx.new(SessionModel::new);
+        Self::with_session(session, window, cx)
+    }
+
+    fn with_session(
+        session: Entity<SessionModel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let subscriptions = vec![
             cx.observe(&session, |_, _, cx| cx.notify()),
             cx.observe_window_appearance(window, |_, window, cx| theme::init(window, cx)),
@@ -46,6 +58,10 @@ impl TuxedoApp {
     }
 
     #[cfg(feature = "screenshot")]
+    pub fn sidebar_open(&self) -> bool {
+        self.sidebar_open
+    }
+
     pub fn set_sidebar_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.sidebar_open = open;
         cx.notify();
@@ -53,12 +69,21 @@ impl TuxedoApp {
 }
 
 impl Render for TuxedoApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Palette::current(cx);
+        // One stable id for both directions, so a quick re-toggle reverses from the current width.
+        // Snaps under reduced motion and stops requesting frames at rest.
+        let sidebar_width = transition(
+            ("workspace-sidebar", "width"),
+            if self.sidebar_open { SIDEBAR_WIDTH } else { 0. },
+            Transition::new(SIDEBAR_TRANSITION).ease(|t| t),
+            window,
+            cx,
+        );
         let model = self.session.read(cx);
         let selected = model.selected();
         let restored = !matches!(model.state(), SessionState::Restoring);
-        let shows_sidebar = restored && self.sidebar_open;
+        let shows_sidebar = restored && (self.sidebar_open || sidebar_width > 0.);
 
         v_flex()
             .size_full()
@@ -97,7 +122,12 @@ impl Render for TuxedoApp {
                                     .size_full()
                                     .flex()
                                     .when(shows_sidebar, |content| {
-                                        content.child(self.render_sidebar(model, p, cx))
+                                        content.child(self.render_sidebar_slot(
+                                            sidebar_width,
+                                            model,
+                                            p,
+                                            cx,
+                                        ))
                                     })
                                     .child(self.render_main(model, p)),
                             )
@@ -139,8 +169,9 @@ impl TuxedoApp {
                                 .icon(Icon::new(IconName::PanelLeft))
                                 .tooltip("Toggle sidebar")
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.sidebar_open = !this.sidebar_open;
-                                    cx.notify();
+                                    // macOS posts no change notification; re-read the setting here.
+                                    gpui_kit::base::apply_system_reduce_motion(cx);
+                                    this.set_sidebar_open(!this.sidebar_open, cx);
                                 })),
                         )
                     })
@@ -154,6 +185,36 @@ impl TuxedoApp {
                         )
                     }),
             )
+    }
+
+    /// The sidebar's layout slot animates `width` while the sidebar keeps its full width,
+    /// pinned to the slot's right edge, so it slides out to the left under the clip instead of
+    /// being squeezed. While closing or closed an occluding overlay makes it inert, like
+    /// Electron's `inert`: no clicks, hover, or scrolling.
+    fn render_sidebar_slot(
+        &self,
+        width: f32,
+        model: &SessionModel,
+        p: &Palette,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id("workspace-sidebar-slot")
+            .when(cfg!(test), |slot| {
+                slot.debug_selector(|| "workspace-sidebar-slot".into())
+            })
+            .relative()
+            .flex()
+            .justify_end()
+            .h_full()
+            .w(px(width))
+            .min_w_0()
+            .flex_shrink_0()
+            .overflow_hidden()
+            .child(self.render_sidebar(model, p, cx))
+            .when(!self.sidebar_open, |slot| {
+                slot.child(div().absolute().inset_0().occlude())
+            })
     }
 
     fn render_sidebar(
@@ -175,6 +236,9 @@ impl TuxedoApp {
                 let id = workspace.id.clone();
                 h_flex()
                     .id(("workspace", index))
+                    .when(cfg!(test) && index == 2, |item| {
+                        item.debug_selector(|| "workspace-row-2".into())
+                    })
                     .h_8()
                     .px_2()
                     .gap_2()
@@ -564,4 +628,67 @@ fn local_today() -> TodoDate {
         .format("%Y-%m-%d")
         .to_string();
     TodoDate::parse(&today).expect("chrono formats a valid YYYY-MM-DD date")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
+    use gpui::{point, px, AppContext as _, Modifiers, TestAppContext};
+
+    use super::{TuxedoApp, SIDEBAR_TRANSITION};
+    use crate::model::tests::{catalogue, A, C};
+    use crate::model::SessionModel;
+
+    #[gpui::test]
+    fn the_sidebar_ignores_clicks_while_it_slides_closed(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let path = catalogue("inert-sidebar");
+        let session = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
+        let (app, cx) = cx.add_window_view(|window, cx| {
+            crate::theme::init(window, cx);
+            TuxedoApp::with_session(session.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        let selected = |cx: &mut gpui::VisualTestContext| {
+            session.read_with(cx, |m, _| m.selected().map(|s| s.workspace.id.clone()))
+        };
+        assert_eq!(selected(cx).as_deref(), Some(A));
+
+        // The toggle's frame starts the transition; later frames sample it at the advanced clock.
+        app.update(cx, |app, cx| app.set_sidebar_open(false, cx));
+        cx.run_until_parked();
+        cx.executor().advance_clock(SIDEBAR_TRANSITION / 4);
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let slot = cx
+            .debug_bounds("workspace-sidebar-slot")
+            .expect("slot is rendered");
+        assert_eq!(slot.size.width, px(192.), "a linear quarter of 256px");
+
+        // A quarter into the slide the row still shows, pinned to the shrinking slot's right edge.
+        let row = cx
+            .debug_bounds("workspace-row-2")
+            .expect("row C is rendered");
+        let visible = point(row.right() - px(8.), row.center().y);
+        assert!(visible.x > px(0.), "row C is still on screen");
+        cx.simulate_click(visible, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(selected(cx).as_deref(), Some(A));
+
+        // Reopened, the same row responds again.
+        app.update(cx, |app, cx| app.set_sidebar_open(true, cx));
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(SIDEBAR_TRANSITION + Duration::from_millis(50));
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let row = cx
+            .debug_bounds("workspace-row-2")
+            .expect("row C is rendered");
+        cx.simulate_click(row.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(selected(cx).as_deref(), Some(C));
+    }
 }
