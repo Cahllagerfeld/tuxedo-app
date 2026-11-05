@@ -1,0 +1,25 @@
+[package]
+name = "tuxedo-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tuxedo"
+path = "src/main.rs"
+
+[features]
+# Dev tool: with TUXEDO_SCREENSHOT=<file.png> the app renders one frame offscreen, saves it, and quits.
+screenshot = ["dep:gpui", "dep:gpui_platform", "dep:image"]
+
+[dependencies]
+tuxedo-core = { path = "../tuxedo-core" }
+gpui-kit = "0.9"
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+# Only for `screenshot`: the same GPUI crates gpui-kit uses, with `test-support` for
+# `Window::render_to_image` (gpui-kit's own `test-support` feature pulls in gpui-fast).
+gpui = { package = "gpui-pre", version = "=0.3.11", features = ["test-support"], optional = true }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["test-support"], optional = true }
