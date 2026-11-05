@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
-    #[error("could not read {path}: {source}")]
+    #[error("could not access {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]
@@ -25,4 +25,14 @@ pub enum CoreError {
     InvalidCatalogue { path: PathBuf, issues: Vec<String> },
     #[error("no Workspace with id {id}")]
     UnknownWorkspace { id: String },
+    #[error("the Workspace changed after this command was issued; nothing was written")]
+    StaleCommand,
+    #[error("{message}")]
+    InvalidCommand { message: String },
+    #[error("{path} was replaced, but the change could not be confirmed on disk: {source}")]
+    WriteUnconfirmed {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
