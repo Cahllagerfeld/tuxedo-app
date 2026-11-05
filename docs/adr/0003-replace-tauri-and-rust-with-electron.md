@@ -1,5 +1,7 @@
 # Replace Tauri and Rust with Electron
 
+Superseded for the Electron platform and the removal of Rust by [ADR-0009](0009-rebuild-tuxedo-as-a-native-rust-gpui-app.md). Todo files as the source of truth, atomic writes, and the JSON Workspace catalogue remain.
+
 Tuxedo will replace Tauri and its Rust backend with Electron while retaining SvelteKit in SPA mode. The owner prefers Electron's browser behavior and accepts the larger application bundle; removing both Tauri and Rust is a requirement of the migration. The existing UI may be replaced.
 
 The backend may be rewritten rather than ported mechanically. Ordinary todo.txt files remain the source of truth, and writes must remain atomic. Tuxedo is a desktop application; a browser product is outside this rewrite's scope. The first supported platform is macOS, with Windows and Linux intended later.

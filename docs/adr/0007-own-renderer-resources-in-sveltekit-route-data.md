@@ -1,5 +1,7 @@
 # Own renderer resources in SvelteKit route data
 
+Superseded for renderer data ownership by [ADR-0009](0009-rebuild-tuxedo-as-a-native-rust-gpui-app.md), where one GPUI session entity owns displayed data.
+
 Simplified by [ADR-0008](0008-simplify-loader-owned-dataflow.md), which retains loader ownership and replaces the publication handshake with ordinary targeted invalidation.
 
 SvelteKit client loaders solely own the renderer catalogue, Workspace/Todo-file/preferences, and saved-view resources. This supersedes ADR-0005's controller snapshots and mount-driven initialization for [spec #180](https://github.com/Cahllagerfeld/tuxedo-app/issues/180). Root layout, Workspace page, and Workspace layout declare independent typed IPC dependencies; Todo invalidation never rereads saved views. The backend remains the authoritative domain owner under ADR-0004 and ADR-0006.

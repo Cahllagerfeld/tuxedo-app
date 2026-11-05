@@ -1,5 +1,7 @@
 # Own domain operations in the Electron main process
 
+Superseded for the Electron main-process backend and the preload/IPC contract by [ADR-0009](0009-rebuild-tuxedo-as-a-native-rust-gpui-app.md). GUI-independent domain code, serialized operations, scoped identities, and external-edit checks remain.
+
 The Electron main process will host a TypeScript backend that owns todo.txt parsing, persistence-related validation, Workspace persistence, and atomic file writes. Domain modules remain independent of Electron so they can be tested directly; Electron supplies desktop integration and IPC transport.
 
 The Svelte renderer accesses explicit domain operations through a narrow, typed preload bridge. It does not receive general filesystem or generic IPC access. This retains a clear ownership boundary while replacing the Rust backend and its transport. ADR-0001 and ADR-0002's Rust ownership is superseded by this decision; ADR-0003 replaces TOML metadata with app-managed JSON.
