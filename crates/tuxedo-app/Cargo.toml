@@ -23,3 +23,7 @@ image = { version = "0.25", default-features = false, features = ["png"], option
 # `Window::render_to_image` (gpui-kit's own `test-support` feature pulls in gpui-fast).
 gpui = { package = "gpui-pre", version = "=0.3.11", features = ["test-support"], optional = true }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["test-support"], optional = true }
+
+[dev-dependencies]
+# `TestAppContext` and `#[gpui::test]` from the GPUI crate gpui-kit already uses.
+gpui = { package = "gpui-pre", version = "=0.3.11", features = ["test-support"] }

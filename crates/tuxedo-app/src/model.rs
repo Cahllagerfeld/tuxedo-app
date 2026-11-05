@@ -25,7 +25,11 @@ pub struct SessionModel {
 
 impl SessionModel {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let path = session::catalogue_path();
+        Self::restore_from(session::catalogue_path(), cx)
+    }
+
+    /// Workspace session restoration from the catalogue at `path`.
+    pub fn restore_from(path: Option<std::path::PathBuf>, cx: &mut Context<Self>) -> Self {
         let load = cx.background_spawn(async move { session::restore(path.as_deref()) });
         let task = cx.spawn(async move |this, cx| {
             let restored = load.await;
@@ -126,5 +130,88 @@ impl SessionModel {
             })
             .ok();
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
+    use gpui::{AppContext as _, Entity, TestAppContext};
+
+    use super::SessionModel;
+
+    const A: &str = "0b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+    const B: &str = "1b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+    const C: &str = "2b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+    const MISSING: &str = "3b1d3c4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+
+    /// A catalogue with Workspaces A, B, C (readable) and MISSING (no Todo file); A is active.
+    fn catalogue(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("tuxedo-app-model-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let workspace = |id: &str, label: &str, file: &Path| {
+            serde_json::json!({
+                "id": id, "name": label, "color": "blue", "todo_path": file,
+                "created_at": "2026-11-05T00:00:00.000Z",
+            })
+        };
+        let mut workspaces = Vec::new();
+        for (id, label) in [(A, "A"), (B, "B"), (C, "C")] {
+            let file = dir.join(format!("{label}.txt"));
+            std::fs::write(&file, format!("Task in {label}\n")).unwrap();
+            workspaces.push(workspace(id, label, &file));
+        }
+        workspaces.push(workspace(MISSING, "Missing", &dir.join("missing.txt")));
+        let path = dir.join("workspaces.json");
+        let json =
+            serde_json::json!({ "version": 1, "active_workspace_id": A, "workspaces": workspaces });
+        std::fs::write(&path, json.to_string()).unwrap();
+        path
+    }
+
+    fn restored(name: &str, cx: &mut TestAppContext) -> Entity<SessionModel> {
+        let path = catalogue(name);
+        let model = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
+        cx.run_until_parked();
+        model
+    }
+
+    fn selected_id(model: &Entity<SessionModel>, cx: &mut TestAppContext) -> Option<String> {
+        model.read_with(cx, |m, _| m.selected().map(|s| s.workspace.id.clone()))
+    }
+
+    #[gpui::test(iterations = 20)]
+    fn only_the_latest_of_overlapping_switches_is_accepted(cx: &mut TestAppContext) {
+        let model = restored("latest", cx);
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
+
+        model.update(cx, |m, cx| {
+            m.select(B, cx);
+            m.select(C, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(C));
+        model.read_with(cx, |m, _| {
+            assert!(m.pending().is_none() && m.error().is_none())
+        });
+    }
+
+    #[gpui::test]
+    fn failed_switch_keeps_the_previous_selection_until_reselected(cx: &mut TestAppContext) {
+        let model = restored("failed", cx);
+
+        model.update(cx, |m, cx| m.select(MISSING, cx));
+        cx.run_until_parked();
+        assert_eq!(selected_id(&model, cx).as_deref(), Some(A));
+        model.read_with(cx, |m, _| {
+            assert!(m.error().is_some() && m.pending().is_none())
+        });
+
+        model.update(cx, |m, cx| m.select(A, cx));
+        model.read_with(cx, |m, _| assert!(m.error().is_none()));
     }
 }
