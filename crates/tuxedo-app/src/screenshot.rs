@@ -7,6 +7,8 @@
 //! - `TUXEDO_CLICK=<x>,<y>[;<x>,<y>...]`: left-click those window points in order, after any
 //!   `TUXEDO_SELECT`, settling after each click
 //! - `TUXEDO_SIDEBAR=hidden`
+//! - `TUXEDO_DIALOG=create|edit|delete`: open a Workspace dialog last; `edit` and `delete` act
+//!   on the displayed Workspace
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner
 //! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
 //!   transition (the most recent frame drawn by then)
@@ -17,6 +19,7 @@ use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 
 use crate::app::TuxedoApp;
+use crate::workspace_ui;
 
 /// In screenshot mode the window opens far offscreen, as GPUI's visual tests do, so the real
 /// pointer and keyboard cannot interfere with the injected state.
@@ -147,6 +150,24 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
                 })
             });
             settle(cx, ms).await;
+        }
+        if let Ok(dialog) = std::env::var("TUXEDO_DIALOG") {
+            cx.update_window(window, |_, window, cx| {
+                let session = root.read(cx).session().clone();
+                let shown = session.read(cx).selected().map(|s| s.workspace.clone());
+                match (dialog.as_str(), shown) {
+                    ("create", _) => workspace_ui::open_create(session, window, cx),
+                    ("edit", Some(workspace)) => {
+                        workspace_ui::open_edit(session, &workspace, window, cx)
+                    }
+                    ("delete", Some(workspace)) => {
+                        workspace_ui::open_delete(session, &workspace, window, cx)
+                    }
+                    _ => eprintln!("tuxedo: cannot open the {dialog} dialog"),
+                }
+            })
+            .ok();
+            settle(cx, 800).await;
         }
         let result = cx.update_window(window, |_, window, _| window.render_to_image());
         match result {
