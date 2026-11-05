@@ -17,8 +17,8 @@ You are the **orchestrator**: you brief, dispatch, relay, triage and verify. Wor
 
 | Role | Command | Scope |
 |---|---|---|
-| Implementer | `claude --model opus --permission-mode auto "<task>"` | Owns named paths; commits there |
-| Consultant / reviewer | `codex -m gpt-6.1-sol "<task>"` | Read-only; design, diagnosis, reviews |
+| Implementer | `claude --model opus --effort medium --permission-mode auto "<task>"` | Owns named paths; commits there |
+| Consultant / reviewer | `codex --no-daemon -m gpt-6.1-sol -c model_reasoning_effort=high "<task>"` | Read-only; design, diagnosis, reviews |
 
 - Ask Codex early and often: architecture before a slice, diagnosis of visual or runtime bugs, and a review after each worker milestone.
 - Codex answers are advice. **Triage** each finding as accept, defer or push back, and reply with your reasons. Example: Codex wanted the Rust catalogue reader to be as strict as Electron's validator. The pushback: a lenient reader is safer while Rust only reads a file Electron writes; tighten it once Rust writes the file.
@@ -32,7 +32,7 @@ You are the **orchestrator**: you brief, dispatch, relay, triage and verify. Wor
 2. Launch each agent into that tab:
    ```zsh
    L=(--label herdr.space=<space-id> --label herdr.tab=<tab-id>)   # zsh: an array, not a string
-   hc run --bg --json --name <name> $L --cwd <repo> -- claude --model opus --permission-mode auto "<task>"
+   hc run --bg --json --name <name> $L --cwd <repo> -- claude --model opus --effort medium --permission-mode auto "<task>"
    ```
    - A `herdr.tab` label with an ID Herdr doesn't know creates a new tab. Use this for side quests such as a scout.
    - Put the whole task in the launch argument. A message sent while the agent is still booting can be dropped.
@@ -46,8 +46,13 @@ You are the **orchestrator**: you brief, dispatch, relay, triage and verify. Wor
 
 ## Splitting work
 
+- **One ticket = one worktree = one branch = one Herdr tab.** Create the worktree with `git worktree add ../tuxedo-ui-wt/<name> -b rust/<issue>-<slug> rust-gpui`. Put the implementer and its Codex reviewer in that ticket's tab. One Opus worker owns the whole vertical slice. Split a ticket into core and UI workers in the same worktree, with path ownership, only when it won't fit one context window.
+- Merge finished branches into `rust-gpui` one at a time: rebase the branch, then fast-forward. If the rebase conflicts, the ticket's own worker resolves it. Remove the worktree and branch afterwards.
+- Tickets that edit the same files can't run in parallel until a prefactor separates them (for example splitting one large view module). Run the prefactor first and prove it changes no behavior with byte-identical screenshots.
+- Ask the user explicitly before starting each new batch of tickets.
 - Split along **seams** so workers run in parallel, for example a domain crate with no GUI next to a UI crate.
-- Write a contract file in your scratchpad before launching anyone. It holds:
+- A seam contract that several tickets share goes on GitHub, as a comment on the spec issue linked from each ticket, not in the repo or your scratchpad. Durable decisions from it become an ADR once they're built.
+- Write a contract before launching anyone. It holds:
   - the slice goal and what is out of scope;
   - an **ownership table** with exactly one owner per path;
   - the public API at the seam, with fixed names.
@@ -80,5 +85,7 @@ Every launch prompt includes:
 
 - You cannot approve another agent's permission prompt. When a worker shows as `blocked`, `hc read` it, then send a safer rewrite. For example, guard `rm` paths as `"${S:?}"/…`.
 - `devenv` may only exist at `~/.nix-profile/bin/devenv`.
+- Codex must run with `--no-daemon`, or its commands run outside hc.
+- Codex draws a full-screen view, so `hc read` returns only the last page. Ask Codex to write long output to a named file and report the path.
 - GPUI clips children to rectangles, not rounded corners. Use gpui-kit's `RoundedFrameCover` over the content and don't round each child by hand.
 - Use gpui-kit primitives before custom code: `transition` for animation, `uniform_list` / `VirtualList` for long lists. Ask Codex to check the installed sources in `~/.cargo/registry`.
