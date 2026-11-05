@@ -32,23 +32,45 @@ impl WorkspaceSession {
         self.selected.as_ref()
     }
 
-    /// Reads the Workspace's Todo file and makes it the selected Workspace. On failure the
-    /// previous selection is kept. This never writes the catalogue.
-    pub fn open(&mut self, workspace_id: &str) -> Result<WorkspaceSnapshot, CoreError> {
-        let workspace = self
-            .catalogue
+    /// Foreground step: resolves `workspace_id` into a `Send` request without doing I/O.
+    pub fn prepare_open(&self, workspace_id: &str) -> Result<OpenRequest, CoreError> {
+        self.catalogue
             .workspace(workspace_id)
             .cloned()
+            .map(|workspace| OpenRequest { workspace })
             .ok_or_else(|| CoreError::UnknownWorkspace {
                 id: workspace_id.to_owned(),
-            })?;
-        let file = read_todo_file(&workspace.todo_file)?;
-        let snapshot = WorkspaceSnapshot {
+            })
+    }
+
+    /// Foreground step: makes a loaded snapshot the selected Workspace. Callers that may
+    /// have several loads in flight are responsible for dropping stale snapshots.
+    pub fn accept(&mut self, snapshot: WorkspaceSnapshot) -> &WorkspaceSnapshot {
+        self.selected.insert(snapshot)
+    }
+
+    /// Convenience for synchronous callers: `prepare_open`, `load`, then `accept`.
+    /// On failure the previous selection is kept. This never writes the catalogue.
+    pub fn open(&mut self, workspace_id: &str) -> Result<&WorkspaceSnapshot, CoreError> {
+        let snapshot = self.prepare_open(workspace_id)?.load()?;
+        Ok(self.accept(snapshot))
+    }
+}
+
+/// A pending Workspace open: owns everything the background read needs.
+#[derive(Debug, Clone)]
+pub struct OpenRequest {
+    pub workspace: Workspace,
+}
+
+impl OpenRequest {
+    /// Background step: reads and parses the Todo file. Touches no session state.
+    pub fn load(self) -> Result<WorkspaceSnapshot, CoreError> {
+        let file = read_todo_file(&self.workspace.todo_file)?;
+        Ok(WorkspaceSnapshot {
             summary: file.summary(),
-            workspace,
+            workspace: self.workspace,
             file,
-        };
-        self.selected = Some(snapshot.clone());
-        Ok(snapshot)
+        })
     }
 }

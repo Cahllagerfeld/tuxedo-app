@@ -10,7 +10,7 @@ mod todo;
 pub use catalogue::{load_catalogue, Catalogue, TodoSortOrder, Workspace, WORKSPACE_COLORS};
 pub use date::TodoDate;
 pub use error::CoreError;
-pub use session::{WorkspaceSession, WorkspaceSnapshot};
+pub use session::{OpenRequest, WorkspaceSession, WorkspaceSnapshot};
 pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
     TodoFileSummary, TodoItem, TodoItemEdit,
