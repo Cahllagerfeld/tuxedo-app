@@ -95,7 +95,7 @@ impl WorkspaceSession {
     pub fn prepare_reread(&self, catalogue_path: &Path) -> RereadRequest {
         RereadRequest {
             catalogue_path: catalogue_path.to_path_buf(),
-            selected_id: self.selected.as_ref().map(|s| s.workspace.id.clone()),
+            showing: self.selected.is_some(),
         }
     }
 
@@ -150,7 +150,8 @@ impl WorkspaceSession {
 #[derive(Debug, Clone)]
 pub struct RereadRequest {
     catalogue_path: PathBuf,
-    selected_id: Option<String>,
+    /// Whether the session showed a Workspace when recovery was prepared.
+    showing: bool,
 }
 
 /// The reread catalogue and selection, ready for [`WorkspaceSession::accept_reread`].
@@ -161,15 +162,20 @@ pub struct RereadResult {
 }
 
 impl RereadRequest {
-    /// Background step: reads the catalogue, then the selected Workspace's Todo file when that
-    /// Workspace still exists. A Workspace that no longer exists leaves nothing selected.
+    /// Background step: reads the catalogue, then its persisted Active workspace's Todo file, so
+    /// the accepted catalogue and selection agree. Without an Active workspace nothing is
+    /// selected. When the Active workspace's file cannot open, the reread fails if the session
+    /// was showing a Workspace, and stays Empty if it was not.
     pub fn execute(self) -> Result<RereadResult, CoreError> {
         let catalogue = load_catalogue(&self.catalogue_path)?;
-        let selected = self
-            .selected_id
-            .and_then(|id| catalogue.workspace(&id).cloned())
-            .map(|workspace| OpenRequest { workspace }.load())
-            .transpose()?;
+        let selected = match catalogue.active_workspace().cloned() {
+            None => None,
+            Some(workspace) => match (OpenRequest { workspace }.load(), self.showing) {
+                (Ok(snapshot), _) => Some(snapshot),
+                (Err(_), false) => None,
+                (Err(error), true) => return Err(error),
+            },
+        };
         Ok(RereadResult {
             catalogue,
             selected,

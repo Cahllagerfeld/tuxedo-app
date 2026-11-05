@@ -788,3 +788,32 @@ fn reaccepting_an_identical_catalogue_and_selection_changes_nothing() {
     assert_eq!(f.session.revision(), revision);
     assert!(f.session.can_undo());
 }
+
+#[test]
+fn a_reread_selects_the_persisted_active_workspace() {
+    let mut f = Fixture::new("Buy milk\n");
+    assert_eq!(f.set_completion(1, true, COMPLETION_DAY), applied());
+    let request = f.session.prepare_reread(&f.catalogue);
+    let json = fs::read_to_string(&f.catalogue).unwrap().replace(
+        &format!(r#""active_workspace_id":"{ID_A}""#),
+        &format!(r#""active_workspace_id":"{ID_B}""#),
+    );
+    fs::write(&f.catalogue, json).unwrap();
+    f.session.accept_reread(request.execute().unwrap());
+    assert_eq!(
+        f.session.catalogue().active_workspace_id.as_deref(),
+        Some(ID_B)
+    );
+    assert_eq!(f.session.selected().unwrap().workspace.id, ID_B);
+    assert!(!f.session.can_undo());
+
+    // An Active workspace whose file cannot open fails a reread that showed a Workspace…
+    fs::remove_file(f.todo.with_file_name("b.txt")).unwrap();
+    assert!(f.session.prepare_reread(&f.catalogue).execute().is_err());
+    // …but an Empty session stays Empty.
+    f.session
+        .accept_catalogue(f.session.catalogue().clone(), None);
+    let result = f.session.prepare_reread(&f.catalogue).execute().unwrap();
+    f.session.accept_reread(result);
+    assert!(f.session.selected().is_none());
+}
