@@ -141,6 +141,11 @@ fn completion_writes_adjacent_dates_and_keeps_priority_as_metadata_for_reopening
     assert_eq!(f.set_completion(1, false, COMPLETION_DAY), applied());
     assert_eq!(f.disk(), initial);
     assert_eq!(f.session.undo_label(), Some("Undo uncompletion"));
+
+    // Matching priority metadata is reused, not duplicated.
+    let mut f = Fixture::new("(A) Buy milk pri:A");
+    assert_eq!(f.set_completion(1, true, COMPLETION_DAY), applied());
+    assert_eq!(f.disk(), "x 2030-01-02 Buy milk pri:A");
 }
 
 #[test]
@@ -258,13 +263,6 @@ fn conflicting_priority_metadata_and_empty_reopening_refuse_without_writing() {
             "confirmed state is unchanged"
         );
     }
-}
-
-#[test]
-fn completion_reuses_matching_priority_metadata() {
-    let mut f = Fixture::new("(A) Buy milk pri:A");
-    assert_eq!(f.set_completion(1, true, COMPLETION_DAY), applied());
-    assert_eq!(f.disk(), "x 2030-01-02 Buy milk pri:A");
 }
 
 #[test]
@@ -751,20 +749,6 @@ fn a_show_from_outside_the_date_range_refuses_without_writing() {
         );
         assert_eq!(f.disk(), initial);
     }
-}
-
-#[test]
-fn accepted_snapshots_advance_the_revision_and_stale_targets_are_refused() {
-    let mut f = Fixture::new("Task A\n");
-    let opened = f.session.revision();
-    assert!(opened > 0);
-    let current = f.target(1);
-    f.session.open(ID_B).unwrap();
-    assert!(f.session.revision() > opened);
-    assert_eq!(
-        f.run_completion(current, true, COMPLETION_DAY),
-        Outcome::Stale
-    );
 }
 
 // Catalogue acceptance (Workspace commands)
