@@ -252,6 +252,14 @@ fn decodes_a_version_1_catalogue() {
     assert_eq!(catalogue.workspaces[1].sort_order, None);
     assert_eq!(home.color, WorkspaceColor::Blue);
 
+    // JS `trim` keeps U+0085, so Electron can persist it; one odd name must not reject the file.
+    let json = format!(
+        r#"{{"version":1,"active_workspace_id":null,"workspaces":[{}]}}"#,
+        workspace_json(ID_A, "\u0085Home", "/a/todo.txt")
+    );
+    let catalogue = parse_catalogue(Path::new("/w.json"), &json).unwrap();
+    assert_eq!(catalogue.workspaces[0].name, "\u{85}Home");
+
     let missing = Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-workspaces.json");
     assert_eq!(load_catalogue(&missing).unwrap(), Catalogue::default());
 }
@@ -274,7 +282,7 @@ fn rejects_invalid_catalogues() {
         ),
         case(&format!(r#""{ID_B}""#), &a),
         case("null", &a.replace("blue", "teal")),
-        case("null", &a.replace("Home", " Home")),
+        case("null", &a.replace("Home", "  ")),
         case("null", &a.replace(".136Z", "")),
         // Multibyte characters inside the time or offset must not panic on slicing.
         case("null", &a.replace("09:11:29.136Z", "0é:0:00Z")),

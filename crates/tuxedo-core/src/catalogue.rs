@@ -87,6 +87,7 @@ impl Catalogue {
     }
 }
 
+// Deliberately lenient while Rust only reads what Electron writes; tighten once Rust writes it.
 #[derive(Deserialize)]
 struct RawCatalogue {
     version: serde_json::Value,
@@ -153,10 +154,8 @@ pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, Core
         if !is_uuid(&w.id) {
             issues.push(format!("Workspace id {label} is not a UUID"));
         }
-        if w.name.is_empty() || w.name.trim() != w.name {
-            issues.push(format!(
-                "Workspace {label} name must be non-empty and trimmed"
-            ));
+        if w.name.trim().is_empty() {
+            issues.push(format!("Workspace {label} has an empty name"));
         }
         if w.todo_path.trim().is_empty() {
             issues.push(format!("Workspace {label} has an empty todo_path"));
