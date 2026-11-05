@@ -250,6 +250,7 @@ fn decodes_a_version_1_catalogue() {
         (Some(TodoSortOrder::Due), Some(true))
     );
     assert_eq!(catalogue.workspaces[1].sort_order, None);
+    assert_eq!(home.color, WorkspaceColor::Blue);
 
     let missing = Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-workspaces.json");
     assert_eq!(load_catalogue(&missing).unwrap(), Catalogue::default());

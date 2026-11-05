@@ -9,9 +9,46 @@ use serde::Deserialize;
 use crate::date::TodoDate;
 use crate::CoreError;
 
-pub const WORKSPACE_COLORS: [&str; 8] = [
-    "blue", "green", "amber", "red", "violet", "pink", "cyan", "orange",
-];
+/// A Workspace's distinguishing color, as persisted in the catalogue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkspaceColor {
+    Blue,
+    Green,
+    Amber,
+    Red,
+    Violet,
+    Pink,
+    Cyan,
+    Orange,
+}
+
+impl WorkspaceColor {
+    pub const ALL: [Self; 8] = [
+        Self::Blue,
+        Self::Green,
+        Self::Amber,
+        Self::Red,
+        Self::Violet,
+        Self::Pink,
+        Self::Cyan,
+        Self::Orange,
+    ];
+
+    /// The persisted name, e.g. `"blue"`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Blue => "blue",
+            Self::Green => "green",
+            Self::Amber => "amber",
+            Self::Red => "red",
+            Self::Violet => "violet",
+            Self::Pink => "pink",
+            Self::Cyan => "cyan",
+            Self::Orange => "orange",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
@@ -19,8 +56,7 @@ pub struct Workspace {
     pub name: String,
     /// The persisted `todo_path`.
     pub todo_file: PathBuf,
-    /// One of [`WORKSPACE_COLORS`].
-    pub color: String,
+    pub color: WorkspaceColor,
     pub created_at: String,
     pub sort_order: Option<TodoSortOrder>,
     pub show_deferred: Option<bool>,
@@ -62,7 +98,7 @@ struct RawCatalogue {
 struct RawWorkspace {
     id: String,
     name: String,
-    color: String,
+    color: WorkspaceColor,
     todo_path: String,
     created_at: String,
     #[serde(default)]
@@ -120,12 +156,6 @@ pub(crate) fn parse_catalogue(path: &Path, text: &str) -> Result<Catalogue, Core
         if w.name.is_empty() || w.name.trim() != w.name {
             issues.push(format!(
                 "Workspace {label} name must be non-empty and trimmed"
-            ));
-        }
-        if !WORKSPACE_COLORS.contains(&w.color.as_str()) {
-            issues.push(format!(
-                "Workspace {label} has unsupported color {}",
-                w.color
             ));
         }
         if w.todo_path.trim().is_empty() {
