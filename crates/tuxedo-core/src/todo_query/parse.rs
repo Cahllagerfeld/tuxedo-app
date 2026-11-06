@@ -95,7 +95,7 @@ impl fmt::Display for QueryError {
         match &self.kind {
             QueryErrorKind::Repeated(key) => write!(
                 f,
-                "A query can filter by only one {}; remove one {}.",
+                "A query can filter by only one {}; remove the extra {} condition.",
                 key.noun(),
                 key.prefix()
             ),
