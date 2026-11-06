@@ -13,7 +13,7 @@ use gpui_kit::*;
 use std::rc::Rc;
 
 use super::{list_view, TuxedoApp};
-use crate::filter_ui::{self, FacetSection, OnToggleSection};
+use crate::filter_ui::{self, FacetSection, FacetSectionsState, OnToggleSection};
 use crate::model::SessionModel;
 use crate::theme::{hex, Palette};
 use crate::todo_projection::TodoProjection;
@@ -22,23 +22,59 @@ use crate::workspace_ui;
 /// The sidebar's full width; the shell's slot animates between 0 and this.
 pub(super) const WIDTH: f32 = 256.;
 
-/// Sidebar-local UI state: which Facet sections are expanded, indexed by `FacetSection as usize`.
+/// Sidebar-local UI state for the Facet sections: which are open, and which show all values.
 pub(super) struct WorkspaceSidebar {
-    facets_open: [bool; 4],
+    facets: FacetSectionsState,
+    /// The Workspace whose values `facets.expanded` refers to; another ID collapses them.
+    workspace_id: Option<String>,
 }
 
 impl Default for WorkspaceSidebar {
     fn default() -> Self {
         Self {
-            facets_open: [true; 4],
+            facets: FacetSectionsState {
+                open: [true; 4],
+                expanded: [false; 4],
+            },
+            workspace_id: None,
         }
     }
 }
 
 impl WorkspaceSidebar {
+    /// Follows accepted session data: a different Workspace collapses "Show more" like it
+    /// resets the filters; same-Workspace updates keep it.
+    pub(super) fn sync(&mut self, workspace_id: Option<&str>) {
+        if self.workspace_id.as_deref() == workspace_id {
+            return;
+        }
+        self.workspace_id = workspace_id.map(str::to_owned);
+        self.facets.expanded = [false; 4];
+        #[cfg(feature = "screenshot")]
+        self.apply_screenshot_preset();
+    }
+
+    /// `TUXEDO_FACETS_EXPANDED=projects|contexts|projects,contexts` shows all of those values.
+    #[cfg(feature = "screenshot")]
+    fn apply_screenshot_preset(&mut self) {
+        let value = std::env::var("TUXEDO_FACETS_EXPANDED").unwrap_or_default();
+        for name in value.split(',') {
+            match name.trim() {
+                "projects" => self.facets.expanded[FacetSection::Projects as usize] = true,
+                "contexts" => self.facets.expanded[FacetSection::Contexts as usize] = true,
+                _ => {}
+            }
+        }
+    }
+
     fn toggle(&mut self, section: FacetSection) {
-        let open = &mut self.facets_open[section as usize];
+        let open = &mut self.facets.open[section as usize];
         *open = !*open;
+    }
+
+    fn toggle_expanded(&mut self, section: FacetSection) {
+        let expanded = &mut self.facets.expanded[section as usize];
+        *expanded = !*expanded;
     }
 
     /// `facets` is the List view's projection while it has Todo items to filter.
@@ -132,10 +168,19 @@ impl WorkspaceSidebar {
                 })
                 .ok();
             });
+            let app = cx.entity().downgrade();
+            let on_expand: OnToggleSection = Rc::new(move |section, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.sidebar.toggle_expanded(section);
+                    cx.notify();
+                })
+                .ok();
+            });
             filter_ui::render_facet_sections(
                 projection,
-                self.facets_open,
+                self.facets,
                 &on_toggle,
+                &on_expand,
                 &list_view::on_edit(cx),
                 p,
             )

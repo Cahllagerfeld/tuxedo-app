@@ -107,6 +107,7 @@ impl TuxedoApp {
     /// filters here on Workspace changes).
     fn session_changed(&mut self, cx: &mut Context<Self>) {
         let selected = self.session.read(cx).selected();
+        self.sidebar.sync(selected.map(|s| s.workspace.id.as_str()));
         self.list_view.reproject(selected, local_today());
         self.list_view.sync_search_field(cx);
         cx.notify();

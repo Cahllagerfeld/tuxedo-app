@@ -179,23 +179,54 @@ impl FacetSection {
     }
 }
 
-/// Expands or collapses a sidebar Facet section.
+/// Expands or collapses a sidebar Facet section, or shows more or fewer of its values.
 pub type OnToggleSection = Rc<dyn Fn(FacetSection, &mut Window, &mut App)>;
 
+/// How many Project or Context values a section shows before "Show more".
+const COLLAPSED_FACETS: usize = 5;
+
+/// Electron's `FacetFilter` rule: unless `expanded`, the first five values in Facet order plus
+/// the selected value wherever it is. Returns each shown value with its Facet index, and how
+/// many values stay hidden.
+pub fn visible_facets<'a>(
+    values: &'a [FacetValue],
+    selected: Option<&str>,
+    expanded: bool,
+) -> (Vec<(usize, &'a FacetValue)>, usize) {
+    let shown: Vec<_> = values
+        .iter()
+        .enumerate()
+        .filter(|(i, facet)| {
+            expanded || *i < COLLAPSED_FACETS || selected == Some(facet.value.as_str())
+        })
+        .collect();
+    let hidden = values.len() - shown.len();
+    (shown, hidden)
+}
+
+/// The sidebar's Facet sections' UI state, each indexed by `FacetSection as usize`: `open`
+/// shows a section's rows; `expanded` shows all of a Project or Context section's values.
+#[derive(Debug, Clone, Copy)]
+pub struct FacetSectionsState {
+    pub open: [bool; 4],
+    pub expanded: [bool; 4],
+}
+
 /// The Due-date, Project, Context, and Priority Facets as collapsible sidebar sections, each a
-/// vertical list of toggles with counts. `open` holds each section's expanded state, indexed by
-/// `FacetSection as usize`; a collapsed section builds no rows.
+/// vertical list of toggles. A collapsed section builds no rows; Projects and Contexts show
+/// five values plus the selected one until expanded, and are left out while they have none.
 pub fn render_facet_sections(
     projection: &TodoProjection,
-    open: [bool; 4],
+    state: FacetSectionsState,
     on_toggle: &OnToggleSection,
+    on_expand: &OnToggleSection,
     on_edit: &OnEdit,
     p: &Palette,
 ) -> AnyElement {
     let filters = projection.filters();
     let facets = projection.facets();
     let completed_view = filters.completion == CompletionView::Completed;
-    let is_open = |section: FacetSection| open[section as usize];
+    let is_open = |section: FacetSection| state.open[section as usize];
     let due = DUE_CATEGORIES
         .into_iter()
         .filter(|_| is_open(FacetSection::Due))
@@ -208,6 +239,7 @@ pub fn render_facet_sections(
                 "Due date",
                 count,
                 filters.due == Some(category),
+                false,
                 FilterEdit::Due(category),
                 on_edit,
                 p,
@@ -216,16 +248,23 @@ pub fn render_facet_sections(
             .into_any_element()
         })
         .collect();
-    let values = |section: FacetSection,
-                  kind: &'static str,
-                  prefix: &'static str,
-                  values: &[FacetValue],
-                  selected: Option<&str>,
-                  edit: fn(&FacetValue) -> FilterEdit| {
-        let values = if is_open(section) { values } else { &[] };
-        values
-            .iter()
-            .enumerate()
+    // Projects and Contexts: absent without values; selected rows carry a check, not a count.
+    let named = |section: FacetSection,
+                 kind: &'static str,
+                 prefix: &'static str,
+                 values: &[FacetValue],
+                 selected: Option<&str>,
+                 edit: fn(&FacetValue) -> FilterEdit| {
+        if values.is_empty() {
+            return None;
+        }
+        if !is_open(section) {
+            return Some((section, Vec::new(), None));
+        }
+        let expanded = state.expanded[section as usize];
+        let (shown, hidden) = visible_facets(values, selected, expanded);
+        let mut rows: Vec<AnyElement> = shown
+            .into_iter()
             .map(|(i, facet)| {
                 facet_button(
                     SharedString::from(format!("facet-{kind}-{i}")),
@@ -233,15 +272,20 @@ pub fn render_facet_sections(
                     section.singular(),
                     Some(facet.count),
                     selected == Some(facet.value.as_str()),
+                    true,
                     edit(facet),
                     on_edit,
                     p,
                 )
                 .into_any_element()
             })
-            .collect::<Vec<_>>()
+            .collect();
+        if hidden > 0 || expanded {
+            rows.push(show_more_button(section, expanded, hidden, on_expand, p).into_any_element());
+        }
+        Some((section, rows, None))
     };
-    let projects = values(
+    let projects = named(
         FacetSection::Projects,
         "project",
         "+",
@@ -249,7 +293,7 @@ pub fn render_facet_sections(
         filters.project.as_deref(),
         |f| FilterEdit::Project(f.value.clone()),
     );
-    let contexts = values(
+    let contexts = named(
         FacetSection::Contexts,
         "context",
         "@",
@@ -258,19 +302,33 @@ pub fn render_facet_sections(
         |f| FilterEdit::Context(f.value.clone()),
     );
     let priority = filters.priority.map(|c| c.to_string());
-    let priorities = values(
-        FacetSection::Priorities,
-        "priority",
-        "",
-        &facets.priorities,
-        priority.as_deref(),
-        |f| FilterEdit::Priority(f.value.chars().next().unwrap_or('A')),
-    );
+    let priorities = if is_open(FacetSection::Priorities) {
+        &facets.priorities[..]
+    } else {
+        &[]
+    }
+    .iter()
+    .enumerate()
+    .map(|(i, facet)| {
+        facet_button(
+            SharedString::from(format!("facet-priority-{i}")),
+            facet.value.clone().into(),
+            FacetSection::Priorities.singular(),
+            Some(facet.count),
+            priority.as_deref() == Some(facet.value.as_str()),
+            false,
+            FilterEdit::Priority(facet.value.chars().next().unwrap_or('A')),
+            on_edit,
+            p,
+        )
+        .into_any_element()
+    })
+    .collect();
     let sections = [
-        (FacetSection::Due, due, None),
-        (FacetSection::Projects, projects, Some("No Projects")),
-        (FacetSection::Contexts, contexts, Some("No Contexts")),
-        (
+        Some((FacetSection::Due, due, None)),
+        projects,
+        contexts,
+        Some((
             FacetSection::Priorities,
             priorities,
             Some(if completed_view {
@@ -278,19 +336,54 @@ pub fn render_facet_sections(
             } else {
                 "No Priorities"
             }),
-        ),
+        )),
     ];
     v_flex()
         .gap_1()
         .children(
-            sections.into_iter().map(|(kind, values, empty)| {
+            sections.into_iter().flatten().map(|(kind, values, empty)| {
                 section(kind, is_open(kind), values, empty, on_toggle, p)
             }),
         )
         .into_any_element()
 }
 
-/// A full-width ghost toggle: the value on the left, its count right-aligned and muted.
+/// Electron's small muted "Show N more" / "Show less" ghost button below a section's values.
+fn show_more_button(
+    section: FacetSection,
+    expanded: bool,
+    hidden: usize,
+    on_expand: &OnToggleSection,
+    p: &Palette,
+) -> impl IntoElement {
+    let on_expand = on_expand.clone();
+    let label = section.label();
+    h_flex().mt_1().child(
+        Button::new(SharedString::from(format!("facet-show-more-{section:?}")))
+            .ghost()
+            .small()
+            .px_2()
+            .accessibility_label(if expanded {
+                format!("Show fewer {label}")
+            } else {
+                format!("Show more {label}")
+            })
+            .on_click(move |_, window, cx| on_expand(section, window, cx))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(hex(p.muted_foreground))
+                    .child(if expanded {
+                        "Show less".to_owned()
+                    } else {
+                        format!("Show {hidden} more")
+                    }),
+            ),
+    )
+}
+
+/// A full-width ghost toggle: the value on the left, its count right-aligned and muted. With
+/// `check`, a selected toggle shows a check mark in place of its count.
 /// The Button centers its content, so one flexible row child carries the alignment.
 #[allow(clippy::too_many_arguments)]
 fn facet_button(
@@ -299,6 +392,7 @@ fn facet_button(
     kind: &'static str,
     count: Option<usize>,
     selected: bool,
+    check: bool,
     edit: FilterEdit,
     on_edit: &OnEdit,
     p: &Palette,
@@ -323,13 +417,16 @@ fn facet_button(
                 .min_w_0()
                 .gap_2()
                 .child(div().flex_1().min_w_0().truncate().child(value))
-                .children(count.map(|count| {
+                .children(count.filter(|_| !(check && selected)).map(|count| {
                     div()
                         .flex_shrink_0()
                         .text_xs()
                         .text_color(hex(p.muted_foreground))
                         .child(count.to_string())
-                })),
+                }))
+                .when(check && selected, |row| {
+                    row.child(Icon::new(IconName::Check).size_4().flex_shrink_0())
+                }),
         )
 }
 
@@ -469,4 +566,34 @@ pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Pale
             )
         })
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use tuxedo_core::FacetValue;
+
+    use super::visible_facets;
+
+    #[test]
+    fn collapsed_facets_show_the_first_five_and_the_selected_value() {
+        let values: Vec<FacetValue> = ["a", "b", "c", "d", "e", "f", "g", "h"]
+            .into_iter()
+            .map(|value| FacetValue {
+                value: value.into(),
+                count: 1,
+            })
+            .collect();
+        let indices = |shown: Vec<(usize, &FacetValue)>| -> Vec<usize> {
+            shown.into_iter().map(|(i, _)| i).collect()
+        };
+
+        let (shown, hidden) = visible_facets(&values, Some("g"), false);
+        assert_eq!((indices(shown), hidden), (vec![0, 1, 2, 3, 4, 6], 2));
+
+        let (shown, hidden) = visible_facets(&values, Some("g"), true);
+        assert_eq!((indices(shown), hidden), ((0..8).collect(), 0));
+
+        let (shown, hidden) = visible_facets(&values[..5], None, false);
+        assert_eq!((indices(shown), hidden), ((0..5).collect(), 0));
+    }
 }
