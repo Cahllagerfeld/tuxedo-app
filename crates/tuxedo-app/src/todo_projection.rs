@@ -10,10 +10,9 @@ use std::sync::LazyLock;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 use tuxedo_core::{
-    group_todos_by_due, invalid_due_count, is_deferred, project_todos, query_with_condition,
-    query_word_at, todo_facets, AbsentSelections, CompletionView, DueGroupKind, Facets,
-    QueryCondition, QueryError, TodoDate, TodoFilters, TodoItem, TodoSortOrder, WorkspaceSnapshot,
-    COMPLETION_VALUES, DUE_VALUES,
+    group_todos_by_due, invalid_due_count, is_deferred, project_todos, query_word_at, todo_facets,
+    AbsentSelections, CompletionView, DueGroupKind, Facets, QueryError, TodoDate, TodoFilters,
+    TodoItem, TodoSortOrder, WorkspaceSnapshot, COMPLETION_VALUES, DUE_VALUES,
 };
 
 /// Root-locale collation, as the Electron app's `String.prototype.localeCompare` applies it
@@ -336,21 +335,6 @@ impl TodoProjection {
         }
     }
 
-    /// Rewrites the query's `is:` word (Overview); Completed also drops `pri:` and `due:`.
-    pub fn set_completion(&mut self, completion: CompletionView) {
-        self.add_condition(&QueryCondition::Completion(completion));
-    }
-
-    /// Appends a condition, replacing a `pri:`, `due:`, or `is:` of the same key.
-    pub fn add_condition(&mut self, condition: &QueryCondition) {
-        self.set_query(query_with_condition(&self.query, condition));
-    }
-
-    /// Clears the whole query, which also selects the All view.
-    pub fn clear(&mut self) {
-        self.set_query(String::new());
-    }
-
     pub fn set_sort(&mut self, sort: TodoSortOrder) {
         self.sort_override = Some(sort);
     }
@@ -433,10 +417,7 @@ mod tests {
         let work = snapshot("work", text, Some(TodoSortOrder::Due));
         let mut projection = TodoProjection::new(today());
         projection.sync(Some(&work), today());
-        projection.set_query("open +Work".into());
-        projection.set_completion(CompletionView::Open);
-        projection.add_condition(&QueryCondition::Context("Home".into()));
-        assert_eq!(projection.query(), "open +Work is:open @Home ");
+        projection.set_query("open +Work is:open @Home ".into());
         projection.set_sort(TodoSortOrder::File);
         projection.set_grouped(true);
         projection.sync(Some(&work), today());
@@ -469,12 +450,6 @@ mod tests {
         assert_eq!(projection.absent().contexts, ["Home".to_owned()]);
         assert_eq!(projection.shown(), 0);
         assert_eq!(projection.sort(&edited), TodoSortOrder::File);
-
-        // Choosing Completed in Overview drops the conditions that view cannot filter by.
-        projection.add_condition(&QueryCondition::Priority('A'));
-        projection.set_completion(CompletionView::Completed);
-        assert_eq!(projection.query(), "open +Work @Home is:completed ");
-        assert!(projection.error().is_none());
 
         // While typed at the end of the focused field, a condition word matches as a prefix;
         // a separator, or leaving the field, makes it exact again.

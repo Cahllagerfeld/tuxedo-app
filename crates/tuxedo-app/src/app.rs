@@ -402,9 +402,17 @@ mod tests {
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
     use gpui::{point, px, AppContext as _, Modifiers, TestAppContext};
 
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use gpui_kit::component::input::InputEvent;
+    use tuxedo_core::CompletionView;
+
+    use super::list_view::ListView;
     use super::{TuxedoApp, SIDEBAR_TRANSITION};
     use crate::model::tests::{catalogue, A, C};
     use crate::model::SessionModel;
+    use crate::query_ui::FilterEdit;
 
     #[gpui::test]
     fn the_autocomplete_popover_takes_keys_only_while_open(cx: &mut TestAppContext) {
@@ -433,10 +441,22 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(query(cx), "pl +Work ");
 
-        // Closed (the caret follows a space): Enter and Down reach the field and change nothing.
+        // Closed (the caret follows a space): Enter reaches the field, which reports it, and
+        // the text stays. Every popover key shares that pass-through; a single-line field
+        // gives Up and Down no visible effect to observe.
+        let state = app.read_with(cx, |app, _| app.list_view.query_state().clone());
+        let presses = Rc::new(Cell::new(0));
+        let _presses = cx.update(|_, cx| {
+            let presses = presses.clone();
+            cx.subscribe(&state, move |_, event: &InputEvent, _| {
+                if let InputEvent::PressEnter { .. } = event {
+                    presses.set(presses.get() + 1);
+                }
+            })
+        });
         cx.simulate_keystrokes("enter down");
         cx.run_until_parked();
-        assert_eq!(query(cx), "pl +Work ");
+        assert_eq!((query(cx).as_str(), presses.get()), ("pl +Work ", 1));
 
         // Escape closes the popover, so Enter does not accept; typing reopens it for Tab.
         // Meanwhile the unfinished `@h` matches as a prefix instead of emptying the list.
@@ -468,17 +488,61 @@ mod tests {
         cx.run_until_parked();
         let undo_todo = cx.update(|window, _| window.bindings_for_action(&super::UndoTodo).len());
         assert_eq!(undo_todo, 1);
-        app.read_with(cx, |app, cx| {
-            let selected = app.session.read(cx).selected();
-            let filters = app.list_view.projection(selected).unwrap().filters();
-            assert_eq!(
-                (filters.projects.as_slice(), filters.contexts.as_slice()),
-                (
-                    ["Work".to_owned()].as_slice(),
-                    ["home".to_owned()].as_slice()
-                )
-            );
+        let filters = |cx: &mut gpui::VisualTestContext| {
+            app.read_with(cx, |app, cx| {
+                let selected = app.session.read(cx).selected();
+                app.list_view
+                    .projection(selected)
+                    .unwrap()
+                    .filters()
+                    .clone()
+            })
+        };
+        let applied = filters(cx);
+        assert_eq!(
+            (applied.projects.as_slice(), applied.contexts.as_slice()),
+            (
+                ["Work".to_owned()].as_slice(),
+                ["home".to_owned()].as_slice()
+            )
+        );
+
+        // Accepting `is:completed` for a word rewrites like Overview: `pri:` and `due:` go.
+        app.update_in(cx, |app, window, cx| {
+            ListView::apply_for_test(app, FilterEdit::Clear, window, cx);
+            app.focus_query(window, cx);
         });
+        cx.simulate_input("pri:A due:today is:open");
+        cx.simulate_keystrokes("left left left left down down enter");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "is:completed ");
+        let applied = filters(cx);
+        assert_eq!(
+            Ok(applied.clone()),
+            tuxedo_core::TodoFilters::parse(&query(cx))
+        );
+        assert_eq!(
+            applied.completion,
+            CompletionView::Completed,
+            "Overview shows Completed"
+        );
+
+        // An Overview click is one step of the field's undo history too.
+        app.update_in(cx, |app, window, cx| {
+            ListView::apply_for_test(
+                app,
+                FilterEdit::Completion(CompletionView::Open),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert_eq!(query(cx), "is:open ");
+        assert_eq!(filters(cx).completion, CompletionView::Open);
+        cx.simulate_keystrokes("cmd-z");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "is:completed ");
+        assert_eq!(filters(cx).completion, CompletionView::Completed);
     }
 
     #[gpui::test]

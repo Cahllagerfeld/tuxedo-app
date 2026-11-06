@@ -13,7 +13,10 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::time::Duration;
 
-use tuxedo_core::{query_word_at, TodoDate, WorkspaceSnapshot};
+use tuxedo_core::{
+    query_with_condition, query_with_condition_at, query_word_at, QueryCondition, TodoDate,
+    WorkspaceSnapshot,
+};
 
 use super::TuxedoApp;
 use crate::command_queue::{Command, TodoCommand};
@@ -156,22 +159,54 @@ impl ListView {
         self.query.read(cx).value().to_string()
     }
 
+    #[cfg(test)]
+    pub(super) fn query_state(&self) -> &Entity<InputState> {
+        &self.query
+    }
+
+    #[cfg(test)]
+    pub(super) fn apply_for_test(
+        app: &mut TuxedoApp,
+        edit: FilterEdit,
+        window: &mut Window,
+        cx: &mut Context<TuxedoApp>,
+    ) {
+        Self::apply(app, edit, window, cx);
+    }
+
     /// Cmd-F: puts the caret in the query field.
     pub(super) fn focus_query(&self, window: &mut Window, cx: &mut Context<TuxedoApp>) {
         self.query.update(cx, |state, cx| state.focus(window, cx));
     }
 
-    /// Applies a control's edit; the caller then recomputes via `session_changed`, which
-    /// also shows a rewritten query in the field.
-    fn edit(&mut self, edit: FilterEdit) {
-        let p = &mut self.projection;
-        match edit {
-            FilterEdit::Completion(view) => p.set_completion(view),
-            FilterEdit::Add(condition) => p.add_condition(&condition),
-            FilterEdit::Clear => p.clear(),
-            FilterEdit::Sort(sort) => p.set_sort(sort),
-            FilterEdit::Grouped(grouped) => p.set_grouped(grouped),
-        }
+    /// Applies a control's edit. Query edits (Overview, Add filter, Clear) rewrite the field
+    /// with `replace_all`, which keeps them in its undo history; the field's change then
+    /// applies the query like typing does. Sort and grouping apply directly.
+    fn apply(
+        app: &mut TuxedoApp,
+        edit: FilterEdit,
+        window: &mut Window,
+        cx: &mut Context<TuxedoApp>,
+    ) {
+        let this = &mut app.list_view;
+        let current = this.projection.query();
+        let next = match edit {
+            FilterEdit::Completion(view) => {
+                query_with_condition(current, &QueryCondition::Completion(view))
+            }
+            FilterEdit::Add(condition) => query_with_condition(current, &condition),
+            FilterEdit::Clear => String::new(),
+            FilterEdit::Sort(sort) => {
+                this.projection.set_sort(sort);
+                return app.session_changed(cx);
+            }
+            FilterEdit::Grouped(grouped) => {
+                this.projection.set_grouped(grouped);
+                return app.session_changed(cx);
+            }
+        };
+        this.query
+            .update(cx, |state, cx| state.replace_all(next, window, cx));
     }
 
     /// The projection, while the selected Workspace has Todo items to filter.
@@ -220,30 +255,22 @@ impl ListView {
         cx.notify();
     }
 
-    /// Replaces the word at the caret with suggestion `index` and a space, leaving the caret
-    /// after them.
+    /// Puts suggestion `index` in place of the word at the caret, with the same rewrite
+    /// rules as Overview and Add filter (`is:completed` drops `pri:` and `due:`), and leaves
+    /// the caret after it. `replace_all` keeps the field's undo history.
     fn accept(app: &mut TuxedoApp, index: usize, window: &mut Window, cx: &mut Context<TuxedoApp>) {
-        let Some((word, offered)) = app.list_view.popover(window, cx) else {
+        let Some((word, mut offered)) = app.list_view.popover(window, cx) else {
             return;
         };
-        let Some(token) = offered.get(index).map(|s| s.token.clone()) else {
+        if index >= offered.len() {
             return;
-        };
+        }
+        let condition = offered.swap_remove(index).condition;
         let query = app.list_view.query.clone();
         let text = query.read(cx).value().to_string();
-        // The word ends at the core lexer's whitespace or at the end: step over a following
-        // separator, or add a space.
-        let separator = text[word.end..].chars().next();
-        let replacement = if separator.is_some() {
-            token
-        } else {
-            format!("{token} ")
-        };
-        let caret = word.start + replacement.len() + separator.map_or(0, char::len_utf8);
-        // `replace` keeps the field's undo history; its change event reparses the query.
+        let (next, caret) = query_with_condition_at(&text, word, &condition);
         query.update(cx, |state, cx| {
-            state.set_selected_range(word.clone(), cx);
-            state.replace(replacement, window, cx);
+            state.replace_all(next, window, cx);
             state.set_selected_range(caret..caret, cx);
             state.focus(window, cx);
         });
@@ -433,12 +460,9 @@ fn render_list(
 /// Routes a query control's edit to the List view, then recomputes the projection.
 pub(super) fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
     let app = cx.entity().downgrade();
-    Rc::new(move |edit, _, cx| {
-        app.update(cx, |app, cx| {
-            app.list_view.edit(edit);
-            app.session_changed(cx);
-        })
-        .ok();
+    Rc::new(move |edit, window, cx| {
+        app.update(cx, |app, cx| ListView::apply(app, edit, window, cx))
+            .ok();
     })
 }
 

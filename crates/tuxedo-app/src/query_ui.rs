@@ -72,69 +72,93 @@ fn completion_label(view: CompletionView) -> &'static str {
     }
 }
 
-/// One autocomplete choice: the word it writes and what it means.
+/// One autocomplete choice: the condition, the canonical word it writes, and what it means.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Suggestion {
+    pub condition: QueryCondition,
     pub token: String,
     pub detail: String,
 }
 
+impl Suggestion {
+    fn new(condition: QueryCondition, detail: String) -> Self {
+        Self {
+            token: condition.token(),
+            condition,
+            detail,
+        }
+    }
+}
+
 /// The values a query word being typed can complete to: Projects and Contexts (with their
 /// counts in this view) after `+` and `@`, the Priorities in this view after `pri:`, the Due
-/// categories after `due:`, and the completion views after `is:`. Keys and values match
-/// ignoring case, names by prefix; Priority and Due offer nothing in the Completed view.
+/// categories after `due:`, and the completion views after `is:`. What follows the sigil or
+/// key is matched, ignoring case, as a prefix of the value itself (not of its quoted query
+/// form), so `+a` offers a Project `a"b`; the suggestion writes the canonical word. Priority
+/// and Due offer nothing in the Completed view.
 pub fn suggestions(word: &str, projection: &TodoProjection) -> Vec<Suggestion> {
     let facets = projection.facets();
     let completed_view = projection.filters().completion == CompletionView::Completed;
-    let lower = word.to_lowercase();
-    let key = |prefix: &str| lower.starts_with(prefix);
-    let named = |values: &[FacetValue], noun: &str, condition: fn(String) -> QueryCondition| {
+    let after = |prefix: &str| {
+        let head = word.get(..prefix.len())?;
+        head.eq_ignore_ascii_case(prefix)
+            .then(|| word[prefix.len()..].to_lowercase())
+    };
+    let starts = |value: &str, typed: &str| value.to_lowercase().starts_with(typed);
+    let named = |typed: String,
+                 values: &[FacetValue],
+                 noun: &str,
+                 condition: fn(String) -> QueryCondition| {
         values
             .iter()
-            .map(|f| Suggestion {
-                token: condition(f.value.clone()).token(),
-                detail: format!("{noun} · {}", f.count),
-            })
+            .filter(|f| starts(&f.value, &typed))
+            .map(|f| Suggestion::new(condition(f.value.clone()), format!("{noun} · {}", f.count)))
             .collect::<Vec<_>>()
     };
-    let candidates = if word.starts_with('+') {
-        named(&facets.projects, "Project", QueryCondition::Project)
-    } else if word.starts_with('@') {
-        named(&facets.contexts, "Context", QueryCondition::Context)
-    } else if key("pri:") && !completed_view {
+    let offered = if let Some(typed) = after("+") {
+        named(typed, &facets.projects, "Project", QueryCondition::Project)
+    } else if let Some(typed) = after("@") {
+        named(typed, &facets.contexts, "Context", QueryCondition::Context)
+    } else if let Some(typed) = after("pri:").filter(|_| !completed_view) {
         facets
             .priorities
             .iter()
-            .map(|f| Suggestion {
-                token: format!("pri:{}", f.value),
-                detail: format!("Priority · {}", f.count),
+            .filter(|f| starts(&f.value, &typed))
+            .filter_map(|f| {
+                let letter = f.value.chars().next()?;
+                Some(Suggestion::new(
+                    QueryCondition::Priority(letter),
+                    format!("Priority · {}", f.count),
+                ))
             })
             .collect()
-    } else if key("due:") && !completed_view {
+    } else if let Some(typed) = after("due:").filter(|_| !completed_view) {
         DUE_VALUES
             .into_iter()
             .filter(|&(_, due)| due != DueCategory::Invalid || projection.invalid_due() > 0)
-            .map(|(_, due)| Suggestion {
-                token: QueryCondition::Due(due).token(),
-                detail: format!("Due · {}", due_label(due)),
+            .filter(|(name, _)| starts(name, &typed))
+            .map(|(_, due)| {
+                Suggestion::new(
+                    QueryCondition::Due(due),
+                    format!("Due · {}", due_label(due)),
+                )
             })
             .collect()
-    } else if key("is:") {
+    } else if let Some(typed) = after("is:") {
         COMPLETION_VALUES
             .into_iter()
-            .map(|(_, view)| Suggestion {
-                token: QueryCondition::Completion(view).token(),
-                detail: format!("View · {}", completion_label(view)),
+            .filter(|(name, _)| starts(name, &typed))
+            .map(|(_, view)| {
+                Suggestion::new(
+                    QueryCondition::Completion(view),
+                    format!("View · {}", completion_label(view)),
+                )
             })
             .collect()
     } else {
         Vec::new()
     };
-    candidates
-        .into_iter()
-        .filter(|s| s.token.to_lowercase().starts_with(&lower))
-        .take(MAX_SUGGESTIONS)
-        .collect()
+    offered.into_iter().take(MAX_SUGGESTIONS).collect()
 }
 
 /// The query field, the Add filter menu, and the autocomplete popover below the field.
@@ -683,7 +707,8 @@ mod tests {
     fn suggestions_complete_the_word_from_this_views_values_and_fixed_vocabularies() {
         let file = parse_todo_text(
             PathBuf::from("/tmp/todo.txt"),
-            "(A) a +Work +Web @home due:2026-02-30\n(B) b +work\nx c +Done @home\n",
+            "(A) a +Work +Web @home due:2026-02-30\n(B) b +work\nx c +Done @home\n\
+             d +a\\b +a\"b @a\u{feff}b\n",
         );
         let selected = WorkspaceSnapshot {
             workspace: Workspace {
@@ -709,11 +734,14 @@ mod tests {
         };
         assert_eq!(tokens(&projection, "+w"), ["+Web", "+work", "+Work"]);
         assert_eq!(suggestions("+Work", &projection)[0].detail, "Project · 1");
-        assert_eq!(tokens(&projection, "@"), ["@home"]);
+        assert_eq!(tokens(&projection, "@"), ["@\"a\u{feff}b\"", "@home"]);
         assert_eq!(tokens(&projection, "PRI:"), ["pri:A", "pri:B"]);
         assert_eq!(tokens(&projection, "due:in"), ["due:invalid"]);
         assert_eq!(tokens(&projection, "is:c"), ["is:completed"]);
         assert_eq!(tokens(&projection, "work"), Vec::<String>::new());
+        // Names match by their own text and are written in their quoted canonical form.
+        assert_eq!(tokens(&projection, "+a"), [r#"+"a\"b""#, r#"+"a\\b""#]);
+        assert_eq!(tokens(&projection, "@A"), ["@\"a\u{feff}b\""]);
 
         // The Completed view offers its own Projects and no Priority or Due values.
         projection.set_query("is:completed".into());
