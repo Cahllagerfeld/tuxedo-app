@@ -36,10 +36,11 @@ const CARD_RADIUS: f32 = 14.;
 
 actions!(tuxedo, [UndoTodo, FocusQuery, Quit]);
 
-/// App-wide key bindings.
+/// App-wide key bindings. Undo last change stays out of text fields, so Cmd-Z there undoes
+/// typing instead of the last Todo-file change.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-z", UndoTodo, None),
+        KeyBinding::new("cmd-z", UndoTodo, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-f", FocusQuery, None),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
@@ -164,6 +165,8 @@ impl Render for TuxedoApp {
 
         v_flex()
             .size_full()
+            // Key bindings need a context to match; `!Input` keeps Undo last change out of fields.
+            .key_context("Tuxedo")
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(|this, _: &UndoTodo, _, cx| {
                 this.session.update(cx, |model, cx| model.undo(cx));
