@@ -354,9 +354,23 @@ fn queries_parse_to_filters_whose_canonical_query_parses_back_identically() {
     ];
     for (input, canonical) in cases {
         let filters = query(input);
-        assert_eq!(filters.to_query(), canonical, "{input:?}");
+        assert_eq!(filters.to_query().as_deref(), Ok(canonical), "{input:?}");
         assert_eq!(query(canonical), filters, "{input:?}");
     }
+
+    // Filters built by hand: unsorted or repeated names and a lowercase Priority write their
+    // normalized query, which parses to the normalized filters.
+    let built = TodoFilters {
+        projects: vec!["Z".into(), "A".into(), "Z".into()],
+        priority: Some('b'),
+        ..TodoFilters::default()
+    };
+    assert_eq!(built.to_query().as_deref(), Ok("pri:B +A +Z"));
+    assert_eq!(built.normalized(), Ok(query("pri:B +A +Z")));
+    assert_eq!(
+        query(&built.to_query().unwrap()),
+        built.normalized().unwrap()
+    );
     let parsed = query(r#"pri:b +Z +A "a b" c"#);
     assert_eq!(
         parsed,
@@ -413,6 +427,51 @@ fn invalid_queries_report_the_offending_bytes_and_why() {
             "{input:?}"
         );
     }
+    // Filters built by hand that no query expresses are errors, not unparsable text.
+    let built = [
+        (
+            TodoFilters {
+                projects: vec!["two words".into()],
+                ..TodoFilters::default()
+            },
+            InvalidName('+'),
+        ),
+        (
+            TodoFilters {
+                search: vec!["".into()],
+                ..TodoFilters::default()
+            },
+            EmptyPhrase,
+        ),
+        (
+            TodoFilters {
+                completion: CompletionView::Completed,
+                priority: Some('A'),
+                ..TodoFilters::default()
+            },
+            CompletedWithPriorityOrDue,
+        ),
+        (
+            TodoFilters {
+                priority: Some('1'),
+                ..TodoFilters::default()
+            },
+            UnknownValue(QueryKey::Priority, "1".into()),
+        ),
+    ];
+    for (filters, kind) in built {
+        assert_eq!(
+            filters.to_query().map_err(|e| e.kind),
+            Err(kind.clone()),
+            "{filters:?}"
+        );
+        assert_eq!(
+            filters.normalized().map_err(|e| e.kind),
+            Err(kind),
+            "{filters:?}"
+        );
+    }
+
     let message = |input| TodoFilters::parse(input).unwrap_err().to_string();
     assert_eq!(
         message("is:completed pri:A"),

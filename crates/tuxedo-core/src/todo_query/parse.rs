@@ -350,8 +350,25 @@ impl TodoFilters {
 
     /// The canonical query: `is:` (unless All), `pri:`, `due:`, Projects and Contexts by code
     /// point, then search words in order, quoted where a bare word would read differently.
-    /// For filters `parse` can produce, `parse(&f.to_query()) == Ok(f)`.
-    pub fn to_query(&self) -> String {
+    ///
+    /// The result always parses, to [`Self::normalized`]; for filters `parse` produced,
+    /// `parse(&f.to_query()?) == Ok(f)`. Filters built by hand that no query can express
+    /// (an empty search word, a name with whitespace, `is:completed` with Priority or Due, a
+    /// Priority outside A–Z) are an error whose span addresses the text they would write.
+    pub fn to_query(&self) -> Result<String, QueryError> {
+        let query = self.write_query();
+        Self::parse(&query)?;
+        Ok(query)
+    }
+
+    /// These filters as `parse` produces them: Projects and Contexts sorted and distinct and
+    /// the Priority uppercase, or why no query can express them (see [`Self::to_query`]).
+    pub fn normalized(&self) -> Result<Self, QueryError> {
+        Self::parse(&self.write_query())
+    }
+
+    /// The canonical words, without checking that they parse back.
+    fn write_query(&self) -> String {
         let mut words = Vec::new();
         if let Some((name, _)) = COMPLETION_VALUES
             .into_iter()
@@ -360,7 +377,7 @@ impl TodoFilters {
             words.push(format!("is:{name}"));
         }
         if let Some(priority) = self.priority {
-            words.push(format!("pri:{priority}"));
+            words.push(format!("pri:{}", priority.to_ascii_uppercase()));
         }
         if let Some((name, _)) = DUE_VALUES
             .into_iter()
@@ -434,7 +451,8 @@ pub enum QueryCondition {
 
 impl QueryCondition {
     /// The condition as one canonical query word, such as `+Work` or `+"a b"`; the All view
-    /// is `is:all`.
+    /// is `is:all`. Names must be ones a Todo item can carry (as every Facet value is), and a
+    /// Priority a letter, or the word will not parse.
     pub fn token(&self) -> String {
         match self {
             Self::Project(name) => format!("+{}", quote_name(name)),
@@ -529,7 +547,9 @@ pub fn query_word_at(query: &str, caret: usize) -> Option<Range<usize>> {
 /// `query` with `condition` added at the end and a trailing space for the next word. A
 /// `pri:`, `due:`, or `is:` condition replaces any of the same key; `is:completed` also drops
 /// `pri:` and `due:`, and the All view leaves no `is:` at all. Other words keep their
-/// spelling and order; the query need not be valid.
+/// spelling and order; the query need not be valid. A valid query stays valid, with the
+/// condition applied, unless the condition itself cannot parse or a Priority or Due condition
+/// meets `is:completed`.
 pub fn query_with_condition(query: &str, condition: &QueryCondition) -> String {
     let token = condition.token();
     let drops = |word: &str| match condition {
