@@ -9,7 +9,8 @@
 //! - `TUXEDO_SIDEBAR=hidden`
 //! - `TUXEDO_DIALOG=create|edit|delete`: open a Workspace dialog last; `edit` and `delete` act
 //!   on the displayed Workspace
-//! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner
+//! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner;
+//!   `TUXEDO_SCROLL_AT=<x>,<y>` scrolls and hovers at that window point instead (the sidebar)
 //! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
 //!   transition (the most recent frame drawn by then)
 
@@ -113,7 +114,10 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             cx.update_window(window, |_, window, cx| {
                 let size = window.viewport_size();
                 // Inside the List view, just below the card's top edge, near its right corner.
-                let position = point(size.width - px(40.), px(52.));
+                let position = std::env::var("TUXEDO_SCROLL_AT")
+                    .ok()
+                    .and_then(|v| parse_point(&v))
+                    .unwrap_or(point(size.width - px(40.), px(52.)));
                 let hover = |window: &mut Window, cx: &mut App| {
                     window.dispatch_event(
                         PlatformInput::MouseMove(MouseMoveEvent {
@@ -190,14 +194,14 @@ fn clicks() -> Vec<Point<Pixels>> {
     let Ok(value) = std::env::var("TUXEDO_CLICK") else {
         return Vec::new();
     };
-    value
-        .split(';')
-        .filter_map(|pair| {
-            let (x, y) = pair.split_once(',')?;
-            Some(point(
-                px(x.trim().parse().ok()?),
-                px(y.trim().parse().ok()?),
-            ))
-        })
-        .collect()
+    value.split(';').filter_map(parse_point).collect()
+}
+
+/// An `<x>,<y>` window point, in logical pixels.
+fn parse_point(pair: &str) -> Option<Point<Pixels>> {
+    let (x, y) = pair.split_once(',')?;
+    Some(point(
+        px(x.trim().parse().ok()?),
+        px(y.trim().parse().ok()?),
+    ))
 }
