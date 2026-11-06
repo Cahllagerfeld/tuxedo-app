@@ -83,7 +83,7 @@ impl ListView {
 
     /// Shows the projection's search in the field after a reset changed it.
     pub(super) fn sync_search_field(&self, cx: &mut Context<TuxedoApp>) {
-        let wanted = self.projection.filters().search.clone();
+        let wanted = self.projection.search_text().to_owned();
         if self.search.read(cx).value().as_ref() == wanted {
             return;
         }

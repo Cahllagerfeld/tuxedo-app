@@ -2,7 +2,10 @@
 //! Due-date sorting, and Due-date grouping. Parity with `todo-filter.svelte.ts`,
 //! `todo-filter-facets.ts`, `todo-due.ts`, and `todo-threshold.ts`.
 //!
-//! Every index addresses `TodoFile::items`, never a physical line.
+//! Every index addresses `TodoFile::items`, never a physical line. The text query lives in
+//! `todo_query::parse`.
+
+mod parse;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -10,6 +13,10 @@ use std::collections::HashMap;
 use crate::catalogue::TodoSortOrder;
 use crate::date::TodoDate;
 use crate::todo::{DueCategory, TodoFile, TodoItem};
+
+pub use parse::{
+    QueryError, QueryErrorKind, QueryKey, COMPLETION_VALUES, DUE_VALUES, QUERY_GRAMMAR_VERSION,
+};
 
 /// Which completion states the List view shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -30,19 +37,38 @@ impl CompletionView {
     }
 }
 
-/// The List view's filters. The default shows everything.
+/// The List view's filters, written and read as a text query (see [`TodoFilters::parse`]).
+/// The default shows everything.
 ///
-/// Selections AND together. The Completed view ignores the Priority and Due selections, and a
-/// Due selection only ever matches open Todo items.
+/// Every condition ANDs: an item must carry all listed Projects and Contexts and contain every
+/// search word. The Completed view ignores the Priority and Due selections (a query cannot
+/// combine them), and a Due selection only ever matches open Todo items.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TodoFilters {
     pub completion: CompletionView,
-    /// Whitespace-separated terms, matched case-insensitively as literal substrings.
-    pub search: String,
-    pub project: Option<String>,
-    pub context: Option<String>,
+    /// Search words in query order, each matched case-insensitively as a literal substring.
+    /// A quoted phrase is one word and may contain whitespace.
+    pub search: Vec<String>,
+    /// Exact Project names without `+`, sorted by code point and distinct.
+    pub projects: Vec<String>,
+    /// Exact Context names without `@`, sorted by code point and distinct.
+    pub contexts: Vec<String>,
     pub priority: Option<char>,
     pub due: Option<DueCategory>,
+}
+
+/// Selections in a query that the current data does not offer, so they match nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AbsentSelections {
+    pub projects: Vec<String>,
+    pub contexts: Vec<String>,
+    pub priority: Option<char>,
+}
+
+impl AbsentSelections {
+    pub fn is_empty(&self) -> bool {
+        self.projects.is_empty() && self.contexts.is_empty() && self.priority.is_none()
+    }
 }
 
 /// One distinct exact value of a Facet and the number of Todo items carrying it.
@@ -236,14 +262,14 @@ pub fn invalid_due_count(file: &TodoFile, today: TodoDate) -> usize {
 impl TodoFilters {
     /// Whether any narrowing filter is set; the completion view alone does not count.
     pub fn has_filters(&self) -> bool {
-        !self.search_terms().is_empty()
-            || self.project.is_some()
-            || self.context.is_some()
+        !self.search.is_empty()
+            || !self.projects.is_empty()
+            || !self.contexts.is_empty()
             || self.priority.is_some()
             || self.due.is_some()
     }
 
-    /// Clears search and Facet selections, keeping the completion view.
+    /// Clears search and every selection, keeping the completion view.
     pub fn clear(&mut self) {
         *self = Self {
             completion: self.completion,
@@ -251,36 +277,24 @@ impl TodoFilters {
         };
     }
 
-    /// Drops selections the current data no longer offers, after a same-Workspace data change
-    /// or a completion-view change: Projects, Contexts, and Priorities absent from `facets`
-    /// (which must be this completion view's), any Due selection in the Completed view, and
-    /// the Invalid Due selection once no open item has a malformed Due date.
-    pub fn reconcile(&mut self, facets: &Facets, file: &TodoFile, today: TodoDate) {
-        if self.completion == CompletionView::Completed {
-            self.due = None;
-        }
-        if self.due == Some(DueCategory::Invalid) && invalid_due_count(file, today) == 0 {
-            self.due = None;
-        }
-        if self
-            .project
-            .as_deref()
-            .is_some_and(|v| !Facets::has(&facets.projects, v))
-        {
-            self.project = None;
-        }
-        if self
-            .context
-            .as_deref()
-            .is_some_and(|v| !Facets::has(&facets.contexts, v))
-        {
-            self.context = None;
-        }
-        if self
-            .priority
-            .is_some_and(|v| !Facets::has(&facets.priorities, &v.to_string()))
-        {
-            self.priority = None;
+    /// The Projects, Contexts, and Priority this query asks for that `facets` (which must be
+    /// this completion view's) do not offer. The query keeps them, as the Electron app keeps
+    /// a saved view's absent selections, so they match nothing until the data offers them.
+    pub fn absent(&self, facets: &Facets) -> AbsentSelections {
+        let missing = |wanted: &[String], offered: &[FacetValue]| {
+            wanted
+                .iter()
+                .filter(|v| !Facets::has(offered, v))
+                .cloned()
+                .collect()
+        };
+        let completed_view = self.completion == CompletionView::Completed;
+        AbsentSelections {
+            projects: missing(&self.projects, &facets.projects),
+            contexts: missing(&self.contexts, &facets.contexts),
+            priority: self
+                .priority
+                .filter(|p| !completed_view && !Facets::has(&facets.priorities, &p.to_string())),
         }
     }
 
@@ -290,12 +304,7 @@ impl TodoFilters {
     }
 
     fn search_terms(&self) -> Vec<String> {
-        self.search
-            .to_lowercase()
-            .split(is_js_whitespace)
-            .filter(|term| !term.is_empty())
-            .map(str::to_owned)
-            .collect()
+        self.search.iter().map(|word| word.to_lowercase()).collect()
     }
 
     fn matches_terms(&self, item: &TodoItem, terms: &[String], today: TodoDate) -> bool {
@@ -308,15 +317,10 @@ impl TodoFilters {
         if !self.completion.includes(item) {
             return false;
         }
-        if let Some(project) = &self.project {
-            if !item.projects.contains(project) {
-                return false;
-            }
-        }
-        if let Some(context) = &self.context {
-            if !item.contexts.contains(context) {
-                return false;
-            }
+        if !self.projects.iter().all(|p| item.projects.contains(p))
+            || !self.contexts.iter().all(|c| item.contexts.contains(c))
+        {
+            return false;
         }
         if let (false, Some(priority)) = (completed_view, self.priority) {
             if item.priority != Some(priority) {
@@ -347,8 +351,9 @@ fn search_text(item: &TodoItem) -> String {
     parts.join(" ").to_lowercase()
 }
 
-/// JavaScript's `\s`, which the Electron app splits search terms on: Unicode `White_Space`
-/// plus U+FEFF, minus U+0085 (NEXT LINE), which Rust's `char::is_whitespace` includes.
+/// JavaScript's `\s`, which the Electron app splits search terms on and the query splits
+/// words on: Unicode `White_Space` plus U+FEFF, minus U+0085 (NEXT LINE), which Rust's
+/// `char::is_whitespace` includes.
 fn is_js_whitespace(c: char) -> bool {
     c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
 }

@@ -40,6 +40,8 @@ pub struct TodoProjection {
     /// The Workspace the selections belong to; another ID resets them.
     workspace_id: Option<String>,
     filters: TodoFilters,
+    /// The search field's text, split into `filters.search`.
+    search_text: String,
     /// A local sort choice for this session; the Workspace's saved order applies otherwise.
     sort_override: Option<TodoSortOrder>,
     grouped: bool,
@@ -57,6 +59,7 @@ impl TodoProjection {
         Self {
             workspace_id: None,
             filters: TodoFilters::default(),
+            search_text: String::new(),
             sort_override: None,
             grouped: false,
             today,
@@ -86,7 +89,6 @@ impl TodoProjection {
         };
         let file = &selected.file;
         self.facets = todo_facets(file, self.filters.completion, locale_compare);
-        self.filters.reconcile(&self.facets, file, today);
         let show_deferred = selected.workspace.show_deferred.unwrap_or(false);
         let indices = project_todos(
             file,
@@ -120,6 +122,7 @@ impl TodoProjection {
 
     fn reset(&mut self) {
         self.filters = TodoFilters::default();
+        self.search_text.clear();
         self.sort_override = None;
         self.grouped = false;
         #[cfg(feature = "screenshot")]
@@ -135,6 +138,10 @@ impl TodoProjection {
 
     pub fn filters(&self) -> &TodoFilters {
         &self.filters
+    }
+
+    pub fn search_text(&self) -> &str {
+        &self.search_text
     }
 
     pub fn facets(&self) -> &Facets {
@@ -175,15 +182,16 @@ impl TodoProjection {
     }
 
     pub fn set_search(&mut self, search: String) {
-        self.filters.search = search;
+        self.filters.search = search.split_whitespace().map(str::to_owned).collect();
+        self.search_text = search;
     }
 
     pub fn toggle_project(&mut self, value: &str) {
-        toggle(&mut self.filters.project, value.to_owned());
+        toggle_one(&mut self.filters.projects, value);
     }
 
     pub fn toggle_context(&mut self, value: &str) {
-        toggle(&mut self.filters.context, value.to_owned());
+        toggle_one(&mut self.filters.contexts, value);
     }
 
     /// Ignored in the Completed view, as in the Electron app.
@@ -203,6 +211,7 @@ impl TodoProjection {
     /// Clears search and Facet selections; the completion view, sort, and grouping stay.
     pub fn clear(&mut self) {
         self.filters.clear();
+        self.search_text.clear();
     }
 
     pub fn set_sort(&mut self, sort: TodoSortOrder) {
@@ -220,15 +229,15 @@ impl TodoProjection {
     fn apply_screenshot_preset(&mut self) {
         let var = |name| std::env::var(name).ok().filter(|v| !v.is_empty());
         if let Some(search) = var("TUXEDO_SEARCH") {
-            self.filters.search = search;
+            self.set_search(search);
         }
         match var("TUXEDO_COMPLETION").as_deref() {
             Some("open") => self.filters.completion = CompletionView::Open,
             Some("completed") => self.filters.completion = CompletionView::Completed,
             _ => {}
         }
-        self.filters.project = var("TUXEDO_PROJECT");
-        self.filters.context = var("TUXEDO_CONTEXT");
+        self.filters.projects = var("TUXEDO_PROJECT").into_iter().collect();
+        self.filters.contexts = var("TUXEDO_CONTEXT").into_iter().collect();
         match var("TUXEDO_SORT").as_deref() {
             Some("due") => self.sort_override = Some(TodoSortOrder::Due),
             Some("file") => self.sort_override = Some(TodoSortOrder::File),
@@ -236,6 +245,15 @@ impl TodoProjection {
         }
         self.grouped = var("TUXEDO_GROUP").as_deref() == Some("due");
     }
+}
+
+/// Selects only `value`, or nothing when it is already the sole selection.
+fn toggle_one(selection: &mut Vec<String>, value: &str) {
+    *selection = if selection.len() == 1 && selection[0] == value {
+        Vec::new()
+    } else {
+        vec![value.to_owned()]
+    };
 }
 
 fn toggle<T: PartialEq>(selection: &mut Option<T>, value: T) {
@@ -321,7 +339,7 @@ mod tests {
             ]
         );
 
-        // Same Workspace, changed file: kept selections stay, the vanished Context is dropped.
+        // Same Workspace, changed file: every selection stays, even the vanished Context.
         let edited = snapshot(
             "work",
             "(A) Open +Work\nx Done +Work\n",
@@ -331,11 +349,15 @@ mod tests {
         let filters = projection.filters();
         assert_eq!(
             (
-                filters.search.as_str(),
-                filters.project.as_deref(),
-                filters.context.as_deref()
+                projection.search_text(),
+                filters.projects.as_slice(),
+                filters.contexts.as_slice()
             ),
-            ("open", Some("Work"), None)
+            (
+                "open",
+                ["Work".to_owned()].as_slice(),
+                ["Home".to_owned()].as_slice()
+            )
         );
         assert_eq!(projection.sort(&edited), TodoSortOrder::File);
 

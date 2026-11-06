@@ -24,7 +24,8 @@ pub use todo::{
 };
 pub use todo_query::{
     deferred_count, group_todos_by_due, invalid_due_count, is_deferred, project_todos, todo_facets,
-    CompletionView, DueGroup, DueGroupKind, FacetValue, Facets, TodoFilters,
+    AbsentSelections, CompletionView, DueGroup, DueGroupKind, FacetValue, Facets, QueryError,
+    QueryErrorKind, QueryKey, TodoFilters, COMPLETION_VALUES, DUE_VALUES, QUERY_GRAMMAR_VERSION,
 };
 pub use todo_write::{TodoTarget, TodoWriteRequest, TodoWriteResult, TodoWriteStatus, UndoToken};
 pub use workspace_write::{WorkspaceChange, WorkspaceWriteRequest, WorkspaceWriteResult};

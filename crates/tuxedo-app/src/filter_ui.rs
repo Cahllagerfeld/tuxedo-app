@@ -290,7 +290,7 @@ pub fn render_facet_sections(
         "project",
         "+",
         &facets.projects,
-        filters.project.as_deref(),
+        filters.projects.first().map(String::as_str),
         |f| FilterEdit::Project(f.value.clone()),
     );
     let contexts = named(
@@ -298,7 +298,7 @@ pub fn render_facet_sections(
         "context",
         "@",
         &facets.contexts,
-        filters.context.as_deref(),
+        filters.contexts.first().map(String::as_str),
         |f| FilterEdit::Context(f.value.clone()),
     );
     let priority = filters.priority.map(|c| c.to_string());
