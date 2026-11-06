@@ -532,6 +532,41 @@ fn has_key(word: &str, key: QueryKey) -> bool {
     split_key(word).is_some_and(|(k, _)| k == key)
 }
 
+/// The query's last word when nothing follows it, with its start: what is being typed at the
+/// end. A quoted Project or Context name is decoded (`+"a\"b` reads `+a"b`, an unterminated
+/// quote running to the end); a quoted phrase is literal search text, so it gives `None`, as
+/// do an empty query and trailing whitespace.
+pub fn query_final_word(query: &str) -> Option<(usize, String)> {
+    let word = lenient_words(query).pop()?;
+    if word.end != query.len() {
+        return None;
+    }
+    let text = &query[word.clone()];
+    if text.starts_with('"') {
+        return None;
+    }
+    let Some(quoted) = text
+        .strip_prefix(['+', '@'])
+        .and_then(|r| r.strip_prefix('"'))
+    else {
+        return Some((word.start, text.to_owned()));
+    };
+    let mut decoded = text[..1].to_owned();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => break,
+            '\\' => match chars.next() {
+                Some(escaped @ ('"' | '\\')) => decoded.push(escaped),
+                Some(other) => decoded.extend(['\\', other]),
+                None => decoded.push('\\'),
+            },
+            _ => decoded.push(c),
+        }
+    }
+    Some((word.start, decoded))
+}
+
 /// The range of the unquoted word the caret at byte `caret` is in or directly after, for
 /// autocomplete; `None` on whitespace or inside a quoted word.
 pub fn query_word_at(query: &str, caret: usize) -> Option<Range<usize>> {

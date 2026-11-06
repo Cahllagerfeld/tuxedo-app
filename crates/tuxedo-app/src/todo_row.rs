@@ -134,6 +134,7 @@ pub fn render(
                 )
                 .child(
                     // Tokens take what the description leaves; the date column clips the rest.
+                    // A compact row's count never shrinks, so its first token gives way.
                     h_flex()
                         .flex_1()
                         .min_w_0()
@@ -144,7 +145,7 @@ pub fn render(
                         .text_color(muted_fg)
                         .children(tokens.into_iter().take(shown).map(|token| {
                             div()
-                                .when(compact, |t| t.min_w(px(56.)).truncate())
+                                .when(compact, |t| t.min_w_0().truncate())
                                 .when(!compact, |t| t.flex_shrink_0())
                                 .child(token)
                         }))
@@ -161,8 +162,10 @@ pub fn render(
                 ),
         )
         .child(
+            // A compact row lets the date column fit its date, leaving dateless rows' width
+            // to the tokens; dates still end at the row's right edge.
             div()
-                .w(px(DATE_WIDTH))
+                .when(!compact, |d| d.w(px(DATE_WIDTH)))
                 .flex_shrink_0()
                 .flex()
                 .justify_end()

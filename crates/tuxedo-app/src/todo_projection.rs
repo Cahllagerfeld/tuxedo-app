@@ -10,9 +10,9 @@ use std::sync::LazyLock;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 use tuxedo_core::{
-    group_todos_by_due, invalid_due_count, is_deferred, project_todos, query_word_at, todo_facets,
-    AbsentSelections, CompletionView, DueGroupKind, Facets, QueryError, TodoDate, TodoFilters,
-    TodoItem, TodoSortOrder, WorkspaceSnapshot, COMPLETION_VALUES, DUE_VALUES,
+    group_todos_by_due, invalid_due_count, is_deferred, project_todos, query_final_word,
+    todo_facets, AbsentSelections, CompletionView, DueGroupKind, Facets, QueryError, TodoDate,
+    TodoFilters, TodoItem, TodoSortOrder, WorkspaceSnapshot, COMPLETION_VALUES, DUE_VALUES,
 };
 
 /// Root-locale collation, as the Electron app's `String.prototype.localeCompare` applies it
@@ -315,9 +315,10 @@ impl TodoProjection {
     fn reparse(&mut self) {
         self.prefix = None;
         let query = &self.query;
-        let typed = query_word_at(query, query.len())
+        // The final word, with a quoted name decoded; a quoted phrase stays literal search.
+        let typed = query_final_word(query)
             .filter(|_| self.typing)
-            .and_then(|word| Some((TypedPrefix::of(&query[word.clone()])?, word.start)));
+            .and_then(|(start, word)| Some((TypedPrefix::of(&word)?, start)));
         if let Some((prefix, start)) = typed {
             if let Ok(filters) = TodoFilters::parse(&query[..start]) {
                 self.filters = filters;
@@ -464,6 +465,32 @@ mod tests {
         projection.set_query("+wo ".into());
         projection.sync(Some(&edited), today());
         assert_eq!(projection.shown(), 0);
+        // A quoted name decodes before matching; a quoted phrase stays literal search text.
+        let quoted = snapshot(
+            "work",
+            "(A) Open +Work @a\"b\nx Done +Work\n",
+            Some(TodoSortOrder::Due),
+        );
+        for (query, prefix, shown) in [
+            (r#"+"w""#, Some("w"), 2),
+            (r#"@"A\""#, Some(r#"A""#), 1),
+            (r#""+w""#, None, 2),
+        ] {
+            projection.set_query(query.into());
+            projection.sync(Some(&quoted), today());
+            let typed = projection.prefix().map(|p| p.typed.as_str());
+            assert_eq!((typed, projection.shown()), (prefix, shown), "{query:?}");
+            assert_eq!(projection.query(), query);
+        }
+        projection.set_query(r#"+"w" "#.into());
+        projection.sync(Some(&quoted), today());
+        assert_eq!((projection.prefix(), projection.shown()), (None, 0));
+        projection.set_query(r#"+"w""#.into());
+        projection.set_typing(false);
+        projection.sync(Some(&quoted), today());
+        assert_eq!((projection.prefix(), projection.shown()), (None, 0));
+        projection.set_typing(true);
+
         projection.set_query("is:o".into());
         projection.sync(Some(&edited), today());
         assert_eq!((projection.shown(), projection.error()), (1, None));
