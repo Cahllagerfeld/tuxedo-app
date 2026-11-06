@@ -434,10 +434,23 @@ mod tests {
             app.read_with(cx, |app, cx| app.list_view.query_text(cx))
         };
 
-        // Cmd-F focuses the field; `+W` offers +Web then +Work; Down and Enter take +Work.
+        // Cmd-F focuses the field; `+W` offers +Web then +Work, opening on the first; Down
+        // highlights +Work, Up and Down wrap, and Enter takes the highlighted row.
+        let highlighted = |cx: &mut gpui::VisualTestContext| {
+            app.update_in(cx, |app, window, cx| {
+                app.list_view.highlighted_row(window, cx)
+            })
+        };
         cx.simulate_keystrokes("cmd-f");
         cx.simulate_input("pl +W");
-        cx.simulate_keystrokes("down enter");
+        assert_eq!(highlighted(cx), Some(0));
+        cx.simulate_keystrokes("up");
+        assert_eq!(highlighted(cx), Some(1));
+        cx.simulate_keystrokes("down");
+        assert_eq!(highlighted(cx), Some(0));
+        cx.simulate_keystrokes("down");
+        assert_eq!(highlighted(cx), Some(1));
+        cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         assert_eq!(query(cx), "pl +Work ");
 

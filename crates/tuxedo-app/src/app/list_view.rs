@@ -39,8 +39,9 @@ const DATE_POLL: Duration = Duration::from_secs(60);
 pub(super) struct ListView {
     projection: TodoProjection,
     query: Entity<InputState>,
-    /// The highlighted autocomplete row.
-    highlighted: usize,
+    /// The highlighted autocomplete row and the word it belongs to. Any other word, such as
+    /// one the caret moved to, opens with its first row highlighted.
+    highlight: Option<(Range<usize>, usize)>,
     /// Escape closed the popover; the next edit reopens it.
     dismissed: bool,
     /// The query field lives in the window; set it there when an edit elsewhere changes it.
@@ -101,7 +102,7 @@ impl ListView {
         Self {
             projection: TodoProjection::new(local_today()),
             query,
-            highlighted: 0,
+            highlight: None,
             dismissed: false,
             window: window.window_handle(),
             _subscriptions: [changed, focus],
@@ -122,7 +123,7 @@ impl ListView {
             return false;
         }
         if edited {
-            self.highlighted = 0;
+            self.highlight = None;
             self.dismissed = false;
             self.projection.set_query(text);
         }
@@ -157,6 +158,13 @@ impl ListView {
     #[cfg(test)]
     pub(super) fn query_text(&self, cx: &App) -> String {
         self.query.read(cx).value().to_string()
+    }
+
+    /// The open popover's highlighted row.
+    #[cfg(test)]
+    pub(super) fn highlighted_row(&self, window: &Window, cx: &App) -> Option<usize> {
+        let (word, offered) = self.popover(window, cx)?;
+        Some(self.highlighted(&word, offered.len()))
     }
 
     #[cfg(test)]
@@ -232,6 +240,14 @@ impl ListView {
         (!offered.is_empty()).then_some((word, offered))
     }
 
+    /// The highlighted row of the popover open on `word`, offering `len` suggestions.
+    fn highlighted(&self, word: &Range<usize>, len: usize) -> usize {
+        match &self.highlight {
+            Some((at, row)) if at == word => (*row).min(len - 1),
+            _ => 0,
+        }
+    }
+
     /// Handles a popover key, or lets it through to the field while the popover is closed.
     fn on_popover_key(
         app: &mut TuxedoApp,
@@ -239,19 +255,23 @@ impl ListView {
         window: &mut Window,
         cx: &mut Context<TuxedoApp>,
     ) {
-        let Some((_, offered)) = app.list_view.popover(window, cx) else {
+        let Some((word, offered)) = app.list_view.popover(window, cx) else {
             return;
         };
         cx.stop_propagation();
         let this = &mut app.list_view;
         let last = offered.len() - 1;
-        let current = this.highlighted.min(last);
-        match key {
-            PopoverKey::Up => this.highlighted = current.checked_sub(1).unwrap_or(last),
-            PopoverKey::Down => this.highlighted = if current == last { 0 } else { current + 1 },
-            PopoverKey::Close => this.dismissed = true,
+        let current = this.highlighted(&word, offered.len());
+        let next = match key {
+            PopoverKey::Up => current.checked_sub(1).unwrap_or(last),
+            PopoverKey::Down => (current + 1) % offered.len(),
+            PopoverKey::Close => {
+                this.dismissed = true;
+                current
+            }
             PopoverKey::Accept => return Self::accept(app, current, window, cx),
-        }
+        };
+        this.highlight = Some((word, next));
         cx.notify();
     }
 
@@ -274,7 +294,7 @@ impl ListView {
             state.set_selected_range(caret..caret, cx);
             state.focus(window, cx);
         });
-        app.list_view.highlighted = 0;
+        app.list_view.highlight = None;
         if app.list_view.query_changed(window, cx) {
             app.session_changed(cx);
         }
@@ -313,7 +333,7 @@ impl ListView {
             &self.projection,
             popover
                 .as_ref()
-                .map(|(_, offered)| (offered.as_slice(), self.highlighted.min(offered.len() - 1))),
+                .map(|(word, offered)| (offered.as_slice(), self.highlighted(word, offered.len()))),
             on_accept,
             &on_edit,
             window.viewport_size().width < px(COMPACT_WINDOW_WIDTH),

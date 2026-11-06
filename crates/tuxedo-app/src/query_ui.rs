@@ -199,8 +199,13 @@ pub fn render_field_row(
                         .gap_2()
                         .rounded(px(5.))
                         .cursor_pointer()
-                        .when(active, |row| row.bg(hex(p.muted)))
-                        .hover(|row| row.bg(hex(p.muted)))
+                        // The selected row, as in the Add filter menu: `accent` stands out
+                        // from the popover in both appearances, where `muted` matches it
+                        // in dark. Hover would override it, so only other rows take hover.
+                        .when(active, |row| {
+                            row.bg(hex(p.accent)).text_color(hex(p.accent_foreground))
+                        })
+                        .when(!active, |row| row.hover(|row| row.bg(hex(p.muted))))
                         // On mouse down, before the field loses focus to the click.
                         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                             cx.stop_propagation();
