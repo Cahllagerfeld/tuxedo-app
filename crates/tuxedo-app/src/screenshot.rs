@@ -11,6 +11,8 @@
 //!   on the displayed Workspace
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner;
 //!   `TUXEDO_SCROLL_AT=<x>,<y>` scrolls and hovers at that window point instead (the sidebar)
+//! - `TUXEDO_FOCUS=query`: put the caret at the end of the query field (which opens the
+//!   autocomplete popover when the last word can complete), after any clicks
 //! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
 //!   transition (the most recent frame drawn by then)
 
@@ -106,6 +108,13 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             })
             .ok();
             settle(cx, 1000).await;
+        }
+        if std::env::var("TUXEDO_FOCUS").as_deref() == Ok("query") {
+            cx.update_window(window, |_, window, cx| {
+                root.update(cx, |app, cx| app.focus_query(window, cx))
+            })
+            .ok();
+            settle(cx, 500).await;
         }
         if let Some(offset) = std::env::var("TUXEDO_SCROLL")
             .ok()

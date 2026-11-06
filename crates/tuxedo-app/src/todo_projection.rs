@@ -1,7 +1,7 @@
-//! The List view's projection state: filter selections, search, sort override, and Due
-//! grouping for the selected Workspace, with the displayed rows cached until accepted data,
-//! a filter, or the local date changes. The rules themselves live in `tuxedo_core`'s
-//! `todo_query`; this module owns only the state and the locale collation.
+//! The List view's projection state: the text query and the filters it last parsed to, the
+//! sort override, and Due grouping for the selected Workspace, with the displayed rows cached
+//! until accepted data, the query, or the local date changes. The rules themselves live in
+//! `tuxedo_core`'s `todo_query`; this module owns only the state and the locale collation.
 
 use std::cmp::Ordering;
 use std::rc::Rc;
@@ -10,9 +10,9 @@ use std::sync::LazyLock;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 use tuxedo_core::{
-    deferred_count, group_todos_by_due, invalid_due_count, project_todos, todo_facets,
-    CompletionView, DueCategory, DueGroupKind, Facets, TodoDate, TodoFilters, TodoSortOrder,
-    WorkspaceSnapshot,
+    deferred_count, group_todos_by_due, invalid_due_count, project_todos, query_with_condition,
+    todo_facets, AbsentSelections, CompletionView, DueGroupKind, Facets, QueryCondition,
+    QueryError, TodoDate, TodoFilters, TodoSortOrder, WorkspaceSnapshot,
 };
 
 /// Root-locale collation, as the Electron app's `String.prototype.localeCompare` applies it
@@ -37,11 +37,15 @@ pub enum Row {
 }
 
 pub struct TodoProjection {
-    /// The Workspace the selections belong to; another ID resets them.
+    /// The Workspace the query belongs to; another ID clears it.
     workspace_id: Option<String>,
+    /// The query field's text: the single source of truth for the filters.
+    query: String,
+    /// What `query` parsed to, or the last valid query's filters while it has an error.
     filters: TodoFilters,
-    /// The search field's text, split into `filters.search`.
-    search_text: String,
+    error: Option<QueryError>,
+    /// Retained selections the current data does not offer.
+    absent: AbsentSelections,
     /// A local sort choice for this session; the Workspace's saved order applies otherwise.
     sort_override: Option<TodoSortOrder>,
     grouped: bool,
@@ -58,8 +62,10 @@ impl TodoProjection {
     pub fn new(today: TodoDate) -> Self {
         Self {
             workspace_id: None,
+            query: String::new(),
             filters: TodoFilters::default(),
-            search_text: String::new(),
+            error: None,
+            absent: AbsentSelections::default(),
             sort_override: None,
             grouped: false,
             today,
@@ -72,8 +78,8 @@ impl TodoProjection {
     }
 
     /// Recomputes the rows for accepted session data or a new local date. A different
-    /// Workspace ID resets every selection, the sort override, and grouping; the same
-    /// Workspace keeps them and drops only values its data no longer offers.
+    /// Workspace ID clears the query, the sort override, and grouping; the same Workspace
+    /// keeps them, including selections its data no longer offers, which match nothing.
     pub fn sync(&mut self, selected: Option<&WorkspaceSnapshot>, today: TodoDate) {
         let id = selected.map(|s| s.workspace.id.as_str());
         if self.workspace_id.as_deref() != id {
@@ -83,12 +89,14 @@ impl TodoProjection {
         self.today = today;
         let Some(selected) = selected else {
             self.facets = Facets::default();
+            self.absent = AbsentSelections::default();
             self.rows = Rc::from([]);
             (self.shown, self.deferred, self.invalid_due) = (0, 0, 0);
             return;
         };
         let file = &selected.file;
         self.facets = todo_facets(file, self.filters.completion, locale_compare);
+        self.absent = self.filters.absent(&self.facets);
         let show_deferred = selected.workspace.show_deferred.unwrap_or(false);
         let indices = project_todos(
             file,
@@ -121,8 +129,7 @@ impl TodoProjection {
     }
 
     fn reset(&mut self) {
-        self.filters = TodoFilters::default();
-        self.search_text.clear();
+        self.set_query(String::new());
         self.sort_override = None;
         self.grouped = false;
         #[cfg(feature = "screenshot")]
@@ -140,8 +147,17 @@ impl TodoProjection {
         &self.filters
     }
 
-    pub fn search_text(&self) -> &str {
-        &self.search_text
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// Why the query cannot apply; the filters are then the last valid query's.
+    pub fn error(&self) -> Option<&QueryError> {
+        self.error.as_ref()
+    }
+
+    pub fn absent(&self) -> &AbsentSelections {
+        &self.absent
     }
 
     pub fn facets(&self) -> &Facets {
@@ -174,44 +190,35 @@ impl TodoProjection {
         self.today
     }
 
-    // Edits below change only the selections; the caller then calls `sync` with the current
-    // session data, which also reconciles them.
+    // Edits below change only the query; the caller then calls `sync` with the current
+    // session data and shows the query in the field.
 
+    /// Takes the field's text. A valid query replaces the filters; an invalid one keeps the
+    /// last valid filters and records the error.
+    pub fn set_query(&mut self, query: String) {
+        match TodoFilters::parse(&query) {
+            Ok(filters) => {
+                self.filters = filters;
+                self.error = None;
+            }
+            Err(error) => self.error = Some(error),
+        }
+        self.query = query;
+    }
+
+    /// Rewrites the query's `is:` word (Overview); Completed also drops `pri:` and `due:`.
     pub fn set_completion(&mut self, completion: CompletionView) {
-        self.filters.completion = completion;
+        self.add_condition(&QueryCondition::Completion(completion));
     }
 
-    pub fn set_search(&mut self, search: String) {
-        self.filters.search = search.split_whitespace().map(str::to_owned).collect();
-        self.search_text = search;
+    /// Appends a condition, replacing a `pri:`, `due:`, or `is:` of the same key.
+    pub fn add_condition(&mut self, condition: &QueryCondition) {
+        self.set_query(query_with_condition(&self.query, condition));
     }
 
-    pub fn toggle_project(&mut self, value: &str) {
-        toggle_one(&mut self.filters.projects, value);
-    }
-
-    pub fn toggle_context(&mut self, value: &str) {
-        toggle_one(&mut self.filters.contexts, value);
-    }
-
-    /// Ignored in the Completed view, as in the Electron app.
-    pub fn toggle_priority(&mut self, value: char) {
-        if self.filters.completion != CompletionView::Completed {
-            toggle(&mut self.filters.priority, value);
-        }
-    }
-
-    /// Ignored in the Completed view, as in the Electron app.
-    pub fn toggle_due(&mut self, value: DueCategory) {
-        if self.filters.completion != CompletionView::Completed {
-            toggle(&mut self.filters.due, value);
-        }
-    }
-
-    /// Clears search and Facet selections; the completion view, sort, and grouping stay.
+    /// Clears the whole query, which also selects the All view.
     pub fn clear(&mut self) {
-        self.filters.clear();
-        self.search_text.clear();
+        self.set_query(String::new());
     }
 
     pub fn set_sort(&mut self, sort: TodoSortOrder) {
@@ -222,22 +229,14 @@ impl TodoProjection {
         self.grouped = grouped;
     }
 
-    /// `TUXEDO_SEARCH`, `TUXEDO_COMPLETION=open|completed`, `TUXEDO_PROJECT`,
-    /// `TUXEDO_CONTEXT`, `TUXEDO_SORT=due|file`, and `TUXEDO_GROUP=due` preselect the
-    /// projection of each Workspace the screenshot shows.
+    /// `TUXEDO_QUERY=<text>` (or its older name `TUXEDO_SEARCH`), `TUXEDO_SORT=due|file`,
+    /// and `TUXEDO_GROUP=due` preselect the projection of each Workspace the screenshot shows.
     #[cfg(feature = "screenshot")]
     fn apply_screenshot_preset(&mut self) {
         let var = |name| std::env::var(name).ok().filter(|v| !v.is_empty());
-        if let Some(search) = var("TUXEDO_SEARCH") {
-            self.set_search(search);
+        if let Some(query) = var("TUXEDO_QUERY").or_else(|| var("TUXEDO_SEARCH")) {
+            self.set_query(query);
         }
-        match var("TUXEDO_COMPLETION").as_deref() {
-            Some("open") => self.filters.completion = CompletionView::Open,
-            Some("completed") => self.filters.completion = CompletionView::Completed,
-            _ => {}
-        }
-        self.filters.projects = var("TUXEDO_PROJECT").into_iter().collect();
-        self.filters.contexts = var("TUXEDO_CONTEXT").into_iter().collect();
         match var("TUXEDO_SORT").as_deref() {
             Some("due") => self.sort_override = Some(TodoSortOrder::Due),
             Some("file") => self.sort_override = Some(TodoSortOrder::File),
@@ -245,23 +244,6 @@ impl TodoProjection {
         }
         self.grouped = var("TUXEDO_GROUP").as_deref() == Some("due");
     }
-}
-
-/// Selects only `value`, or nothing when it is already the sole selection.
-fn toggle_one(selection: &mut Vec<String>, value: &str) {
-    *selection = if selection.len() == 1 && selection[0] == value {
-        Vec::new()
-    } else {
-        vec![value.to_owned()]
-    };
-}
-
-fn toggle<T: PartialEq>(selection: &mut Option<T>, value: T) {
-    *selection = if selection.as_ref() == Some(&value) {
-        None
-    } else {
-        Some(value)
-    };
 }
 
 #[cfg(test)]
@@ -316,15 +298,15 @@ mod tests {
     }
 
     #[test]
-    fn selections_survive_same_workspace_updates_and_reset_for_another_workspace() {
+    fn the_query_survives_same_workspace_updates_and_clears_for_another_workspace() {
         let text = "(A) Open +Work @Home due:2026-10-14\n(B) Other +Home\nx Done +Work\n";
         let work = snapshot("work", text, Some(TodoSortOrder::Due));
         let mut projection = TodoProjection::new(today());
         projection.sync(Some(&work), today());
+        projection.set_query("open +Work".into());
         projection.set_completion(CompletionView::Open);
-        projection.set_search("open".into());
-        projection.toggle_project("Work");
-        projection.toggle_context("Home");
+        projection.add_condition(&QueryCondition::Context("Home".into()));
+        assert_eq!(projection.query(), "open +Work is:open @Home ");
         projection.set_sort(TodoSortOrder::File);
         projection.set_grouped(true);
         projection.sync(Some(&work), today());
@@ -339,31 +321,35 @@ mod tests {
             ]
         );
 
-        // Same Workspace, changed file: every selection stays, even the vanished Context.
+        // An invalid edit keeps the last valid results.
+        projection.set_query("open +Work is:open @Home pri:".into());
+        projection.sync(Some(&work), today());
+        assert!(projection.error().is_some());
+        assert_eq!(projection.shown(), 1);
+
+        // Same Workspace, changed file: the query stays, and the vanished Context is reported.
+        projection.set_query("open +Work is:open @Home".into());
         let edited = snapshot(
             "work",
             "(A) Open +Work\nx Done +Work\n",
             Some(TodoSortOrder::Due),
         );
         projection.sync(Some(&edited), today());
-        let filters = projection.filters();
-        assert_eq!(
-            (
-                projection.search_text(),
-                filters.projects.as_slice(),
-                filters.contexts.as_slice()
-            ),
-            (
-                "open",
-                ["Work".to_owned()].as_slice(),
-                ["Home".to_owned()].as_slice()
-            )
-        );
+        assert_eq!(projection.query(), "open +Work is:open @Home");
+        assert_eq!(projection.absent().contexts, ["Home".to_owned()]);
+        assert_eq!(projection.shown(), 0);
         assert_eq!(projection.sort(&edited), TodoSortOrder::File);
+
+        // Choosing Completed in Overview drops the conditions that view cannot filter by.
+        projection.add_condition(&QueryCondition::Priority('A'));
+        projection.set_completion(CompletionView::Completed);
+        assert_eq!(projection.query(), "open +Work @Home is:completed ");
+        assert!(projection.error().is_none());
 
         // Another Workspace with the same contents: everything resets, its saved order applies.
         let other = snapshot("other", text, Some(TodoSortOrder::Due));
         projection.sync(Some(&other), today());
+        assert_eq!(projection.query(), "");
         assert_eq!(projection.filters(), &TodoFilters::default());
         assert!(!projection.grouped());
         assert_eq!(projection.sort(&other), TodoSortOrder::Due);

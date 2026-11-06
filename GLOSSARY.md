@@ -136,6 +136,10 @@ The saved collection of Workspaces and the Active workspace reference. If it can
 **Saved view**:
 A named, Workspace-specific copy of the Todo-item text search, completion view, and Project, Context, Priority, and Due-date filters. Applying it replaces the current filters, keeps date categories relative to the current local date, and retains absent selections so that they produce zero matches.
 
+**Query**:
+The native List view's filter text, the single source of its filters: `+Project`, `@Context`, `pri:A`, `due:<category>`, and `is:<view>` conditions plus search words, all ANDed. Several Projects or Contexts require every one; Priority, Due date, and completion view appear at most once. Quoted phrases search literally. An invalid Query keeps the last valid results, and selections the data no longer offers stay in the Query and match nothing.
+_Avoid_: Filter string, search bar
+
 **Recurring Todo item**:
 A Todo item configured to generate one open successor when completed, with its next Due date relative to the recorded Completion date.
 

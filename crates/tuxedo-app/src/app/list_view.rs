@@ -2,39 +2,58 @@
 //! status bar. Rows themselves render in `todo_row`.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::input::{
+    Enter, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp,
+};
 use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
+use std::ops::Range;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gpui_kit::component::input::{InputEvent, InputState};
-
-use tuxedo_core::{TodoDate, WorkspaceSnapshot};
+use tuxedo_core::{query_word_at, TodoDate, WorkspaceSnapshot};
 
 use super::TuxedoApp;
 use crate::command_queue::{Command, TodoCommand};
-use crate::filter_ui::{self, FilterEdit, OnEdit};
 use crate::model::{SessionModel, SessionState};
+use crate::query_ui::{self, FilterEdit, OnAccept, OnEdit, Suggestion};
 use crate::theme::{hex, Palette};
 use crate::todo_commands::{self, local_today};
 use crate::todo_projection::{Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
+/// Below this window width the query bar drops its shortcut hint and button label, so the
+/// field keeps room beside an open sidebar.
+const COMPACT_WINDOW_WIDTH: f32 = 960.;
+
 /// How often the List view checks whether the local date changed.
 const DATE_POLL: Duration = Duration::from_secs(60);
 
 /// List-view-local UI state: the projection of the selected Todo file into displayed rows,
-/// with its filters, search, sort, and grouping.
+/// with its query, sort, and grouping, and the query field's autocomplete.
 pub(super) struct ListView {
     projection: TodoProjection,
-    search: Entity<InputState>,
-    /// The search field lives in the window; set it there when a reset clears the search.
+    query: Entity<InputState>,
+    /// The highlighted autocomplete row.
+    highlighted: usize,
+    /// Escape closed the popover; the next edit reopens it.
+    dismissed: bool,
+    /// The query field lives in the window; set it there when an edit elsewhere changes it.
     window: AnyWindowHandle,
-    _subscriptions: [Subscription; 1],
+    _subscriptions: [Subscription; 2],
     /// Recomputes the projection when the local date changes.
     _date_watch: Task<()>,
+}
+
+/// A key the autocomplete popover takes while it is open.
+#[derive(Debug, Clone, Copy)]
+enum PopoverKey {
+    Up,
+    Down,
+    Accept,
+    Close,
 }
 
 impl ListView {
@@ -47,14 +66,18 @@ impl ListView {
         {
             window.resize(size(px(width), window.viewport_size().height));
         }
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search Todo items…"));
-        let typed = cx.subscribe(&search, |app, search, event: &InputEvent, cx| {
+        let query = cx.new(|cx| InputState::new(window, cx).placeholder(query_ui::PLACEHOLDER));
+        let typed = cx.subscribe(&query, |app, query, event: &InputEvent, cx| {
             if let InputEvent::Change = event {
-                let text = search.read(cx).value().to_string();
-                app.list_view.edit(FilterEdit::Search(text));
+                let text = query.read(cx).value().to_string();
+                app.list_view.highlighted = 0;
+                app.list_view.dismissed = false;
+                app.list_view.edit(FilterEdit::Query(text));
                 app.session_changed(cx);
             }
         });
+        // Caret moves change the word being completed; redraw for them too.
+        let caret = cx.observe(&query, |_, _, cx| cx.notify());
         let date_watch = cx.spawn(async move |app, cx| loop {
             cx.background_executor().timer(DATE_POLL).await;
             let changed = app.update(cx, |app, cx| {
@@ -68,78 +91,217 @@ impl ListView {
         });
         Self {
             projection: TodoProjection::new(local_today()),
-            search,
+            query,
+            highlighted: 0,
+            dismissed: false,
             window: window.window_handle(),
-            _subscriptions: [typed],
+            _subscriptions: [typed, caret],
             _date_watch: date_watch,
         }
     }
 
-    /// Recomputes the displayed rows after accepted session data, a filter, or the local date
-    /// changes. A different Workspace resets the filters; the same one keeps and reconciles them.
+    /// Recomputes the displayed rows after accepted session data, a query edit, or the local
+    /// date changes. A different Workspace clears the query; the same one keeps it.
     pub(super) fn reproject(&mut self, selected: Option<&WorkspaceSnapshot>, today: TodoDate) {
         self.projection.sync(selected, today);
     }
 
-    /// Shows the projection's search in the field after a reset changed it.
-    pub(super) fn sync_search_field(&self, cx: &mut Context<TuxedoApp>) {
-        let wanted = self.projection.search_text().to_owned();
-        if self.search.read(cx).value().as_ref() == wanted {
+    /// Shows the projection's query in the field after an edit elsewhere (Overview, Add
+    /// filter, Clear, a Workspace change) rewrote it. Setting the field emits no change.
+    pub(super) fn sync_query_field(&self, cx: &mut Context<TuxedoApp>) {
+        let wanted = self.projection.query().to_owned();
+        if self.query.read(cx).value().as_ref() == wanted {
             return;
         }
-        let search = self.search.clone();
+        let query = self.query.clone();
         let window = self.window;
         cx.defer(move |cx| {
             window
                 .update(cx, |_, window, cx| {
-                    search.update(cx, |state, cx| state.set_value(wanted, window, cx))
+                    query.update(cx, |state, cx| state.set_value(wanted, window, cx))
                 })
                 .ok();
         });
     }
 
-    /// Applies a filter control's edit; the caller then recomputes via `session_changed`.
+    #[cfg(test)]
+    pub(super) fn query_text(&self, cx: &App) -> String {
+        self.query.read(cx).value().to_string()
+    }
+
+    /// Cmd-F: puts the caret in the query field.
+    pub(super) fn focus_query(&self, window: &mut Window, cx: &mut Context<TuxedoApp>) {
+        self.query.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// Applies a control's edit; the caller then recomputes via `session_changed`, which
+    /// also shows a rewritten query in the field.
     fn edit(&mut self, edit: FilterEdit) {
         let p = &mut self.projection;
         match edit {
+            FilterEdit::Query(text) => p.set_query(text),
             FilterEdit::Completion(view) => p.set_completion(view),
-            FilterEdit::Search(text) => p.set_search(text),
-            FilterEdit::Project(value) => p.toggle_project(&value),
-            FilterEdit::Context(value) => p.toggle_context(&value),
-            FilterEdit::Priority(value) => p.toggle_priority(value),
-            FilterEdit::Due(value) => p.toggle_due(value),
+            FilterEdit::Add(condition) => p.add_condition(&condition),
             FilterEdit::Clear => p.clear(),
             FilterEdit::Sort(sort) => p.set_sort(sort),
             FilterEdit::Grouped(grouped) => p.set_grouped(grouped),
         }
     }
 
-    /// The projection whose Facets the sidebar shows, while the toolbar shows too.
-    pub(super) fn facets(&self, selected: Option<&WorkspaceSnapshot>) -> Option<&TodoProjection> {
+    /// The projection, while the selected Workspace has Todo items to filter.
+    pub(super) fn projection(
+        &self,
+        selected: Option<&WorkspaceSnapshot>,
+    ) -> Option<&TodoProjection> {
         selected.filter(|s| !s.file.items.is_empty())?;
         Some(&self.projection)
     }
 
-    /// The toolbar above the list: search, completion view, sort and grouping.
-    fn render_toolbar(
+    /// The word at the caret and what it can complete to, while the field has focus and the
+    /// popover was not dismissed.
+    fn popover(&self, window: &Window, cx: &App) -> Option<(Range<usize>, Vec<Suggestion>)> {
+        let state = self.query.read(cx);
+        if self.dismissed || !state.focus_handle(cx).is_focused(window) {
+            return None;
+        }
+        let text = state.value();
+        let caret = state.cursor();
+        let word = query_word_at(&text, caret)?;
+        let offered = query_ui::suggestions(&text[word.start..caret], &self.projection);
+        (!offered.is_empty()).then_some((word, offered))
+    }
+
+    /// Handles a popover key, or lets it through to the field while the popover is closed.
+    fn on_popover_key(
+        app: &mut TuxedoApp,
+        key: PopoverKey,
+        window: &mut Window,
+        cx: &mut Context<TuxedoApp>,
+    ) {
+        let Some((_, offered)) = app.list_view.popover(window, cx) else {
+            return;
+        };
+        cx.stop_propagation();
+        let this = &mut app.list_view;
+        let last = offered.len() - 1;
+        let current = this.highlighted.min(last);
+        match key {
+            PopoverKey::Up => this.highlighted = current.checked_sub(1).unwrap_or(last),
+            PopoverKey::Down => this.highlighted = if current == last { 0 } else { current + 1 },
+            PopoverKey::Close => this.dismissed = true,
+            PopoverKey::Accept => return Self::accept(app, current, window, cx),
+        }
+        cx.notify();
+    }
+
+    /// Replaces the word at the caret with suggestion `index` and a space, leaving the caret
+    /// after them.
+    fn accept(app: &mut TuxedoApp, index: usize, window: &mut Window, cx: &mut Context<TuxedoApp>) {
+        let Some((word, offered)) = app.list_view.popover(window, cx) else {
+            return;
+        };
+        let Some(token) = offered.get(index).map(|s| s.token.clone()) else {
+            return;
+        };
+        let query = app.list_view.query.clone();
+        let text = query.read(cx).value().to_string();
+        // The word ends at the core lexer's whitespace or at the end: reuse a following
+        // separator, or add a space.
+        let rest = &text[word.end..];
+        let mut next = format!("{}{token}", &text[..word.start]);
+        let caret = match rest.chars().next() {
+            Some(separator) => next.len() + separator.len_utf8(),
+            None => {
+                next.push(' ');
+                next.len()
+            }
+        };
+        next.push_str(rest);
+        query.update(cx, |state, cx| {
+            state.set_value(next.clone(), window, cx);
+            state.set_selected_range(caret..caret, cx);
+            state.focus(window, cx);
+        });
+        let this = &mut app.list_view;
+        this.highlighted = 0;
+        this.edit(FilterEdit::Query(next));
+        app.session_changed(cx);
+    }
+
+    /// The query bar above the list: field, Add filter, error hint, readout, Sort and Group.
+    fn render_query_bar(
         &self,
         selected: Option<&WorkspaceSnapshot>,
+        window: &Window,
         p: &'static Palette,
         cx: &Context<TuxedoApp>,
     ) -> Option<AnyElement> {
         let selected = selected.filter(|s| !s.file.items.is_empty())?;
-        Some(filter_ui::render_toolbar(
+        let on_edit = on_edit(cx);
+        let popover = self.popover(window, cx);
+        let app = cx.entity().downgrade();
+        let on_accept: OnAccept = Rc::new(move |index, window, cx| {
+            app.update(cx, |app, cx| ListView::accept(app, index, window, cx))
+                .ok();
+        });
+        let key = |key: PopoverKey| {
+            move |app: &mut TuxedoApp, window: &mut Window, cx: &mut Context<TuxedoApp>| {
+                ListView::on_popover_key(app, key, window, cx)
+            }
+        };
+        let (up, down, enter, tab, escape) = (
+            key(PopoverKey::Up),
+            key(PopoverKey::Down),
+            key(PopoverKey::Accept),
+            key(PopoverKey::Accept),
+            key(PopoverKey::Close),
+        );
+        let field = query_ui::render_field_row(
+            &self.query,
             &self.projection,
-            self.projection.sort(selected),
-            &self.search,
-            &on_edit(cx),
+            popover
+                .as_ref()
+                .map(|(_, offered)| (offered.as_slice(), self.highlighted.min(offered.len() - 1))),
+            on_accept,
+            &on_edit,
+            window.viewport_size().width < px(COMPACT_WINDOW_WIDTH),
             p,
-        ))
+        )
+        // Capture phase: the popover sees these keys before the field, only while open.
+        .capture_action(cx.listener(move |app, _: &MoveUp, w, cx| up(app, w, cx)))
+        .capture_action(cx.listener(move |app, _: &MoveDown, w, cx| down(app, w, cx)))
+        .capture_action(cx.listener(move |app, _: &Enter, w, cx| enter(app, w, cx)))
+        .capture_action(cx.listener(move |app, _: &IndentInline, w, cx| tab(app, w, cx)))
+        .capture_action(cx.listener(move |app, _: &Escape, w, cx| escape(app, w, cx)));
+        let error = self
+            .projection
+            .error()
+            .map(|error| query_ui::render_error(self.projection.query(), error, p));
+        Some(
+            v_flex()
+                .flex_shrink_0()
+                .px_4()
+                .pt_3()
+                .pb_2()
+                .gap_2()
+                .border_b_1()
+                .border_color(hex(p.border))
+                .child(field)
+                .children(error)
+                .child(query_ui::render_readout_row(
+                    &self.projection,
+                    self.projection.sort(selected),
+                    &on_edit,
+                    p,
+                ))
+                .into_any_element(),
+        )
     }
 
     pub(super) fn render(
         &self,
         session: &Entity<SessionModel>,
+        window: &Window,
         p: &'static Palette,
         cx: &Context<TuxedoApp>,
     ) -> AnyElement {
@@ -173,7 +335,7 @@ impl ListView {
                 p,
             ),
             (SessionState::Ready(_), Some(_)) if self.projection.shown() == 0 => {
-                filter_ui::render_no_matches(&self.projection, &on_edit(cx), p)
+                query_ui::render_no_matches(&self.projection, &on_edit(cx), p)
             }
             (SessionState::Ready(_), Some(selected)) => render_list(
                 session.clone(),
@@ -189,7 +351,7 @@ impl ListView {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .children(self.render_toolbar(model.selected(), p, cx))
+            .children(self.render_query_bar(model.selected(), window, p, cx))
             .child(body)
             .when_some(model.selected(), |main, selected| {
                 main.child(render_status_bar(selected, p))
@@ -219,7 +381,7 @@ fn render_list(
                 .filter_map(|row| {
                     let index = match *rows.get(row)? {
                         Row::Header { kind, count } => {
-                            return Some(filter_ui::render_group_header(kind, count, p));
+                            return Some(query_ui::render_group_header(kind, count, p));
                         }
                         Row::Item(index) => index,
                     };
@@ -242,7 +404,7 @@ fn render_list(
     .into_any_element()
 }
 
-/// Routes a filter control's edit to the List view, then recomputes the projection.
+/// Routes a query control's edit to the List view, then recomputes the projection.
 pub(super) fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
     let app = cx.entity().downgrade();
     Rc::new(move |edit, _, cx| {

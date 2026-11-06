@@ -1,5 +1,5 @@
 //! Workspace sidebar: the Workspaces list (switching, creating, editing, and removing
-//! Workspaces), the Overview counts, and the List view's Facet filters.
+//! Workspaces) and Overview, which shows the counts and selects the completion view.
 //! The root shell owns its slot and the open/close slide; this module owns what slides.
 
 use gpui_kit::assets::IconName;
@@ -10,11 +10,11 @@ use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use std::rc::Rc;
+use tuxedo_core::CompletionView;
 
 use super::{list_view, TuxedoApp};
-use crate::filter_ui::{self, FacetSection, FacetSectionsState, OnToggleSection};
 use crate::model::SessionModel;
+use crate::query_ui::{FilterEdit, OnEdit};
 use crate::theme::{hex, Palette};
 use crate::todo_projection::TodoProjection;
 use crate::workspace_ui;
@@ -22,66 +22,16 @@ use crate::workspace_ui;
 /// The sidebar's full width; the shell's slot animates between 0 and this.
 pub(super) const WIDTH: f32 = 256.;
 
-/// Sidebar-local UI state for the Facet sections: which are open, and which show all values.
-pub(super) struct WorkspaceSidebar {
-    facets: FacetSectionsState,
-    /// The Workspace whose values `facets.expanded` refers to; another ID collapses them.
-    workspace_id: Option<String>,
-}
-
-impl Default for WorkspaceSidebar {
-    fn default() -> Self {
-        Self {
-            facets: FacetSectionsState {
-                open: [true; 4],
-                expanded: [false; 4],
-            },
-            workspace_id: None,
-        }
-    }
-}
+/// The sidebar holds no state of its own: the completion view lives in the List view's query.
+pub(super) struct WorkspaceSidebar;
 
 impl WorkspaceSidebar {
-    /// Follows accepted session data: a different Workspace collapses "Show more" like it
-    /// resets the filters; same-Workspace updates keep it.
-    pub(super) fn sync(&mut self, workspace_id: Option<&str>) {
-        if self.workspace_id.as_deref() == workspace_id {
-            return;
-        }
-        self.workspace_id = workspace_id.map(str::to_owned);
-        self.facets.expanded = [false; 4];
-        #[cfg(feature = "screenshot")]
-        self.apply_screenshot_preset();
-    }
-
-    /// `TUXEDO_FACETS_EXPANDED=projects|contexts|projects,contexts` shows all of those values.
-    #[cfg(feature = "screenshot")]
-    fn apply_screenshot_preset(&mut self) {
-        let value = std::env::var("TUXEDO_FACETS_EXPANDED").unwrap_or_default();
-        for name in value.split(',') {
-            match name.trim() {
-                "projects" => self.facets.expanded[FacetSection::Projects as usize] = true,
-                "contexts" => self.facets.expanded[FacetSection::Contexts as usize] = true,
-                _ => {}
-            }
-        }
-    }
-
-    fn toggle(&mut self, section: FacetSection) {
-        let open = &mut self.facets.open[section as usize];
-        *open = !*open;
-    }
-
-    fn toggle_expanded(&mut self, section: FacetSection) {
-        let expanded = &mut self.facets.expanded[section as usize];
-        *expanded = !*expanded;
-    }
-
-    /// `facets` is the List view's projection while it has Todo items to filter.
+    /// `projection` is the List view's while it has Todo items to filter; without it the
+    /// Overview rows show counts only.
     pub(super) fn render(
         &self,
         session: &Entity<SessionModel>,
-        facets: Option<&TodoProjection>,
+        projection: Option<&TodoProjection>,
         p: &Palette,
         cx: &Context<TuxedoApp>,
     ) -> impl IntoElement {
@@ -146,44 +96,22 @@ impl WorkspaceSidebar {
 
         let overview = model.selected().map(|selected| {
             let s = selected.summary;
+            let current = projection.map(|p| p.filters().completion);
+            let on_edit = list_view::on_edit(cx);
+            let row = |view, label, icon, count| {
+                overview_row(view, label, icon, count, current, &on_edit, p)
+            };
             v_flex()
                 .gap_0p5()
                 .child(group_label("Overview", p))
-                .child(count_row("All", IconName::List, s.total, p))
-                .child(count_row("Open", IconName::Circle, s.open, p))
-                .child(count_row(
+                .child(row(CompletionView::All, "All", IconName::List, s.total))
+                .child(row(CompletionView::Open, "Open", IconName::Circle, s.open))
+                .child(row(
+                    CompletionView::Completed,
                     "Completed",
                     IconName::CircleCheck,
                     s.completed,
-                    p,
                 ))
-        });
-
-        let facets = facets.map(|projection| {
-            let app = cx.entity().downgrade();
-            let on_toggle: OnToggleSection = Rc::new(move |section, _, cx| {
-                app.update(cx, |app, cx| {
-                    app.sidebar.toggle(section);
-                    cx.notify();
-                })
-                .ok();
-            });
-            let app = cx.entity().downgrade();
-            let on_expand: OnToggleSection = Rc::new(move |section, _, cx| {
-                app.update(cx, |app, cx| {
-                    app.sidebar.toggle_expanded(section);
-                    cx.notify();
-                })
-                .ok();
-            });
-            filter_ui::render_facet_sections(
-                projection,
-                self.facets,
-                &on_toggle,
-                &on_expand,
-                &list_view::on_edit(cx),
-                p,
-            )
         });
 
         v_flex()
@@ -227,9 +155,6 @@ impl WorkspaceSidebar {
                     )
                     .when_some(overview, |content, overview| {
                         content.child(separator(p)).child(overview)
-                    })
-                    .when_some(facets, |content, facets| {
-                        content.child(separator(p)).child(facets)
                     }),
             )
             .child(
@@ -307,12 +232,39 @@ fn group_label(label: &'static str, p: &Palette) -> impl IntoElement {
         .child(label)
 }
 
-fn count_row(label: &'static str, icon: IconName, count: usize, p: &Palette) -> impl IntoElement {
+/// One Overview row: the completion view's count; while the List view has Todo items to
+/// filter, a toggle that selects that view by rewriting the query's `is:` word.
+fn overview_row(
+    view: CompletionView,
+    label: &'static str,
+    icon: IconName,
+    count: usize,
+    current: Option<CompletionView>,
+    on_edit: &OnEdit,
+    p: &Palette,
+) -> impl IntoElement {
+    let selected = current == Some(view);
+    let on_edit = on_edit.clone();
     h_flex()
+        .id(SharedString::from(format!(
+            "overview-{}",
+            label.to_lowercase()
+        )))
         .h_8()
         .px_2()
         .gap_2()
+        .rounded(px(8.))
         .text_sm()
+        .when(current.is_some(), |row| {
+            row.cursor_pointer()
+                .hover(|style| style.bg(hex(p.sidebar_accent)))
+                .on_click(move |_, window, cx| on_edit(FilterEdit::Completion(view), window, cx))
+        })
+        .when(selected, |row| {
+            row.bg(hex(p.sidebar_accent))
+                .text_color(hex(p.sidebar_accent_foreground))
+                .font_weight(FontWeight::MEDIUM)
+        })
         .child(Icon::new(icon).size_4().text_color(hex(p.muted_foreground)))
         .child(div().flex_1().child(label))
         .child(

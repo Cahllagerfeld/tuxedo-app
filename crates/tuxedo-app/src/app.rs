@@ -2,8 +2,8 @@
 //! sidebar's slot and slide. Mirrors `routes/+layout.svelte`; read-only.
 //!
 //! Feature areas render through their own modules:
-//! - [`sidebar`]: Workspaces list, Overview, and the Facet filters.
-//! - [`list_view`]: the main pane (List view, banner, status bar).
+//! - [`sidebar`]: Workspaces list and Overview (the completion-view selector).
+//! - [`list_view`]: the main pane (query bar, List view, status bar).
 
 mod list_view;
 mod sidebar;
@@ -34,12 +34,13 @@ const SIDEBAR_TRANSITION: Duration = Duration::from_millis(200);
 /// The content card's radius (`rounded-xl`).
 const CARD_RADIUS: f32 = 14.;
 
-actions!(tuxedo, [UndoTodo, Quit]);
+actions!(tuxedo, [UndoTodo, FocusQuery, Quit]);
 
 /// App-wide key bindings.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-z", UndoTodo, None),
+        KeyBinding::new("cmd-f", FocusQuery, None),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
 }
@@ -94,7 +95,7 @@ impl TuxedoApp {
             focus_handle,
             session,
             sidebar_open: true,
-            sidebar: WorkspaceSidebar::default(),
+            sidebar: WorkspaceSidebar,
             list_view: ListView::new(window, cx),
             _subscriptions: subscriptions,
         };
@@ -103,14 +104,18 @@ impl TuxedoApp {
     }
 
     /// Runs whenever the session model notifies: accepted data, command outcomes, pending
-    /// switches. Recomputes the List view's projection (#257 also resets or reconciles its
-    /// filters here on Workspace changes).
+    /// switches. Recomputes the List view's projection, which clears the query on a
+    /// Workspace change, and shows a rewritten query in its field.
     fn session_changed(&mut self, cx: &mut Context<Self>) {
         let selected = self.session.read(cx).selected();
-        self.sidebar.sync(selected.map(|s| s.workspace.id.as_str()));
         self.list_view.reproject(selected, local_today());
-        self.list_view.sync_search_field(cx);
+        self.list_view.sync_query_field(cx);
         cx.notify();
+    }
+
+    /// Cmd-F, and screenshot mode's `TUXEDO_FOCUS=query`.
+    pub fn focus_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.list_view.focus_query(window, cx);
     }
 
     /// Workspace command UI layered over the window: create/edit/delete dialogs (#258).
@@ -163,6 +168,9 @@ impl Render for TuxedoApp {
             .on_action(cx.listener(|this, _: &UndoTodo, _, cx| {
                 this.session.update(cx, |model, cx| model.undo(cx));
             }))
+            .on_action(cx.listener(|this, _: &FocusQuery, window, cx| {
+                this.focus_query(window, cx);
+            }))
             .bg(hex(p.window_background))
             .text_color(hex(p.foreground))
             .font_family(theme::UI_FONT)
@@ -204,7 +212,7 @@ impl Render for TuxedoApp {
                                             cx,
                                         ))
                                     })
-                                    .child(self.list_view.render(&self.session, p, cx)),
+                                    .child(self.list_view.render(&self.session, window, p, cx)),
                             )
                             // GPUI clips children to a rectangle; this paints the window
                             // background into the corner notches so nothing pokes past the
@@ -296,7 +304,7 @@ impl TuxedoApp {
             .overflow_hidden()
             .child(self.sidebar.render(
                 &self.session,
-                self.list_view.facets(self.session.read(cx).selected()),
+                self.list_view.projection(self.session.read(cx).selected()),
                 p,
                 cx,
             ))
@@ -394,6 +402,60 @@ mod tests {
     use super::{TuxedoApp, SIDEBAR_TRANSITION};
     use crate::model::tests::{catalogue, A, C};
     use crate::model::SessionModel;
+
+    #[gpui::test]
+    fn the_autocomplete_popover_takes_keys_only_while_open(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        cx.update(super::bind_keys);
+        let path = catalogue("query-autocomplete");
+        std::fs::write(
+            path.with_file_name("A.txt"),
+            "Plan +Work +Web @home\nOther\n",
+        )
+        .unwrap();
+        let session = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
+        let (app, cx) = cx.add_window_view(|window, cx| {
+            crate::theme::init(window, cx);
+            TuxedoApp::with_session(session.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        let query = |cx: &mut gpui::VisualTestContext| {
+            app.read_with(cx, |app, cx| app.list_view.query_text(cx))
+        };
+
+        // Cmd-F focuses the field; `+W` offers +Web then +Work; Down and Enter take +Work.
+        cx.simulate_keystrokes("cmd-f");
+        cx.simulate_input("x +W");
+        cx.simulate_keystrokes("down enter");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "x +Work ");
+
+        // Closed (the caret follows a space): Enter and Down reach the field and change nothing.
+        cx.simulate_keystrokes("enter down");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "x +Work ");
+
+        // Escape closes the popover, so Enter does not accept; typing reopens it for Tab.
+        cx.simulate_input("@h");
+        cx.simulate_keystrokes("escape enter");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "x +Work @h");
+        cx.simulate_input("o");
+        cx.simulate_keystrokes("tab");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "x +Work @home ");
+        app.read_with(cx, |app, cx| {
+            let selected = app.session.read(cx).selected();
+            let filters = app.list_view.projection(selected).unwrap().filters();
+            assert_eq!(
+                (filters.projects.as_slice(), filters.contexts.as_slice()),
+                (
+                    ["Work".to_owned()].as_slice(),
+                    ["home".to_owned()].as_slice()
+                )
+            );
+        });
+    }
 
     #[gpui::test]
     fn the_sidebar_ignores_clicks_while_it_slides_closed(cx: &mut TestAppContext) {

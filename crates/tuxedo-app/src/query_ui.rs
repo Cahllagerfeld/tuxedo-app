@@ -1,31 +1,36 @@
-//! List-view filter controls: the toolbar (search, completion view, sort, grouping), the
-//! sidebar's collapsible Facet sections, Due-date group headers, and the no-matches state.
+//! The List view's query bar: the text-query field with its autocomplete popover and Add
+//! filter menu, the inline error hint, the readout of what the query means, and the Sort and
+//! Group segments; plus Due-date group headers and the no-matches state.
 //! Every control reports a [`FilterEdit`]; the List view applies it to its projection.
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::collapsible::Collapsible;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{h_flex, v_flex, Disableable, Icon, Selectable, Sizable};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::{h_flex, v_flex, Icon, Selectable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-use tuxedo_core::{CompletionView, DueCategory, DueGroupKind, FacetValue, TodoSortOrder};
+use tuxedo_core::{
+    CompletionView, DueCategory, DueGroupKind, FacetValue, QueryCondition, QueryError,
+    TodoSortOrder, COMPLETION_VALUES, DUE_VALUES,
+};
 
-use crate::theme::{hex, Palette};
+use crate::theme::{hex, Palette, MONO_FONT};
 use crate::todo_projection::TodoProjection;
 use crate::todo_row::ROW_HEIGHT;
 
 /// One person-initiated change to the List view's projection.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilterEdit {
+    /// The field's new text, as typed.
+    Query(String),
+    /// Overview: rewrites the query's `is:` word.
     Completion(CompletionView),
-    Search(String),
-    Project(String),
-    Context(String),
-    Priority(char),
-    Due(DueCategory),
+    /// Add filter: appends a condition to the query.
+    Add(QueryCondition),
     Clear,
     Sort(TodoSortOrder),
     Grouped(bool),
@@ -34,16 +39,13 @@ pub enum FilterEdit {
 /// Applies an edit, from any control's click handler.
 pub type OnEdit = Rc<dyn Fn(FilterEdit, &mut Window, &mut App)>;
 
-/// One line of controls; a narrow pane wraps them onto more lines.
-const TOOLBAR_MIN_HEIGHT: f32 = 44.;
-/// The due categories in sidebar order; Invalid shows only while some open item has one.
-const DUE_CATEGORIES: [DueCategory; 5] = [
-    DueCategory::Overdue,
-    DueCategory::Today,
-    DueCategory::Upcoming,
-    DueCategory::None,
-    DueCategory::Invalid,
-];
+/// Accepts the autocomplete suggestion at an index.
+pub type OnAccept = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+
+pub const PLACEHOLDER: &str = "Search, or filter with +project @context pri:A due:today";
+/// The most suggestions the popover lists.
+const MAX_SUGGESTIONS: usize = 8;
+const POPOVER_WIDTH: f32 = 360.;
 
 pub fn group_label(kind: DueGroupKind) -> &'static str {
     match kind {
@@ -64,421 +66,510 @@ pub fn due_label(category: DueCategory) -> &'static str {
     }
 }
 
-fn edit_button(id: impl Into<ElementId>, edit: FilterEdit, on_edit: &OnEdit) -> Button {
-    let on_edit = on_edit.clone();
-    Button::new(id)
-        .ghost()
-        .small()
-        .on_click(move |_, window, cx| on_edit(edit.clone(), window, cx))
-}
-
-/// The toolbar row above the list; the Facets live in the sidebar.
-pub fn render_toolbar(
-    projection: &TodoProjection,
-    sort: TodoSortOrder,
-    search: &Entity<InputState>,
-    on_edit: &OnEdit,
-    p: &Palette,
-) -> AnyElement {
-    let filters = projection.filters();
-    let completion = |id, label, view| {
-        edit_button(id, FilterEdit::Completion(view), on_edit)
-            .label(label)
-            .selected(filters.completion == view)
-    };
-    let (sort_label, next_sort) = match sort {
-        TodoSortOrder::File => ("Sort: File order", TodoSortOrder::Due),
-        TodoSortOrder::Due => ("Sort: Due date", TodoSortOrder::File),
-    };
-    // Two groups that wrap onto further lines in a narrow pane instead of being clipped.
-    let view = h_flex()
-        .flex_wrap()
-        .gap_1()
-        .child(
-            div().w(px(240.)).min_w(px(160.)).child(
-                Input::new(search)
-                    .small()
-                    .cleanable(true)
-                    .prefix(Icon::new(IconName::Search).size_3p5()),
-            ),
-        )
-        .child(completion("completion-all", "All", CompletionView::All))
-        .child(completion("completion-open", "Open", CompletionView::Open))
-        .child(completion(
-            "completion-completed",
-            "Completed",
-            CompletionView::Completed,
-        ));
-    let arrange = h_flex()
-        .flex_wrap()
-        .justify_end()
-        .gap_1()
-        .ml_auto()
-        .when(filters.has_filters(), |bar| {
-            bar.child(edit_button("clear-filters", FilterEdit::Clear, on_edit).label("Clear"))
-        })
-        .child(
-            edit_button("sort-order", FilterEdit::Sort(next_sort), on_edit)
-                .icon(Icon::new(IconName::ArrowDownUp))
-                .label(sort_label)
-                .tooltip("Sort Todo items (this session only)"),
-        )
-        .child(
-            edit_button(
-                "group-due",
-                FilterEdit::Grouped(!projection.grouped()),
-                on_edit,
-            )
-            .icon(Icon::new(IconName::Rows3))
-            .label("Group by due")
-            .selected(projection.grouped()),
-        );
-    h_flex()
-        .flex_wrap()
-        .min_h(px(TOOLBAR_MIN_HEIGHT))
-        .flex_shrink_0()
-        .px_3()
-        .py_1p5()
-        .gap_x_3()
-        .gap_y_1()
-        .border_b_1()
-        .border_color(hex(p.border))
-        .child(view)
-        .child(arrange)
-        .into_any_element()
-}
-
-/// One collapsible Facet section of the sidebar, in display order; `as usize` indexes the
-/// sections' open flags.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FacetSection {
-    Due,
-    Projects,
-    Contexts,
-    Priorities,
-}
-
-impl FacetSection {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Due => "Due date",
-            Self::Projects => "Projects",
-            Self::Contexts => "Contexts",
-            Self::Priorities => "Priorities",
-        }
-    }
-
-    /// Names one value of the section for assistive technology.
-    fn singular(self) -> &'static str {
-        match self {
-            Self::Due => "Due date",
-            Self::Projects => "Project",
-            Self::Contexts => "Context",
-            Self::Priorities => "Priority",
-        }
+fn completion_label(view: CompletionView) -> &'static str {
+    match view {
+        CompletionView::All => "All",
+        CompletionView::Open => "Open",
+        CompletionView::Completed => "Completed",
     }
 }
 
-/// Expands or collapses a sidebar Facet section, or shows more or fewer of its values.
-pub type OnToggleSection = Rc<dyn Fn(FacetSection, &mut Window, &mut App)>;
-
-/// How many Project or Context values a section shows before "Show more".
-const COLLAPSED_FACETS: usize = 5;
-
-/// Electron's `FacetFilter` rule: unless `expanded`, the first five values in Facet order plus
-/// the selected value wherever it is. Returns each shown value with its Facet index, and how
-/// many values stay hidden.
-pub fn visible_facets<'a>(
-    values: &'a [FacetValue],
-    selected: Option<&str>,
-    expanded: bool,
-) -> (Vec<(usize, &'a FacetValue)>, usize) {
-    let shown: Vec<_> = values
-        .iter()
-        .enumerate()
-        .filter(|(i, facet)| {
-            expanded || *i < COLLAPSED_FACETS || selected == Some(facet.value.as_str())
-        })
-        .collect();
-    let hidden = values.len() - shown.len();
-    (shown, hidden)
+/// One autocomplete choice: the word it writes and what it means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    pub token: String,
+    pub detail: String,
 }
 
-/// The sidebar's Facet sections' UI state, each indexed by `FacetSection as usize`: `open`
-/// shows a section's rows; `expanded` shows all of a Project or Context section's values.
-#[derive(Debug, Clone, Copy)]
-pub struct FacetSectionsState {
-    pub open: [bool; 4],
-    pub expanded: [bool; 4],
-}
-
-/// The Due-date, Project, Context, and Priority Facets as collapsible sidebar sections, each a
-/// vertical list of toggles. A collapsed section builds no rows; Projects and Contexts show
-/// five values plus the selected one until expanded, and are left out while they have none.
-pub fn render_facet_sections(
-    projection: &TodoProjection,
-    state: FacetSectionsState,
-    on_toggle: &OnToggleSection,
-    on_expand: &OnToggleSection,
-    on_edit: &OnEdit,
-    p: &Palette,
-) -> AnyElement {
-    let filters = projection.filters();
+/// The values a query word being typed can complete to: Projects and Contexts (with their
+/// counts in this view) after `+` and `@`, the Priorities in this view after `pri:`, the Due
+/// categories after `due:`, and the completion views after `is:`. Keys and values match
+/// ignoring case, names by prefix; Priority and Due offer nothing in the Completed view.
+pub fn suggestions(word: &str, projection: &TodoProjection) -> Vec<Suggestion> {
     let facets = projection.facets();
-    let completed_view = filters.completion == CompletionView::Completed;
-    let is_open = |section: FacetSection| state.open[section as usize];
-    let due = DUE_CATEGORIES
+    let completed_view = projection.filters().completion == CompletionView::Completed;
+    let lower = word.to_lowercase();
+    let key = |prefix: &str| lower.starts_with(prefix);
+    let named = |values: &[FacetValue], noun: &str, condition: fn(String) -> QueryCondition| {
+        values
+            .iter()
+            .map(|f| Suggestion {
+                token: condition(f.value.clone()).token(),
+                detail: format!("{noun} · {}", f.count),
+            })
+            .collect::<Vec<_>>()
+    };
+    let candidates = if word.starts_with('+') {
+        named(&facets.projects, "Project", QueryCondition::Project)
+    } else if word.starts_with('@') {
+        named(&facets.contexts, "Context", QueryCondition::Context)
+    } else if key("pri:") && !completed_view {
+        facets
+            .priorities
+            .iter()
+            .map(|f| Suggestion {
+                token: format!("pri:{}", f.value),
+                detail: format!("Priority · {}", f.count),
+            })
+            .collect()
+    } else if key("due:") && !completed_view {
+        DUE_VALUES
+            .into_iter()
+            .filter(|&(_, due)| due != DueCategory::Invalid || projection.invalid_due() > 0)
+            .map(|(_, due)| Suggestion {
+                token: QueryCondition::Due(due).token(),
+                detail: format!("Due · {}", due_label(due)),
+            })
+            .collect()
+    } else if key("is:") {
+        COMPLETION_VALUES
+            .into_iter()
+            .map(|(_, view)| Suggestion {
+                token: QueryCondition::Completion(view).token(),
+                detail: format!("View · {}", completion_label(view)),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    candidates
         .into_iter()
-        .filter(|_| is_open(FacetSection::Due))
-        .filter(|&c| c != DueCategory::Invalid || (projection.invalid_due() > 0 && !completed_view))
-        .map(|category| {
-            let count = (category == DueCategory::Invalid).then(|| projection.invalid_due());
-            facet_button(
-                SharedString::from(format!("facet-due-{category:?}")),
-                due_label(category).into(),
-                "Due date",
-                count,
-                filters.due == Some(category),
-                false,
-                FilterEdit::Due(category),
-                on_edit,
-                p,
-            )
-            .disabled(completed_view)
-            .into_any_element()
+        .filter(|s| s.token.to_lowercase().starts_with(&lower))
+        .take(MAX_SUGGESTIONS)
+        .collect()
+}
+
+/// The query field, the Add filter menu, and the autocomplete popover below the field.
+/// `popover` is the open popover's suggestions and highlighted row; `on_accept` takes a row.
+/// A `compact` pane drops the shortcut hint and the menu button's label.
+pub fn render_field_row(
+    query: &Entity<InputState>,
+    projection: &TodoProjection,
+    popover: Option<(&[Suggestion], usize)>,
+    on_accept: OnAccept,
+    on_edit: &OnEdit,
+    compact: bool,
+    p: &'static Palette,
+) -> Div {
+    let dropdown = popover.map(|(offered, highlighted)| {
+        deferred(
+            v_flex()
+                .id("query-suggestions")
+                .occlude()
+                .absolute()
+                .top(px(38.))
+                .left_0()
+                .w(px(POPOVER_WIDTH))
+                .max_w_full()
+                .p_1()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(hex(p.border))
+                .bg(hex(p.popover))
+                .shadow_lg()
+                .children(offered.iter().enumerate().map(|(i, s)| {
+                    let on_accept = on_accept.clone();
+                    let active = i == highlighted;
+                    h_flex()
+                        .id(("query-suggestion", i))
+                        .h_7()
+                        .px_2()
+                        .gap_2()
+                        .rounded(px(5.))
+                        .cursor_pointer()
+                        .when(active, |row| row.bg(hex(p.muted)))
+                        .hover(|row| row.bg(hex(p.muted)))
+                        // On mouse down, before the field loses focus to the click.
+                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                            cx.stop_propagation();
+                            on_accept(i, window, cx);
+                        })
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .font_family(MONO_FONT)
+                                .text_sm()
+                                .child(s.token.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(hex(p.muted_foreground))
+                                .child(s.detail.clone()),
+                        )
+                        .when(active, |row| {
+                            row.child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_xs()
+                                    .text_color(hex(p.muted_foreground))
+                                    .child("↵"),
+                            )
+                        })
+                })),
+        )
+        .with_priority(1)
+    });
+    h_flex()
+        .gap_2()
+        .child(
+            div()
+                .relative()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    Input::new(query)
+                        .aria_label("Query")
+                        .cleanable(true)
+                        .prefix(Icon::new(IconName::TextSearch).size_4())
+                        .when(!compact, |input| {
+                            input.suffix(
+                                div()
+                                    .text_xs()
+                                    .text_color(hex(p.muted_foreground))
+                                    .child("⌘F"),
+                            )
+                        }),
+                )
+                .children(dropdown),
+        )
+        .child(add_filter_menu(projection, on_edit, compact))
+}
+
+/// A menu of submenus that append a condition, for people who do not know the syntax.
+fn add_filter_menu(
+    projection: &TodoProjection,
+    on_edit: &OnEdit,
+    compact: bool,
+) -> impl IntoElement {
+    let completed_view = projection.filters().completion == CompletionView::Completed;
+    let facets = projection.facets();
+    let named = |values: &[FacetValue], condition: fn(String) -> QueryCondition| {
+        values
+            .iter()
+            .map(|f| (f.value.clone(), Some(f.count), condition(f.value.clone())))
+            .collect::<Vec<_>>()
+    };
+    let projects = named(&facets.projects, QueryCondition::Project);
+    let contexts = named(&facets.contexts, QueryCondition::Context);
+    let priorities: Vec<_> = facets
+        .priorities
+        .iter()
+        .filter_map(|f| {
+            let letter = f.value.chars().next()?;
+            Some((
+                f.value.clone(),
+                Some(f.count),
+                QueryCondition::Priority(letter),
+            ))
         })
         .collect();
-    // Projects and Contexts: absent without values; selected rows carry a check, not a count.
-    let named = |section: FacetSection,
-                 kind: &'static str,
-                 prefix: &'static str,
-                 values: &[FacetValue],
-                 selected: Option<&str>,
-                 edit: fn(&FacetValue) -> FilterEdit| {
-        if values.is_empty() {
-            return None;
-        }
-        if !is_open(section) {
-            return Some((section, Vec::new(), None));
-        }
-        let expanded = state.expanded[section as usize];
-        let (shown, hidden) = visible_facets(values, selected, expanded);
-        let mut rows: Vec<AnyElement> = shown
-            .into_iter()
-            .map(|(i, facet)| {
-                facet_button(
-                    SharedString::from(format!("facet-{kind}-{i}")),
-                    format!("{prefix}{}", facet.value).into(),
-                    section.singular(),
-                    Some(facet.count),
-                    selected == Some(facet.value.as_str()),
-                    true,
-                    edit(facet),
-                    on_edit,
-                    p,
-                )
-                .into_any_element()
-            })
-            .collect();
-        if hidden > 0 || expanded {
-            rows.push(show_more_button(section, expanded, hidden, on_expand, p).into_any_element());
-        }
-        Some((section, rows, None))
-    };
-    let projects = named(
-        FacetSection::Projects,
-        "project",
-        "+",
-        &facets.projects,
-        filters.projects.first().map(String::as_str),
-        |f| FilterEdit::Project(f.value.clone()),
-    );
-    let contexts = named(
-        FacetSection::Contexts,
-        "context",
-        "@",
-        &facets.contexts,
-        filters.contexts.first().map(String::as_str),
-        |f| FilterEdit::Context(f.value.clone()),
-    );
-    let priority = filters.priority.map(|c| c.to_string());
-    let priorities = if is_open(FacetSection::Priorities) {
-        &facets.priorities[..]
-    } else {
-        &[]
-    }
-    .iter()
-    .enumerate()
-    .map(|(i, facet)| {
-        facet_button(
-            SharedString::from(format!("facet-priority-{i}")),
-            facet.value.clone().into(),
-            FacetSection::Priorities.singular(),
-            Some(facet.count),
-            priority.as_deref() == Some(facet.value.as_str()),
-            false,
-            FilterEdit::Priority(facet.value.chars().next().unwrap_or('A')),
-            on_edit,
-            p,
-        )
-        .into_any_element()
-    })
-    .collect();
-    let sections = [
-        Some((FacetSection::Due, due, None)),
-        projects,
-        contexts,
-        Some((
-            FacetSection::Priorities,
-            priorities,
-            Some(if completed_view {
+    let dues: Vec<_> = DUE_VALUES
+        .into_iter()
+        .filter(|&(_, due)| due != DueCategory::Invalid || projection.invalid_due() > 0)
+        .map(|(_, due)| (due_label(due).to_owned(), None, QueryCondition::Due(due)))
+        .collect();
+    let groups = Rc::new([
+        ("Project", "No Projects", projects),
+        ("Context", "No Contexts", contexts),
+        (
+            "Priority",
+            if completed_view {
                 "Not available for completed items"
             } else {
                 "No Priorities"
-            }),
-        )),
-    ];
-    v_flex()
-        .gap_1()
-        .children(
-            sections.into_iter().flatten().map(|(kind, values, empty)| {
-                section(kind, is_open(kind), values, empty, on_toggle, p)
-            }),
-        )
-        .into_any_element()
-}
-
-/// Electron's small muted "Show N more" / "Show less" ghost button below a section's values.
-fn show_more_button(
-    section: FacetSection,
-    expanded: bool,
-    hidden: usize,
-    on_expand: &OnToggleSection,
-    p: &Palette,
-) -> impl IntoElement {
-    let on_expand = on_expand.clone();
-    let label = section.label();
-    h_flex().mt_1().child(
-        Button::new(SharedString::from(format!("facet-show-more-{section:?}")))
-            .ghost()
-            .small()
-            .px_2()
-            .accessibility_label(if expanded {
-                format!("Show fewer {label}")
+            },
+            if completed_view {
+                Vec::new()
             } else {
-                format!("Show more {label}")
-            })
-            .on_click(move |_, window, cx| on_expand(section, window, cx))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(hex(p.muted_foreground))
-                    .child(if expanded {
-                        "Show less".to_owned()
-                    } else {
-                        format!("Show {hidden} more")
-                    }),
-            ),
-    )
+                priorities
+            },
+        ),
+        (
+            "Due",
+            "Not available for completed items",
+            if completed_view { Vec::new() } else { dues },
+        ),
+    ]);
+    let on_edit = on_edit.clone();
+    Button::new("add-filter")
+        .outline()
+        .icon(Icon::new(IconName::ListFilterPlus))
+        .when(!compact, |button| button.label("Add filter"))
+        .accessibility_label("Add filter")
+        .tooltip("Add a condition to the query")
+        .dropdown_menu(move |mut menu, window, cx| {
+            for index in 0..groups.len() {
+                let (groups, on_edit) = (groups.clone(), on_edit.clone());
+                let label = groups[index].0;
+                menu = menu.submenu(label, window, cx, move |mut menu, _, _| {
+                    let (_, empty, values) = &groups[index];
+                    if values.is_empty() {
+                        return menu.item(PopupMenuItem::label(*empty));
+                    }
+                    for (value, count, condition) in values {
+                        let (on_edit, condition) = (on_edit.clone(), condition.clone());
+                        let label = match count {
+                            Some(count) => format!("{value}  ({count})"),
+                            None => value.clone(),
+                        };
+                        menu =
+                            menu.item(PopupMenuItem::new(label).on_click(move |_, window, cx| {
+                                on_edit(FilterEdit::Add(condition.clone()), window, cx)
+                            }));
+                    }
+                    menu.scrollable(true).max_h(px(320.))
+                });
+            }
+            menu
+        })
 }
 
-/// A full-width ghost toggle: the value on the left, its count right-aligned and muted. With
-/// `check`, a selected toggle shows a check mark in place of its count.
-/// The Button centers its content, so one flexible row child carries the alignment.
-#[allow(clippy::too_many_arguments)]
-fn facet_button(
-    id: SharedString,
-    value: SharedString,
-    kind: &'static str,
-    count: Option<usize>,
-    selected: bool,
-    check: bool,
-    edit: FilterEdit,
-    on_edit: &OnEdit,
-    p: &Palette,
-) -> Button {
-    let on_edit = on_edit.clone();
-    Button::new(id)
-        .ghost()
-        .w_full()
-        .px_2()
-        .accessibility_label(match count {
-            Some(1) => format!("{kind} {value}, 1 item"),
-            Some(n) => format!("{kind} {value}, {n} items"),
-            None => format!("{kind} {value}"),
-        })
-        .tooltip(value.clone())
-        .selected(selected)
-        .toggled(selected)
-        .on_click(move |_, window, cx| on_edit(edit.clone(), window, cx))
+/// The inline hint for an invalid query: the message, then the query with the offending
+/// span highlighted.
+pub fn render_error(query: &str, error: &QueryError, p: &Palette) -> impl IntoElement {
+    let span = clamp_span(query, error.span.clone());
+    let highlight = HighlightStyle {
+        color: Some(hex(p.destructive)),
+        background_color: Some(hex(p.destructive).opacity(0.12)),
+        underline: Some(UnderlineStyle {
+            thickness: px(1.),
+            color: Some(hex(p.destructive)),
+            wavy: true,
+        }),
+        ..Default::default()
+    };
+    // An empty span (never produced today) would highlight nothing; show a caret instead.
+    let (text, span) = if span.is_empty() {
+        let mut text = query.to_owned();
+        text.insert(span.start, '‸');
+        (text, span.start..span.start + '‸'.len_utf8())
+    } else {
+        (query.to_owned(), span)
+    };
+    h_flex()
+        .id("query-error")
+        .min_w_0()
+        .gap_2()
+        .text_xs()
         .child(
-            h_flex()
-                .flex_1()
+            Icon::new(IconName::TriangleAlert)
+                .size_3p5()
+                .flex_shrink_0()
+                .text_color(hex(p.destructive)),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .text_color(hex(p.destructive))
+                .child(error.to_string()),
+        )
+        .child(
+            div()
                 .min_w_0()
-                .gap_2()
-                .child(div().flex_1().min_w_0().truncate().child(value))
-                .children(count.filter(|_| !(check && selected)).map(|count| {
-                    div()
-                        .flex_shrink_0()
-                        .text_xs()
-                        .text_color(hex(p.muted_foreground))
-                        .child(count.to_string())
-                }))
-                .when(check && selected, |row| {
-                    row.child(Icon::new(IconName::Check).size_4().flex_shrink_0())
-                }),
+                .truncate()
+                .font_family(MONO_FONT)
+                .text_color(hex(p.muted_foreground))
+                .child(StyledText::new(text).with_highlights([(span, highlight)])),
         )
 }
 
-fn section(
-    kind: FacetSection,
-    open: bool,
-    values: Vec<AnyElement>,
-    empty: Option<&'static str>,
-    on_toggle: &OnToggleSection,
-    p: &Palette,
+/// `span` limited to `text` and widened to character boundaries.
+fn clamp_span(text: &str, span: Range<usize>) -> Range<usize> {
+    let mut start = span.start.min(text.len());
+    let mut end = span.end.clamp(start, text.len());
+    while !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    while !text.is_char_boundary(end) {
+        end += 1;
+    }
+    start..end
+}
+
+/// The words of the readout: one `(kind, value, absent)` per condition: Projects, Contexts,
+/// Priority, Due, then search words.
+pub fn readout_parts(projection: &TodoProjection) -> Vec<(&'static str, String, bool)> {
+    let filters = projection.filters();
+    let absent = projection.absent();
+    let mut parts = Vec::new();
+    for project in &filters.projects {
+        parts.push((
+            "Project",
+            project.clone(),
+            absent.projects.contains(project),
+        ));
+    }
+    for context in &filters.contexts {
+        parts.push((
+            "Context",
+            context.clone(),
+            absent.contexts.contains(context),
+        ));
+    }
+    if let Some(priority) = filters.priority {
+        parts.push(("Priority", priority.to_string(), absent.priority.is_some()));
+    }
+    if let Some(due) = filters.due {
+        parts.push(("Due", due_label(due).to_owned(), false));
+    }
+    for word in &filters.search {
+        parts.push(("Text", format!("\u{201c}{word}\u{201d}"), false));
+    }
+    parts
+}
+
+/// What the query means and what it shows, the stale hint while the query is invalid, and
+/// the Sort, Group, and Clear controls on the right. Empty on the left without filters.
+pub fn render_readout_row(
+    projection: &TodoProjection,
+    sort: TodoSortOrder,
+    on_edit: &OnEdit,
+    p: &'static Palette,
 ) -> impl IntoElement {
     let muted = hex(p.muted_foreground);
-    let on_toggle = on_toggle.clone();
-    let label = kind.label();
-    // Button has no expanded state for assistive technology; pressed carries open/closed.
-    let header = Button::new(SharedString::from(format!("facet-section-{kind:?}")))
-        .ghost()
-        .w_full()
-        .h_7()
-        .px_2()
-        .accessibility_label(label)
-        .toggled(open)
-        .on_click(move |_, window, cx| on_toggle(kind, window, cx))
+    let filters = projection.filters();
+    let stale = projection.error().is_some();
+    let narrowed = filters.has_filters();
+    let chip = |kind: &'static str, value: String, absent: bool| {
+        h_flex()
+            .gap_1()
+            .px_1p5()
+            .rounded(px(4.))
+            .bg(hex(p.muted))
+            .child(div().text_color(muted).child(kind))
+            .child(
+                div()
+                    .font_weight(FontWeight::MEDIUM)
+                    .when(absent, |v| v.text_color(hex(p.destructive)))
+                    .child(value),
+            )
+            .when(absent, |c| {
+                c.child(
+                    div()
+                        .text_color(hex(p.destructive))
+                        .child("not in this view"),
+                )
+            })
+    };
+    let mut counts = Vec::new();
+    if narrowed || stale {
+        counts.push(format!("{} shown", projection.shown()));
+        if projection.deferred() > 0 {
+            counts.push(format!("{} deferred", projection.deferred()));
+        }
+    }
+    let readout = h_flex()
+        .id("query-readout")
+        .flex_1()
+        .min_w(px(200.))
+        .flex_wrap()
+        .gap_1p5()
+        .text_xs()
+        .when(stale, |r| {
+            r.child(
+                div()
+                    .text_color(hex(p.destructive))
+                    .child("Stale: showing the last valid query"),
+            )
+        })
+        .when(narrowed, |r| {
+            r.children(
+                readout_parts(projection)
+                    .into_iter()
+                    .map(|(kind, value, absent)| chip(kind, value, absent)),
+            )
+        })
+        .when(!counts.is_empty(), |r| {
+            r.child(div().text_color(muted).child(counts.join(" · ")))
+        });
+    let clear = (!projection.query().is_empty()).then(|| {
+        let on_edit = on_edit.clone();
+        Button::new("clear-query")
+            .ghost()
+            .xsmall()
+            .label("Clear")
+            .tooltip("Clear the query")
+            .on_click(move |_, window, cx| on_edit(FilterEdit::Clear, window, cx))
+    });
+    h_flex()
+        .flex_wrap()
+        .gap_x_3()
+        .gap_y_1()
+        .child(readout)
         .child(
             h_flex()
-                .flex_1()
-                .min_w_0()
-                .justify_between()
+                .ml_auto()
+                .gap_3()
+                .children(clear)
+                .child(segment(
+                    "sort",
+                    "Sort",
+                    [
+                        (
+                            "File",
+                            sort == TodoSortOrder::File,
+                            FilterEdit::Sort(TodoSortOrder::File),
+                        ),
+                        (
+                            "Due",
+                            sort == TodoSortOrder::Due,
+                            FilterEdit::Sort(TodoSortOrder::Due),
+                        ),
+                    ],
+                    on_edit,
+                    p,
+                ))
+                .child(segment(
+                    "group",
+                    "Group",
+                    [
+                        ("None", !projection.grouped(), FilterEdit::Grouped(false)),
+                        ("Due", projection.grouped(), FilterEdit::Grouped(true)),
+                    ],
+                    on_edit,
+                    p,
+                )),
+        )
+}
+
+/// A labeled two-option segmented control.
+fn segment(
+    id: &'static str,
+    label: &'static str,
+    options: [(&'static str, bool, FilterEdit); 2],
+    on_edit: &OnEdit,
+    p: &'static Palette,
+) -> impl IntoElement {
+    h_flex()
+        .gap_1()
+        .child(
+            div()
                 .text_xs()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(muted)
-                .child(label)
-                .child(
-                    Icon::new(if open {
-                        IconName::ChevronDown
-                    } else {
-                        IconName::ChevronRight
-                    })
-                    .size_3p5(),
-                ),
-        );
-    let list = v_flex()
-        .gap_0p5()
-        .when(values.is_empty(), |list| {
-            list.children(empty.map(|e| div().px_2().py_1().text_xs().text_color(muted).child(e)))
-        })
-        .children(values);
-    Collapsible::new()
-        .open(open)
-        .gap_0p5()
-        .child(header)
-        .content(list)
+                .text_color(hex(p.muted_foreground))
+                .child(label),
+        )
+        .child(
+            h_flex()
+                .p_0p5()
+                .gap_0p5()
+                .rounded(px(7.))
+                .bg(hex(p.muted))
+                .children(options.into_iter().map(|(name, on, edit)| {
+                    let on_edit = on_edit.clone();
+                    Button::new(SharedString::from(format!("{id}-{}", name.to_lowercase())))
+                        .ghost()
+                        .xsmall()
+                        .label(name)
+                        .accessibility_label(format!("{label}: {name}"))
+                        .selected(on)
+                        .when(on, |b| b.bg(hex(p.background)).shadow_xs())
+                        .on_click(move |_, window, cx| on_edit(edit.clone(), window, cx))
+                })),
+        )
 }
 
 /// A Due-date group header: one fixed-height row of the virtualized list.
@@ -507,10 +598,11 @@ pub fn render_group_header(kind: DueGroupKind, count: usize, p: &Palette) -> Any
 }
 
 /// Shown when the Todo file has items but none are displayed: either every match is deferred,
-/// or nothing matches (with Clear filters when a filter narrows the list).
+/// or nothing matches (with Clear query when the query narrows the list).
 pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Palette) -> AnyElement {
     let filters = projection.filters();
     let deferred = projection.deferred();
+    let narrowed = filters.has_filters();
     let (title, description) = if deferred > 0 {
         let verb = if deferred == 1 {
             "Todo item is"
@@ -527,19 +619,19 @@ pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Pale
             CompletionView::Open => "open ",
             CompletionView::Completed => "completed ",
         };
-        let narrowed = filters.has_filters();
         (
             format!(
                 "No {status}items{}.",
-                if narrowed { " match these filters" } else { "" }
+                if narrowed { " match this query" } else { "" }
             ),
             if narrowed {
-                "Try clearing a filter to see more Todo items.".to_owned()
+                "Try removing a condition to see more Todo items.".to_owned()
             } else {
                 "There are no Todo items in this completion view.".to_owned()
             },
         )
     };
+    let on_edit = on_edit.clone();
     v_flex()
         .flex_1()
         .items_center()
@@ -558,11 +650,13 @@ pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Pale
                 .text_color(hex(p.muted_foreground))
                 .child(description),
         )
-        .when(deferred == 0 && filters.has_filters(), |column| {
+        .when(deferred == 0 && narrowed, |column| {
             column.child(
-                edit_button("empty-clear-filters", FilterEdit::Clear, on_edit)
+                Button::new("empty-clear-query")
                     .outline()
-                    .label("Clear filters"),
+                    .small()
+                    .label("Clear query")
+                    .on_click(move |_, window, cx| on_edit(FilterEdit::Clear, window, cx)),
             )
         })
         .into_any_element()
@@ -570,30 +664,54 @@ pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Pale
 
 #[cfg(test)]
 mod tests {
-    use tuxedo_core::FacetValue;
+    use std::path::PathBuf;
 
-    use super::visible_facets;
+    use tuxedo_core::{parse_todo_text, TodoDate, Workspace, WorkspaceColor, WorkspaceSnapshot};
+
+    // Explicit imports: a glob of gpui would shadow the built-in `#[test]`.
+    use super::{suggestions, TodoProjection};
 
     #[test]
-    fn collapsed_facets_show_the_first_five_and_the_selected_value() {
-        let values: Vec<FacetValue> = ["a", "b", "c", "d", "e", "f", "g", "h"]
-            .into_iter()
-            .map(|value| FacetValue {
-                value: value.into(),
-                count: 1,
-            })
-            .collect();
-        let indices = |shown: Vec<(usize, &FacetValue)>| -> Vec<usize> {
-            shown.into_iter().map(|(i, _)| i).collect()
+    fn suggestions_complete_the_word_from_this_views_values_and_fixed_vocabularies() {
+        let file = parse_todo_text(
+            PathBuf::from("/tmp/todo.txt"),
+            "(A) a +Work +Web @home due:2026-02-30\n(B) b +work\nx c +Done @home\n",
+        );
+        let selected = WorkspaceSnapshot {
+            workspace: Workspace {
+                id: "w".into(),
+                name: "w".into(),
+                todo_file: file.path.clone(),
+                color: WorkspaceColor::Blue,
+                created_at: "2026-11-06T00:00:00.000Z".into(),
+                sort_order: None,
+                show_deferred: None,
+            },
+            summary: file.summary(),
+            file,
         };
+        let today = TodoDate::parse("2026-11-06").unwrap();
+        let mut projection = TodoProjection::new(today);
+        projection.sync(Some(&selected), today);
+        let tokens = |projection: &TodoProjection, word| -> Vec<String> {
+            suggestions(word, projection)
+                .into_iter()
+                .map(|s| s.token)
+                .collect()
+        };
+        assert_eq!(tokens(&projection, "+w"), ["+Web", "+work", "+Work"]);
+        assert_eq!(suggestions("+Work", &projection)[0].detail, "Project · 1");
+        assert_eq!(tokens(&projection, "@"), ["@home"]);
+        assert_eq!(tokens(&projection, "PRI:"), ["pri:A", "pri:B"]);
+        assert_eq!(tokens(&projection, "due:in"), ["due:invalid"]);
+        assert_eq!(tokens(&projection, "is:c"), ["is:completed"]);
+        assert_eq!(tokens(&projection, "work"), Vec::<String>::new());
 
-        let (shown, hidden) = visible_facets(&values, Some("g"), false);
-        assert_eq!((indices(shown), hidden), (vec![0, 1, 2, 3, 4, 6], 2));
-
-        let (shown, hidden) = visible_facets(&values, Some("g"), true);
-        assert_eq!((indices(shown), hidden), ((0..8).collect(), 0));
-
-        let (shown, hidden) = visible_facets(&values[..5], None, false);
-        assert_eq!((indices(shown), hidden), ((0..5).collect(), 0));
+        // The Completed view offers its own Projects and no Priority or Due values.
+        projection.set_query("is:completed".into());
+        projection.sync(Some(&selected), today);
+        assert_eq!(tokens(&projection, "+"), ["+Done"]);
+        assert_eq!(tokens(&projection, "pri:"), Vec::<String>::new());
+        assert_eq!(tokens(&projection, "due:"), Vec::<String>::new());
     }
 }
