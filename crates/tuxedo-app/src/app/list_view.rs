@@ -25,7 +25,7 @@ use crate::todo_projection::{Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
 /// Below this window width the query bar drops its shortcut hint and button label, so the
-/// field keeps room beside an open sidebar.
+/// field keeps room beside an open sidebar, and rows show one token and a count.
 const COMPACT_WINDOW_WIDTH: f32 = 960.;
 
 /// How often the List view checks whether the local date changed.
@@ -67,17 +67,23 @@ impl ListView {
             window.resize(size(px(width), window.viewport_size().height));
         }
         let query = cx.new(|cx| InputState::new(window, cx).placeholder(query_ui::PLACEHOLDER));
-        let typed = cx.subscribe(&query, |app, query, event: &InputEvent, cx| {
-            if let InputEvent::Change = event {
-                let text = query.read(cx).value().to_string();
-                app.list_view.highlighted = 0;
-                app.list_view.dismissed = false;
-                app.list_view.edit(FilterEdit::Query(text));
+        // Any edit, caret move, or focus change: take the text verbatim and whether the caret
+        // ends the focused field, which makes a final condition word a prefix while typed.
+        let changed = cx.observe_in(&query, window, |app, _, window, cx| {
+            if app.list_view.query_changed(window, cx) {
+                app.session_changed(cx);
+            } else {
+                // A caret move can change the word autocomplete completes.
+                cx.notify();
+            }
+        });
+        let focus = cx.subscribe_in(&query, window, |app, _, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::Focus | InputEvent::Blur)
+                && app.list_view.query_changed(window, cx)
+            {
                 app.session_changed(cx);
             }
         });
-        // Caret moves change the word being completed; redraw for them too.
-        let caret = cx.observe(&query, |_, _, cx| cx.notify());
         let date_watch = cx.spawn(async move |app, cx| loop {
             cx.background_executor().timer(DATE_POLL).await;
             let changed = app.update(cx, |app, cx| {
@@ -95,9 +101,30 @@ impl ListView {
             highlighted: 0,
             dismissed: false,
             window: window.window_handle(),
-            _subscriptions: [typed, caret],
+            _subscriptions: [changed, focus],
             _date_watch: date_watch,
         }
+    }
+
+    /// Follows the field: a changed text reopens autocomplete and reparses; a changed typing
+    /// state (caret at the end of the focused field) only re-evaluates the last word. Returns
+    /// whether the projection needs recomputing.
+    fn query_changed(&mut self, window: &Window, cx: &App) -> bool {
+        let state = self.query.read(cx);
+        let text = state.value().to_string();
+        let typing = state.focus_handle(cx).is_focused(window)
+            && state.selected_range() == (text.len()..text.len());
+        let edited = text != self.projection.query();
+        if !edited && typing == self.projection.typing() {
+            return false;
+        }
+        if edited {
+            self.highlighted = 0;
+            self.dismissed = false;
+            self.projection.set_query(text);
+        }
+        self.projection.set_typing(typing);
+        true
     }
 
     /// Recomputes the displayed rows after accepted session data, a query edit, or the local
@@ -139,7 +166,6 @@ impl ListView {
     fn edit(&mut self, edit: FilterEdit) {
         let p = &mut self.projection;
         match edit {
-            FilterEdit::Query(text) => p.set_query(text),
             FilterEdit::Completion(view) => p.set_completion(view),
             FilterEdit::Add(condition) => p.add_condition(&condition),
             FilterEdit::Clear => p.clear(),
@@ -205,27 +231,26 @@ impl ListView {
         };
         let query = app.list_view.query.clone();
         let text = query.read(cx).value().to_string();
-        // The word ends at the core lexer's whitespace or at the end: reuse a following
+        // The word ends at the core lexer's whitespace or at the end: step over a following
         // separator, or add a space.
-        let rest = &text[word.end..];
-        let mut next = format!("{}{token}", &text[..word.start]);
-        let caret = match rest.chars().next() {
-            Some(separator) => next.len() + separator.len_utf8(),
-            None => {
-                next.push(' ');
-                next.len()
-            }
+        let separator = text[word.end..].chars().next();
+        let replacement = if separator.is_some() {
+            token
+        } else {
+            format!("{token} ")
         };
-        next.push_str(rest);
+        let caret = word.start + replacement.len() + separator.map_or(0, char::len_utf8);
+        // `replace` keeps the field's undo history; its change event reparses the query.
         query.update(cx, |state, cx| {
-            state.set_value(next.clone(), window, cx);
+            state.set_selected_range(word.clone(), cx);
+            state.replace(replacement, window, cx);
             state.set_selected_range(caret..caret, cx);
             state.focus(window, cx);
         });
-        let this = &mut app.list_view;
-        this.highlighted = 0;
-        this.edit(FilterEdit::Query(next));
-        app.session_changed(cx);
+        app.list_view.highlighted = 0;
+        if app.list_view.query_changed(window, cx) {
+            app.session_changed(cx);
+        }
     }
 
     /// The query bar above the list: field, Add filter, error hint, readout, Sort and Group.
@@ -372,7 +397,8 @@ fn render_list(
     uniform_list(
         SharedString::from(format!("todo-list:{workspace_id}")),
         rows.len(),
-        move |range, _, cx| {
+        move |range, window, cx| {
+            let compact = window.viewport_size().width < px(COMPACT_WINDOW_WIDTH);
             let model = session.read(cx);
             let (Some(selected), Some(revision)) = (model.selected(), model.revision()) else {
                 return Vec::new();
@@ -394,7 +420,7 @@ fn render_list(
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                         session.update(cx, |model, cx| model.enqueue(command.clone(), cx));
                     };
-                    Some(todo_row::render(index, item, today, on_toggle, p))
+                    Some(todo_row::render(index, item, today, compact, on_toggle, p))
                 })
                 .collect()
         },

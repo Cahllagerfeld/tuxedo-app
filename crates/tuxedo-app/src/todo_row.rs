@@ -1,4 +1,6 @@
-//! One List-view row, ported from `lib/modules/todo/ui/TodoItem.svelte`.
+//! One dense List-view row: a priority letter in a coloured gutter, the completion checkbox,
+//! the description with its Projects and Contexts as muted inline tokens, and the ISO date
+//! right-aligned (the Due date of an open item, `x <Completion date>` of a completed one).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::h_flex;
@@ -9,7 +11,9 @@ use tuxedo_core::{DueCategory, TodoDate, TodoItem};
 
 use crate::theme::{hex, Palette, MONO_FONT};
 
-pub const ROW_HEIGHT: f32 = 40.;
+pub const ROW_HEIGHT: f32 = 32.;
+/// Fits `x 2026-10-14`, so dates line up across rows.
+const DATE_WIDTH: f32 = 96.;
 
 fn unique(values: &[String]) -> Vec<&String> {
     let mut seen = Vec::new();
@@ -22,89 +26,46 @@ fn unique(values: &[String]) -> Vec<&String> {
 }
 
 /// `index` is the item's position in the Todo file's items. `on_toggle` completes an open item
-/// or reopens a completed one.
+/// or reopens a completed one. A `compact` row shows only its first token and how many follow.
 pub fn render(
     index: usize,
     todo: &TodoItem,
     today: TodoDate,
+    compact: bool,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     p: &Palette,
 ) -> AnyElement {
     let muted_fg = hex(p.muted_foreground);
-    let projects = unique(&todo.projects);
-    let contexts = unique(&todo.contexts);
-    let project_limit = if contexts.is_empty() { 2 } else { 1 };
-    let context_limit = if projects.is_empty() { 2 } else { 1 };
-
-    let priority = match todo.priority {
-        Some(letter) => {
-            let (bg, fg) = p.priority(letter);
-            div().bg(bg).text_color(fg).child(format!("({letter})"))
-        }
-        None => div().text_color(muted_fg).child("—"),
+    let (bar, letter) = match todo.priority {
+        Some(letter) => (p.priority(letter).1, letter.to_string()),
+        None => (transparent_black(), String::new()),
     };
-
-    let tags = h_flex()
-        .min_w_0()
-        .max_w(relative(0.25))
-        .flex_shrink(1.)
-        .gap_2()
-        .overflow_hidden()
-        .font_family(MONO_FONT)
-        .text_xs()
-        .text_color(muted_fg)
-        .child(tag_group(
-            "+",
-            &projects,
-            project_limit,
-            Some(hex(p.priority_b)),
-            p,
-        ))
-        .child(tag_group("@", &contexts, context_limit, None, p));
-
     let category = todo.due_category(today);
-    let row_date = if todo.completed {
+    let date = if todo.completed {
         todo.completion_date
+            .map(|date| (format!("x {}", date.as_str()), muted_fg))
     } else {
-        todo.due_date()
-    };
-    let date = match row_date {
-        Some(date) => {
-            let (bg, fg) = match (todo.completed, category) {
-                (false, DueCategory::Overdue) => {
-                    (hex(p.destructive).opacity(0.1), hex(p.destructive))
-                }
-                (false, DueCategory::Today) => (hex(p.accent), hex(p.accent_foreground)),
-                _ => (gpui_kit::transparent_black(), muted_fg),
+        todo.due_date().map(|date| {
+            let color = match category {
+                DueCategory::Overdue => hex(p.destructive),
+                DueCategory::Today => hex(p.priority_c),
+                _ => muted_fg,
             };
-            let icon = if todo.completed {
-                IconName::Check
-            } else {
-                IconName::CalendarDays
-            };
-            h_flex()
-                .flex_shrink_0()
-                .gap_1()
-                .px_1p5()
-                .py_0p5()
-                .rounded(px(4.))
-                .text_xs()
-                .bg(bg)
-                .text_color(fg)
-                .child(Icon::new(icon).size_3())
-                .child(date.as_str().to_owned())
-                .into_any_element()
-        }
-        // A malformed due: value gets the warning icon instead of a date.
-        None if !todo.completed && category == DueCategory::Invalid => {
-            Icon::new(IconName::TriangleAlert)
-                .size_3p5()
-                .flex_shrink_0()
-                .text_color(hex(p.destructive))
-                .into_any_element()
-        }
-        None => div().into_any_element(),
+            (date.as_str().to_owned(), color)
+        })
     };
+    // A malformed due: value shows as `due:?` in place of a date.
+    let date = date.or_else(|| {
+        (!todo.completed && category == DueCategory::Invalid)
+            .then(|| ("due:?".to_owned(), hex(p.destructive)))
+    });
+    let tokens: Vec<String> = unique(&todo.projects)
+        .into_iter()
+        .map(|v| format!("+{v}"))
+        .chain(unique(&todo.contexts).into_iter().map(|v| format!("@{v}")))
+        .collect();
+    let shown = if compact { 1 } else { tokens.len() };
+    let more = tokens.len().saturating_sub(shown);
 
     // The completion checkbox: a round mark filled with the completed color.
     let checkbox = div()
@@ -139,67 +100,75 @@ pub fn render(
         .min_w_0()
         .items_center()
         .gap_2()
-        .px_3()
+        .pr_4()
         .border_b_1()
         .border_color(hex(p.border).opacity(0.5))
         .hover(|style| style.bg(hex(p.muted).opacity(0.5)))
         .when(todo.completed, |row| row.text_color(muted_fg))
+        .child(div().w(px(3.)).h_full().flex_shrink_0().bg(bar))
+        .child(
+            div()
+                .w_4()
+                .flex_shrink_0()
+                .font_family(MONO_FONT)
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(bar)
+                .child(letter),
+        )
         .child(checkbox)
         .child(
-            priority
-                .w_6()
-                .flex_shrink_0()
-                .flex()
-                .justify_center()
-                .rounded(px(4.))
-                .font_family(MONO_FONT)
-                .text_xs(),
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_2()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .max_w(relative(if compact { 0.6 } else { 0.75 }))
+                        .truncate()
+                        .text_sm()
+                        .when(todo.completed, |text| text.line_through())
+                        .child(todo.description.clone()),
+                )
+                .child(
+                    // Tokens take what the description leaves; the date column clips the rest.
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1p5()
+                        .overflow_hidden()
+                        .font_family(MONO_FONT)
+                        .text_xs()
+                        .text_color(muted_fg)
+                        .children(tokens.into_iter().take(shown).map(|token| {
+                            div()
+                                .when(compact, |t| t.min_w(px(56.)).truncate())
+                                .when(!compact, |t| t.flex_shrink_0())
+                                .child(token)
+                        }))
+                        .when(more > 0, |tokens| {
+                            tokens.child(
+                                div()
+                                    .flex_shrink_0()
+                                    .px_1()
+                                    .rounded(px(4.))
+                                    .bg(hex(p.muted))
+                                    .child(format!("+{more}")),
+                            )
+                        }),
+                ),
         )
         .child(
             div()
-                .min_w_16()
-                .flex_1()
-                .truncate()
-                .text_sm()
-                .when(todo.completed, |text| text.line_through())
-                .child(todo.description.clone()),
+                .w(px(DATE_WIDTH))
+                .flex_shrink_0()
+                .flex()
+                .justify_end()
+                .font_family(MONO_FONT)
+                .text_xs()
+                .children(date.map(|(label, color)| div().text_color(color).child(label))),
         )
-        .child(tags)
-        .child(date)
-        .into_any_element()
-}
-
-fn tag_group(
-    prefix: &str,
-    values: &[&String],
-    limit: usize,
-    color: Option<Hsla>,
-    p: &Palette,
-) -> AnyElement {
-    if values.is_empty() {
-        return div().into_any_element();
-    }
-    let overflow = values.len().saturating_sub(limit);
-    h_flex()
-        .min_w_0()
-        .gap_1()
-        .when_some(color, |group, color| group.text_color(color))
-        .children(
-            values
-                .iter()
-                .take(limit)
-                .map(|value| div().min_w_0().truncate().child(format!("{prefix}{value}"))),
-        )
-        .when(overflow > 0, |group| {
-            group.child(
-                div()
-                    .flex_shrink_0()
-                    .px_1()
-                    .rounded(px(4.))
-                    .bg(hex(p.muted))
-                    .text_color(hex(p.muted_foreground))
-                    .child(format!("+{overflow}")),
-            )
-        })
         .into_any_element()
 }

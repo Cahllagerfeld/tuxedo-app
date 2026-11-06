@@ -428,25 +428,46 @@ mod tests {
 
         // Cmd-F focuses the field; `+W` offers +Web then +Work; Down and Enter take +Work.
         cx.simulate_keystrokes("cmd-f");
-        cx.simulate_input("x +W");
+        cx.simulate_input("pl +W");
         cx.simulate_keystrokes("down enter");
         cx.run_until_parked();
-        assert_eq!(query(cx), "x +Work ");
+        assert_eq!(query(cx), "pl +Work ");
 
         // Closed (the caret follows a space): Enter and Down reach the field and change nothing.
         cx.simulate_keystrokes("enter down");
         cx.run_until_parked();
-        assert_eq!(query(cx), "x +Work ");
+        assert_eq!(query(cx), "pl +Work ");
 
         // Escape closes the popover, so Enter does not accept; typing reopens it for Tab.
+        // Meanwhile the unfinished `@h` matches as a prefix instead of emptying the list.
         cx.simulate_input("@h");
+        cx.run_until_parked();
+        let shown = |cx: &mut gpui::VisualTestContext| {
+            app.read_with(cx, |app, cx| {
+                let selected = app.session.read(cx).selected();
+                app.list_view.projection(selected).unwrap().shown()
+            })
+        };
+        assert_eq!(shown(cx), 1);
         cx.simulate_keystrokes("escape enter");
         cx.run_until_parked();
-        assert_eq!(query(cx), "x +Work @h");
+        assert_eq!(query(cx), "pl +Work @h");
         cx.simulate_input("o");
         cx.simulate_keystrokes("tab");
         cx.run_until_parked();
-        assert_eq!(query(cx), "x +Work @home ");
+        assert_eq!(query(cx), "pl +Work @home ");
+        // Accepting is one step of the field's own undo history.
+        cx.simulate_keystrokes("cmd-z");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "pl +Work @ho");
+        cx.simulate_keystrokes("cmd-shift-z");
+        cx.run_until_parked();
+        assert_eq!(query(cx), "pl +Work @home ");
+        // Outside the field, Cmd-Z is Undo last change again.
+        app.update_in(cx, |app, window, cx| window.focus(&app.focus_handle, cx));
+        cx.run_until_parked();
+        let undo_todo = cx.update(|window, _| window.bindings_for_action(&super::UndoTodo).len());
+        assert_eq!(undo_todo, 1);
         app.read_with(cx, |app, cx| {
             let selected = app.session.read(cx).selected();
             let filters = app.list_view.projection(selected).unwrap().filters();

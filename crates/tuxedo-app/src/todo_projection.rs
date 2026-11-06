@@ -10,9 +10,10 @@ use std::sync::LazyLock;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 use tuxedo_core::{
-    deferred_count, group_todos_by_due, invalid_due_count, project_todos, query_with_condition,
-    todo_facets, AbsentSelections, CompletionView, DueGroupKind, Facets, QueryCondition,
-    QueryError, TodoDate, TodoFilters, TodoSortOrder, WorkspaceSnapshot,
+    group_todos_by_due, invalid_due_count, is_deferred, project_todos, query_with_condition,
+    query_word_at, todo_facets, AbsentSelections, CompletionView, DueGroupKind, Facets,
+    QueryCondition, QueryError, TodoDate, TodoFilters, TodoItem, TodoSortOrder, WorkspaceSnapshot,
+    COMPLETION_VALUES, DUE_VALUES,
 };
 
 /// Root-locale collation, as the Electron app's `String.prototype.localeCompare` applies it
@@ -36,13 +37,94 @@ pub enum Row {
     Item(usize),
 }
 
+/// The condition word being typed at the end of the focused field, applied as a
+/// case-insensitive prefix so the list does not empty while it is incomplete. A UI rule only:
+/// the query text and its parsed meaning stay exact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedPrefix {
+    pub kind: PrefixKind,
+    /// The value as typed after its sigil or key.
+    pub typed: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrefixKind {
+    Project,
+    Context,
+    Priority,
+    Due,
+    Completion,
+}
+
+impl TypedPrefix {
+    /// The prefix a condition word starts, if it is one.
+    fn of(word: &str) -> Option<Self> {
+        let (kind, typed) = if let Some(rest) = word.strip_prefix('+') {
+            (PrefixKind::Project, rest)
+        } else if let Some(rest) = word.strip_prefix('@') {
+            (PrefixKind::Context, rest)
+        } else {
+            [
+                ("pri:", PrefixKind::Priority),
+                ("due:", PrefixKind::Due),
+                ("is:", PrefixKind::Completion),
+            ]
+            .into_iter()
+            .find_map(|(key, kind)| {
+                let head = word.get(..key.len())?;
+                head.eq_ignore_ascii_case(key)
+                    .then(|| (kind, &word[key.len()..]))
+            })?
+        };
+        Some(Self {
+            kind,
+            typed: typed.to_owned(),
+        })
+    }
+
+    /// Whether `item` has a value of this kind starting with the typed text, ignoring case;
+    /// an empty prefix matches everything. Like the exact rules, a Priority or Due prefix
+    /// never matches in the Completed view's terms: Due only matches open items.
+    fn matches(&self, item: &TodoItem, today: TodoDate) -> bool {
+        let prefix = self.typed.to_lowercase();
+        if prefix.is_empty() {
+            return true;
+        }
+        let starts = |value: &str| value.to_lowercase().starts_with(&prefix);
+        match self.kind {
+            PrefixKind::Project => item.projects.iter().any(|v| starts(v)),
+            PrefixKind::Context => item.contexts.iter().any(|v| starts(v)),
+            PrefixKind::Priority => item.priority.is_some_and(|p| starts(&p.to_string())),
+            PrefixKind::Due => {
+                let category = item.due_category(today);
+                !item.completed
+                    && DUE_VALUES
+                        .into_iter()
+                        .any(|(name, due)| due == category && name.starts_with(&prefix))
+            }
+            PrefixKind::Completion => COMPLETION_VALUES.into_iter().any(|(name, view)| {
+                name.starts_with(&prefix)
+                    && match view {
+                        CompletionView::All => true,
+                        CompletionView::Open => !item.completed,
+                        CompletionView::Completed => item.completed,
+                    }
+            }),
+        }
+    }
+}
+
 pub struct TodoProjection {
     /// The Workspace the query belongs to; another ID clears it.
     workspace_id: Option<String>,
     /// The query field's text: the single source of truth for the filters.
     query: String,
+    /// The caret is at the end of the focused field.
+    typing: bool,
     /// What `query` parsed to, or the last valid query's filters while it has an error.
+    /// While `prefix` is set, the query without its last word.
     filters: TodoFilters,
+    prefix: Option<TypedPrefix>,
     error: Option<QueryError>,
     /// Retained selections the current data does not offer.
     absent: AbsentSelections,
@@ -63,7 +145,9 @@ impl TodoProjection {
         Self {
             workspace_id: None,
             query: String::new(),
+            typing: false,
             filters: TodoFilters::default(),
+            prefix: None,
             error: None,
             absent: AbsentSelections::default(),
             sort_override: None,
@@ -98,13 +182,16 @@ impl TodoProjection {
         self.facets = todo_facets(file, self.filters.completion, locale_compare);
         self.absent = self.filters.absent(&self.facets);
         let show_deferred = selected.workspace.show_deferred.unwrap_or(false);
-        let indices = project_todos(
+        let mut indices = project_todos(
             file,
             &self.filters,
             today,
             self.sort(selected),
             show_deferred,
         );
+        let prefix = self.prefix.as_ref();
+        let typed = |item: &TodoItem| prefix.is_none_or(|p| p.matches(item, today));
+        indices.retain(|&index| typed(&file.items[index]));
         self.shown = indices.len();
         self.rows = if self.grouped {
             group_todos_by_due(file, &indices, today)
@@ -123,7 +210,12 @@ impl TodoProjection {
         self.deferred = if show_deferred {
             0
         } else {
-            deferred_count(file, &self.filters, today)
+            file.items
+                .iter()
+                .filter(|item| {
+                    self.filters.matches(item, today) && is_deferred(item, today) && typed(item)
+                })
+                .count()
         };
         self.invalid_due = invalid_due_count(file, today);
     }
@@ -145,6 +237,20 @@ impl TodoProjection {
 
     pub fn filters(&self) -> &TodoFilters {
         &self.filters
+    }
+
+    pub fn typing(&self) -> bool {
+        self.typing
+    }
+
+    /// The condition word being typed, matched as a prefix.
+    pub fn prefix(&self) -> Option<&TypedPrefix> {
+        self.prefix.as_ref()
+    }
+
+    /// Whether the query narrows the list, counting a word being typed.
+    pub fn narrowed(&self) -> bool {
+        self.filters.has_filters() || self.prefix.as_ref().is_some_and(|p| !p.typed.is_empty())
     }
 
     pub fn query(&self) -> &str {
@@ -196,14 +302,38 @@ impl TodoProjection {
     /// Takes the field's text. A valid query replaces the filters; an invalid one keeps the
     /// last valid filters and records the error.
     pub fn set_query(&mut self, query: String) {
-        match TodoFilters::parse(&query) {
+        self.query = query;
+        self.reparse();
+    }
+
+    /// Whether the caret is at the end of the focused field, which makes a final condition
+    /// word without a separator after it a prefix (see [`TypedPrefix`]).
+    pub fn set_typing(&mut self, typing: bool) {
+        self.typing = typing;
+        self.reparse();
+    }
+
+    fn reparse(&mut self) {
+        self.prefix = None;
+        let query = &self.query;
+        let typed = query_word_at(query, query.len())
+            .filter(|_| self.typing)
+            .and_then(|word| Some((TypedPrefix::of(&query[word.clone()])?, word.start)));
+        if let Some((prefix, start)) = typed {
+            if let Ok(filters) = TodoFilters::parse(&query[..start]) {
+                self.filters = filters;
+                self.prefix = Some(prefix);
+                self.error = None;
+                return;
+            }
+        }
+        match TodoFilters::parse(query) {
             Ok(filters) => {
                 self.filters = filters;
                 self.error = None;
             }
             Err(error) => self.error = Some(error),
         }
-        self.query = query;
     }
 
     /// Rewrites the query's `is:` word (Overview); Completed also drops `pri:` and `due:`.
@@ -345,6 +475,26 @@ mod tests {
         projection.set_completion(CompletionView::Completed);
         assert_eq!(projection.query(), "open +Work @Home is:completed ");
         assert!(projection.error().is_none());
+
+        // While typed at the end of the focused field, a condition word matches as a prefix;
+        // a separator, or leaving the field, makes it exact again.
+        projection.set_query("pri:B +wo".into());
+        projection.set_typing(true);
+        projection.sync(Some(&edited), today());
+        assert_eq!((projection.shown(), projection.error()), (0, None));
+        projection.set_query("+wo".into());
+        projection.sync(Some(&edited), today());
+        assert_eq!(projection.shown(), 2);
+        assert_eq!(projection.prefix().map(|p| p.typed.as_str()), Some("wo"));
+        projection.set_query("+wo ".into());
+        projection.sync(Some(&edited), today());
+        assert_eq!(projection.shown(), 0);
+        projection.set_query("is:o".into());
+        projection.sync(Some(&edited), today());
+        assert_eq!((projection.shown(), projection.error()), (1, None));
+        projection.set_typing(false);
+        projection.sync(Some(&edited), today());
+        assert!(projection.error().is_some(), "is:o is not a view");
 
         // Another Workspace with the same contents: everything resets, its saved order applies.
         let other = snapshot("other", text, Some(TodoSortOrder::Due));

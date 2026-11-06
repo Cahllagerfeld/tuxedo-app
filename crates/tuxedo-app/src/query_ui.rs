@@ -19,14 +19,12 @@ use tuxedo_core::{
 };
 
 use crate::theme::{hex, Palette, MONO_FONT};
-use crate::todo_projection::TodoProjection;
+use crate::todo_projection::{PrefixKind, TodoProjection};
 use crate::todo_row::ROW_HEIGHT;
 
 /// One person-initiated change to the List view's projection.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilterEdit {
-    /// The field's new text, as typed.
-    Query(String),
     /// Overview: rewrites the query's `is:` word.
     Completion(CompletionView),
     /// Add filter: appends a condition to the query.
@@ -391,7 +389,7 @@ fn clamp_span(text: &str, span: Range<usize>) -> Range<usize> {
 }
 
 /// The words of the readout: one `(kind, value, absent)` per condition: Projects, Contexts,
-/// Priority, Due, then search words.
+/// Priority, Due, search words, then the word being typed as a prefix (`Project Tu…`).
 pub fn readout_parts(projection: &TodoProjection) -> Vec<(&'static str, String, bool)> {
     let filters = projection.filters();
     let absent = projection.absent();
@@ -419,6 +417,16 @@ pub fn readout_parts(projection: &TodoProjection) -> Vec<(&'static str, String, 
     for word in &filters.search {
         parts.push(("Text", format!("\u{201c}{word}\u{201d}"), false));
     }
+    if let Some(prefix) = projection.prefix().filter(|p| !p.typed.is_empty()) {
+        let kind = match prefix.kind {
+            PrefixKind::Project => "Project",
+            PrefixKind::Context => "Context",
+            PrefixKind::Priority => "Priority",
+            PrefixKind::Due => "Due",
+            PrefixKind::Completion => "View",
+        };
+        parts.push((kind, format!("{}\u{2026}", prefix.typed), false));
+    }
     parts
 }
 
@@ -431,9 +439,8 @@ pub fn render_readout_row(
     p: &'static Palette,
 ) -> impl IntoElement {
     let muted = hex(p.muted_foreground);
-    let filters = projection.filters();
     let stale = projection.error().is_some();
-    let narrowed = filters.has_filters();
+    let narrowed = projection.narrowed();
     let chip = |kind: &'static str, value: String, absent: bool| {
         h_flex()
             .gap_1()
@@ -572,7 +579,7 @@ fn segment(
         )
 }
 
-/// A Due-date group header: one fixed-height row of the virtualized list.
+/// A compact Due-date group header: one fixed-height row of the virtualized list.
 pub fn render_group_header(kind: DueGroupKind, count: usize, p: &Palette) -> AnyElement {
     h_flex()
         .id(SharedString::from(format!("due-group-{kind:?}")))
@@ -580,19 +587,20 @@ pub fn render_group_header(kind: DueGroupKind, count: usize, p: &Palette) -> Any
         .w_full()
         .px_4()
         .gap_2()
-        .items_end()
-        .pb_1p5()
         .border_b_1()
         .border_color(hex(p.border))
-        .bg(hex(p.muted).opacity(0.4))
+        .bg(hex(p.muted).opacity(0.6))
+        .font_family(MONO_FONT)
         .text_xs()
-        .font_weight(FontWeight::SEMIBOLD)
-        .child(group_label(kind))
+        .child(
+            div()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(group_label(kind).to_uppercase()),
+        )
         .child(
             div()
                 .text_color(hex(p.muted_foreground))
-                .font_weight(FontWeight::NORMAL)
-                .child(count.to_string()),
+                .child(format!("({count})")),
         )
         .into_any_element()
 }
@@ -602,7 +610,7 @@ pub fn render_group_header(kind: DueGroupKind, count: usize, p: &Palette) -> Any
 pub fn render_no_matches(projection: &TodoProjection, on_edit: &OnEdit, p: &Palette) -> AnyElement {
     let filters = projection.filters();
     let deferred = projection.deferred();
-    let narrowed = filters.has_filters();
+    let narrowed = projection.narrowed();
     let (title, description) = if deferred > 0 {
         let verb = if deferred == 1 {
             "Todo item is"
