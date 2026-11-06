@@ -199,12 +199,10 @@ pub fn render_field_row(
                         .gap_2()
                         .rounded(px(5.))
                         .cursor_pointer()
-                        // The selected row, as in the Add filter menu: `accent` stands out
-                        // from the popover in both appearances, where `muted` matches it
-                        // in dark. Hover would override it, so only other rows take hover.
-                        .when(active, |row| {
-                            row.bg(hex(p.accent)).text_color(hex(p.accent_foreground))
-                        })
+                        // The keyboard cursor: a primary tint, like a selected List row, since
+                        // the neutral `accent` and `muted` barely differ from the popover.
+                        // Hover would override it, so only other rows take hover.
+                        .when(active, |row| row.bg(hex(p.primary).opacity(0.12)))
                         .when(!active, |row| row.hover(|row| row.bg(hex(p.muted))))
                         // On mouse down, before the field loses focus to the click.
                         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -232,7 +230,7 @@ pub fn render_field_row(
                                 div()
                                     .flex_shrink_0()
                                     .text_xs()
-                                    .text_color(hex(p.muted_foreground))
+                                    .text_color(hex(p.primary))
                                     .child("↵"),
                             )
                         })
