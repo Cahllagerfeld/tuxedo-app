@@ -551,6 +551,21 @@ pub fn query_word_at(query: &str, caret: usize) -> Option<Range<usize>> {
 /// condition applied, unless the condition itself cannot parse or a Priority or Due condition
 /// meets `is:completed`.
 pub fn query_with_condition(query: &str, condition: &QueryCondition) -> String {
+    rewrite(query, None, condition).0
+}
+
+/// Like [`query_with_condition`], but the condition takes the place of the word at `word`
+/// (autocomplete accepting a suggestion for it). Returns the query and the byte offset just
+/// after the condition and its following space, for the caret.
+pub fn query_with_condition_at(
+    query: &str,
+    word: Range<usize>,
+    condition: &QueryCondition,
+) -> (String, usize) {
+    rewrite(query, Some(word), condition)
+}
+
+fn rewrite(query: &str, at: Option<Range<usize>>, condition: &QueryCondition) -> (String, usize) {
     let token = condition.token();
     let drops = |word: &str| match condition {
         QueryCondition::Completion(CompletionView::Completed) => {
@@ -561,18 +576,30 @@ pub fn query_with_condition(query: &str, condition: &QueryCondition) -> String {
         QueryCondition::Project(_) | QueryCondition::Context(_) => word == token,
         _ => condition.key().is_some_and(|key| has_key(word, key)),
     };
-    let mut words: Vec<&str> = lenient_words(query)
-        .into_iter()
-        .map(|span| &query[span])
-        .filter(|word| !drops(word))
-        .collect();
-    let all = matches!(condition, QueryCondition::Completion(CompletionView::All));
-    if !all {
-        words.push(&token);
+    // The words before and after the condition's place, without the replaced word and
+    // those the condition drops.
+    let (mut before, mut after) = (Vec::new(), Vec::new());
+    for span in lenient_words(query) {
+        let replaced = at.as_ref().is_some_and(|at| span.start == at.start);
+        let text = &query[span.clone()];
+        if replaced || drops(text) {
+            continue;
+        }
+        if at.as_ref().is_some_and(|at| span.start > at.start) {
+            after.push(text);
+        } else {
+            before.push(text);
+        }
     }
-    let mut next = words.join(" ");
-    if !next.is_empty() {
+    let mut next = before.join(" ");
+    if !before.is_empty() {
         next.push(' ');
     }
-    next
+    if !matches!(condition, QueryCondition::Completion(CompletionView::All)) {
+        next.push_str(&token);
+        next.push(' ');
+    }
+    let caret = next.len();
+    next.push_str(&after.join(" "));
+    (next, caret)
 }

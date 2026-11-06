@@ -490,8 +490,8 @@ fn ui_edits_rewrite_only_the_affected_words_and_find_the_word_at_the_caret() {
         ("", Project("Work".into()), "+Work "),
         (
             "invoice  +Home",
-            Project("a b".into()),
-            r#"invoice +Home +"a b" "#,
+            Project(r#"a"b"#.into()),
+            r#"invoice +Home +"a\"b" "#,
         ),
         ("+Work x", Project("Work".into()), "x +Work "),
         ("pri:B x PRI:c", Priority('a'), "x pri:A "),
@@ -516,12 +516,27 @@ fn ui_edits_rewrite_only_the_affected_words_and_find_the_word_at_the_caret() {
             r#"pri:ZZ "open is:open "#,
         ),
     ];
-    for (query, condition, expected) in cases {
-        assert_eq!(
-            query_with_condition(query, &condition),
-            expected,
-            "{query:?}"
-        );
+    for (text, condition, expected) in cases {
+        let next = query_with_condition(text, &condition);
+        assert_eq!(next, expected, "{text:?}");
+        // A valid query stays valid, with exactly the condition applied; the invalid row
+        // (an unterminated quote) is only checked as text above.
+        let Ok(mut wanted) = TodoFilters::parse(text) else {
+            continue;
+        };
+        match &condition {
+            Project(name) => wanted.projects.push(name.clone()),
+            Context(name) => wanted.contexts.push(name.clone()),
+            Priority(letter) => wanted.priority = Some(*letter),
+            Due(due) => wanted.due = Some(*due),
+            Completion(view) => {
+                wanted.completion = *view;
+                if *view == CompletionView::Completed {
+                    (wanted.priority, wanted.due) = (None, None);
+                }
+            }
+        }
+        assert_eq!(TodoFilters::parse(&next), wanted.normalized(), "{text:?}");
     }
 
     let word = |query: &str, caret| {
@@ -534,4 +549,45 @@ fn ui_edits_rewrite_only_the_affected_words_and_find_the_word_at_the_caret() {
     assert_eq!(word("x +Wo ", 6), None);
     assert_eq!(word(r#""a +Wo"#, 6), None, "inside an unterminated quote");
     assert_eq!(word(r#"+"a b" pri:"#, 11).as_deref(), Some("pri:"));
+}
+
+#[test]
+fn accepting_a_suggestion_rewrites_in_place_by_the_same_rules() {
+    use QueryCondition::*;
+    // (query with the word to replace in brackets, condition, result with `|` at the caret)
+    let cases = [
+        (
+            "pri:A due:today [is:]",
+            Completion(CompletionView::Completed),
+            "is:completed |",
+        ),
+        (
+            "[is:o] +Work",
+            Completion(CompletionView::Open),
+            "is:open |+Work",
+        ),
+        ("x [is:a] y", Completion(CompletionView::All), "x |y"),
+        ("pri:B [pri:] +W", Priority('A'), "pri:A |+W"),
+        ("+Work [+Wo]", Project("Work".into()), "+Work |"),
+        ("[@h] x", Context("a\u{feff}b".into()), "@\"a\u{feff}b\" |x"),
+    ];
+    for (marked, condition, expected) in cases {
+        let start = marked.find('[').unwrap();
+        let end = marked.find(']').unwrap() - 1;
+        let query = marked.replace(['[', ']'], "");
+        let (next, caret) = query_with_condition_at(&query, start..end, &condition);
+        assert_eq!(
+            format!("{}|{}", &next[..caret], &next[caret..]),
+            expected,
+            "{marked:?}"
+        );
+        // Same meaning as appending the condition (Overview, Add filter).
+        let appended =
+            query_with_condition(&format!("{}{}", &query[..start], &query[end..]), &condition);
+        assert_eq!(
+            TodoFilters::parse(&next),
+            TodoFilters::parse(&appended),
+            "{marked:?}"
+        );
+    }
 }

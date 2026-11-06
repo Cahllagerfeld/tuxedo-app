@@ -15,8 +15,8 @@ use crate::date::TodoDate;
 use crate::todo::{DueCategory, TodoFile, TodoItem};
 
 pub use parse::{
-    query_with_condition, query_word_at, QueryCondition, QueryError, QueryErrorKind, QueryKey,
-    COMPLETION_VALUES, DUE_VALUES, QUERY_GRAMMAR_VERSION,
+    query_with_condition, query_with_condition_at, query_word_at, QueryCondition, QueryError,
+    QueryErrorKind, QueryKey, COMPLETION_VALUES, DUE_VALUES, QUERY_GRAMMAR_VERSION,
 };
 
 /// Which completion states the List view shows.
