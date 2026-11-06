@@ -2,7 +2,7 @@
 //! sidebar's slot and slide. Mirrors `routes/+layout.svelte`; read-only.
 //!
 //! Feature areas render through their own modules:
-//! - [`sidebar`]: Workspaces list and Overview.
+//! - [`sidebar`]: Workspaces list, Overview, and the Facet filters.
 //! - [`list_view`]: the main pane (List view, banner, status bar).
 
 mod list_view;
@@ -293,7 +293,12 @@ impl TuxedoApp {
             .min_w_0()
             .flex_shrink_0()
             .overflow_hidden()
-            .child(self.sidebar.render(&self.session, p, cx))
+            .child(self.sidebar.render(
+                &self.session,
+                self.list_view.facets(self.session.read(cx).selected()),
+                p,
+                cx,
+            ))
             .when(!self.sidebar_open, |slot| {
                 slot.child(div().absolute().inset_0().occlude())
             })

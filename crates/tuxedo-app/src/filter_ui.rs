@@ -1,11 +1,12 @@
 //! List-view filter controls: the toolbar (search, completion view, sort, grouping), the
-//! collapsible Facet bar, Due-date group headers, and the no-matches state. Every control
-//! reports a [`FilterEdit`]; the owner applies it to its projection.
+//! sidebar's collapsible Facet sections, Due-date group headers, and the no-matches state.
+//! Every control reports a [`FilterEdit`]; the List view applies it to its projection.
 
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::collapsible::Collapsible;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{h_flex, v_flex, Disableable, Icon, Selectable, Sizable};
 use gpui_kit::prelude::FluentBuilder;
@@ -28,7 +29,6 @@ pub enum FilterEdit {
     Clear,
     Sort(TodoSortOrder),
     Grouped(bool),
-    ToggleFacets,
 }
 
 /// Applies an edit, from any control's click handler.
@@ -72,12 +72,11 @@ fn edit_button(id: impl Into<ElementId>, edit: FilterEdit, on_edit: &OnEdit) -> 
         .on_click(move |_, window, cx| on_edit(edit.clone(), window, cx))
 }
 
-/// The toolbar row, followed by the Facet bar while it is open.
+/// The toolbar row above the list; the Facets live in the sidebar.
 pub fn render_toolbar(
     projection: &TodoProjection,
     sort: TodoSortOrder,
     search: &Entity<InputState>,
-    facets_open: bool,
     on_edit: &OnEdit,
     p: &Palette,
 ) -> AnyElement {
@@ -86,19 +85,6 @@ pub fn render_toolbar(
         edit_button(id, FilterEdit::Completion(view), on_edit)
             .label(label)
             .selected(filters.completion == view)
-    };
-    let active = [
-        filters.project.is_some(),
-        filters.context.is_some(),
-        filters.priority.is_some(),
-        filters.due.is_some(),
-    ]
-    .into_iter()
-    .filter(|set| *set)
-    .count();
-    let facets_label = match active {
-        0 => "Filters".to_owned(),
-        n => format!("Filters ({n})"),
     };
     let (sort_label, next_sort) = match sort {
         TodoSortOrder::File => ("Sort: File order", TodoSortOrder::Due),
@@ -132,12 +118,6 @@ pub fn render_toolbar(
             bar.child(edit_button("clear-filters", FilterEdit::Clear, on_edit).label("Clear"))
         })
         .child(
-            edit_button("toggle-facets", FilterEdit::ToggleFacets, on_edit)
-                .icon(Icon::new(IconName::ListFilter))
-                .label(facets_label)
-                .selected(facets_open),
-        )
-        .child(
             edit_button("sort-order", FilterEdit::Sort(next_sort), on_edit)
                 .icon(Icon::new(IconName::ArrowDownUp))
                 .label(sort_label)
@@ -153,7 +133,7 @@ pub fn render_toolbar(
             .label("Group by due")
             .selected(projection.grouped()),
         );
-    let toolbar = h_flex()
+    h_flex()
         .flex_wrap()
         .min_h(px(TOOLBAR_MIN_HEIGHT))
         .flex_shrink_0()
@@ -164,69 +144,105 @@ pub fn render_toolbar(
         .border_b_1()
         .border_color(hex(p.border))
         .child(view)
-        .child(arrange);
-    v_flex()
-        .flex_shrink_0()
-        .child(toolbar)
-        .when(facets_open, |column| {
-            column.child(
-                div()
-                    .border_b_1()
-                    .border_color(hex(p.border))
-                    .child(render_facets(projection, on_edit, p)),
-            )
-        })
+        .child(arrange)
         .into_any_element()
 }
 
-/// The Due-date, Project, Context, and Priority Facets, each a labelled list of toggles with
-/// counts. Self-contained, so it can move into the sidebar as in the Electron app.
-pub fn render_facets(projection: &TodoProjection, on_edit: &OnEdit, p: &Palette) -> AnyElement {
+/// One collapsible Facet section of the sidebar, in display order; `as usize` indexes the
+/// sections' open flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FacetSection {
+    Due,
+    Projects,
+    Contexts,
+    Priorities,
+}
+
+impl FacetSection {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Due => "Due date",
+            Self::Projects => "Projects",
+            Self::Contexts => "Contexts",
+            Self::Priorities => "Priorities",
+        }
+    }
+
+    /// Names one value of the section for assistive technology.
+    fn singular(self) -> &'static str {
+        match self {
+            Self::Due => "Due date",
+            Self::Projects => "Project",
+            Self::Contexts => "Context",
+            Self::Priorities => "Priority",
+        }
+    }
+}
+
+/// Expands or collapses a sidebar Facet section.
+pub type OnToggleSection = Rc<dyn Fn(FacetSection, &mut Window, &mut App)>;
+
+/// The Due-date, Project, Context, and Priority Facets as collapsible sidebar sections, each a
+/// vertical list of toggles with counts. `open` holds each section's expanded state, indexed by
+/// `FacetSection as usize`; a collapsed section builds no rows.
+pub fn render_facet_sections(
+    projection: &TodoProjection,
+    open: [bool; 4],
+    on_toggle: &OnToggleSection,
+    on_edit: &OnEdit,
+    p: &Palette,
+) -> AnyElement {
     let filters = projection.filters();
     let facets = projection.facets();
     let completed_view = filters.completion == CompletionView::Completed;
+    let is_open = |section: FacetSection| open[section as usize];
     let due = DUE_CATEGORIES
         .into_iter()
+        .filter(|_| is_open(FacetSection::Due))
         .filter(|&c| c != DueCategory::Invalid || (projection.invalid_due() > 0 && !completed_view))
         .map(|category| {
-            let label = match category {
-                DueCategory::Invalid => {
-                    format!("{} {}", due_label(category), projection.invalid_due())
-                }
-                _ => due_label(category).to_owned(),
-            };
-            edit_button(
+            let count = (category == DueCategory::Invalid).then(|| projection.invalid_due());
+            facet_button(
                 SharedString::from(format!("facet-due-{category:?}")),
+                due_label(category).into(),
+                "Due date",
+                count,
+                filters.due == Some(category),
                 FilterEdit::Due(category),
                 on_edit,
+                p,
             )
-            .label(label)
             .disabled(completed_view)
-            .selected(filters.due == Some(category))
             .into_any_element()
         })
         .collect();
-    let values = |kind: &'static str,
+    let values = |section: FacetSection,
+                  kind: &'static str,
                   prefix: &'static str,
                   values: &[FacetValue],
                   selected: Option<&str>,
                   edit: fn(&FacetValue) -> FilterEdit| {
+        let values = if is_open(section) { values } else { &[] };
         values
             .iter()
             .enumerate()
             .map(|(i, facet)| {
-                edit_button(
+                facet_button(
                     SharedString::from(format!("facet-{kind}-{i}")),
+                    format!("{prefix}{}", facet.value).into(),
+                    section.singular(),
+                    Some(facet.count),
+                    selected == Some(facet.value.as_str()),
                     edit(facet),
                     on_edit,
+                    p,
                 )
-                .label(format!("{prefix}{}  {}", facet.value, facet.count))
-                .selected(selected == Some(facet.value.as_str()))
                 .into_any_element()
             })
             .collect::<Vec<_>>()
     };
     let projects = values(
+        FacetSection::Projects,
         "project",
         "+",
         &facets.projects,
@@ -234,6 +250,7 @@ pub fn render_facets(projection: &TodoProjection, on_edit: &OnEdit, p: &Palette)
         |f| FilterEdit::Project(f.value.clone()),
     );
     let contexts = values(
+        FacetSection::Contexts,
         "context",
         "@",
         &facets.contexts,
@@ -242,66 +259,129 @@ pub fn render_facets(projection: &TodoProjection, on_edit: &OnEdit, p: &Palette)
     );
     let priority = filters.priority.map(|c| c.to_string());
     let priorities = values(
+        FacetSection::Priorities,
         "priority",
         "",
         &facets.priorities,
         priority.as_deref(),
         |f| FilterEdit::Priority(f.value.chars().next().unwrap_or('A')),
     );
-    v_flex()
-        .id("facet-bar")
-        .max_h(px(180.))
-        .overflow_y_scroll()
-        .px_3()
-        .py_2()
-        .gap_1()
-        .child(section("Due date", due, None, p))
-        .child(section("Projects", projects, Some("No Projects"), p))
-        .child(section("Contexts", contexts, Some("No Contexts"), p))
-        .child(section(
-            "Priorities",
+    let sections = [
+        (FacetSection::Due, due, None),
+        (FacetSection::Projects, projects, Some("No Projects")),
+        (FacetSection::Contexts, contexts, Some("No Contexts")),
+        (
+            FacetSection::Priorities,
             priorities,
             Some(if completed_view {
                 "Not available for completed items"
             } else {
                 "No Priorities"
             }),
-            p,
-        ))
+        ),
+    ];
+    v_flex()
+        .gap_1()
+        .children(
+            sections.into_iter().map(|(kind, values, empty)| {
+                section(kind, is_open(kind), values, empty, on_toggle, p)
+            }),
+        )
         .into_any_element()
 }
 
-fn section(
-    label: &'static str,
-    values: Vec<AnyElement>,
-    empty: Option<&'static str>,
+/// A full-width ghost toggle: the value on the left, its count right-aligned and muted.
+/// The Button centers its content, so one flexible row child carries the alignment.
+#[allow(clippy::too_many_arguments)]
+fn facet_button(
+    id: SharedString,
+    value: SharedString,
+    kind: &'static str,
+    count: Option<usize>,
+    selected: bool,
+    edit: FilterEdit,
+    on_edit: &OnEdit,
     p: &Palette,
-) -> impl IntoElement {
-    let muted = hex(p.muted_foreground);
-    h_flex()
-        .items_start()
-        .gap_2()
-        .child(
-            div()
-                .w(px(84.))
-                .flex_shrink_0()
-                .pt_1()
-                .text_xs()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(muted)
-                .child(label),
-        )
+) -> Button {
+    let on_edit = on_edit.clone();
+    Button::new(id)
+        .ghost()
+        .w_full()
+        .px_2()
+        .accessibility_label(match count {
+            Some(1) => format!("{kind} {value}, 1 item"),
+            Some(n) => format!("{kind} {value}, {n} items"),
+            None => format!("{kind} {value}"),
+        })
+        .tooltip(value.clone())
+        .selected(selected)
+        .toggled(selected)
+        .on_click(move |_, window, cx| on_edit(edit.clone(), window, cx))
         .child(
             h_flex()
                 .flex_1()
                 .min_w_0()
-                .flex_wrap()
-                .gap_1()
-                .when(values.is_empty(), |row| {
-                    row.children(empty.map(|e| div().pt_1().text_xs().text_color(muted).child(e)))
-                })
-                .children(values),
+                .gap_2()
+                .child(div().flex_1().min_w_0().truncate().child(value))
+                .children(count.map(|count| {
+                    div()
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(hex(p.muted_foreground))
+                        .child(count.to_string())
+                })),
         )
+}
+
+fn section(
+    kind: FacetSection,
+    open: bool,
+    values: Vec<AnyElement>,
+    empty: Option<&'static str>,
+    on_toggle: &OnToggleSection,
+    p: &Palette,
+) -> impl IntoElement {
+    let muted = hex(p.muted_foreground);
+    let on_toggle = on_toggle.clone();
+    let label = kind.label();
+    // Button has no expanded state for assistive technology; pressed carries open/closed.
+    let header = Button::new(SharedString::from(format!("facet-section-{kind:?}")))
+        .ghost()
+        .w_full()
+        .h_7()
+        .px_2()
+        .accessibility_label(label)
+        .toggled(open)
+        .on_click(move |_, window, cx| on_toggle(kind, window, cx))
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .justify_between()
+                .text_xs()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(muted)
+                .child(label)
+                .child(
+                    Icon::new(if open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size_3p5(),
+                ),
+        );
+    let list = v_flex()
+        .gap_0p5()
+        .when(values.is_empty(), |list| {
+            list.children(empty.map(|e| div().px_2().py_1().text_xs().text_color(muted).child(e)))
+        })
+        .children(values);
+    Collapsible::new()
+        .open(open)
+        .gap_0p5()
+        .child(header)
+        .content(list)
 }
 
 /// A Due-date group header: one fixed-height row of the virtualized list.

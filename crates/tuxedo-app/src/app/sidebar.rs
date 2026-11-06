@@ -1,5 +1,5 @@
 //! Workspace sidebar: the Workspaces list (switching, creating, editing, and removing
-//! Workspaces) and the Overview counts.
+//! Workspaces), the Overview counts, and the List view's Facet filters.
 //! The root shell owns its slot and the open/close slide; this module owns what slides.
 
 use gpui_kit::assets::IconName;
@@ -10,22 +10,42 @@ use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use super::TuxedoApp;
+use std::rc::Rc;
+
+use super::{list_view, TuxedoApp};
+use crate::filter_ui::{self, FacetSection, OnToggleSection};
 use crate::model::SessionModel;
 use crate::theme::{hex, Palette};
+use crate::todo_projection::TodoProjection;
 use crate::workspace_ui;
 
 /// The sidebar's full width; the shell's slot animates between 0 and this.
 pub(super) const WIDTH: f32 = 256.;
 
-/// Sidebar-local UI state (none yet). Workspace management keeps its state here.
-#[derive(Default)]
-pub(super) struct WorkspaceSidebar {}
+/// Sidebar-local UI state: which Facet sections are expanded, indexed by `FacetSection as usize`.
+pub(super) struct WorkspaceSidebar {
+    facets_open: [bool; 4],
+}
+
+impl Default for WorkspaceSidebar {
+    fn default() -> Self {
+        Self {
+            facets_open: [true; 4],
+        }
+    }
+}
 
 impl WorkspaceSidebar {
+    fn toggle(&mut self, section: FacetSection) {
+        let open = &mut self.facets_open[section as usize];
+        *open = !*open;
+    }
+
+    /// `facets` is the List view's projection while it has Todo items to filter.
     pub(super) fn render(
         &self,
         session: &Entity<SessionModel>,
+        facets: Option<&TodoProjection>,
         p: &Palette,
         cx: &Context<TuxedoApp>,
     ) -> impl IntoElement {
@@ -103,6 +123,24 @@ impl WorkspaceSidebar {
                 ))
         });
 
+        let facets = facets.map(|projection| {
+            let app = cx.entity().downgrade();
+            let on_toggle: OnToggleSection = Rc::new(move |section, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.sidebar.toggle(section);
+                    cx.notify();
+                })
+                .ok();
+            });
+            filter_ui::render_facet_sections(
+                projection,
+                self.facets_open,
+                &on_toggle,
+                &list_view::on_edit(cx),
+                p,
+            )
+        });
+
         v_flex()
             .w(px(WIDTH))
             .flex_shrink_0()
@@ -119,6 +157,7 @@ impl WorkspaceSidebar {
                     .overflow_y_scroll()
                     .px_2()
                     .pt_3()
+                    .pb_3()
                     .gap_2()
                     .child(
                         v_flex()
@@ -142,15 +181,10 @@ impl WorkspaceSidebar {
                             }),
                     )
                     .when_some(overview, |content, overview| {
-                        content
-                            .child(
-                                div()
-                                    .mx_2()
-                                    .my_2()
-                                    .border_t_1()
-                                    .border_color(hex(p.sidebar_border)),
-                            )
-                            .child(overview)
+                        content.child(separator(p)).child(overview)
+                    })
+                    .when_some(facets, |content, facets| {
+                        content.child(separator(p)).child(facets)
                     }),
             )
             .child(
@@ -206,6 +240,14 @@ fn options_menu(
                 }),
             )
         })
+}
+
+fn separator(p: &Palette) -> impl IntoElement {
+    div()
+        .mx_2()
+        .my_2()
+        .border_t_1()
+        .border_color(hex(p.sidebar_border))
 }
 
 fn group_label(label: &'static str, p: &Palette) -> impl IntoElement {

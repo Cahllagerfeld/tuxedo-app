@@ -32,7 +32,6 @@ pub(super) struct ListView {
     search: Entity<InputState>,
     /// The search field lives in the window; set it there when a reset clears the search.
     window: AnyWindowHandle,
-    facets_open: bool,
     _subscriptions: [Subscription; 1],
     /// Recomputes the projection when the local date changes.
     _date_watch: Task<()>,
@@ -71,9 +70,6 @@ impl ListView {
             projection: TodoProjection::new(local_today()),
             search,
             window: window.window_handle(),
-            // Screenshot mode: `TUXEDO_FACETS=open` shows the Facet bar.
-            facets_open: cfg!(feature = "screenshot")
-                && std::env::var("TUXEDO_FACETS").as_deref() == Ok("open"),
             _subscriptions: [typed],
             _date_watch: date_watch,
         }
@@ -115,11 +111,16 @@ impl ListView {
             FilterEdit::Clear => p.clear(),
             FilterEdit::Sort(sort) => p.set_sort(sort),
             FilterEdit::Grouped(grouped) => p.set_grouped(grouped),
-            FilterEdit::ToggleFacets => self.facets_open = !self.facets_open,
         }
     }
 
-    /// The toolbar above the list: search, filters, sort and grouping.
+    /// The projection whose Facets the sidebar shows, while the toolbar shows too.
+    pub(super) fn facets(&self, selected: Option<&WorkspaceSnapshot>) -> Option<&TodoProjection> {
+        selected.filter(|s| !s.file.items.is_empty())?;
+        Some(&self.projection)
+    }
+
+    /// The toolbar above the list: search, completion view, sort and grouping.
     fn render_toolbar(
         &self,
         selected: Option<&WorkspaceSnapshot>,
@@ -131,7 +132,6 @@ impl ListView {
             &self.projection,
             self.projection.sort(selected),
             &self.search,
-            self.facets_open,
             &on_edit(cx),
             p,
         ))
@@ -243,7 +243,7 @@ fn render_list(
 }
 
 /// Routes a filter control's edit to the List view, then recomputes the projection.
-fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
+pub(super) fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
     let app = cx.entity().downgrade();
     Rc::new(move |edit, _, cx| {
         app.update(cx, |app, cx| {
