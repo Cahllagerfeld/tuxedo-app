@@ -421,3 +421,138 @@ fn quoted(text: &str) -> String {
     quoted.push('"');
     quoted
 }
+
+/// A condition the UI adds to a query, such as from autocomplete or an "Add filter" menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryCondition {
+    Project(String),
+    Context(String),
+    Priority(char),
+    Due(DueCategory),
+    Completion(CompletionView),
+}
+
+impl QueryCondition {
+    /// The condition as one canonical query word, such as `+Work` or `+"a b"`; the All view
+    /// is `is:all`.
+    pub fn token(&self) -> String {
+        match self {
+            Self::Project(name) => format!("+{}", quote_name(name)),
+            Self::Context(name) => format!("@{}", quote_name(name)),
+            Self::Priority(letter) => format!("pri:{}", letter.to_ascii_uppercase()),
+            Self::Due(due) => {
+                let (name, _) = DUE_VALUES
+                    .into_iter()
+                    .find(|(_, d)| d == due)
+                    .unwrap_or(DUE_VALUES[0]);
+                format!("due:{name}")
+            }
+            Self::Completion(view) => {
+                let (name, _) = COMPLETION_VALUES
+                    .into_iter()
+                    .find(|(_, v)| v == view)
+                    .unwrap_or(COMPLETION_VALUES[0]);
+                format!("is:{name}")
+            }
+        }
+    }
+
+    fn key(&self) -> Option<QueryKey> {
+        match self {
+            Self::Priority(_) => Some(QueryKey::Priority),
+            Self::Due(_) => Some(QueryKey::Due),
+            Self::Completion(_) => Some(QueryKey::Completion),
+            Self::Project(_) | Self::Context(_) => None,
+        }
+    }
+}
+
+/// The byte ranges of `query`'s words, never failing: like the parser's tokenizer, but an
+/// unterminated quote runs to the end and text after a closing quote stays in its word.
+fn lenient_words(query: &str) -> Vec<Range<usize>> {
+    let mut words = Vec::new();
+    let mut position = 0;
+    while let Some(offset) = query[position..].find(|c| !is_js_whitespace(c)) {
+        let start = position + offset;
+        let rest = &query[start..];
+        let quote = if rest.starts_with('"') {
+            Some(start)
+        } else if rest.starts_with(['+', '@']) && rest[1..].starts_with('"') {
+            Some(start + 1)
+        } else {
+            None
+        };
+        let mut end = query.len();
+        let mut scan = start;
+        if let Some(open) = quote {
+            let mut chars = query[open + 1..].char_indices();
+            scan = query.len();
+            while let Some((index, c)) = chars.next() {
+                match c {
+                    '\\' => {
+                        chars.next();
+                    }
+                    '"' => {
+                        scan = open + 1 + index + 1;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if let Some(len) = query[scan..].find(is_js_whitespace) {
+            end = scan + len;
+        }
+        words.push(start..end);
+        position = end;
+    }
+    words
+}
+
+/// Whether the word is a condition for `key`.
+fn has_key(word: &str, key: QueryKey) -> bool {
+    split_key(word).is_some_and(|(k, _)| k == key)
+}
+
+/// The range of the unquoted word the caret at byte `caret` is in or directly after, for
+/// autocomplete; `None` on whitespace or inside a quoted word.
+pub fn query_word_at(query: &str, caret: usize) -> Option<Range<usize>> {
+    lenient_words(query)
+        .into_iter()
+        .find(|word| word.start < caret && caret <= word.end)
+        .filter(|word| {
+            let text = &query[word.clone()];
+            !text.starts_with('"') && !text.starts_with("+\"") && !text.starts_with("@\"")
+        })
+}
+
+/// `query` with `condition` added at the end and a trailing space for the next word. A
+/// `pri:`, `due:`, or `is:` condition replaces any of the same key; `is:completed` also drops
+/// `pri:` and `due:`, and the All view leaves no `is:` at all. Other words keep their
+/// spelling and order; the query need not be valid.
+pub fn query_with_condition(query: &str, condition: &QueryCondition) -> String {
+    let token = condition.token();
+    let drops = |word: &str| match condition {
+        QueryCondition::Completion(CompletionView::Completed) => {
+            has_key(word, QueryKey::Completion)
+                || has_key(word, QueryKey::Priority)
+                || has_key(word, QueryKey::Due)
+        }
+        QueryCondition::Project(_) | QueryCondition::Context(_) => word == token,
+        _ => condition.key().is_some_and(|key| has_key(word, key)),
+    };
+    let mut words: Vec<&str> = lenient_words(query)
+        .into_iter()
+        .map(|span| &query[span])
+        .filter(|word| !drops(word))
+        .collect();
+    let all = matches!(condition, QueryCondition::Completion(CompletionView::All));
+    if !all {
+        words.push(&token);
+    }
+    let mut next = words.join(" ");
+    if !next.is_empty() {
+        next.push(' ');
+    }
+    next
+}

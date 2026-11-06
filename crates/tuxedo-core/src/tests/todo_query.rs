@@ -423,3 +423,56 @@ fn invalid_queries_report_the_offending_bytes_and_why() {
         "Unknown Due date \u{201c}soon\u{201d}; use overdue, today, upcoming, none, or invalid."
     );
 }
+
+#[test]
+fn ui_edits_rewrite_only_the_affected_words_and_find_the_word_at_the_caret() {
+    use QueryCondition::*;
+    let cases = [
+        ("", Project("Work".into()), "+Work "),
+        (
+            "invoice  +Home",
+            Project("a b".into()),
+            r#"invoice +Home +"a b" "#,
+        ),
+        ("+Work x", Project("Work".into()), "x +Work "),
+        ("pri:B x PRI:c", Priority('a'), "x pri:A "),
+        ("due:today x", Due(DueCategory::Overdue), "x due:overdue "),
+        // Overview: `is:` is rewritten, Completed drops Priority and Due, All leaves no `is:`.
+        (
+            "x is:open",
+            Completion(CompletionView::Completed),
+            "x is:completed ",
+        ),
+        (
+            r#"pri:A "pri:B" due:today +W is:open"#,
+            Completion(CompletionView::Completed),
+            r#""pri:B" +W is:completed "#,
+        ),
+        ("is:completed x", Completion(CompletionView::All), "x "),
+        ("is:open", Completion(CompletionView::All), ""),
+        // An invalid query is edited all the same, keeping its broken words.
+        (
+            r#"pri:ZZ "open"#,
+            Completion(CompletionView::Open),
+            r#"pri:ZZ "open is:open "#,
+        ),
+    ];
+    for (query, condition, expected) in cases {
+        assert_eq!(
+            query_with_condition(query, &condition),
+            expected,
+            "{query:?}"
+        );
+    }
+
+    let word = |query: &str, caret| {
+        query_word_at(query, caret)
+            .map(|r| &query[r])
+            .map(str::to_owned)
+    };
+    assert_eq!(word("x +Wo", 5).as_deref(), Some("+Wo"));
+    assert_eq!(word("x +Wo y", 3).as_deref(), Some("+Wo"));
+    assert_eq!(word("x +Wo ", 6), None);
+    assert_eq!(word(r#""a +Wo"#, 6), None, "inside an unterminated quote");
+    assert_eq!(word(r#"+"a b" pri:"#, 11).as_deref(), Some("pri:"));
+}
