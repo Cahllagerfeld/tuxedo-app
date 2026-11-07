@@ -19,7 +19,7 @@ fn item(raw: &str) -> TodoItem {
 #[test]
 fn a_new_line_gets_a_creation_date_and_is_otherwise_kept_as_typed() {
     let today = date("2026-11-07");
-    let cases: [(&str, Result<&str, &str>); 13] = [
+    let cases: [(&str, Result<&str, &str>); 15] = [
         (
             "Buy milk +Home @store due:2026-11-10",
             Ok("2026-11-07 Buy milk +Home @store due:2026-11-10"),
@@ -29,8 +29,20 @@ fn a_new_line_gets_a_creation_date_and_is_otherwise_kept_as_typed() {
             "x 2026-11-01 Done +Work",
             Ok("x 2026-11-01 2026-11-07 Done +Work"),
         ),
-        // Typed bytes stay, an explicit Creation date included; only trailing space goes.
-        ("(A) 2026-10-01 Call  Mom ", Ok("(A) 2026-10-01 Call  Mom")),
+        // Typed bytes stay, trailing ones and an explicit Creation date included.
+        (
+            "(A) 2026-10-01 Call  Mom  ",
+            Ok("(A) 2026-10-01 Call  Mom  "),
+        ),
+        // Incomplete prefixes stay prefixes, never text.
+        (
+            "(A) ",
+            Err("Add a description besides Projects, Contexts, and metadata."),
+        ),
+        (
+            "x ",
+            Err("Add a description besides Projects, Contexts, and metadata."),
+        ),
         (
             "Plan \t the   release",
             Ok("2026-11-07 Plan \t the   release"),
@@ -87,8 +99,8 @@ fn an_edited_line_keeps_the_completion_date_rule() {
         Ok("Old".to_owned()),
         "reopening drops it"
     );
-    // No Creation date is added to an edit, and an unchanged line stays byte for byte.
-    assert_eq!(edit("Old  ", &open), Ok("Old".to_owned()));
+    // No Creation date is added to an edit; typed bytes stay.
+    assert_eq!(edit("Old  ", &open), Ok("Old  ".to_owned()));
     let spaced = item("Keep two spaces  ");
     assert_eq!(edit(&spaced.raw, &spaced), Ok(spaced.raw.clone()));
 }
@@ -96,33 +108,44 @@ fn an_edited_line_keeps_the_completion_date_rule() {
 #[test]
 fn the_date_helper_and_priority_autocomplete_rewrite_only_their_token() {
     let d = date("2026-11-10");
+    let ok = |s: &str| Ok(s.to_owned());
     let cases = [
-        ("Call +Home", LineDate::Due, "Call +Home due:2026-11-10"),
+        ("Call +Home", LineDate::Due, ok("Call +Home due:2026-11-10")),
         (
             "Call due:2026-01-01 +Home due:bad",
             LineDate::Due,
-            "Call due:2026-01-01 +Home due:2026-11-10",
+            ok("Call due:2026-01-01 +Home due:2026-11-10"),
         ),
         (
             "Call t:2026-01-01 +Home",
             LineDate::ShowFrom,
-            "Call t:2026-11-10 +Home",
+            ok("Call t:2026-11-10 +Home"),
         ),
-        ("(A) Call", LineDate::Creation, "(A) 2026-11-10 Call"),
+        ("(A) Call", LineDate::Creation, ok("(A) 2026-11-10 Call")),
         (
             "x 2026-11-01 2026-10-01 Call",
             LineDate::Creation,
-            "x 2026-11-01 2026-11-10 Call",
+            ok("x 2026-11-01 2026-11-10 Call"),
         ),
         (
             "2026-02-30 unparsed",
             LineDate::Creation,
-            "2026-02-30 unparsed",
+            Err("Use a valid date in YYYY-MM-DD format."),
+        ),
+        // After a bare x the first date is the Completion date, so Creation cannot be set.
+        (
+            "x Legacy",
+            LineDate::Creation,
+            Err("Add the Completion date first: the date right after x is the Completion date."),
         ),
     ];
     for (line, target, expected) in cases {
+        let expected = expected.map_err(|e: &str| e);
         assert_eq!(line_with_date(line, target, d), expected, "{line}");
     }
+    let set = item("x 2026-11-01 2026-11-10 Call");
+    assert_eq!(set.completion_date, Some(date("2026-11-01")));
+    assert_eq!(set.creation_date, Some(d));
     let priority = |line: &str, letter| {
         let word = line_word_at(line, line.len()).unwrap();
         line_with_priority(line, word, letter)

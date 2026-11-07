@@ -24,6 +24,8 @@ const INVALID_DATE: &str = "Use a valid date in YYYY-MM-DD format.";
 const NO_DESCRIPTION: &str = "Add a description besides Projects, Contexts, and metadata.";
 const COMPLETION_DATE_REQUIRED: &str =
     "A completed Todo item keeps its Completion date: x YYYY-MM-DD.";
+const CREATION_NEEDS_COMPLETION: &str =
+    "Add the Completion date first: the date right after x is the Completion date.";
 
 /// A validated todo.txt line for a new Todo item or an edit of one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,17 +36,16 @@ pub struct TodoLine {
     editing: bool,
 }
 
-/// The typed text as the line to write: one line, not blank, with trailing whitespace (such as
-/// the space autocomplete leaves) dropped. Everything else stays byte for byte.
+/// The typed text as the line to write, byte for byte: one line, not blank. Trailing whitespace
+/// stays too, since it can be syntax (`(A) ` and `x ` are incomplete prefixes, not text).
 fn typed_line(typed: &str) -> Result<&str, &'static str> {
     if typed.contains(['\n', '\r']) {
         return Err(ONE_LINE);
     }
-    let line = typed.trim_end();
-    if line.trim().is_empty() {
+    if typed.trim().is_empty() {
         return Err(EMPTY);
     }
-    Ok(line)
+    Ok(typed)
 }
 
 /// Parses one line as a Todo item that has a plain description.
@@ -181,40 +182,66 @@ pub fn line_with_priority(line: &str, word: Range<usize>, priority: char) -> (St
 }
 
 /// `line` with one date set by the date helper: the last `due:` or `t:` token gets the new
-/// value in place (or a token is appended), and the Creation date is replaced or inserted after
-/// `x`, its Completion date, and the Priority. A line that does not parse keeps its Creation date
-/// unchanged.
-pub fn line_with_date(line: &str, target: LineDate, date: TodoDate) -> String {
+/// value in place (or a token is appended), and the Creation date is replaced or inserted where
+/// the parser reads it (after `x`, its Completion date, and the Priority). A Creation date is
+/// refused where the parser would read it as something else: on a line that does not parse, and
+/// after a bare `x`, where a first date is the Completion date.
+pub fn line_with_date(
+    line: &str,
+    target: LineDate,
+    date: TodoDate,
+) -> Result<String, &'static str> {
     let key = match target {
         LineDate::Due => "due:",
         LineDate::ShowFrom => "t:",
-        LineDate::Creation => {
-            let file = parse_todo_text(PathBuf::new(), line);
-            let Some(item) = file.items.first().filter(|_| file.skipped.is_empty()) else {
-                return line.to_owned();
-            };
-            let mut out = line.to_owned();
-            let offset = creation_date_offset(line);
-            if item.creation_date.is_some() {
-                out.replace_range(offset..offset + 10, date.as_str());
-            } else {
-                let separator = if offset == line.len() { "" } else { " " };
-                out.insert_str(offset, &format!("{date}{separator}"));
-            }
-            return out;
-        }
+        LineDate::Creation => return line_with_creation_date(line, date),
     };
     let last = word_spans(line)
         .into_iter()
         .rfind(|word| line[word.clone()].starts_with(key));
-    match last {
+    Ok(match last {
         Some(word) => {
             let mut out = line.to_owned();
             out.replace_range(word.start + key.len()..word.end, date.as_str());
             out
         }
-        None if line.trim_end().is_empty() => format!("{key}{date}"),
-        None => format!("{} {key}{date}", line.trim_end()),
+        None if line.is_empty() || line.ends_with(char::is_whitespace) => {
+            format!("{line}{key}{date}")
+        }
+        None => format!("{line} {key}{date}"),
+    })
+}
+
+fn line_with_creation_date(line: &str, date: TodoDate) -> Result<String, &'static str> {
+    let parse = |raw: &str| {
+        let file = parse_todo_text(PathBuf::new(), raw);
+        file.items
+            .into_iter()
+            .next()
+            .filter(|_| file.skipped.is_empty())
+    };
+    let item = parse(line).ok_or(INVALID_DATE)?;
+    if item.completed && item.completion_date.is_none() {
+        return Err(CREATION_NEEDS_COMPLETION);
+    }
+    let mut out = line.to_owned();
+    let offset = creation_date_offset(line);
+    if item.creation_date.is_some() {
+        out.replace_range(offset..offset + 10, date.as_str());
+    } else {
+        let separator = if offset == line.len() { "" } else { " " };
+        out.insert_str(offset, &format!("{date}{separator}"));
+    }
+    // Only the Creation date may change.
+    let after = parse(&out).ok_or(INVALID_DATE)?;
+    let kept = after.completed == item.completed
+        && after.completion_date == item.completion_date
+        && after.priority == item.priority
+        && after.creation_date == Some(date);
+    if kept {
+        Ok(out)
+    } else {
+        Err(CREATION_NEEDS_COMPLETION)
     }
 }
 
