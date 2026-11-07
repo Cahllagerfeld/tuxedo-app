@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use crate::{read_todo_file, CoreError, TodoFile, Workspace, WorkspaceSession, WorkspaceSnapshot};
+use crate::{parse_todo_text, CoreError, TodoFile, Workspace, WorkspaceSession, WorkspaceSnapshot};
 
 /// The info notice for a refreshed Todo file whose parsed contents changed (Electron wording).
 pub const TODO_FILE_RELOADED: &str = "Todo file reloaded";
@@ -21,6 +21,8 @@ pub const TODO_FILE_RELOADED: &str = "Todo file reloaded";
 pub struct ObserveRequest {
     workspace: Workspace,
     revision: u64,
+    /// The confirmed source the read is compared with before anything is parsed.
+    confirmed: String,
 }
 
 /// What [`ObserveRequest::execute`] read, ready for [`WorkspaceSession::accept_observed`].
@@ -28,7 +30,15 @@ pub struct ObserveRequest {
 pub struct ObserveResult {
     workspace: Workspace,
     revision: u64,
-    read: Result<TodoFile, CoreError>,
+    read: Read,
+}
+
+#[derive(Debug)]
+enum Read {
+    /// The file holds the confirmed bytes; nothing was parsed.
+    Unchanged,
+    Changed(TodoFile),
+    Failed(CoreError),
 }
 
 /// What accepting an observed read did to the session.
@@ -54,6 +64,7 @@ impl WorkspaceSession {
         self.selected.as_ref().map(|selected| ObserveRequest {
             workspace: selected.workspace.clone(),
             revision: self.revision,
+            confirmed: selected.file.source.clone(),
         })
     }
 
@@ -69,8 +80,8 @@ impl WorkspaceSession {
             return Observed::Stale;
         };
         match result.read {
-            Ok(file) if file.source == current.file.source => Observed::Unchanged,
-            Ok(file) => {
+            Read::Unchanged => Observed::Unchanged,
+            Read::Changed(file) => {
                 let parsed_changed =
                     file.items != current.file.items || file.skipped != current.file.skipped;
                 self.replace_selected(Some(WorkspaceSnapshot {
@@ -82,7 +93,7 @@ impl WorkspaceSession {
                     notice: parsed_changed.then_some(TODO_FILE_RELOADED),
                 }
             }
-            Err(error) => {
+            Read::Failed(error) => {
                 self.replace_selected(None);
                 Observed::Unavailable {
                     warning: error.to_string(),
@@ -98,10 +109,23 @@ impl ObserveRequest {
         &self.workspace.todo_file
     }
 
-    /// Background step: reads and parses the Todo file. Touches no session state.
+    /// Background step: reads the Todo file and parses it only when its bytes differ from the
+    /// confirmed source. Touches no session state.
     pub fn execute(self) -> ObserveResult {
+        let path = &self.workspace.todo_file;
+        let read = match std::fs::read(path) {
+            Ok(bytes) if bytes == self.confirmed.as_bytes() => Read::Unchanged,
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(text) => Read::Changed(parse_todo_text(path.clone(), &text)),
+                Err(_) => Read::Failed(CoreError::InvalidUtf8 { path: path.clone() }),
+            },
+            Err(source) => Read::Failed(CoreError::Io {
+                path: path.clone(),
+                source,
+            }),
+        };
         ObserveResult {
-            read: read_todo_file(&self.workspace.todo_file),
+            read,
             workspace: self.workspace,
             revision: self.revision,
         }
