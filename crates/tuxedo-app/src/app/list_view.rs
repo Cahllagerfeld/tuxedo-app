@@ -2,11 +2,13 @@
 //! status bar. Rows themselves render in `todo_row`.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{
     Enter, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp,
 };
-use gpui_kit::component::Icon;
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use std::ops::Range;
@@ -24,6 +26,7 @@ use crate::model::{SessionModel, SessionState};
 use crate::query_ui::{self, FilterEdit, OnAccept, OnEdit, Suggestion};
 use crate::theme::{hex, Palette};
 use crate::todo_commands::{self, local_today};
+use crate::todo_editor;
 use crate::todo_projection::{Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
@@ -358,7 +361,12 @@ impl ListView {
                 .gap_2()
                 .border_b_1()
                 .border_color(hex(p.border))
-                .child(field)
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(div().flex_1().min_w_0().child(field))
+                        .child(new_item_button(cx)),
+                )
                 .children(error)
                 .child(query_ui::render_readout_row(
                     &self.projection,
@@ -401,11 +409,16 @@ impl ListView {
                     p,
                 ),
             },
-            (SessionState::Ready(_), Some(selected)) if selected.file.items.is_empty() => message(
-                "No valid Todo items",
-                Some("This Todo file did not contain any parsed Todo items.".into()),
-                p,
-            ),
+            (SessionState::Ready(_), Some(selected)) if selected.file.items.is_empty() => v_flex()
+                .flex_1()
+                .items_center()
+                .child(message(
+                    "No valid Todo items",
+                    Some("This Todo file did not contain any parsed Todo items.".into()),
+                    p,
+                ))
+                .child(div().pb_6().child(new_item_button(cx)))
+                .into_any_element(),
             (SessionState::Ready(_), Some(_)) if self.projection.shown() == 0 => {
                 query_ui::render_no_matches(&self.projection, &on_edit(cx), p)
             }
@@ -463,11 +476,12 @@ fn render_list(
                         target: todo_commands::target(selected, revision, item),
                         completed: !item.completed,
                     });
-                    let session = session.clone();
+                    let toggle = session.clone();
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                        session.update(cx, |model, cx| model.enqueue(command.clone(), cx));
+                        toggle.update(cx, |model, cx| model.enqueue(command.clone(), cx));
                     };
-                    Some(todo_row::render(index, item, today, compact, on_toggle, p))
+                    let row = todo_row::render(index, item, today, compact, on_toggle, p);
+                    Some(editable_row(index, row, &session, item))
                 })
                 .collect()
         },
@@ -475,6 +489,51 @@ fn render_list(
     .flex_1()
     .min_h(px(ROW_HEIGHT))
     .into_any_element()
+}
+
+/// Double-click or the context menu's Edit opens the Todo-item editor for the row's item.
+fn editable_row(
+    index: usize,
+    row: AnyElement,
+    session: &Entity<SessionModel>,
+    item: &tuxedo_core::TodoItem,
+) -> AnyElement {
+    let (session, item) = (session.clone(), item.clone());
+    let edit = move |window: &mut Window, cx: &mut App| {
+        todo_editor::open_edit(session.clone(), &item, window, cx)
+    };
+    let menu_edit = edit.clone();
+    div()
+        .id(("todo-edit", index))
+        .on_click(move |event, window, cx| {
+            if event.click_count() == 2 {
+                edit(window, cx);
+            }
+        })
+        .context_menu(move |menu, _, _| {
+            let edit = menu_edit.clone();
+            menu.item(
+                PopupMenuItem::new("Edit Todo item…")
+                    .on_click(move |_, window, cx| edit(window, cx)),
+            )
+        })
+        .child(row)
+        .into_any_element()
+}
+
+/// The toolbar's New item action (also Cmd-N).
+fn new_item_button(cx: &Context<TuxedoApp>) -> Button {
+    Button::new("new-todo-item")
+        .small()
+        .outline()
+        .icon(Icon::new(IconName::Plus))
+        .label("New item")
+        .tooltip("New Todo item (⌘N)")
+        .on_click(
+            cx.listener(|app, _, window, cx| {
+                todo_editor::open_new(app.session.clone(), window, cx)
+            }),
+        )
 }
 
 /// Routes a query control's edit to the List view, then recomputes the projection.

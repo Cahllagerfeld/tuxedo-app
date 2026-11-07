@@ -12,7 +12,7 @@
 use std::collections::VecDeque;
 
 use gpui_kit::Task;
-use tuxedo_core::TodoTarget;
+use tuxedo_core::{TodoFields, TodoTarget};
 
 use crate::workspace_commands::WorkspaceCommand;
 
@@ -40,6 +40,8 @@ impl Command {
             }) => "complete Todo item",
             Command::Todo(TodoCommand::Complete { .. }) => "reopen Todo item",
             Command::Todo(TodoCommand::Undo { .. }) => "undo",
+            Command::Todo(TodoCommand::Create { .. }) => "create Todo item",
+            Command::Todo(TodoCommand::Edit { .. }) => "edit Todo item",
             Command::Workspace(WorkspaceCommand::Create { .. }) => "create Workspace",
             Command::Workspace(WorkspaceCommand::Update { .. }) => "update Workspace",
             Command::Workspace(WorkspaceCommand::Delete { .. }) => "remove Workspace",
@@ -59,6 +61,17 @@ pub enum TodoCommand {
     Complete { target: TodoTarget, completed: bool },
     /// Undo the last Todo-file change of the Workspace shown at admission.
     Undo { workspace_id: String, revision: u64 },
+    /// Append a new Todo item from the editor to the Workspace shown at admission.
+    Create {
+        workspace_id: String,
+        revision: u64,
+        fields: TodoFields,
+    },
+    /// Replace the targeted Todo item's line with the editor's fields.
+    Edit {
+        target: TodoTarget,
+        fields: TodoFields,
+    },
 }
 
 /// The visible outcome of one admitted command.

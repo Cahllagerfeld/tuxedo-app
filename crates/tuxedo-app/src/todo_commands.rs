@@ -42,6 +42,14 @@ pub fn prepare(
             }
             session.prepare_undo(catalogue_path)
         }
+        TodoCommand::Create {
+            workspace_id,
+            revision,
+            fields,
+        } => session.prepare_create(catalogue_path, &workspace_id, revision, fields, today),
+        TodoCommand::Edit { target, fields } => {
+            session.prepare_edit(catalogue_path, target, fields, today)
+        }
     }
 }
 

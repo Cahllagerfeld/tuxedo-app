@@ -115,3 +115,11 @@ x 2026-10-14 Edit historical Repeat without generating another occurrence +Home 
 Use the keyboard to navigate a long Kanban column while its cards scroll into view +Kanban @review
 x 2026-10-14 See this completed item in the Kanban Done column +Kanban
 x See a legacy completed item without a Completion date in Kanban Done +Kanban
+
+Press Cmd-N or New item to append a Todo item, then Cmd-Z to undo the creation +TuxedoApp @review
+Double-click this row or right-click Edit Todo item; its unknown Metadata survives the edit +TuxedoApp @review custom:keep estimate:2h
+2026-11-01 Edit every field kind: Creation date, Projects, Contexts, Due date, Show from, Repeat and Metadata +TuxedoApp +Release @computer @review due:2026-11-30 t:2026-11-15 rec:1m custom:value
+x 2026-11-02 2026-10-30 Check Completed in the editor to see the Completion date field +TuxedoApp @review
+x 2026-11-02 (B) Edit this legacy completed item; its Priority stays before the text +Legacy @review
+Type +Project or x into the Description to see the editor refuse it without writing +TuxedoApp @review
+Choose Other priority and type a letter from D to Z +TuxedoApp @review

@@ -24,6 +24,7 @@ use crate::command_queue::OutcomeKind;
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{self, hex, Palette};
 use crate::todo_commands::local_today;
+use crate::todo_editor;
 use list_view::ListView;
 use sidebar::WorkspaceSidebar;
 
@@ -42,6 +43,7 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-z", UndoTodo, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-f", FocusQuery, None),
+        KeyBinding::new("cmd-n", todo_editor::NewTodoItem, Some("Tuxedo")),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
 }
@@ -174,6 +176,13 @@ impl Render for TuxedoApp {
             .on_action(cx.listener(|this, _: &FocusQuery, window, cx| {
                 this.focus_query(window, cx);
             }))
+            .on_action(
+                cx.listener(|this, _: &todo_editor::NewTodoItem, window, cx| {
+                    if this.session.read(cx).selected().is_some() && !window.has_active_dialog(cx) {
+                        todo_editor::open_new(this.session.clone(), window, cx);
+                    }
+                }),
+            )
             .bg(hex(p.window_background))
             .text_color(hex(p.foreground))
             .font_family(theme::UI_FONT)

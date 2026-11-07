@@ -8,6 +8,7 @@ mod screenshot;
 mod session;
 mod theme;
 mod todo_commands;
+mod todo_editor;
 mod todo_projection;
 mod todo_row;
 mod workspace_commands;
