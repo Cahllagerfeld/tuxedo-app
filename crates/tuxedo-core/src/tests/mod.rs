@@ -5,6 +5,7 @@ mod catalogue;
 mod observation;
 mod session;
 mod todo;
+mod todo_edit;
 mod todo_query;
 mod todo_write;
 mod workspace_write;

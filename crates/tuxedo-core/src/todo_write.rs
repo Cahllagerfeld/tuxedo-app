@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::atomic_file::atomic_replace;
 use crate::completion::set_completion_line;
 use crate::recurrence::plan_recurring_completion;
+use crate::todo_edit::{EditorChange, EditorPlan};
 use crate::{
     load_catalogue, parse_todo_text, CoreError, LineEnding, TodoDate, TodoFile, Workspace,
     WorkspaceSession, WorkspaceSnapshot,
@@ -72,6 +73,11 @@ enum TodoCommand {
     },
     Undo {
         token: UndoToken,
+    },
+    /// Todo-item creation or editing; `kept` is the Undo step an unchanged edit leaves in place.
+    Editor {
+        change: Box<EditorChange>,
+        kept: Option<UndoToken>,
     },
 }
 
@@ -161,6 +167,26 @@ impl WorkspaceSession {
         self.replace_selected(Some(result.snapshot));
         self.undo = result.undo;
         Ok(result.status)
+    }
+
+    /// Foreground step for the Todo-item editor (`todo_edit`). Performs no I/O.
+    pub(crate) fn prepare_editor_write(
+        &self,
+        catalogue_path: &Path,
+        workspace_id: &str,
+        revision: u64,
+        change: EditorChange,
+    ) -> Result<TodoWriteRequest, CoreError> {
+        let (origin, path) = self.current_origin(workspace_id, revision)?;
+        Ok(TodoWriteRequest {
+            catalogue_path: catalogue_path.to_path_buf(),
+            path,
+            origin,
+            command: TodoCommand::Editor {
+                change: Box::new(change),
+                kept: self.undo.clone(),
+            },
+        })
     }
 
     fn current_origin(
@@ -267,6 +293,31 @@ impl TodoWriteRequest {
                 }
                 (token.before, None, None)
             }
+            TodoCommand::Editor { change, kept } => {
+                let current = snapshot(workspace.clone(), before.clone())?;
+                let (after, notice) = match change.plan(&current.file).map_err(invalid)? {
+                    EditorPlan::Conflict(message) => return conflict(workspace, before, message),
+                    EditorPlan::Write { contents, notice } => (contents.into_bytes(), notice),
+                };
+                if after == before {
+                    // Nothing to write; the previous Undo step still matches the file.
+                    return Ok(TodoWriteResult {
+                        snapshot: current,
+                        undo: kept.filter(|token| token.after == before),
+                        status: TodoWriteStatus::Applied,
+                        notice,
+                        origin,
+                    });
+                }
+                let token = UndoToken {
+                    workspace_id: workspace.id.clone(),
+                    path: self.path.clone(),
+                    before: before.clone(),
+                    after: after.clone(),
+                    label: change.undo_label(),
+                };
+                (after, Some(token), notice)
+            }
         };
         atomic_replace(&self.path, &after, file_mode(&self.path)?)?;
         Ok(TodoWriteResult {
@@ -279,7 +330,7 @@ impl TodoWriteRequest {
     }
 }
 
-fn ending_str(ending: LineEnding) -> &'static str {
+pub(crate) fn ending_str(ending: LineEnding) -> &'static str {
     match ending {
         LineEnding::Lf => "\n",
         LineEnding::CrLf => "\r\n",
@@ -289,7 +340,7 @@ fn ending_str(ending: LineEnding) -> &'static str {
 
 /// The file's source with physical line `line_number` replaced by `raw`, keeping that line's
 /// ending and every other byte.
-fn replace_line(file: &TodoFile, line_number: u32, raw: &str) -> String {
+pub(crate) fn replace_line(file: &TodoFile, line_number: u32, raw: &str) -> String {
     let mut out = String::with_capacity(file.source.len() + raw.len());
     for line in &file.lines {
         let text = if line.line_number == line_number {

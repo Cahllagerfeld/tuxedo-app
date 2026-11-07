@@ -128,7 +128,7 @@ pub(crate) fn plan_recurring_completion(
 /// `normalizeTodoDescription` from the TS contracts: JavaScript `trim`, then each run of
 /// Unicode White_Space becomes one space, then `trim` again. JavaScript's trim set differs from
 /// White_Space: it also strips U+FEFF and keeps U+0085.
-fn normalize_description(text: &str) -> String {
+pub(crate) fn normalize_description(text: &str) -> String {
     let js_trim = |s: &str| {
         s.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
             .to_owned()

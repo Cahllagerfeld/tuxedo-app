@@ -11,6 +11,7 @@ mod observation;
 mod recurrence;
 mod session;
 mod todo;
+mod todo_edit;
 mod todo_query;
 mod todo_write;
 mod workspace_write;
@@ -23,6 +24,10 @@ pub use session::{OpenRequest, RereadRequest, RereadResult, WorkspaceSession, Wo
 pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
     TodoFileSummary, TodoItem, TodoItemEdit,
+};
+pub use todo_edit::{
+    validate_metadata_token, validate_tag, DraftField, FieldError, PriorityChoice, RepeatUnit,
+    TodoDraft, TodoFields,
 };
 pub use todo_query::{
     deferred_count, group_todos_by_due, invalid_due_count, is_deferred, project_todos,
