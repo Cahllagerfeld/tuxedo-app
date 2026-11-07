@@ -133,6 +133,9 @@ The sidebar-header control for viewing saved Workspaces, in creation order, choo
 **Workspace catalogue**:
 The saved collection of Workspaces and the Active workspace reference. If it cannot be read, it is preserved and the app shows an error instead of replacing it.
 
+**Electron import**:
+The native app's one-time copy of the Electron app's Workspace catalogue and saved views into its own data folder, on the first launch without a catalogue there. Saved views become Queries; the Electron app's data is left untouched.
+
 **Saved view**:
 A named, Workspace-specific copy of the Todo-item text search, completion view, and Project, Context, Priority, and Due-date filters. Applying it replaces the current filters, keeps date categories relative to the current local date, and retains absent selections so that they produce zero matches.
 
