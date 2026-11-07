@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::atomic_file::atomic_replace;
 use crate::catalogue::{is_uuid, js_trim};
-use crate::{CoreError, TodoFilters, WorkspaceSession, QUERY_GRAMMAR_VERSION};
+use crate::{CoreError, QueryError, TodoFilters, WorkspaceSession, QUERY_GRAMMAR_VERSION};
 
 /// The saved-views file name, next to the catalogue.
 pub const SAVED_VIEWS_FILE: &str = "saved-views.json";
@@ -166,6 +166,20 @@ pub(crate) fn validate_views(views: &[SavedView]) -> Result<(), String> {
     }
 }
 
+/// The canonical Query a saved view stores for `filters`. The canonical Query of filters that
+/// select everything is empty, which a saved view cannot store, so it stores `is:all`: it
+/// parses back to the same filters and applies as the All view. Blank input is refused before
+/// this point; only an explicit match-all Query (such as `is:all`, or an imported filterless
+/// Electron view) reaches it.
+pub(crate) fn saved_query(filters: &TodoFilters) -> Result<String, QueryError> {
+    let query = filters.to_query()?;
+    Ok(if query.is_empty() {
+        "is:all".to_owned()
+    } else {
+        query
+    })
+}
+
 /// The file's contents: two-space JSON with a final LF, as the catalogue.
 pub(crate) fn serialize_saved_views(views: &[SavedView]) -> String {
     #[derive(Serialize)]
@@ -297,12 +311,12 @@ impl SavedViews {
                         "A saved view with this name already exists in this Workspace.",
                     ));
                 }
-                let query = TodoFilters::parse(&query)
-                    .and_then(|filters| filters.to_query())
-                    .map_err(|error| invalid(format!("The Query is invalid: {error}.")))?;
-                if query.is_empty() {
+                if js_trim(&query).is_empty() {
                     return Err(invalid("Enter a Query before saving a view."));
                 }
+                let query = TodoFilters::parse(&query)
+                    .and_then(|filters| saved_query(&filters))
+                    .map_err(|error| invalid(format!("The Query is invalid: {error}.")))?;
                 SavedViewChange::Create {
                     id,
                     workspace_id,

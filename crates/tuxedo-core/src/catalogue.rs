@@ -127,7 +127,7 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
 
 /// A string literal (Effect `Literals`): only a JSON string, never serde's externally tagged
 /// `{"blue": null}` enum form.
-fn literal<'de, D: Deserializer<'de>, T>(
+pub(crate) fn literal<'de, D: Deserializer<'de>, T>(
     d: D,
     parse: impl FnOnce(&str) -> Option<T>,
 ) -> Result<T, D::Error> {
