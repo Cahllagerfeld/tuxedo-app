@@ -1,9 +1,10 @@
 //! Saved views: named Queries per Workspace, kept in `saved-views.json` next to the Workspace
-//! catalogue, where the Electron app keeps its saved views (`packages/backend/src/saved-views.ts`).
+//! catalogue, as the Electron app keeps its saved views (`packages/backend/src/saved-views.ts`).
 //!
 //! The native app stores the Query text, not the Electron app's structured filters, so the file
 //! has a new version: `{"version": 2, "views": [{id, workspace_id, name, query,
-//! grammar_version}]}`. A version-1 (Electron) file is reported as unsupported and, like any
+//! grammar_version}]}`. The Electron import converts version-1 files (`electron_import`); a
+//! version-1 file in the native folder is reported as unsupported and, like any
 //! file that cannot be read, preserved: every write rereads the file first and refuses to
 //! replace one it cannot read. Otherwise the Electron rules hold: UUID ids, trimmed non-empty
 //! names unique per Workspace ignoring case, and atomic writes at `0600`.
@@ -119,12 +120,12 @@ pub(crate) fn parse_saved_views(text: &str) -> Result<Vec<SavedView>, String> {
             SavedView::deserialize(view).map_err(|e| e.to_string())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    validate(&views)?;
+    validate_views(&views)?;
     Ok(views)
 }
 
 /// The rules every read and write shares.
-fn validate(views: &[SavedView]) -> Result<(), String> {
+pub(crate) fn validate_views(views: &[SavedView]) -> Result<(), String> {
     let mut issues = Vec::new();
     for view in views {
         let label = &view.id;
@@ -373,7 +374,7 @@ impl SavedViewWriteRequest {
             }),
             SavedViewChange::Delete { id } => views.retain(|v| v.id != id),
         }
-        validate(&views).map_err(invalid)?;
+        validate_views(&views).map_err(invalid)?;
         atomic_replace(&self.path, serialize_saved_views(&views).as_bytes(), MODE)?;
         Ok(SavedViewWriteResult {
             views,

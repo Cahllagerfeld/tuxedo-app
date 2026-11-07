@@ -2,6 +2,7 @@
 
 mod atomic_file;
 mod catalogue;
+mod electron_import;
 mod observation;
 mod saved_views;
 mod session;

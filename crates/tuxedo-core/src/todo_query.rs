@@ -355,6 +355,6 @@ fn search_text(item: &TodoItem) -> String {
 /// JavaScript's `\s`, which the Electron app splits search terms on and the query splits
 /// words on: Unicode `White_Space` plus U+FEFF, minus U+0085 (NEXT LINE), which Rust's
 /// `char::is_whitespace` includes.
-fn is_js_whitespace(c: char) -> bool {
+pub(crate) fn is_js_whitespace(c: char) -> bool {
     c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
 }

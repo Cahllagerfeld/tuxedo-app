@@ -6,6 +6,7 @@ mod catalogue;
 mod catalogue_write;
 mod completion;
 mod date;
+mod electron_import;
 mod error;
 mod observation;
 mod recurrence;
@@ -19,6 +20,7 @@ mod workspace_write;
 
 pub use catalogue::{js_trim, load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
 pub use date::TodoDate;
+pub use electron_import::{import_electron_data, ElectronImport, ImportReport, CATALOGUE_FILE};
 pub use error::CoreError;
 pub use observation::{ObserveRequest, ObserveResult, Observed, TODO_FILE_RELOADED};
 pub use saved_views::{
