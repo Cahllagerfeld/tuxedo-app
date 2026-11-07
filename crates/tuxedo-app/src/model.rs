@@ -119,26 +119,45 @@ struct WatchOwner {
 
 impl SessionModel {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        Self::restore_from(session::catalogue_path(), cx)
+        Self::restore_importing(session::catalogue_path(), session::electron_data_dir(), cx)
     }
 
-    /// Workspace session restoration from the catalogue at `path`.
+    /// Workspace session restoration from the catalogue at `path`, without an import (tests).
+    #[cfg(test)]
     pub fn restore_from(path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
+        Self::restore_importing(path, None, cx)
+    }
+
+    /// Workspace session restoration from the catalogue at `path`, first importing the Electron
+    /// app's data from `import_from` when the catalogue's folder has none (see
+    /// [`session::restore`]).
+    fn restore_importing(
+        path: Option<PathBuf>,
+        import_from: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let catalogue_path = path.clone();
         let load = cx.background_spawn(async move {
+            // Restoration runs first: the import may write the saved views read next.
+            let restored = session::restore(path.as_deref(), import_from.as_deref());
             let views = path
                 .as_deref()
                 .map(|p| SavedViews::load(saved_views_path(p)));
-            (session::restore(path.as_deref()), views)
+            (restored, views)
         });
         let task = cx.spawn(async move |this, cx| {
             let (restored, views) = load.await;
             this.update(cx, |model, cx| {
                 match restored {
                     Restored::Unavailable(error) => model.state = SessionState::Unavailable(error),
-                    Restored::Ready { session, warning } => {
+                    Restored::Ready {
+                        session,
+                        warning,
+                        notices,
+                    } => {
                         model.state = SessionState::Ready(session);
                         model.warning = warning;
+                        model.outcomes.extend(notices);
                         model.saved_views = views;
                     }
                 }

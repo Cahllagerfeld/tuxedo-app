@@ -21,6 +21,9 @@
 //!   would (replacing it atomically), then capture <ms> later: Todo-file observation refreshes
 //!   the List view and shows its notice. It writes the file, so point `TUXEDO_USER_DATA` at a
 //!   throwaway catalogue
+//!
+//! `TUXEDO_USER_DATA` names the native data folder; `TUXEDO_ELECTRON_USER_DATA` names the
+//! Electron import's source folder. Point both at throwaway copies to screenshot the import.
 
 use std::time::Duration;
 
