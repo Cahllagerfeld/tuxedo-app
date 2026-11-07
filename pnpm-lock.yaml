@@ -228,8 +228,8 @@ importers:
         specifier: 0.17.0
         version: 0.17.0(svelte@5.57.2)
       '@tanstack/svelte-virtual':
-        specifier: 3.13.50
-        version: 3.13.50(svelte@5.57.2)
+        specifier: 3.13.52
+        version: 3.13.52(svelte@5.57.2)
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
@@ -822,13 +822,13 @@ packages:
     peerDependencies:
       svelte: ^5.25.0
 
-  '@tanstack/svelte-virtual@3.13.50':
-    resolution: {integrity: sha512-msRag/Da+WH+km/dFSbLJSKpzbrOhhrLItzeRuRsApOFdkFzUXjZpODl1nQYjZ4m095Ea0Q+ue4cnOhpI86awg==}
+  '@tanstack/svelte-virtual@3.13.52':
+    resolution: {integrity: sha512-GBP08+GfuAtrcfCEkhZ8qg7At0m1ty82WTVC92YDjmYuU9yU+XD9LoCGUbrwl5m0V05ySgDS6JzmxqwoVdlt5Q==}
     peerDependencies:
       svelte: ^3.48.0 || ^4.0.0 || ^5.0.0
 
-  '@tanstack/virtual-core@3.19.9':
-    resolution: {integrity: sha512-Syiaf3w69dFyYv4o2mqJ1/2VtBJTNq5Hu5cVXfnzOuJKFpUojukQR13ZW+5NvdMJM7GFHeNPmveMNhoIubiFyA==}
+  '@tanstack/virtual-core@3.19.11':
+    resolution: {integrity: sha512-/5iHb0RHBvj8Di59FDs4ESNm45jls33aZAi4zccVXZjc/6ZvwQP6nzEYeT6weXjTf9E6/vrp2JhYWRyO+ZP13A==}
 
   '@testing-library/svelte-core@1.1.3':
     resolution: {integrity: sha512-KkMAvXeWorxN2Yn0kdC1lfoAItxpoj4uOWzxK5leDrNxonLvS5nwBFvztrroyTszQ0Wf/EU6iLT8JhY5qcn22g==}
@@ -2719,12 +2719,12 @@ snapshots:
       '@tanstack/hotkeys': 0.18.0
       svelte: 5.57.2
 
-  '@tanstack/svelte-virtual@3.13.50(svelte@5.57.2)':
+  '@tanstack/svelte-virtual@3.13.52(svelte@5.57.2)':
     dependencies:
-      '@tanstack/virtual-core': 3.19.9
+      '@tanstack/virtual-core': 3.19.11
       svelte: 5.57.2
 
-  '@tanstack/virtual-core@3.19.9': {}
+  '@tanstack/virtual-core@3.19.11': {}
 
   '@testing-library/svelte-core@1.1.3(svelte@5.57.2)':
     dependencies:
