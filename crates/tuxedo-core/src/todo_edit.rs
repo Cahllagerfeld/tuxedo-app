@@ -11,7 +11,8 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::recurrence::{normalize_description, plan_recurring_completion, GENERATION_MARKER};
+use crate::recurrence::{plan_recurring_completion, GENERATION_MARKER};
+use crate::todo::{creation_date_offset, priority_offset};
 use crate::todo_write::{ending_str, replace_line};
 use crate::{
     parse_todo_text, CoreError, TodoDate, TodoFile, TodoItem, TodoTarget, WorkspaceSession,
@@ -33,14 +34,14 @@ pub struct TodoLine {
     editing: bool,
 }
 
-/// The typed text with its outer whitespace trimmed and each inner run collapsed to one space,
-/// as the Electron editor normalized a description.
-fn normalized(typed: &str) -> Result<String, &'static str> {
+/// The typed text as the line to write: one line, not blank, with trailing whitespace (such as
+/// the space autocomplete leaves) dropped. Everything else stays byte for byte.
+fn typed_line(typed: &str) -> Result<&str, &'static str> {
     if typed.contains(['\n', '\r']) {
         return Err(ONE_LINE);
     }
-    let line = normalize_description(typed);
-    if line.is_empty() {
+    let line = typed.trim_end();
+    if line.trim().is_empty() {
         return Err(EMPTY);
     }
     Ok(line)
@@ -59,39 +60,20 @@ fn parse_item(raw: &str) -> Result<TodoItem, &'static str> {
     Ok(item)
 }
 
-/// Where a Creation date goes in `raw`: after `x` and its Completion date, then after a
-/// leading Priority.
-fn creation_date_offset(raw: &str, item: &TodoItem) -> usize {
-    let mut offset = 0;
-    if item.completed {
-        offset += 2;
-        if item.completion_date.is_some() {
-            offset += 11;
-        }
-    }
-    if item.priority.is_some() {
-        offset += 4;
-    }
-    offset.min(raw.len())
-}
-
 impl TodoLine {
-    /// A new Todo item typed as `typed`. Without a Creation date it gets `today`'s, after its
-    /// Priority, as Electron's creation does; nothing else is rewritten. A completed item needs
-    /// its Completion date.
+    /// A new Todo item typed as `typed`. Without a Creation date it gets `today`'s where the
+    /// parser reads one (after `x`, the Completion date, and the Priority), as Electron's
+    /// creation does; nothing else is rewritten. A completed item needs its Completion date.
     pub fn new_item(typed: &str, today: TodoDate) -> Result<Self, &'static str> {
-        let line = normalized(typed)?;
-        let item = parse_item(&line)?;
+        let line = typed_line(typed)?;
+        let item = parse_item(line)?;
         if item.completed && item.completion_date.is_none() {
             return Err(COMPLETION_DATE_REQUIRED);
         }
-        let raw = if item.creation_date.is_some() {
-            line
-        } else {
-            let mut raw = line;
-            raw.insert_str(creation_date_offset(&raw, &item), &format!("{today} "));
-            raw
-        };
+        let mut raw = line.to_owned();
+        if item.creation_date.is_none() {
+            raw.insert_str(creation_date_offset(line), &format!("{today} "));
+        }
         let item = parse_item(&raw)?;
         Ok(Self {
             raw,
@@ -100,7 +82,8 @@ impl TodoLine {
         })
     }
 
-    /// `original` edited to `typed`. Text equal to the original line keeps it byte for byte.
+    /// `original` edited to `typed`, kept as typed (trailing whitespace dropped; text equal to
+    /// the original line keeps it byte for byte).
     /// An item that becomes completed needs a Completion date, and a recorded one cannot be
     /// removed while the item stays completed; legacy completed items without one stay
     /// editable.
@@ -108,7 +91,7 @@ impl TodoLine {
         let raw = if typed == original.raw {
             typed.to_owned()
         } else {
-            normalized(typed)?
+            typed_line(typed)?.to_owned()
         };
         let item = parse_item(&raw)?;
         let dateless = item.completed && item.completion_date.is_none();
@@ -176,29 +159,25 @@ fn word_spans(line: &str) -> Vec<Range<usize>> {
     spans
 }
 
-/// `line` with the word at `word` replaced by `token` and a following space. Returns the line
-/// and the caret after that space.
-pub fn line_with_word(line: &str, word: Range<usize>, token: &str) -> (String, usize) {
-    let rest = line[word.end..].trim_start();
-    let next = format!("{}{token} {rest}", &line[..word.start]);
-    (next, word.start + token.len() + 1)
-}
-
-/// `line` with the word at `word` removed and the leading Priority set to `priority` (`pri:A`
-/// written in a Todo line is the Priority `(A)`). Returns the line and the caret where the
-/// word was.
+/// `line` with the word at `word` removed and the Priority set to `priority` (`pri:A` written
+/// in a Todo line is the Priority `(A)`), where the parser reads it: after `x` and the
+/// Completion date of a completed line. Returns the line and the caret where the word was.
 pub fn line_with_priority(line: &str, word: Range<usize>, priority: char) -> (String, usize) {
     let rest = line[word.end..].trim_start();
-    let without = format!("{}{rest}", &line[..word.start]);
-    let mut caret = word.start;
-    let body = match without.as_bytes() {
-        [b'(', c, b')', b' ', ..] if c.is_ascii_uppercase() => {
-            caret -= 4.min(caret);
-            &without[4..]
-        }
-        _ => without.as_str(),
-    };
-    (format!("({priority}) {body}"), caret + 4)
+    let mut out = format!("{}{rest}", &line[..word.start]);
+    let at = priority_offset(&out);
+    let existing = matches!(
+        out.as_bytes().get(at..at + 4),
+        Some([b'(', c, b')', b' ']) if c.is_ascii_uppercase()
+    );
+    let token = format!("({priority}) ");
+    if existing {
+        out.replace_range(at..at + 4, &token);
+    } else {
+        out.insert_str(at, &token);
+    }
+    let shift = if existing || word.start < at { 0 } else { 4 };
+    (out, word.start + shift)
 }
 
 /// `line` with one date set by the date helper: the last `due:` or `t:` token gets the new
@@ -215,7 +194,7 @@ pub fn line_with_date(line: &str, target: LineDate, date: TodoDate) -> String {
                 return line.to_owned();
             };
             let mut out = line.to_owned();
-            let offset = creation_date_offset(line, item);
+            let offset = creation_date_offset(line);
             if item.creation_date.is_some() {
                 out.replace_range(offset..offset + 10, date.as_str());
             } else {

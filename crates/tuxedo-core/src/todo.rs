@@ -179,6 +179,25 @@ fn parse_priority(rest: &mut &str) -> Option<char> {
     }
 }
 
+/// The byte offset where a line's Priority starts or would go: after `x ` and its Completion
+/// date, as [`parse_line`] reads them.
+pub(crate) fn priority_offset(raw: &str) -> usize {
+    let mut rest = raw;
+    if let Some(after) = rest.strip_prefix("x ") {
+        rest = after;
+        let _ = consume_date(&mut rest);
+    }
+    raw.len() - rest.len()
+}
+
+/// The byte offset where a line's Creation date starts or would go: after `x `, its Completion
+/// date, and a Priority, as [`parse_line`] reads them.
+pub(crate) fn creation_date_offset(raw: &str) -> usize {
+    let mut rest = &raw[priority_offset(raw)..];
+    parse_priority(&mut rest);
+    raw.len() - rest.len()
+}
+
 fn metadata_pair(token: &str) -> Option<(&str, &str)> {
     if let Some((key, value)) = token.split_once(':') {
         if !key.is_empty() && !value.is_empty() && !value.contains(':') {

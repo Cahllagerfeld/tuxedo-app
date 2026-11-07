@@ -32,9 +32,7 @@ pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
     TodoFileSummary, TodoItem, TodoItemEdit,
 };
-pub use todo_edit::{
-    line_with_date, line_with_priority, line_with_word, line_word_at, LineDate, TodoLine,
-};
+pub use todo_edit::{line_with_date, line_with_priority, line_word_at, LineDate, TodoLine};
 pub use todo_query::{
     deferred_count, group_todos_by_due, invalid_due_count, is_deferred, project_todos,
     query_final_word, query_with_condition, query_with_condition_at, query_word_at, todo_facets,

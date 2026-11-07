@@ -19,23 +19,25 @@ fn item(raw: &str) -> TodoItem {
 #[test]
 fn a_new_line_gets_a_creation_date_and_is_otherwise_kept_as_typed() {
     let today = date("2026-11-07");
-    let cases: [(&str, Result<&str, &str>); 12] = [
+    let cases: [(&str, Result<&str, &str>); 13] = [
         (
             "Buy milk +Home @store due:2026-11-10",
             Ok("2026-11-07 Buy milk +Home @store due:2026-11-10"),
         ),
         ("(A) Call Mom", Ok("(A) 2026-11-07 Call Mom")),
-        ("(A) 2026-10-01 Call Mom", Ok("(A) 2026-10-01 Call Mom")),
         (
             "x 2026-11-01 Done +Work",
             Ok("x 2026-11-01 2026-11-07 Done +Work"),
         ),
-        // Whitespace is normalized like the Electron editor's description; tokens are not moved.
+        // Typed bytes stay, an explicit Creation date included; only trailing space goes.
+        ("(A) 2026-10-01 Call  Mom ", Ok("(A) 2026-10-01 Call  Mom")),
         (
-            "  Plan \t the   release ",
-            Ok("2026-11-07 Plan the release"),
+            "Plan \t the   release",
+            Ok("2026-11-07 Plan \t the   release"),
         ),
-        ("+Home before @words", Ok("2026-11-07 +Home before @words")),
+        // A tab after a marker is not the marker's space: these are descriptions.
+        ("(A)\tCall Mom", Ok("2026-11-07 (A)\tCall Mom")),
+        ("x\t2026-11-01 Done", Ok("2026-11-07 x\t2026-11-01 Done")),
         (
             "(a) lowercase is text",
             Ok("2026-11-07 (a) lowercase is text"),
@@ -77,8 +79,8 @@ fn an_edited_line_keeps_the_completion_date_rule() {
     assert_eq!(edit("x Old", &recorded), required.map(str::to_owned));
     assert_eq!(edit("x Newer", &open), required.map(str::to_owned));
     assert_eq!(
-        edit("x  Legacy   kept", &legacy),
-        Ok("x Legacy kept".to_owned())
+        edit("x Legacy  kept", &legacy),
+        Ok("x Legacy  kept".to_owned())
     );
     assert_eq!(
         edit("Old", &recorded),
@@ -87,7 +89,7 @@ fn an_edited_line_keeps_the_completion_date_rule() {
     );
     // No Creation date is added to an edit, and an unchanged line stays byte for byte.
     assert_eq!(edit("Old  ", &open), Ok("Old".to_owned()));
-    let spaced = item("Keep  two  spaces");
+    let spaced = item("Keep two spaces  ");
     assert_eq!(edit(&spaced.raw, &spaced), Ok(spaced.raw.clone()));
 }
 
@@ -121,12 +123,18 @@ fn the_date_helper_and_priority_autocomplete_rewrite_only_their_token() {
     for (line, target, expected) in cases {
         assert_eq!(line_with_date(line, target, d), expected, "{line}");
     }
-    let word = line_word_at("(B) Call pri:A", 13).unwrap();
-    assert_eq!(word, 9..14);
-    assert_eq!(
-        line_with_priority("(B) Call pri:A", word, 'A').0,
-        "(A) Call "
-    );
+    let priority = |line: &str, letter| {
+        let word = line_word_at(line, line.len()).unwrap();
+        line_with_priority(line, word, letter)
+    };
+    assert_eq!(priority("(B) Call pri:A", 'A'), ("(A) Call ".to_owned(), 9));
+    assert_eq!(priority("Call pri:C", 'C'), ("(C) Call ".to_owned(), 9));
+    // A completed line keeps its marker and Completion date; the Priority follows them.
+    let (done, _) = priority("x 2026-11-01 Done pri:A", 'A');
+    assert_eq!(done, "x 2026-11-01 (A) Done ");
+    let done = item(&done);
+    assert!(done.completed && done.priority == Some('A'));
+    assert_eq!(done.completion_date, Some(date("2026-11-01")));
     assert_eq!(line_word_at("Call ", 5), None);
 }
 
