@@ -119,7 +119,25 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
         "metadata changes advance the revision"
     );
 
-    // Show deferred saves only that preference and keeps the shown file's Undo.
+    // Show deferred saves only that preference and keeps the shown file's Undo: completing an
+    // item first leaves an Undo step that still restores the original bytes afterwards.
+    let c_file = renamed.todo_file.clone();
+    let before = fs::read(&c_file).unwrap();
+    let selected = session.selected().unwrap();
+    let target = TodoTarget {
+        workspace_id: ID_C.into(),
+        revision: session.revision(),
+        line_number: 1,
+        expected_raw: selected.file.items[0].raw.clone(),
+    };
+    let today = TodoDate::parse("2026-11-07").unwrap();
+    let result = session
+        .prepare_completion(&catalogue, target, true, today)
+        .unwrap()
+        .execute()
+        .unwrap();
+    session.accept_todo_write(result).unwrap();
+    assert!(session.can_undo());
     let selected_file = session.selected().unwrap().file.clone();
     let toggle = WorkspaceChange::SetShowDeferred {
         id: ID_C.into(),
@@ -133,6 +151,18 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
     };
     assert_eq!(session.selected().unwrap().workspace, renamed);
     assert_eq!(session.selected().unwrap().file, selected_file);
+    assert!(session.can_undo());
+    let result = session.prepare_undo(&catalogue).unwrap().execute().unwrap();
+    session.accept_todo_write(result).unwrap();
+    assert_eq!(fs::read(&c_file).unwrap(), before);
+    assert_eq!(
+        load_catalogue(&catalogue)
+            .unwrap()
+            .workspace(ID_C)
+            .unwrap()
+            .show_deferred,
+        Some(false)
+    );
 
     // Replacing the Active workspace's Todo file shows the replacement.
     fs::write(root.join("e.txt"), "Task E\n").unwrap();
