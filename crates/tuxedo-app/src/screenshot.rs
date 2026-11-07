@@ -15,6 +15,10 @@
 //!   autocomplete popover when the last word can complete), after any clicks
 //! - `TUXEDO_SIDEBAR_TOGGLE=<ms>`: toggle the sidebar last, then capture <ms> into its
 //!   transition (the most recent frame drawn by then)
+//! - `TUXEDO_EXTERNAL_EDIT=<ms>`: append a Todo item to the shown Todo file as another editor
+//!   would (replacing it atomically), then capture <ms> later: Todo-file observation refreshes
+//!   the List view and shows its notice. It writes the file, so point `TUXEDO_USER_DATA` at a
+//!   throwaway catalogue
 
 use std::time::Duration;
 
@@ -164,6 +168,21 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             });
             settle(cx, ms).await;
         }
+        if let Some(ms) = std::env::var("TUXEDO_EXTERNAL_EDIT")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            let shown = cx.update(|cx| {
+                let session = root.read(cx).session().read(cx);
+                session.selected().map(|s| s.workspace.todo_file.clone())
+            });
+            match shown.map(|path| edit_externally(&path)) {
+                Some(Ok(())) => {}
+                Some(Err(error)) => eprintln!("tuxedo: could not edit the Todo file: {error}"),
+                None => eprintln!("tuxedo: no Todo file is shown"),
+            }
+            settle(cx, ms).await;
+        }
         if let Ok(dialog) = std::env::var("TUXEDO_DIALOG") {
             cx.update_window(window, |_, window, cx| {
                 let session = root.read(cx).session().clone();
@@ -196,6 +215,18 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
     })
     .detach();
     true
+}
+
+/// Appends a Todo item through a temporary file renamed over the original, as editors save.
+fn edit_externally(path: &std::path::Path) -> std::io::Result<()> {
+    let mut contents = std::fs::read_to_string(path)?;
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        contents.push('\n');
+    }
+    contents.push_str("(A) Reply to the review edited in another app +Tuxedo @desk\n");
+    let temporary = path.with_extension("external-edit");
+    std::fs::write(&temporary, contents)?;
+    std::fs::rename(&temporary, path)
 }
 
 /// `TUXEDO_CLICK` window points, in logical pixels.
