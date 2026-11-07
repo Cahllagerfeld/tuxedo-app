@@ -45,6 +45,7 @@ impl Command {
             Command::Todo(TodoCommand::Edit { .. }) => "edit Todo item",
             Command::Workspace(WorkspaceCommand::Create { .. }) => "create Workspace",
             Command::Workspace(WorkspaceCommand::Update { .. }) => "update Workspace",
+            Command::Workspace(WorkspaceCommand::SetShowDeferred { .. }) => "save Show deferred",
             Command::Workspace(WorkspaceCommand::Delete { .. }) => "remove Workspace",
             Command::Workspace(WorkspaceCommand::Select { .. }) => "switch Workspace",
             #[cfg(test)]

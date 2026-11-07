@@ -119,6 +119,21 @@ fn workspace_commands_persist_and_select_without_touching_todo_files() {
         "metadata changes advance the revision"
     );
 
+    // Show deferred saves only that preference and keeps the shown file's Undo.
+    let selected_file = session.selected().unwrap().file.clone();
+    let toggle = WorkspaceChange::SetShowDeferred {
+        id: ID_C.into(),
+        show_deferred: false,
+    };
+    run(&mut session, &catalogue, toggle).unwrap();
+    on_disk(&session);
+    let renamed = Workspace {
+        show_deferred: Some(false),
+        ..renamed
+    };
+    assert_eq!(session.selected().unwrap().workspace, renamed);
+    assert_eq!(session.selected().unwrap().file, selected_file);
+
     // Replacing the Active workspace's Todo file shows the replacement.
     fs::write(root.join("e.txt"), "Task E\n").unwrap();
     let replace_active = WorkspaceChange::Update {

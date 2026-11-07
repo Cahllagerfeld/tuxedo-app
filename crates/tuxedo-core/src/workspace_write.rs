@@ -1,5 +1,5 @@
-//! Workspace commands: create, update (rename, Workspace color, Workspace replacement), delete,
-//! and select. Like Todo-file commands they run in three steps: a foreground
+//! Workspace commands: create, update (rename, Workspace color, Workspace replacement), Show
+//! deferred, delete, and select. Like Todo-file commands they run in three steps: a foreground
 //! [`WorkspaceSession::prepare_workspace_change`] that checks the input and captures the expected
 //! catalogue without I/O, a background [`WorkspaceWriteRequest::execute`] that rereads the
 //! catalogue, loads any Todo file the result shows, and atomically replaces the catalogue, and a
@@ -31,6 +31,9 @@ pub enum WorkspaceChange {
         color: WorkspaceColor,
         todo_file: PathBuf,
     },
+    /// Saves a Workspace's Show deferred preference. Everything else is kept, and it is not
+    /// activated. Refused, like an update, when the Active workspace's Todo file cannot be loaded.
+    SetShowDeferred { id: String, show_deferred: bool },
     /// Removes a Workspace from the catalogue. Its Todo file is untouched.
     Delete { id: String },
     /// Opens a Workspace and persists it as the Active workspace.
@@ -115,6 +118,10 @@ impl WorkspaceSession {
                     color,
                     todo_file,
                 }
+            }
+            WorkspaceChange::SetShowDeferred { id, show_deferred } => {
+                known(&id)?;
+                WorkspaceChange::SetShowDeferred { id, show_deferred }
             }
             WorkspaceChange::Delete { id } => {
                 known(&id)?;
@@ -231,6 +238,22 @@ impl WorkspaceWriteRequest {
                         .map(|workspace| OpenRequest { workspace }.load())
                         .transpose()?,
                 };
+                (catalogue, selected, None)
+            }
+            WorkspaceChange::SetShowDeferred { id, show_deferred } => {
+                let mut catalogue = previous;
+                let workspace = catalogue
+                    .workspaces
+                    .iter_mut()
+                    .find(|w| w.id == id)
+                    .ok_or(CoreError::UnknownWorkspace { id: id.clone() })?;
+                workspace.show_deferred = Some(show_deferred);
+                // The Todo file is reread as an update does; unchanged contents keep Undo.
+                let selected = catalogue
+                    .active_workspace()
+                    .cloned()
+                    .map(|workspace| OpenRequest { workspace }.load())
+                    .transpose()?;
                 (catalogue, selected, None)
             }
             WorkspaceChange::Delete { id } => {
