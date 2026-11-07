@@ -12,6 +12,8 @@ Tuxedo will be rebuilt as a native Rust application whose UI is rendered with gp
 
 Glossary rules, todo.txt semantics, and the Workspace catalogue's format and location stay exactly as in the Electron app; the person switches without migrating anything. State management follows idiomatic Rust/GPUI practice instead of porting the TypeScript architecture. Where the two differ, the Rust way wins.
 
+One deliberate behavior divergence: the native List view filters through a text Query (`+project @context pri:A due:today is:open words`) instead of facet lists. All conditions AND, and several Projects or Contexts may be required at once, which the Electron app's one-value-per-family filters cannot express. Queries are plain text so Saved views can store them; the grammar is versioned in `tuxedo-core`.
+
 The domain crate `tuxedo-core` has no GUI dependency and owns todo.txt parsing, the Workspace catalogue, the Workspace session, and every write command. The app crate `tuxedo-app` owns gpui-kit/GPUI rendering, the theme, and platform integration (catalogue path discovery, file picker, file watching, appearance), and talks to `tuxedo-core` only through its public API. Opening a Workspace is split into a foreground prepare step, a background load step, and a foreground accept step; a failed load leaves the selection unchanged. A single retained GPUI session entity wraps the domain session: replacing an in-flight read cancels a stale load, while writes are serialized through the session so every accepted command commits or fails visibly.
 
 ## Lenient catalogue reads
