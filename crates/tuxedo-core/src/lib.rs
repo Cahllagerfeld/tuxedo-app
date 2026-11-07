@@ -7,6 +7,7 @@ mod catalogue_write;
 mod completion;
 mod date;
 mod error;
+mod observation;
 mod recurrence;
 mod session;
 mod todo;
@@ -17,6 +18,7 @@ mod workspace_write;
 pub use catalogue::{js_trim, load_catalogue, Catalogue, TodoSortOrder, Workspace, WorkspaceColor};
 pub use date::TodoDate;
 pub use error::CoreError;
+pub use observation::{ObserveRequest, ObserveResult, Observed, TODO_FILE_RELOADED};
 pub use session::{OpenRequest, RereadRequest, RereadResult, WorkspaceSession, WorkspaceSnapshot};
 pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,

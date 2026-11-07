@@ -2,6 +2,7 @@
 
 mod atomic_file;
 mod catalogue;
+mod observation;
 mod session;
 mod todo;
 mod todo_query;
