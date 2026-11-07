@@ -20,7 +20,7 @@ use tuxedo_core::{
 };
 
 use crate::command_queue::{Accepted, Command, CommandQueue, Outcome, OutcomeKind, TodoCommand};
-use crate::observation::{self, Target, Watch};
+use crate::observation::{self, Target, Watch, Watching};
 use crate::session::{self, Restored};
 use crate::todo_commands;
 use crate::workspace_commands;
@@ -82,18 +82,35 @@ pub struct SessionModel {
     observation_generation: u64,
     /// A debounced change signal awaits its read; cleared when that read starts.
     observe_dirty: bool,
+    /// The last read found the file missing; the next read confirms or ends that.
+    observe_missing: bool,
+    /// Set by native termination: no new watch starts.
+    observation_closed: bool,
+    /// Stopped watches, retained until their owners have released them.
+    retiring: Vec<WatchOwner>,
+    /// Quitting waits here for stopped watches to be released.
+    release_wait: Option<Task<()>>,
+    _release: Subscription,
 }
 
 /// One observed Todo file: its watch and the tasks forwarding and debouncing its signals.
 struct Observer {
     target: Target,
     generation: u64,
-    /// Ends the watch when dropped; released off the UI thread.
-    guard: Option<Box<dyn Send>>,
-    /// Acquires the watch, then forwards its signals.
+    /// Closing it tells the owner to release the watch.
+    stop: async_channel::Sender<()>,
+    owner: WatchOwner,
+    /// Forwards the watch's signals once it is acquired.
     _listen: Task<()>,
     /// The pending debounce; replacing it restarts the delay.
     debounce: Option<Task<()>>,
+}
+
+/// The background task that acquires a native watch, holds it, and releases it when stopped.
+struct WatchOwner {
+    task: Task<()>,
+    /// Closes once the watch has been released (or never started).
+    released: async_channel::Receiver<()>,
 }
 
 impl SessionModel {
@@ -121,18 +138,32 @@ impl SessionModel {
             .ok();
         });
         // Native termination (Dock > Quit, logout) cannot be delayed beyond GPUI's short shutdown
-        // timeout, and windows are already gone by then: wait only for a running write's
-        // background step, best effort. Quit Tuxedo (Cmd-Q) drains the queue properly instead.
+        // timeout, and windows are already gone by then: stop observing and wait only for a
+        // running write's background step and the watches' release, best effort. Quit Tuxedo
+        // (Cmd-Q) drains the queue properly instead.
         let in_flight = Arc::new(AtomicBool::new(false));
         let app_quit = cx.on_app_quit({
             let in_flight = in_flight.clone();
-            move |_, cx| {
+            move |model, cx| {
+                model.observation_closed = true;
+                model.sync_observation(cx);
+                let released = model.watches_released();
                 let (in_flight, executor) = (in_flight.clone(), cx.background_executor().clone());
                 async move {
                     while in_flight.load(Ordering::Acquire) {
                         executor.timer(Duration::from_millis(5)).await;
                     }
+                    released.await;
                 }
+            }
+        });
+        // Releasing the model stops its watch; the owner finishes the release in the background.
+        let release = cx.on_release(|model: &mut Self, _| {
+            if let Some(observer) = model.observer.take() {
+                model.retire(observer);
+            }
+            for owner in model.retiring.drain(..) {
+                owner.task.detach();
             }
         });
         Self {
@@ -155,6 +186,11 @@ impl SessionModel {
             observer: None,
             observation_generation: 0,
             observe_dirty: false,
+            observe_missing: false,
+            observation_closed: false,
+            retiring: Vec::new(),
+            release_wait: None,
+            _release: release,
         }
     }
 
@@ -303,8 +339,7 @@ impl SessionModel {
             self.pending = None;
         }
         if self.quitting {
-            self.quit_deadline = None;
-            (self.quit_app)(cx);
+            self.quit_when_released(cx);
         } else if self.observe_dirty && self.recovery == Recovery::Confirmed {
             self.start_observed_read(cx);
         }
@@ -332,6 +367,7 @@ impl SessionModel {
         let phase = match (running, self.recovery) {
             (Some(_), Recovery::Needed) => "rereading the Todo file after an unconfirmed write",
             (Some(_), _) => "running a command",
+            (None, _) if self.release_wait.is_some() => "releasing Todo-file watches",
             (None, _) => "waiting for queued commands",
         };
         eprintln!(
@@ -500,7 +536,7 @@ impl SessionModel {
     fn sync_observation(&mut self, cx: &mut Context<Self>) {
         let target = self
             .selected()
-            .filter(|_| !self.quitting)
+            .filter(|_| !self.quitting && !self.observation_closed)
             .map(|selected| Target {
                 workspace_id: selected.workspace.id.clone(),
                 path: selected.workspace.todo_file.clone(),
@@ -511,57 +547,98 @@ impl SessionModel {
         // Invalidate first, so nothing the old watch still delivers is accepted.
         self.observation_generation += 1;
         self.observe_dirty = false;
+        self.observe_missing = false;
         if let Some(old) = self.observer.take() {
-            release(old.guard, cx);
+            self.retire(old);
         }
         let Some(target) = target else {
             return;
         };
         let generation = self.observation_generation;
+        let (ready, acquired) = async_channel::bounded(1);
+        let (stop, stopped) = async_channel::bounded::<()>(1);
+        let (done, released) = async_channel::bounded::<()>(1);
         let (watch, path) = (self.watch.clone(), target.path.clone());
-        let listen = cx.spawn(async move |this, cx| {
-            let acquired = cx.background_spawn(async move { watch(&path) }).await;
-            let signals = this
-                .update(cx, |model, cx| match acquired {
-                    Ok(watching) => match model.observer_mut(generation) {
-                        Some(observer) => {
-                            observer.guard = Some(watching.guard);
-                            // Reconcile once: the file may have changed since it was loaded.
-                            model.signal(generation, cx);
-                            Some(watching.signals)
-                        }
-                        None => {
-                            release(Some(watching.guard), cx);
-                            None
-                        }
-                    },
-                    // Best effort: the Workspace stays usable without observation.
-                    Err(error) => {
-                        eprintln!("tuxedo: could not observe the Todo file: {error}");
-                        None
-                    }
-                })
-                .ok()
-                .flatten();
-            let Some(signals) = signals else {
-                return;
-            };
-            while signals.recv().await.is_ok() {
-                if this
-                    .update(cx, |model, cx| model.signal(generation, cx))
-                    .is_err()
-                {
-                    break;
+        // The native watch lives and ends in this background task, never on the UI thread:
+        // stopping it may wait for the watcher's own thread.
+        let task = cx.background_spawn(async move {
+            let _done = done;
+            match watch(&path) {
+                Ok(Watching { signals, guard }) => {
+                    let _ = ready.send(Ok(signals)).await;
+                    // Returns once `stop` is closed.
+                    let _ = stopped.recv().await;
+                    drop(guard);
                 }
+                Err(error) => {
+                    let _ = ready.send(Err(error)).await;
+                }
+            }
+        });
+        let listen = cx.spawn(async move |this, cx| {
+            let signals = match acquired.recv().await {
+                Ok(Ok(signals)) => signals,
+                // Best effort: the Workspace stays usable without observation.
+                Ok(Err(error)) => {
+                    eprintln!("tuxedo: could not observe the Todo file: {error}");
+                    return;
+                }
+                Err(_) => return,
+            };
+            // Reconcile once: the file may have changed since it was loaded.
+            let mut forwarded = this.update(cx, |model, cx| model.signal(generation, cx));
+            while forwarded.is_ok() && signals.recv().await.is_ok() {
+                forwarded = this.update(cx, |model, cx| model.signal(generation, cx));
             }
         });
         self.observer = Some(Observer {
             target,
             generation,
-            guard: None,
+            stop,
+            owner: WatchOwner { task, released },
             _listen: listen,
             debounce: None,
         });
+    }
+
+    /// Stops a watch and retains its owner until the watch is released.
+    fn retire(&mut self, observer: Observer) {
+        observer.stop.close();
+        self.retiring.retain(|owner| !owner.task.is_ready());
+        self.retiring.push(observer.owner);
+    }
+
+    /// Completes once every stopped watch has been released.
+    fn watches_released(&self) -> impl std::future::Future<Output = ()> + 'static {
+        let released: Vec<_> = self.retiring.iter().map(|o| o.released.clone()).collect();
+        async move {
+            for watch in released {
+                let _ = watch.recv().await;
+            }
+        }
+    }
+
+    /// Quitting with the queue drained: waits for every stopped watch's release, then quits.
+    fn quit_when_released(&mut self, cx: &mut Context<Self>) {
+        self.retiring.retain(|owner| !owner.task.is_ready());
+        if self.release_wait.is_none() && !self.retiring.is_empty() {
+            let released = self.watches_released();
+            self.release_wait = Some(cx.spawn(async move |this, cx| {
+                released.await;
+                this.update(cx, |model, cx| {
+                    model.retiring.clear();
+                    // This task is finishing; its handle has nothing left to cancel.
+                    if let Some(finishing) = model.release_wait.take() {
+                        finishing.detach();
+                    }
+                    model.run_next(cx);
+                })
+                .ok();
+            }));
+        }
+        if self.release_wait.is_none() && self.quit_deadline.take().is_some() {
+            (self.quit_app)(cx);
+        }
     }
 
     fn observer_mut(&mut self, generation: u64) -> Option<&mut Observer> {
@@ -589,12 +666,20 @@ impl SessionModel {
     }
 
     /// Reads the observed Todo file in the queue's running slot and accepts what it shows.
-    /// Signals arriving meanwhile mark the file dirty again for another read.
+    /// Signals arriving meanwhile mark the file dirty again for another read. A read that finds
+    /// nothing changed publishes nothing.
     fn start_observed_read(&mut self, cx: &mut Context<Self>) {
         self.observe_dirty = false;
+        let confirming = std::mem::take(&mut self.observe_missing);
         let Some(request) = self.session().and_then(|s| s.prepare_observe()) else {
             return;
         };
+        let request = if confirming {
+            request.confirming_absence()
+        } else {
+            request
+        };
+        let generation = self.observation_generation;
         let read = cx.background_spawn(async move { request.execute() });
         let task = cx.spawn(async move |this, cx| {
             let result = read.await;
@@ -602,20 +687,35 @@ impl SessionModel {
                 let SessionState::Ready(session) = &mut model.state else {
                     unreachable!("observation runs only with a session");
                 };
-                match session.accept_observed(result) {
-                    Observed::Unchanged | Observed::Stale => {}
+                let changed = match session.accept_observed(result) {
+                    Observed::Unchanged | Observed::Stale => false,
+                    // Perhaps an editor between deleting and saving: read once more after
+                    // another debounce before the absence counts.
+                    Observed::Missing => {
+                        if model.observer_mut(generation).is_some() {
+                            model.observe_missing = true;
+                            model.signal(generation, cx);
+                        }
+                        false
+                    }
                     Observed::Changed { notice } => {
                         if let Some(notice) = notice {
                             let outcome =
                                 Outcome::new(OutcomeKind::Applied, notice, Some(notice.into()));
                             model.outcomes.push_back(outcome);
                         }
+                        true
                     }
-                    Observed::Unavailable { warning } => model.warning = Some(warning),
-                }
+                    Observed::Unavailable { warning } => {
+                        model.warning = Some(warning);
+                        true
+                    }
+                };
                 model.commands.accept();
                 model.run_next(cx);
-                cx.notify();
+                if changed || !model.outcomes.is_empty() || model.close_ready() {
+                    cx.notify();
+                }
             })
             .ok();
         });
@@ -623,21 +723,15 @@ impl SessionModel {
     }
 }
 
-/// Ends a watch off the UI thread: stopping a native watcher may wait for its thread.
-fn release(guard: Option<Box<dyn Send>>, cx: &mut Context<SessionModel>) {
-    if let Some(guard) = guard {
-        cx.background_spawn(async move { drop(guard) }).detach();
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::cell::Cell;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::rc::Rc;
     use std::sync::{Arc, Mutex};
 
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
-    use gpui::{AppContext as _, Entity, TestAppContext};
+    use gpui::{AppContext as _, BackgroundExecutor, Entity, TestAppContext};
 
     use std::time::Duration;
 
@@ -935,10 +1029,17 @@ pub(crate) mod tests {
             static EXIT: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
         }
         let hooks = |m: &mut SessionModel| {
-            m.quit_app = |_| QUIT.with(|q| q.set(true));
+            // Quitting waits for the Todo-file watch to be released.
+            m.quit_app = |_| QUIT.with(|q| q.set(RELEASES.with(|r| r.get()) > 0));
             m.exit_process = |code| EXIT.with(|e| e.set(Some(code)));
         };
-        let (model, todo) = restored_with("quit", "First\n", cx);
+        QUIT.with(|q| q.set(false));
+        EXIT.with(|e| e.set(None));
+        RELEASES.with(|r| r.set(0));
+        let (watch, watches) = injected_watch(cx);
+        let todo = catalogue("quit").with_file_name("A.txt");
+        std::fs::write(&todo, "First\n").unwrap();
+        let model = observed(&todo.with_file_name("workspaces.json"), watch, cx);
         let first = complete(&model, 1, cx);
         let second = Accepted::Done(Outcome::new(OutcomeKind::Applied, "second", None));
         model.update(cx, |m, cx| {
@@ -959,7 +1060,8 @@ pub(crate) mod tests {
 
         // Released before the deadline: both commands are accepted, then the app quits.
         cx.run_until_parked();
-        assert!(QUIT.with(|q| q.get()));
+        assert!(QUIT.with(|q| q.get()), "quit after the watch was released");
+        assert_eq!(*watches.lock().unwrap()[0].2.lock().unwrap(), Some(false));
         assert_eq!(
             kinds(&model, cx),
             [OutcomeKind::Applied, OutcomeKind::Applied]
@@ -990,52 +1092,91 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert_eq!(EXIT.with(|e| e.get()), Some(1));
         assert!(!QUIT.with(|q| q.get()));
+
+        // With nothing queued, quitting still waits for the watch's release.
+        let (watch, watches) = injected_watch(cx);
+        let model = observed(&catalogue("quit-idle"), watch, cx);
+        RELEASES.with(|r| r.set(0));
+        model.update(cx, |m, cx| {
+            hooks(m);
+            m.request_quit(cx);
+        });
+        assert!(!QUIT.with(|q| q.get()));
+        cx.run_until_parked();
+        assert!(QUIT.with(|q| q.get()), "quit after the watch was released");
+        assert_eq!(*watches.lock().unwrap()[0].2.lock().unwrap(), Some(false));
     }
 
-    /// Ends a test watch, recording that it ended.
-    struct Released(Arc<AtomicBool>);
+    thread_local! {
+        /// Watches released on this test's thread (the test scheduler runs every task here).
+        static RELEASES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    /// A test watch's guard. On release it records whether that happened on the UI thread.
+    struct Released {
+        on_main_thread: Arc<Mutex<Option<bool>>>,
+        executor: BackgroundExecutor,
+    }
 
     impl Drop for Released {
         fn drop(&mut self) {
-            self.0.store(true, Ordering::Release);
+            *self.on_main_thread.lock().unwrap() = Some(self.executor.is_main_thread());
+            RELEASES.with(|r| r.set(r.get() + 1));
         }
     }
 
-    type Watches = Arc<Mutex<Vec<(PathBuf, async_channel::Sender<()>, Arc<AtomicBool>)>>>;
+    /// Each watch's path, its signal sender, and where it was released (`Some(false)`: off the
+    /// UI thread).
+    type Watches = Arc<Mutex<Vec<(PathBuf, async_channel::Sender<()>, Arc<Mutex<Option<bool>>>)>>>;
 
     /// An injected signal source: records each watch so the test can signal and inspect it.
-    fn injected_watch() -> (Watch, Watches) {
+    fn injected_watch(cx: &TestAppContext) -> (Watch, Watches) {
         let watches = Watches::default();
         let recorded = watches.clone();
+        let executor = cx.executor();
         let watch: Watch = Arc::new(move |path| {
             let (sender, signals) = async_channel::bounded(1);
-            let released = Arc::new(AtomicBool::new(false));
-            let entry = (path.to_owned(), sender, released.clone());
+            let on_main_thread = Arc::new(Mutex::new(None));
+            let entry = (path.to_owned(), sender, on_main_thread.clone());
             recorded.lock().unwrap().push(entry);
             Ok(Watching {
                 signals,
-                guard: Box::new(Released(released)),
+                guard: Box::new(Released {
+                    on_main_thread,
+                    executor: executor.clone(),
+                }),
             })
         });
         (watch, watches)
     }
 
-    #[gpui::test]
-    fn observed_changes_wait_for_commands_and_follow_the_shown_workspace(cx: &mut TestAppContext) {
-        let (watch, watches) = injected_watch();
-        let catalogue = catalogue("observe");
-        let todo = catalogue.with_file_name("A.txt");
-        std::fs::write(&todo, "First\nSecond\n").unwrap();
+    /// Restores from `catalogue` with `watch` as the signal source.
+    fn observed(catalogue: &Path, watch: Watch, cx: &mut TestAppContext) -> Entity<SessionModel> {
         let model = cx.new(|cx| {
-            let mut model = SessionModel::restore_from(Some(catalogue.clone()), cx);
+            let mut model = SessionModel::restore_from(Some(catalogue.to_owned()), cx);
             model.watch = watch;
             model
         });
         cx.run_until_parked();
+        model
+    }
+
+    #[gpui::test]
+    fn observed_changes_wait_for_commands_and_follow_the_shown_workspace(cx: &mut TestAppContext) {
+        let (watch, watches) = injected_watch(cx);
+        let catalogue = catalogue("observe");
+        let todo = catalogue.with_file_name("A.txt");
+        std::fs::write(&todo, "First\nSecond\n").unwrap();
+        let model = observed(&catalogue, watch, cx);
+        let notified = Rc::new(Cell::new(0));
+        let _counting = cx.update(|cx| {
+            let notified = notified.clone();
+            cx.observe(&model, move |_, _| notified.set(notified.get() + 1))
+        });
         let signal = |index: usize| {
             let _ = watches.lock().unwrap()[index].1.try_send(());
         };
-        let released = |index: usize| watches.lock().unwrap()[index].2.load(Ordering::Acquire);
+        let released = |index: usize| *watches.lock().unwrap()[index].2.lock().unwrap();
         let settle = |cx: &mut TestAppContext| {
             cx.executor().advance_clock(DEBOUNCE);
             cx.run_until_parked();
@@ -1047,16 +1188,17 @@ pub(crate) mod tests {
         assert_eq!(watches.lock().unwrap()[0].0, todo);
         assert!(kinds(&model, cx).is_empty());
 
-        // Tuxedo's own write signals too, but its bytes are already confirmed: no notice, and
-        // Undo and the revision survive.
+        // Tuxedo's own write signals too, but its bytes are already confirmed: no notice, no
+        // publication (so no projection pass), and Undo and the revision survive.
         let command = complete(&model, 1, cx);
         model.update(cx, |m, cx| m.enqueue(command, cx));
         cx.run_until_parked();
         assert_eq!(kinds(&model, cx), [OutcomeKind::Applied]);
-        let revision = model.read_with(cx, |m, _| m.revision());
+        let (revision, notifications) = (model.read_with(cx, |m, _| m.revision()), notified.get());
         signal(0);
         settle(cx);
         assert!(kinds(&model, cx).is_empty());
+        assert_eq!(notified.get(), notifications, "an unchanged read is silent");
         model.read_with(cx, |m, _| {
             assert_eq!(m.revision(), revision);
             assert_eq!(m.undo_label(), Some("Undo completion"));
@@ -1097,12 +1239,14 @@ pub(crate) mod tests {
         assert_eq!(source(cx).as_deref(), Some("Fourth\n"));
         kinds(&model, cx);
 
-        // A Workspace switch ends A's watch and starts B's; A's late signals change nothing.
+        // A Workspace switch releases A's watch off the UI thread and starts B's; A's late
+        // signals change nothing.
         model.update(cx, |m, cx| m.select(B, cx));
         cx.run_until_parked();
         settle(cx);
-        assert!(released(0));
-        assert_eq!(watches.lock().unwrap()[1].0, todo.with_file_name("B.txt"));
+        assert_eq!(released(0), Some(false));
+        let b = todo.with_file_name("B.txt");
+        assert_eq!(watches.lock().unwrap()[1].0, b);
         kinds(&model, cx);
         std::fs::write(&todo, "Ignored\n").unwrap();
         signal(0);
@@ -1110,13 +1254,36 @@ pub(crate) mod tests {
         assert_eq!(source(cx).as_deref(), Some("Task in B\n"));
         assert!(kinds(&model, cx).is_empty());
 
-        // A Todo file that cannot be read enters the Empty state with a warning; watching ends.
-        std::fs::remove_file(todo.with_file_name("B.txt")).unwrap();
+        // A file missing for one read stays displayed and is read again after another debounce:
+        // recreated by then, its new contents are shown.
+        std::fs::remove_file(&b).unwrap();
         signal(1);
+        settle(cx);
+        assert_eq!(source(cx).as_deref(), Some("Task in B\n"));
+        assert!(kinds(&model, cx).is_empty());
+        std::fs::write(&b, "Recreated in B\n").unwrap();
+        settle(cx);
+        assert_eq!(source(cx).as_deref(), Some("Recreated in B\n"));
+        assert_eq!(kinds(&model, cx), [OutcomeKind::Applied]);
+
+        // Still missing on the second read: the Empty state with a warning, and watching ends.
+        std::fs::remove_file(&b).unwrap();
+        signal(1);
+        settle(cx);
+        assert!(source(cx).is_some() && released(1).is_none());
         settle(cx);
         assert_eq!(source(cx), None);
         model.read_with(cx, |m, _| assert!(m.warning().unwrap().contains("B.txt")));
-        assert!(released(1));
+        assert_eq!(released(1), Some(false));
         assert_eq!(watches.lock().unwrap().len(), 2);
+
+        // Releasing the model releases its watch off the UI thread too.
+        let (watch, watches) = injected_watch(cx);
+        let model = observed(&super::tests::catalogue("observe-release"), watch, cx);
+        assert_eq!(*watches.lock().unwrap()[0].2.lock().unwrap(), None);
+        drop(model);
+        cx.update(|_| {}); // Released entities are dropped when effects flush.
+        cx.run_until_parked();
+        assert_eq!(*watches.lock().unwrap()[0].2.lock().unwrap(), Some(false));
     }
 }

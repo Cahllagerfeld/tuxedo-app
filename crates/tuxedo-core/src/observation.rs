@@ -23,6 +23,9 @@ pub struct ObserveRequest {
     revision: u64,
     /// The confirmed source the read is compared with before anything is parsed.
     confirmed: String,
+    /// Whether a missing file is final: set for the read that confirms an earlier
+    /// [`Observed::Missing`].
+    confirming_absence: bool,
 }
 
 /// What [`ObserveRequest::execute`] read, ready for [`WorkspaceSession::accept_observed`].
@@ -38,6 +41,8 @@ enum Read {
     /// The file holds the confirmed bytes; nothing was parsed.
     Unchanged,
     Changed(TodoFile),
+    /// The file is absent, perhaps only for a moment (some editors delete before saving).
+    Missing,
     Failed(CoreError),
 }
 
@@ -50,6 +55,9 @@ pub enum Observed {
     /// `notice` is set when the parsed Todo items or skipped lines changed, not only bytes such
     /// as line endings.
     Changed { notice: Option<&'static str> },
+    /// The file is absent. Nothing changed: the caller rereads once more after another debounce,
+    /// with [`ObserveRequest::confirming_absence`], before the absence counts as unavailable.
+    Missing,
     /// The file cannot be read: the session entered the Empty state (Undo cleared) and `warning`
     /// says why. Observation of this Workspace ends.
     Unavailable { warning: String },
@@ -65,12 +73,13 @@ impl WorkspaceSession {
             workspace: selected.workspace.clone(),
             revision: self.revision,
             confirmed: selected.file.source.clone(),
+            confirming_absence: false,
         })
     }
 
     /// Foreground step: accepts an observed read of the selected Todo file. Same bytes change
-    /// nothing; other contents become the confirmed snapshot; a read failure enters the Empty
-    /// state. A read prepared against another Workspace or revision is [`Observed::Stale`].
+    /// nothing; other contents become the confirmed snapshot; a first missing read changes
+    /// nothing; any other read failure, or a confirmed absence, enters the Empty state. A read prepared against another Workspace or revision is [`Observed::Stale`].
     pub fn accept_observed(&mut self, result: ObserveResult) -> Observed {
         let Some(current) = self.selected.as_ref().filter(|s| {
             s.workspace.id == result.workspace.id
@@ -93,6 +102,7 @@ impl WorkspaceSession {
                     notice: parsed_changed.then_some(TODO_FILE_RELOADED),
                 }
             }
+            Read::Missing => Observed::Missing,
             Read::Failed(error) => {
                 self.replace_selected(None);
                 Observed::Unavailable {
@@ -109,6 +119,14 @@ impl ObserveRequest {
         &self.workspace.todo_file
     }
 
+    /// Marks this read as the confirming one: a missing file is now final.
+    pub fn confirming_absence(self) -> Self {
+        Self {
+            confirming_absence: true,
+            ..self
+        }
+    }
+
     /// Background step: reads the Todo file and parses it only when its bytes differ from the
     /// confirmed source. Touches no session state.
     pub fn execute(self) -> ObserveResult {
@@ -119,6 +137,11 @@ impl ObserveRequest {
                 Ok(text) => Read::Changed(parse_todo_text(path.clone(), &text)),
                 Err(_) => Read::Failed(CoreError::InvalidUtf8 { path: path.clone() }),
             },
+            Err(source)
+                if source.kind() == std::io::ErrorKind::NotFound && !self.confirming_absence =>
+            {
+                Read::Missing
+            }
             Err(source) => Read::Failed(CoreError::Io {
                 path: path.clone(),
                 source,

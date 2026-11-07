@@ -77,10 +77,30 @@ fn observed_reads_are_accepted_by_their_bytes() {
 }
 
 #[test]
-fn an_unreadable_todo_file_enters_the_empty_state_with_a_warning() {
+fn a_missing_todo_file_is_unavailable_only_when_a_second_read_confirms_it() {
     let (mut session, todo, _dir) = opened("Plan release\n");
+    let revision = session.revision();
     fs::remove_file(&todo).unwrap();
-    let Observed::Unavailable { warning } = observe(&mut session) else {
+    // One missing read changes nothing: an editor may be between deleting and saving.
+    assert_eq!(observe(&mut session), Observed::Missing);
+    assert_eq!(session.revision(), revision);
+    assert!(session.can_undo());
+
+    // Recreated before the confirming read: the new contents are simply accepted.
+    fs::write(&todo, "Plan release carefully\n").unwrap();
+    let request = session.prepare_observe().unwrap().confirming_absence();
+    assert_eq!(
+        session.accept_observed(request.execute()),
+        Observed::Changed {
+            notice: Some(TODO_FILE_RELOADED)
+        }
+    );
+
+    // Still missing on the confirming read: the Empty state with a warning.
+    fs::remove_file(&todo).unwrap();
+    assert_eq!(observe(&mut session), Observed::Missing);
+    let request = session.prepare_observe().unwrap().confirming_absence();
+    let Observed::Unavailable { warning } = session.accept_observed(request.execute()) else {
         panic!("expected Unavailable");
     };
     assert!(warning.contains("a.txt"), "{warning}");
@@ -94,6 +114,17 @@ fn an_unreadable_todo_file_enters_the_empty_state_with_a_warning() {
         session.catalogue().active_workspace_id.as_deref(),
         Some(ID_A)
     );
+}
+
+#[test]
+fn an_undecodable_todo_file_is_unavailable_at_once() {
+    let (mut session, todo, _dir) = opened("Plan release\n");
+    fs::write(&todo, b"\xff\xfe not UTF-8\n").unwrap();
+    assert!(matches!(
+        observe(&mut session),
+        Observed::Unavailable { .. }
+    ));
+    assert!(session.selected().is_none());
 }
 
 #[test]
