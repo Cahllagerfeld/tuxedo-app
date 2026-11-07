@@ -24,6 +24,7 @@ use super::TuxedoApp;
 use crate::command_queue::{Command, TodoCommand};
 use crate::model::{SessionModel, SessionState};
 use crate::query_ui::{self, FilterEdit, OnAccept, OnEdit, Suggestion};
+use crate::saved_views_ui;
 use crate::theme::{hex, Palette};
 use crate::todo_commands::{self, local_today};
 use crate::todo_editor;
@@ -306,6 +307,7 @@ impl ListView {
     /// The query bar above the list: field, Add filter, error hint, readout, Sort and Group.
     fn render_query_bar(
         &self,
+        session: &Entity<SessionModel>,
         selected: Option<&WorkspaceSnapshot>,
         window: &Window,
         p: &'static Palette,
@@ -368,12 +370,24 @@ impl ListView {
                         .child(new_item_button(cx)),
                 )
                 .children(error)
-                .child(query_ui::render_readout_row(
-                    &self.projection,
-                    self.projection.sort(selected),
-                    &on_edit,
-                    p,
-                ))
+                .child(
+                    h_flex()
+                        .items_start()
+                        .gap_3()
+                        .child(div().flex_1().min_w_0().child(query_ui::render_readout_row(
+                            &self.projection,
+                            self.projection.sort(selected),
+                            &on_edit,
+                            p,
+                        )))
+                        .child(saved_views_ui::render_toolbar(
+                            session.clone(),
+                            selected,
+                            &self.projection,
+                            p,
+                            cx,
+                        )),
+                )
                 .into_any_element(),
         )
     }
@@ -436,7 +450,7 @@ impl ListView {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .children(self.render_query_bar(model.selected(), window, p, cx))
+            .children(self.render_query_bar(session, model.selected(), window, p, cx))
             .child(body)
             .when_some(model.selected(), |main, selected| {
                 main.child(render_status_bar(selected, p))
@@ -536,6 +550,20 @@ fn new_item_button(cx: &Context<TuxedoApp>) -> Button {
                 todo_editor::open_new(app.session.clone(), window, cx)
             }),
         )
+}
+
+/// Applies a Saved view: its Query replaces the field's text, as one step of its undo history,
+/// and applies like typing does.
+pub(super) fn on_apply_query(cx: &Context<TuxedoApp>) -> saved_views_ui::OnApply {
+    let app = cx.entity().downgrade();
+    Rc::new(move |query, window, cx| {
+        app.update(cx, |app, cx| {
+            app.list_view
+                .query
+                .update(cx, |state, cx| state.replace_all(query, window, cx))
+        })
+        .ok();
+    })
 }
 
 /// Routes a query control's edit to the List view, then recomputes the projection.

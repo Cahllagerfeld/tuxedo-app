@@ -1,5 +1,6 @@
 //! Workspace sidebar: the Workspaces list (switching, creating, editing, and removing
-//! Workspaces) and Overview, which shows the counts and selects the completion view.
+//! Workspaces), Overview, which shows the counts and selects the completion view, and the
+//! Active workspace's Saved views (`saved_views_ui`).
 //! The root shell owns its slot and the open/close slide; this module owns what slides.
 
 use gpui_kit::assets::IconName;
@@ -15,6 +16,7 @@ use tuxedo_core::CompletionView;
 use super::{list_view, TuxedoApp};
 use crate::model::SessionModel;
 use crate::query_ui::{FilterEdit, OnEdit};
+use crate::saved_views_ui;
 use crate::theme::{hex, Palette};
 use crate::todo_projection::TodoProjection;
 use crate::workspace_ui;
@@ -155,7 +157,17 @@ impl WorkspaceSidebar {
                     )
                     .when_some(overview, |content, overview| {
                         content.child(separator(p)).child(overview)
-                    }),
+                    })
+                    .when_some(
+                        saved_views_ui::render_section(
+                            session,
+                            projection,
+                            list_view::on_apply_query(cx),
+                            p,
+                            cx,
+                        ),
+                        |content, saved| content.child(separator(p)).child(saved),
+                    ),
             )
             .child(
                 v_flex()
