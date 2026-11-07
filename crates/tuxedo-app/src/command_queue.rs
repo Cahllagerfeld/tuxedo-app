@@ -12,7 +12,7 @@
 use std::collections::VecDeque;
 
 use gpui_kit::Task;
-use tuxedo_core::{TodoFields, TodoTarget};
+use tuxedo_core::{TodoLine, TodoTarget};
 
 use crate::saved_view_commands::SavedViewCommand;
 use crate::todo_commands::Reply;
@@ -45,7 +45,6 @@ impl Command {
             Command::Todo(TodoCommand::Complete { .. }) => "reopen Todo item",
             Command::Todo(TodoCommand::Undo { .. }) => "undo",
             Command::Todo(TodoCommand::Create { .. }) => "create Todo item",
-            Command::Todo(TodoCommand::Edit { .. }) => "edit Todo item",
             Command::Workspace(WorkspaceCommand::Create { .. }) => "create Workspace",
             Command::Workspace(WorkspaceCommand::Update { .. }) => "update Workspace",
             Command::Workspace(WorkspaceCommand::SetShowDeferred { .. }) => "save Show deferred",
@@ -67,18 +66,12 @@ pub enum TodoCommand {
     Complete { target: TodoTarget, completed: bool },
     /// Undo the last Todo-file change of the Workspace shown at admission.
     Undo { workspace_id: String, revision: u64 },
-    /// Append a new Todo item from the editor to the Workspace shown at admission. `reply`
-    /// tells the editor its own outcome.
+    /// Append a quick-add line to the Workspace shown at admission. `reply` tells the line
+    /// input its own outcome.
     Create {
         workspace_id: String,
         revision: u64,
-        fields: TodoFields,
-        reply: Reply,
-    },
-    /// Replace the targeted Todo item's line with the editor's fields.
-    Edit {
-        target: TodoTarget,
-        fields: TodoFields,
+        line: Box<TodoLine>,
         reply: Reply,
     },
 }

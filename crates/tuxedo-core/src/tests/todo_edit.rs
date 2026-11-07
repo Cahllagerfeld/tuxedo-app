@@ -1,5 +1,4 @@
-//! The shared Todo-item editor: line assembly and validation tables ported from
-//! `packages/contracts` and `apps/desktop/src/lib/shared/todo-creation.spec.ts`, and creation,
+//! Todo-item creation and editing as typed todo.txt lines: validation tables, and creation,
 //! editing and Undo against real files, porting the focused cases of
 //! `apps/desktop/electron/session-tests/{create-todo,edit-todo,undo,recurrence}.spec.ts`.
 
@@ -7,286 +6,128 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::{workspace_json, ID_A};
-use crate::todo_edit::create_line;
 use crate::*;
 
 fn date(value: &str) -> TodoDate {
     TodoDate::parse(value).unwrap()
 }
 
-fn draft(description: &str) -> TodoDraft {
-    TodoDraft {
-        description: description.to_owned(),
-        ..TodoDraft::default()
-    }
-}
-
-fn tags(values: &[&str]) -> Vec<String> {
-    values.iter().map(|v| (*v).to_owned()).collect()
+fn item(raw: &str) -> TodoItem {
+    parse_todo_text(PathBuf::new(), raw).items.remove(0)
 }
 
 #[test]
-fn creation_assembles_the_canonical_line() {
-    let cases: Vec<(TodoDraft, &str)> =
-        vec![
+fn a_new_line_gets_a_creation_date_and_is_otherwise_kept_as_typed() {
+    let today = date("2026-11-07");
+    let cases: [(&str, Result<&str, &str>); 12] = [
         (
-            TodoDraft {
-                creation_date: "2026-10-02".into(),
-                projects: tags(&["Tuxedo", "Review"]),
-                contexts: tags(&["Phone", "phone"]),
-                metadata: tags(&["custom:first", "custom:last"]),
-                ..draft("  Plan   the\trelease\u{85} ")
-            },
-            "2026-10-02 Plan the release +Tuxedo +Review @Phone @phone custom:first custom:last",
+            "Buy milk +Home @store due:2026-11-10",
+            Ok("2026-11-07 Buy milk +Home @store due:2026-11-10"),
+        ),
+        ("(A) Call Mom", Ok("(A) 2026-11-07 Call Mom")),
+        ("(A) 2026-10-01 Call Mom", Ok("(A) 2026-10-01 Call Mom")),
+        (
+            "x 2026-11-01 Done +Work",
+            Ok("x 2026-11-01 2026-11-07 Done +Work"),
+        ),
+        // Whitespace is normalized like the Electron editor's description; tokens are not moved.
+        (
+            "  Plan \t the   release ",
+            Ok("2026-11-07 Plan the release"),
+        ),
+        ("+Home before @words", Ok("2026-11-07 +Home before @words")),
+        (
+            "(a) lowercase is text",
+            Ok("2026-11-07 (a) lowercase is text"),
+        ),
+        ("   ", Err("Type a Todo item.")),
+        (
+            "+Home @store due:2026-11-10",
+            Err("Add a description besides Projects, Contexts, and metadata."),
         ),
         (
-            TodoDraft {
-                priority: PriorityChoice::Letter('Z'),
-                creation_date: "2026-10-01".into(),
-                completed: true,
-                completion_date: "2026-10-09".into(),
-                metadata: tags(&["due:2026-10-10", "custom:value"]),
-                ..draft("Plan")
-            },
-            "x 2026-10-09 2026-10-01 Plan due:2026-10-10 custom:value pri:Z",
+            "2026-02-30 Bad date",
+            Err("Use a valid date in YYYY-MM-DD format."),
         ),
         (
-            TodoDraft {
-                priority: PriorityChoice::Letter('A'),
-                ..draft("Plan")
-            },
-            "(A) Plan",
+            "x Done without a date",
+            Err("A completed Todo item keeps its Completion date: x YYYY-MM-DD."),
         ),
-        (
-            TodoDraft {
-                projects: tags(&["+Work", "@Home"]),
-                ..draft("")
-            },
-            "++Work +@Home",
-        ),
-        (
-            TodoDraft {
-                priority: PriorityChoice::Letter('B'),
-                ..draft("")
-            },
-            "(B) ",
-        ),
-        (
-            TodoDraft {
-                creation_date: "2026-10-02".into(),
-                ..draft("")
-            },
-            "2026-10-02",
-        ),
-        (draft("Plan + https://example.test/a:b:extra"), "Plan + https://example.test/a:b:extra"),
+        ("Two\nlines", Err("A Todo item is one line.")),
     ];
-    for (draft, line) in cases {
-        let fields = draft.validate(false).unwrap();
-        assert_eq!(create_line(&fields), line, "{draft:?}");
+    for (typed, expected) in cases {
+        let line = TodoLine::new_item(typed, today);
+        assert_eq!(
+            line.as_ref().map(TodoLine::raw),
+            expected.as_ref().map(|s| *s),
+            "{typed:?}"
+        );
     }
 }
 
 #[test]
-fn validation_reports_electron_messages_per_field() {
-    use DraftField::*;
-    let tokens = "Use the Project, Context, and Metadata inputs for these tokens.";
-    let markers = "Use the Priority, date, and Completed controls for leading Todo markers.";
-    let completion = "Choose a Completion date for a completed Todo item.";
-    let completed = |priority, completion_date: &str| TodoDraft {
-        priority,
-        completed: true,
-        completion_date: completion_date.into(),
-        ..draft("Plan")
+fn an_edited_line_keeps_the_completion_date_rule() {
+    let recorded = item("x 2026-10-09 Old");
+    let legacy = item("x Old");
+    let open = item("Old");
+    let required = Err("A completed Todo item keeps its Completion date: x YYYY-MM-DD.");
+    let edit = |typed: &str, original: &TodoItem| {
+        TodoLine::edit_of(typed, original).map(|line| line.raw().to_owned())
     };
-    type Case = (TodoDraft, bool, Vec<(DraftField, &'static str)>);
-    let cases: Vec<Case> = vec![
-        (draft(" \t "), false, vec![(Description, "Enter a Description or another Todo-item value.")]),
-        (draft("\u{85}"), false, vec![(Description, "Enter a Description or another Todo-item value.")]),
-        (draft("Plan +Project"), false, vec![(Description, tokens)]),
-        (draft("Plan @home"), false, vec![(Description, tokens)]),
-        (draft("Plan due:tomorrow"), false, vec![(Description, tokens)]),
-        (draft("Call\u{85}+Work"), false, vec![(Description, tokens)]),
-        (draft("Plan board:"), false, vec![(Description, tokens)]),
+    assert_eq!(edit("x Old", &recorded), required.map(str::to_owned));
+    assert_eq!(edit("x Newer", &open), required.map(str::to_owned));
+    assert_eq!(
+        edit("x  Legacy   kept", &legacy),
+        Ok("x Legacy kept".to_owned())
+    );
+    assert_eq!(
+        edit("Old", &recorded),
+        Ok("Old".to_owned()),
+        "reopening drops it"
+    );
+    // No Creation date is added to an edit, and an unchanged line stays byte for byte.
+    assert_eq!(edit("Old  ", &open), Ok("Old".to_owned()));
+    let spaced = item("Keep  two  spaces");
+    assert_eq!(edit(&spaced.raw, &spaced), Ok(spaced.raw.clone()));
+}
+
+#[test]
+fn the_date_helper_and_priority_autocomplete_rewrite_only_their_token() {
+    let d = date("2026-11-10");
+    let cases = [
+        ("Call +Home", LineDate::Due, "Call +Home due:2026-11-10"),
         (
-            TodoDraft { projects: tags(&["Work", "Work"]), ..draft("Plan") },
-            false,
-            vec![(Projects, "Todo tags must be unique")],
+            "Call due:2026-01-01 +Home due:bad",
+            LineDate::Due,
+            "Call due:2026-01-01 +Home due:2026-11-10",
         ),
         (
-            TodoDraft { contexts: tags(&["at\u{85}home"]), ..draft("Plan") },
-            false,
-            vec![(Contexts, "Todo tags must be trimmed and must not contain whitespace")],
+            "Call t:2026-01-01 +Home",
+            LineDate::ShowFrom,
+            "Call t:2026-11-10 +Home",
+        ),
+        ("(A) Call", LineDate::Creation, "(A) 2026-11-10 Call"),
+        (
+            "x 2026-11-01 2026-10-01 Call",
+            LineDate::Creation,
+            "x 2026-11-01 2026-11-10 Call",
         ),
         (
-            TodoDraft { priority: PriorityChoice::Incomplete, ..draft("Plan") },
-            false,
-            vec![(Priority, "Choose None, A, B, C, or enter one letter from D to Z.")],
-        ),
-        (
-            TodoDraft { priority: PriorityChoice::Letter('a'), ..draft("Plan") },
-            false,
-            vec![(Priority, "Choose None, A, B, C, or enter one letter from D to Z.")],
-        ),
-        (
-            TodoDraft { creation_date: "2026-02-29".into(), ..draft("Plan") },
-            false,
-            vec![(CreationDate, "Use a valid date in YYYY-MM-DD format.")],
-        ),
-        (completed(PriorityChoice::None, ""), false, vec![(CompletionDate, completion)]),
-        (
-            TodoDraft { completion_date: "2026-10-09".into(), ..draft("Plan") },
-            false,
-            vec![(CompletionDate, "Only completed Todo items have a Completion date.")],
-        ),
-        (
-            TodoDraft {
-                metadata: tags(&["pri:B"]),
-                ..completed(PriorityChoice::Letter('A'), "2026-10-09")
-            },
-            false,
-            vec![(Metadata, "Remove pri Metadata or clear Priority; Priority is saved as pri Metadata on completion.")],
-        ),
-        (
-            TodoDraft { metadata: tags(&["bad:has space"]), ..draft("Plan") },
-            false,
-            vec![(Metadata, "Use key:value without spaces or extra colons.")],
-        ),
-        (
-            TodoDraft { metadata: tags(&["key:too:many"]), ..draft("Plan") },
-            false,
-            vec![(Metadata, "Use key:value without spaces or extra colons.")],
-        ),
-        (
-            TodoDraft { metadata: tags(&["+key:value"]), ..draft("Plan") },
-            false,
-            vec![(Metadata, "Metadata keys must not start with + or @.")],
-        ),
-        (draft("x Completed"), false, vec![(Description, markers)]),
-        (TodoDraft { projects: tags(&["Work"]), ..draft("x") }, false, vec![(Description, markers)]),
-        (TodoDraft { contexts: tags(&["Home"]), ..draft("(A)") }, false, vec![(Description, markers)]),
-        (draft("(A) Priority"), false, vec![(Description, markers)]),
-        (draft("2026-10-09 Date"), false, vec![(Description, markers)]),
-        (
-            TodoDraft {
-                priority: PriorityChoice::Letter('A'),
-                ..completed(PriorityChoice::None, "2026-10-09")
-            }
-            .with_description("(B) hello"),
-            false,
-            vec![(Description, markers)],
-        ),
-        // A dated item may start with marker-looking text: the date ends the prefix.
-        (TodoDraft { creation_date: "2026-10-09".into(), ..draft("x (A) 2026-10-09 ok") }, false, vec![]),
-        // Editing keeps legacy completed items without dates, and their Priority before text.
-        (completed(PriorityChoice::None, ""), true, vec![]),
-        (
-            completed(PriorityChoice::Letter('A'), "2026-10-09").with_description("(B) Updated"),
-            true,
-            vec![],
-        ),
-        (
-            TodoDraft { creation_date: "2026-10-12".into(), ..completed(PriorityChoice::None, "") },
-            true,
-            vec![(CompletionDate, completion)],
-        ),
-        (
-            TodoDraft { repeat_interval: "0".into(), repeat_unit: RepeatUnit::Week, ..draft("Plan") },
-            true,
-            vec![(RepeatInterval, "Enter a positive whole-number interval.")],
-        ),
-        (
-            TodoDraft { repeat_unit: RepeatUnit::Unsupported, metadata: tags(&["rec:+1w"]), ..draft("Plan") },
-            true,
-            vec![],
+            "2026-02-30 unparsed",
+            LineDate::Creation,
+            "2026-02-30 unparsed",
         ),
     ];
-    for (draft, editing, expected) in cases {
-        let errors = match draft.validate(editing) {
-            Ok(_) => vec![],
-            Err(errors) => errors.into_iter().map(|e| (e.field, e.message)).collect(),
-        };
-        assert_eq!(errors, expected, "{draft:?}");
+    for (line, target, expected) in cases {
+        assert_eq!(line_with_date(line, target, d), expected, "{line}");
     }
-}
-
-impl TodoDraft {
-    fn with_description(self, description: &str) -> Self {
-        Self {
-            description: description.to_owned(),
-            ..self
-        }
-    }
-}
-
-#[test]
-fn typed_tags_and_metadata_follow_the_editor_inputs() {
-    let selected = tags(&["Work"]);
+    let word = line_word_at("(B) Call pri:A", 13).unwrap();
+    assert_eq!(word, 9..14);
     assert_eq!(
-        validate_tag(" +Home ", &selected, '+', false),
-        Ok("Home".into())
+        line_with_priority("(B) Call pri:A", word, 'A').0,
+        "(A) Call "
     );
-    assert_eq!(
-        validate_tag("+Home", &selected, '+', true),
-        Ok("+Home".into())
-    );
-    assert_eq!(
-        validate_tag("+Work", &selected, '+', false),
-        Err("That tag is already selected.")
-    );
-    assert_eq!(
-        validate_tag("at home", &selected, '@', false),
-        Err("Use a tag name without spaces.")
-    );
-    assert_eq!(
-        validate_tag("@", &selected, '@', false),
-        Err("Use a tag name without spaces.")
-    );
-    assert_eq!(validate_metadata_token(" a:b "), Ok("a:b".into()));
-    assert_eq!(validate_metadata_token("board:"), Ok("board:".into()));
-    assert!(validate_metadata_token("@a:b").is_err());
-}
-
-#[test]
-fn date_and_repeat_controls_edit_their_metadata_tokens() {
-    let item = parse_todo_text(
-        PathBuf::new(),
-        "Mow due:soon t:+2d t:2026-02-30 rec:1d rec:+1w board:x board:y",
-    )
-    .items
-    .remove(0);
-    let mut draft = TodoDraft::from_item(&item);
-    // Malformed effective values stay in Metadata until the control changes them.
-    assert_eq!((draft.due_date(), draft.show_from()), (None, None));
-    assert_eq!(draft.show_from_token(), Some("2026-02-30"));
-    assert_eq!(draft.repeat_unit, RepeatUnit::Unsupported);
-    draft.set_due_date(Some(date("2026-11-01")));
-    draft.set_show_from(None);
-    assert_eq!(
-        draft.metadata,
-        tags(&["rec:1d", "rec:+1w", "board:x", "board:y", "due:2026-11-01"])
-    );
-    // An invalid interval leaves the rule untouched; a valid one replaces every rec: token.
-    draft.set_repeat("0", RepeatUnit::Week);
-    assert!(draft.metadata.contains(&"rec:+1w".to_owned()));
-    draft.set_repeat("2", RepeatUnit::Week);
-    assert_eq!(
-        draft.metadata,
-        tags(&["board:x", "board:y", "due:2026-11-01", "rec:2w"])
-    );
-    draft.set_metadata(tags(&["rec:3m"]));
-    assert_eq!(
-        (draft.repeat_interval.as_str(), draft.repeat_unit),
-        ("3", RepeatUnit::Month)
-    );
-    draft.set_repeat("3", RepeatUnit::Off);
-    assert!(draft.metadata.is_empty());
-
-    let mut completed = TodoDraft::new_item(date("2026-11-07"));
-    assert_eq!(completed.creation_date, "2026-11-07");
-    completed.set_completed(true, date("2026-11-07"));
-    assert_eq!(completed.completion_date, "2026-11-07");
-    completed.set_completed(false, date("2026-11-07"));
-    assert_eq!(completed.completion_date, "");
+    assert_eq!(line_word_at("Call ", 5), None);
 }
 
 /// Workspace A, active and opened, with its Todo file in a temporary directory.
@@ -332,16 +173,16 @@ impl Fixture {
         fs::read_to_string(&self.todo).unwrap()
     }
 
-    fn create(&mut self, draft: TodoDraft) -> Outcome {
-        let fields = draft.validate(false).unwrap();
+    fn create(&mut self, typed: &str) -> Outcome {
+        let line = TodoLine::new_item(typed, date(TODAY)).unwrap();
         let revision = self.session.revision();
         let request =
             self.session
-                .prepare_create(&self.catalogue, ID_A, revision, fields, date(TODAY));
+                .prepare_create_line(&self.catalogue, ID_A, revision, line, date(TODAY));
         self.finish(request)
     }
 
-    fn edit(&mut self, line: u32, draft: impl FnOnce(TodoDraft) -> TodoDraft) -> Outcome {
+    fn edit(&mut self, line: u32, typed: &str) -> Outcome {
         let item = self.session.selected().unwrap().file.items.iter();
         let item = item
             .clone()
@@ -354,17 +195,17 @@ impl Fixture {
             line_number: line,
             expected_raw: item.raw.clone(),
         };
-        self.edit_target(target, draft(TodoDraft::from_item(&item)))
+        self.edit_target(target, &item, typed)
     }
 
-    fn edit_target(&mut self, target: TodoTarget, draft: TodoDraft) -> Outcome {
-        let fields = match draft.validate(true) {
-            Ok(fields) => fields,
-            Err(errors) => return Outcome::Invalid(errors[0].message.to_owned()),
+    fn edit_target(&mut self, target: TodoTarget, original: &TodoItem, typed: &str) -> Outcome {
+        let line = match TodoLine::edit_of(typed, original) {
+            Ok(line) => line,
+            Err(message) => return Outcome::Invalid(message.to_owned()),
         };
         let request = self
             .session
-            .prepare_edit(&self.catalogue, target, fields, date(TODAY));
+            .prepare_edit_line(&self.catalogue, target, line, date(TODAY));
         self.finish(request)
     }
 
@@ -397,17 +238,17 @@ impl Fixture {
 #[test]
 fn creation_appends_with_the_file_line_ending_and_undoes_exact_bytes() {
     for (initial, expected) in [
-        ("", "line"),
-        ("Existing", "Existing\nline"),
-        ("Existing\r\n", "Existing\r\nline\r\n"),
-        ("Existing\r\nLast", "Existing\r\nLast\r\nline"),
+        ("", "2028-01-31 line"),
+        ("Existing", "Existing\n2028-01-31 line"),
+        ("Existing\r\n", "Existing\r\n2028-01-31 line\r\n"),
+        ("Existing\r\nLast", "Existing\r\nLast\r\n2028-01-31 line"),
         (
             "x 2026-10-08 Done\r\n\nKeep",
-            "x 2026-10-08 Done\r\n\nKeep\r\nline",
+            "x 2026-10-08 Done\r\n\nKeep\r\n2028-01-31 line",
         ),
     ] {
         let mut fixture = Fixture::new(initial);
-        assert_eq!(fixture.create(draft("line")), Outcome::Applied(None));
+        assert_eq!(fixture.create("line"), Outcome::Applied(None));
         assert_eq!(fixture.disk(), expected);
         assert_eq!(fixture.session.undo_label(), Some("Undo creation"));
         assert_eq!(fixture.undo(), Outcome::Applied(None));
@@ -418,13 +259,12 @@ fn creation_appends_with_the_file_line_ending_and_undoes_exact_bytes() {
 #[test]
 fn a_future_show_from_reports_that_the_saved_item_is_hidden() {
     let mut fixture = Fixture::new("");
-    let later = |show_from: &str| TodoDraft {
-        metadata: vec![format!("t:{show_from}")],
-        ..draft("Later")
-    };
-    assert_eq!(fixture.create(later(TODAY)), Outcome::Applied(None));
     assert_eq!(
-        fixture.create(later("2028-02-01")),
+        fixture.create(&format!("Later t:{TODAY}")),
+        Outcome::Applied(None)
+    );
+    assert_eq!(
+        fixture.create("Later t:2028-02-01"),
         Outcome::Applied(Some(
             "Hidden until Show from 2028-02-01. Use Show deferred to see it.".into()
         ))
@@ -436,19 +276,19 @@ fn creation_refuses_an_externally_changed_file_and_a_stale_revision() {
     let mut fixture = Fixture::new("Original\n");
     fs::write(&fixture.todo, "Changed externally\r\n").unwrap();
     assert_eq!(
-        fixture.create(draft("New")),
+        fixture.create("New"),
         Outcome::Conflict("The Todo file changed on disk. Review its current contents.".into())
     );
     assert_eq!(fixture.disk(), "Changed externally\r\n");
     let shown = &fixture.session.selected().unwrap().file.items[0];
     assert_eq!(shown.description, "Changed externally");
 
-    let fields = draft("New").validate(false).unwrap();
+    let line = TodoLine::new_item("New", date(TODAY)).unwrap();
     let stale = fixture.session.revision() - 1;
     let request =
         fixture
             .session
-            .prepare_create(&fixture.catalogue, ID_A, stale, fields, date(TODAY));
+            .prepare_create_line(&fixture.catalogue, ID_A, stale, line, date(TODAY));
     assert_eq!(fixture.finish(request), Outcome::Stale);
     assert_eq!(fixture.disk(), "Changed externally\r\n");
 }
@@ -459,11 +299,6 @@ const EDIT_FILE: &str =
 #[test]
 fn editing_replaces_only_the_target_line_keeping_position_and_ending() {
     let mut fixture = Fixture::new(EDIT_FILE);
-    let edited = |d: TodoDraft| TodoDraft {
-        projects: tags(&["Home"]),
-        contexts: tags(&["desk"]),
-        ..d.with_description("Updated")
-    };
     // External changes to other lines survive; only the target must still match.
     let target = TodoTarget {
         workspace_id: ID_A.to_owned(),
@@ -477,11 +312,14 @@ fn editing_replaces_only_the_target_line_keeping_position_and_ending() {
         format!("Changed elsewhere\n{}\r\n\nLast", item.raw),
     )
     .unwrap();
-    let draft = edited(TodoDraft::from_item(&item));
-    assert_eq!(fixture.edit_target(target, draft), Outcome::Applied(None));
+    let typed = "x 2026-10-09 2026-10-01 Updated +Home @desk custom:first custom:last";
+    assert_eq!(
+        fixture.edit_target(target, &item, typed),
+        Outcome::Applied(None)
+    );
     assert_eq!(
         fixture.disk(),
-        "Changed elsewhere\nx 2026-10-09 2026-10-01 Updated +Home @desk custom:first custom:last\r\n\nLast"
+        format!("Changed elsewhere\n{typed}\r\n\nLast")
     );
     assert_eq!(fixture.session.undo_label(), Some("Undo edit"));
     assert_eq!(fixture.undo(), Outcome::Applied(None));
@@ -492,109 +330,56 @@ fn editing_replaces_only_the_target_line_keeping_position_and_ending() {
 }
 
 #[test]
-fn editing_refuses_a_changed_target_and_a_cleared_completion_date() {
+fn editing_refuses_a_changed_target() {
     let mut fixture = Fixture::new(EDIT_FILE);
+    let item = fixture.session.selected().unwrap().file.items[1].clone();
     let target = TodoTarget {
         workspace_id: ID_A.to_owned(),
         revision: fixture.session.revision(),
         line_number: 2,
-        expected_raw: fixture.session.selected().unwrap().file.items[1]
-            .raw
-            .clone(),
+        expected_raw: item.raw.clone(),
     };
     fs::write(&fixture.todo, "Keep\r\nChanged externally\r\nLast").unwrap();
     assert_eq!(
-        fixture.edit_target(target, draft("Updated")),
+        fixture.edit_target(target, &item, "Updated"),
         Outcome::Conflict("The Todo item changed on disk. Review its current contents.".into())
     );
     assert_eq!(fixture.disk(), "Keep\r\nChanged externally\r\nLast");
-
-    // The editor reports it on the field before anything is queued; the core refuses it too.
-    let recorded = parse_todo_text(PathBuf::new(), "x 2026-10-09 Old")
-        .items
-        .remove(0);
-    let cleared = TodoDraft {
-        completion_date: String::new(),
-        ..TodoDraft::from_item(&recorded)
-    };
-    let errors = cleared.validate_edit(&recorded).unwrap_err();
-    assert_eq!(errors[0].field, DraftField::CompletionDate);
-    let legacy = parse_todo_text(PathBuf::new(), "x Old").items.remove(0);
-    assert!(TodoDraft::from_item(&legacy).validate_edit(&legacy).is_ok());
-
-    let mut fixture = Fixture::new("x 2026-10-09 Old");
-    let outcome = fixture.edit(1, |d| TodoDraft {
-        completion_date: String::new(),
-        ..d
-    });
-    assert_eq!(
-        outcome,
-        Outcome::Invalid("Choose a Completion date for a completed Todo item.".into())
-    );
-    assert_eq!(fixture.disk(), "x 2026-10-09 Old");
 }
 
 #[test]
 fn editing_keeps_legacy_completed_forms_and_the_generation_marker() {
-    for (initial, edit, expected) in [
-        ("x +Work custom:first custom:last", "", "x "),
-        (
-            "x (A) 2026-10-01 Old",
-            "Updated",
-            "x (A) 2026-10-01 Updated",
-        ),
+    for (initial, typed, expected) in [
+        ("x +Work custom:first", "x Legacy", "x Legacy"),
         (
             "x 2026-10-09 (A) Old pri:B",
-            "Updated",
+            "x 2026-10-09 (A) Updated pri:B",
             "x 2026-10-09 (A) Updated pri:B",
         ),
-        (
-            "x 2026-10-09 (A) (B) Old",
-            "(B) Updated",
-            "x 2026-10-09 (A) (B) Updated",
-        ),
+        // The app-owned marker survives a typed line that dropped it.
         (
             "Clean rec:1d tuxedo-generated:1",
-            "Changed",
+            "Changed rec:2w",
             "Changed rec:2w tuxedo-generated:1",
         ),
     ] {
         let mut fixture = Fixture::new(initial);
-        let outcome = fixture.edit(1, |d| {
-            let mut d = d.with_description(edit);
-            if initial.starts_with("x +Work") {
-                d.projects.clear();
-                d.metadata.clear();
-            }
-            if initial.starts_with("Clean") {
-                d.set_metadata(tags(&["rec:2w"]));
-            }
-            d
-        });
-        assert_eq!(outcome, Outcome::Applied(None), "{initial}");
+        assert_eq!(fixture.edit(1, typed), Outcome::Applied(None), "{initial}");
         assert_eq!(fixture.disk(), expected);
     }
 }
 
 #[test]
-fn editor_completion_generates_the_recurring_successor_with_the_saved_priority() {
+fn completing_by_edit_generates_the_recurring_successor_with_the_saved_priority() {
     let mut fixture = Fixture::new("(A) Clean rec:2w\r\nLast");
-    let outcome = fixture.edit(1, |mut d| {
-        d.set_completed(true, date(TODAY));
-        TodoDraft {
-            priority: PriorityChoice::Letter('B'),
-            completion_date: "2024-02-29".into(),
-            metadata: tags(&["rec:1y", "custom:yes"]),
-            ..d.with_description("New chore")
-        }
-    });
+    let outcome = fixture.edit(1, "x 2024-02-29 New chore rec:1y custom:yes pri:B");
     assert_eq!(
         outcome,
         Outcome::Applied(Some("Next occurrence due 2025-02-28.".into()))
     );
     assert_eq!(
         fixture.disk(),
-        "x 2024-02-29 (B) New chore rec:1y custom:yes tuxedo-generated:1\r\n\
+        "x 2024-02-29 New chore rec:1y custom:yes pri:B tuxedo-generated:1\r\n\
          (B) 2028-01-31 New chore rec:1y custom:yes due:2025-02-28\r\nLast"
     );
     assert_eq!(fixture.undo(), Outcome::Applied(None));
@@ -604,9 +389,9 @@ fn editor_completion_generates_the_recurring_successor_with_the_saved_priority()
 #[test]
 fn an_unchanged_edit_writes_nothing_and_keeps_the_previous_undo() {
     let mut fixture = Fixture::new("First\nSecond\n");
-    assert_eq!(fixture.create(draft("Third")), Outcome::Applied(None));
+    assert_eq!(fixture.create("Third"), Outcome::Applied(None));
     let revision = fixture.session.revision();
-    assert_eq!(fixture.edit(1, |d| d), Outcome::Applied(None));
+    assert_eq!(fixture.edit(1, "First"), Outcome::Applied(None));
     assert_eq!(fixture.session.revision(), revision);
     assert_eq!(fixture.session.undo_label(), Some("Undo creation"));
     assert_eq!(fixture.undo(), Outcome::Applied(None));

@@ -24,7 +24,6 @@ use crate::command_queue::OutcomeKind;
 use crate::model::{SessionModel, SessionState};
 use crate::theme::{self, hex, Palette};
 use crate::todo_commands::local_today;
-use crate::todo_editor;
 use list_view::ListView;
 use sidebar::WorkspaceSidebar;
 
@@ -35,15 +34,15 @@ const SIDEBAR_TRANSITION: Duration = Duration::from_millis(200);
 /// The content card's radius (`rounded-xl`).
 const CARD_RADIUS: f32 = 14.;
 
-actions!(tuxedo, [UndoTodo, FocusQuery, Quit]);
+actions!(tuxedo, [UndoTodo, FocusQuery, QuickAdd, Quit]);
 
-/// App-wide key bindings. Undo last change stays out of text fields, so Cmd-Z there undoes
-/// typing instead of the last Todo-file change.
+/// App-wide key bindings. Undo last change and quick add stay out of text fields, so Cmd-Z
+/// there undoes typing instead of the last Todo-file change.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-z", UndoTodo, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-f", FocusQuery, None),
-        KeyBinding::new("cmd-n", todo_editor::NewTodoItem, Some("Tuxedo && !Input")),
+        KeyBinding::new("cmd-n", QuickAdd, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
 }
@@ -113,12 +112,24 @@ impl TuxedoApp {
         let selected = self.session.read(cx).selected();
         self.list_view.reproject(selected, local_today());
         self.list_view.sync_query_field(cx);
+        self.list_view.follow_replies(cx);
         cx.notify();
     }
 
     /// Cmd-F, and screenshot mode's `TUXEDO_FOCUS=query`.
     pub fn focus_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.list_view.focus_query(window, cx);
+    }
+
+    /// Screenshot mode's `TUXEDO_QUICK_ADD`.
+    #[cfg(feature = "screenshot")]
+    pub fn quick_add_for_screenshot(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        ListView::type_quick_add(self, text, window, cx);
     }
 
     /// Workspace command UI layered over the window: create/edit/delete dialogs (#258).
@@ -176,13 +187,11 @@ impl Render for TuxedoApp {
             .on_action(cx.listener(|this, _: &FocusQuery, window, cx| {
                 this.focus_query(window, cx);
             }))
-            .on_action(
-                cx.listener(|this, _: &todo_editor::NewTodoItem, window, cx| {
-                    if this.session.read(cx).selected().is_some() && !window.has_active_dialog(cx) {
-                        todo_editor::open_new(this.session.clone(), window, cx);
-                    }
-                }),
-            )
+            .on_action(cx.listener(|this, _: &QuickAdd, window, cx| {
+                if this.session.read(cx).selected().is_some() && !window.has_active_dialog(cx) {
+                    this.list_view.focus_quick_add(window, cx);
+                }
+            }))
             .bg(hex(p.window_background))
             .text_color(hex(p.foreground))
             .font_family(theme::UI_FONT)

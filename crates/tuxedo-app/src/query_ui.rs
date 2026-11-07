@@ -18,6 +18,7 @@ use tuxedo_core::{
     TodoSortOrder, COMPLETION_VALUES, DUE_VALUES,
 };
 
+use crate::completion_field::{self, Offer, OnAccept, MAX_OFFERS};
 use crate::theme::{hex, Palette, MONO_FONT};
 use crate::todo_projection::{PrefixKind, TodoProjection};
 use crate::todo_row::ROW_HEIGHT;
@@ -37,13 +38,7 @@ pub enum FilterEdit {
 /// Applies an edit, from any control's click handler.
 pub type OnEdit = Rc<dyn Fn(FilterEdit, &mut Window, &mut App)>;
 
-/// Accepts the autocomplete suggestion at an index.
-pub type OnAccept = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-
 pub const PLACEHOLDER: &str = "Search, or filter with +project @context pri:A due:today";
-/// The most suggestions the popover lists.
-const MAX_SUGGESTIONS: usize = 8;
-const POPOVER_WIDTH: f32 = 360.;
 
 pub fn group_label(kind: DueGroupKind) -> &'static str {
     match kind {
@@ -158,11 +153,11 @@ pub fn suggestions(word: &str, projection: &TodoProjection) -> Vec<Suggestion> {
     } else {
         Vec::new()
     };
-    offered.into_iter().take(MAX_SUGGESTIONS).collect()
+    offered.into_iter().take(MAX_OFFERS).collect()
 }
 
-/// The query field, the Add filter menu, and the autocomplete popover below the field.
-/// `popover` is the open popover's suggestions and highlighted row; `on_accept` takes a row.
+/// The query field, the Add filter menu, and the autocomplete panel below the field.
+/// `popover` is the open panel's suggestions and highlighted row; `on_accept` takes a row.
 /// A `compact` pane drops the shortcut hint and the menu button's label.
 pub fn render_field_row(
     query: &Entity<InputState>,
@@ -173,94 +168,37 @@ pub fn render_field_row(
     compact: bool,
     p: &'static Palette,
 ) -> Div {
-    let dropdown = popover.map(|(offered, highlighted)| {
-        deferred(
-            v_flex()
-                .id("query-suggestions")
-                .occlude()
-                .absolute()
-                .top(px(38.))
-                .left_0()
-                .w(px(POPOVER_WIDTH))
-                .max_w_full()
-                .p_1()
-                .rounded(px(8.))
-                .border_1()
-                .border_color(hex(p.border))
-                .bg(hex(p.popover))
-                .shadow_lg()
-                .children(offered.iter().enumerate().map(|(i, s)| {
-                    let on_accept = on_accept.clone();
-                    let active = i == highlighted;
-                    h_flex()
-                        .id(("query-suggestion", i))
-                        .h_7()
-                        .px_2()
-                        .gap_2()
-                        .rounded(px(5.))
-                        .cursor_pointer()
-                        // The keyboard cursor: a primary tint, like a selected List row, since
-                        // the neutral `accent` and `muted` barely differ from the popover.
-                        // Hover would override it, so only other rows take hover.
-                        .when(active, |row| row.bg(hex(p.primary).opacity(0.12)))
-                        .when(!active, |row| row.hover(|row| row.bg(hex(p.muted))))
-                        // On mouse down, before the field loses focus to the click.
-                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                            cx.stop_propagation();
-                            on_accept(i, window, cx);
-                        })
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .font_family(MONO_FONT)
-                                .text_sm()
-                                .child(s.token.clone()),
-                        )
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .text_xs()
-                                .text_color(hex(p.muted_foreground))
-                                .child(s.detail.clone()),
-                        )
-                        .when(active, |row| {
-                            row.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_xs()
-                                    .text_color(hex(p.primary))
-                                    .child("↵"),
-                            )
-                        })
-                })),
-        )
-        .with_priority(1)
+    let offers: Option<(Vec<Offer>, usize)> = popover.map(|(offered, highlighted)| {
+        let offers = offered
+            .iter()
+            .map(|s| Offer {
+                token: s.token.clone(),
+                detail: s.detail.clone(),
+            })
+            .collect();
+        (offers, highlighted)
     });
+    let field = Input::new(query)
+        .aria_label("Query")
+        .cleanable(true)
+        .prefix(Icon::new(IconName::TextSearch).size_4())
+        .when(!compact, |input| {
+            input.suffix(
+                div()
+                    .text_xs()
+                    .text_color(hex(p.muted_foreground))
+                    .child("⌘F"),
+            )
+        });
     h_flex()
         .gap_2()
-        .child(
-            div()
-                .relative()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    Input::new(query)
-                        .aria_label("Query")
-                        .cleanable(true)
-                        .prefix(Icon::new(IconName::TextSearch).size_4())
-                        .when(!compact, |input| {
-                            input.suffix(
-                                div()
-                                    .text_xs()
-                                    .text_color(hex(p.muted_foreground))
-                                    .child("⌘F"),
-                            )
-                        }),
-                )
-                .children(dropdown),
-        )
+        .child(div().flex_1().min_w_0().child(completion_field::render(
+            "query-suggestions",
+            field,
+            offers.as_ref().map(|(o, h)| (o.as_slice(), *h)),
+            on_accept,
+            p,
+        )))
         .child(add_filter_menu(projection, on_edit, compact))
 }
 

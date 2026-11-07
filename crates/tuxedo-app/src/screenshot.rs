@@ -9,8 +9,8 @@
 //! - `TUXEDO_SIDEBAR=hidden`
 //! - `TUXEDO_DIALOG=create|edit|delete`: open a Workspace dialog last; `edit` and `delete` act
 //!   on the displayed Workspace
-//! - `TUXEDO_EDITOR=new|<line>[!<description>]`: open the Todo-item editor last, for a new
-//!   item or the item on that physical line; `!<description>` types it and saves once
+//! - `TUXEDO_QUICK_ADD=<text>`: type that line into quick add last, caret at the end (which
+//!   opens autocomplete when its last word can complete); a trailing `⏎` presses Enter
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner;
 //!   `TUXEDO_SCROLL_AT=<x>,<y>` scrolls and hovers at that window point instead (the sidebar)
 //! - `TUXEDO_FOCUS=query`: put the caret at the end of the query field (which opens the
@@ -31,7 +31,7 @@ use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 
 use crate::app::TuxedoApp;
-use crate::{todo_editor, workspace_ui};
+use crate::workspace_ui;
 
 /// In screenshot mode the window opens far offscreen, as GPUI's visual tests do, so the real
 /// pointer and keyboard cannot interfere with the injected state.
@@ -206,10 +206,11 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             .ok();
             settle(cx, 800).await;
         }
-        if let Ok(spec) = std::env::var("TUXEDO_EDITOR") {
+        if let Ok(text) = std::env::var("TUXEDO_QUICK_ADD") {
             cx.update_window(window, |_, window, cx| {
-                let session = root.read(cx).session().clone();
-                todo_editor::open_for_screenshot(session, &spec, window, cx);
+                root.update(cx, |app, cx| {
+                    app.quick_add_for_screenshot(&text, window, cx)
+                })
             })
             .ok();
             settle(cx, 800).await;

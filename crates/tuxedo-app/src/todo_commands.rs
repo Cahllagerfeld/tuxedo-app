@@ -21,7 +21,7 @@ pub fn target(selected: &WorkspaceSnapshot, revision: u64, item: &TodoItem) -> T
     }
 }
 
-/// How the editor learns its own command's outcome: filled when the queue accepts the result.
+/// How a line input learns its own command's outcome: filled when the queue accepts the result.
 /// A command dropped without one (quitting, paused changes) wrote nothing.
 #[derive(Clone, Default)]
 pub struct Reply(Arc<Mutex<Option<Replied>>>);
@@ -74,8 +74,8 @@ impl std::fmt::Debug for Reply {
     }
 }
 
-/// A prepared Todo-file command. An editor command carries its reply through the background
-/// step, and a preparation failure still reaches acceptance so the editor hears of it.
+/// A prepared Todo-file command. A line command carries its reply through the background
+/// step, and a preparation failure still reaches acceptance so the line input hears of it.
 pub struct TodoRequest {
     request: Result<TodoWriteRequest, CoreError>,
     reply: Option<Reply>,
@@ -127,25 +127,23 @@ pub fn prepare(
         TodoCommand::Create {
             workspace_id,
             revision,
-            fields,
+            line,
             reply,
         } => Ok(TodoRequest {
-            request: session.prepare_create(catalogue_path, &workspace_id, revision, fields, today),
-            reply: Some(reply),
-        }),
-        TodoCommand::Edit {
-            target,
-            fields,
-            reply,
-        } => Ok(TodoRequest {
-            request: session.prepare_edit(catalogue_path, target, fields, today),
+            request: session.prepare_create_line(
+                catalogue_path,
+                &workspace_id,
+                revision,
+                *line,
+                today,
+            ),
             reply: Some(reply),
         }),
     }
 }
 
 /// Foreground: installs a Todo-file command's result (or reports its failure, including a
-/// preparation failure), and answers an editor command's reply.
+/// preparation failure), and answers a line command's reply.
 pub fn accept(session: &mut WorkspaceSession, result: Result<TodoResult, CoreError>) -> Accepted {
     let (result, reply) = match result {
         Ok(TodoResult { result, reply }) => (result, reply),

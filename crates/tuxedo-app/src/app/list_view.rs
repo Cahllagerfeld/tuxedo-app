@@ -2,13 +2,9 @@
 //! status bar. Rows themselves render in `todo_row`.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{
-    Enter, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp,
-};
-use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::Icon;
 use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use std::ops::Range;
@@ -16,19 +12,20 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use tuxedo_core::{
-    query_with_condition, query_with_condition_at, query_word_at, QueryCondition, TodoDate,
-    WorkspaceSnapshot,
+    query_with_condition, query_with_condition_at, query_word_at, todo_facets, CompletionView,
+    Facets, QueryCondition, TodoDate, TodoLine, WorkspaceSnapshot,
 };
 
 use super::TuxedoApp;
 use crate::command_queue::{Command, TodoCommand};
+use crate::completion_field::{self, Completion, CompletionKey, OnAccept};
 use crate::model::{SessionModel, SessionState};
-use crate::query_ui::{self, FilterEdit, OnAccept, OnEdit, Suggestion};
+use crate::query_ui::{self, FilterEdit, OnEdit, Suggestion};
 use crate::saved_views_ui;
 use crate::theme::{hex, Palette};
-use crate::todo_commands::{self, local_today};
-use crate::todo_editor;
-use crate::todo_projection::{Row, TodoProjection};
+use crate::todo_commands::{self, local_today, Replied, Reply};
+use crate::todo_line_ui::LineField;
+use crate::todo_projection::{locale_compare, Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
 /// Below this window width the query bar drops its shortcut hint and button label, so the
@@ -38,30 +35,23 @@ const COMPACT_WINDOW_WIDTH: f32 = 960.;
 /// How often the List view checks whether the local date changed.
 const DATE_POLL: Duration = Duration::from_secs(60);
 
+pub const QUICK_ADD_PLACEHOLDER: &str = "Add a Todo item: Buy milk +Home @store due:2026-11-10";
+
 /// List-view-local UI state: the projection of the selected Todo file into displayed rows,
-/// with its query, sort, and grouping, and the query field's autocomplete.
+/// with its query, sort, and grouping, the query field's autocomplete, and the quick add line.
 pub(super) struct ListView {
     projection: TodoProjection,
     query: Entity<InputState>,
-    /// The highlighted autocomplete row and the word it belongs to. Any other word, such as
-    /// one the caret moved to, opens with its first row highlighted.
-    highlight: Option<(Range<usize>, usize)>,
-    /// Escape closed the popover; the next edit reopens it.
-    dismissed: bool,
-    /// The query field lives in the window; set it there when an edit elsewhere changes it.
+    completion: Completion,
+    /// Quick add: a new Todo item typed as a todo.txt line.
+    quick_add: LineField,
+    /// The whole Todo file's Projects, Contexts, and Priorities, which line autocomplete offers.
+    line_facets: Facets,
+    /// The fields live in the window; set them there when an edit elsewhere changes them.
     window: AnyWindowHandle,
-    _subscriptions: [Subscription; 2],
+    _subscriptions: [Subscription; 4],
     /// Recomputes the projection when the local date changes.
     _date_watch: Task<()>,
-}
-
-/// A key the autocomplete popover takes while it is open.
-#[derive(Debug, Clone, Copy)]
-enum PopoverKey {
-    Up,
-    Down,
-    Accept,
-    Close,
 }
 
 impl ListView {
@@ -92,6 +82,25 @@ impl ListView {
                 app.session_changed(cx);
             }
         });
+        let quick_add = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(QUICK_ADD_PLACEHOLDER)
+                .clean_on_escape()
+        });
+        let quick_changed = cx.observe(&quick_add, |app, _, cx| {
+            app.list_view.quick_add.changed(cx);
+            cx.notify();
+        });
+        // The one submit path: Enter the open panel did not take reaches the field.
+        let quick_enter = cx.subscribe_in(
+            &quick_add,
+            window,
+            |app, _, event: &InputEvent, window, cx| {
+                if let InputEvent::PressEnter { .. } = event {
+                    ListView::submit_quick_add(app, window, cx);
+                }
+            },
+        );
         let date_watch = cx.spawn(async move |app, cx| loop {
             cx.background_executor().timer(DATE_POLL).await;
             let changed = app.update(cx, |app, cx| {
@@ -106,10 +115,11 @@ impl ListView {
         Self {
             projection: TodoProjection::new(local_today()),
             query,
-            highlight: None,
-            dismissed: false,
+            completion: Completion::default(),
+            quick_add: LineField::new(quick_add, cx),
+            line_facets: Facets::default(),
             window: window.window_handle(),
-            _subscriptions: [changed, focus],
+            _subscriptions: [changed, focus, quick_changed, quick_enter],
             _date_watch: date_watch,
         }
     }
@@ -127,8 +137,7 @@ impl ListView {
             return false;
         }
         if edited {
-            self.highlight = None;
-            self.dismissed = false;
+            self.completion.edited();
             self.projection.set_query(text);
         }
         self.projection.set_typing(typing);
@@ -139,6 +148,99 @@ impl ListView {
     /// date changes. A different Workspace clears the query; the same one keeps it.
     pub(super) fn reproject(&mut self, selected: Option<&WorkspaceSnapshot>, today: TodoDate) {
         self.projection.sync(selected, today);
+        self.line_facets = selected.map_or_else(Facets::default, |s| {
+            todo_facets(&s.file, CompletionView::All, locale_compare)
+        });
+    }
+
+    /// Cmd-N: puts the caret in the quick add line.
+    pub(super) fn focus_quick_add(&self, window: &mut Window, cx: &mut Context<TuxedoApp>) {
+        self.quick_add
+            .input
+            .update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// Enter in quick add: validates the typed line and appends it to the shown Workspace's
+    /// Todo file. A refused line shows why under the field; nothing is queued while the last
+    /// line still saves.
+    fn submit_quick_add(app: &mut TuxedoApp, window: &mut Window, cx: &mut Context<TuxedoApp>) {
+        let field = &mut app.list_view.quick_add;
+        if field.reply.is_some() || field.composing(window, cx) {
+            return;
+        }
+        let text = field.text(cx);
+        if text.trim().is_empty() {
+            return;
+        }
+        let model = app.session.read(cx);
+        let (Some(selected), Some(revision)) = (model.selected(), model.revision()) else {
+            return;
+        };
+        let line = match TodoLine::new_item(&text, local_today()) {
+            Ok(line) => line,
+            Err(message) => {
+                field.error = Some(message);
+                return cx.notify();
+            }
+        };
+        let reply = Reply::default();
+        let command = Command::Todo(TodoCommand::Create {
+            workspace_id: selected.workspace.id.clone(),
+            revision,
+            line: Box::new(line),
+            reply: reply.clone(),
+        });
+        field.reply = Some(reply);
+        app.session
+            .update(cx, |model, cx| model.enqueue(command, cx));
+        cx.notify();
+    }
+
+    /// Follows the line inputs' own commands: a saved (or possibly saved) quick add line
+    /// empties its field, which keeps focus; a refused or failed one keeps its text.
+    pub(super) fn follow_replies(&mut self, cx: &mut Context<TuxedoApp>) {
+        let replied = self.quick_add.reply.as_ref().and_then(Reply::get);
+        let Some(replied) = replied else {
+            return;
+        };
+        self.quick_add.reply = None;
+        if matches!(replied, Replied::Applied | Replied::Uncertain) {
+            let input = self.quick_add.input.clone();
+            let window = self.window;
+            cx.defer(move |cx| {
+                window
+                    .update(cx, |_, window, cx| {
+                        input.update(cx, |state, cx| state.set_value("", window, cx))
+                    })
+                    .ok();
+            });
+        }
+    }
+
+    /// Screenshot mode: types `text` into quick add, caret at the end; a trailing `⏎` submits.
+    #[cfg(feature = "screenshot")]
+    pub(super) fn type_quick_add(
+        app: &mut TuxedoApp,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<TuxedoApp>,
+    ) {
+        let (text, submit) = match text.strip_suffix('⏎') {
+            Some(text) => (text, true),
+            None => (text, false),
+        };
+        app.list_view.quick_add.input.update(cx, |state, cx| {
+            state.focus(window, cx);
+            state.replace_all(text.to_owned(), window, cx);
+        });
+        if submit {
+            Self::submit_quick_add(app, window, cx);
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn quick_add_text(&self, cx: &App) -> String {
+        self.quick_add.text(cx)
     }
 
     /// Shows the projection's query in the field after an edit elsewhere (Overview, Add
@@ -234,7 +336,7 @@ impl ListView {
     /// popover was not dismissed.
     fn popover(&self, window: &Window, cx: &App) -> Option<(Range<usize>, Vec<Suggestion>)> {
         let state = self.query.read(cx);
-        if self.dismissed || !state.focus_handle(cx).is_focused(window) {
+        if self.completion.dismissed() || !state.focus_handle(cx).is_focused(window) {
             return None;
         }
         let text = state.value();
@@ -246,37 +348,24 @@ impl ListView {
 
     /// The highlighted row of the popover open on `word`, offering `len` suggestions.
     fn highlighted(&self, word: &Range<usize>, len: usize) -> usize {
-        match &self.highlight {
-            Some((at, row)) if at == word => (*row).min(len - 1),
-            _ => 0,
-        }
+        self.completion.highlighted(word, len)
     }
 
-    /// Handles a popover key, or lets it through to the field while the popover is closed.
+    /// Handles a popover key; `false` lets it through to the field while the popover is closed.
     fn on_popover_key(
         app: &mut TuxedoApp,
-        key: PopoverKey,
+        key: CompletionKey,
         window: &mut Window,
         cx: &mut Context<TuxedoApp>,
-    ) {
+    ) -> bool {
         let Some((word, offered)) = app.list_view.popover(window, cx) else {
-            return;
+            return false;
         };
-        cx.stop_propagation();
-        let this = &mut app.list_view;
-        let last = offered.len() - 1;
-        let current = this.highlighted(&word, offered.len());
-        let next = match key {
-            PopoverKey::Up => current.checked_sub(1).unwrap_or(last),
-            PopoverKey::Down => (current + 1) % offered.len(),
-            PopoverKey::Close => {
-                this.dismissed = true;
-                current
-            }
-            PopoverKey::Accept => return Self::accept(app, current, window, cx),
-        };
-        this.highlight = Some((word, next));
+        if let Some(index) = app.list_view.completion.key(key, word, offered.len()) {
+            Self::accept(app, index, window, cx);
+        }
         cx.notify();
+        true
     }
 
     /// Puts suggestion `index` in place of the word at the caret, with the same rewrite
@@ -298,7 +387,6 @@ impl ListView {
             state.set_selected_range(caret..caret, cx);
             state.focus(window, cx);
         });
-        app.list_view.highlight = None;
         if app.list_view.query_changed(window, cx) {
             app.session_changed(cx);
         }
@@ -321,18 +409,6 @@ impl ListView {
             app.update(cx, |app, cx| ListView::accept(app, index, window, cx))
                 .ok();
         });
-        let key = |key: PopoverKey| {
-            move |app: &mut TuxedoApp, window: &mut Window, cx: &mut Context<TuxedoApp>| {
-                ListView::on_popover_key(app, key, window, cx)
-            }
-        };
-        let (up, down, enter, tab, escape) = (
-            key(PopoverKey::Up),
-            key(PopoverKey::Down),
-            key(PopoverKey::Accept),
-            key(PopoverKey::Accept),
-            key(PopoverKey::Close),
-        );
         let field = query_ui::render_field_row(
             &self.query,
             &self.projection,
@@ -343,13 +419,9 @@ impl ListView {
             &on_edit,
             window.viewport_size().width < px(COMPACT_WINDOW_WIDTH),
             p,
-        )
+        );
         // Capture phase: the popover sees these keys before the field, only while open.
-        .capture_action(cx.listener(move |app, _: &MoveUp, w, cx| up(app, w, cx)))
-        .capture_action(cx.listener(move |app, _: &MoveDown, w, cx| down(app, w, cx)))
-        .capture_action(cx.listener(move |app, _: &Enter, w, cx| enter(app, w, cx)))
-        .capture_action(cx.listener(move |app, _: &IndentInline, w, cx| tab(app, w, cx)))
-        .capture_action(cx.listener(move |app, _: &Escape, w, cx| escape(app, w, cx)));
+        let field = completion_field::capture_keys(field, cx, ListView::on_popover_key);
         let error = self
             .projection
             .error()
@@ -363,12 +435,7 @@ impl ListView {
                 .gap_2()
                 .border_b_1()
                 .border_color(hex(p.border))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(div().flex_1().min_w_0().child(field))
-                        .child(new_item_button(cx)),
-                )
+                .child(field)
                 .children(error)
                 .child(
                     // Wraps the Show deferred and Save view actions below the readout when
@@ -401,6 +468,74 @@ impl ListView {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// The quick add line under the query bar, with its autocomplete panel and the reason
+    /// its last line was refused.
+    fn render_quick_add(
+        &self,
+        window: &Window,
+        p: &'static Palette,
+        cx: &Context<TuxedoApp>,
+    ) -> AnyElement {
+        let panel = self
+            .quick_add
+            .panel(&self.line_facets, local_today(), window, cx);
+        let app = cx.entity().downgrade();
+        let on_accept: OnAccept = Rc::new(move |index, window, cx| {
+            app.update(cx, |app, cx| {
+                let this = &mut app.list_view;
+                this.quick_add
+                    .accept(index, &this.line_facets, local_today(), window, cx);
+                cx.notify();
+            })
+            .ok();
+        });
+        let saving = self.quick_add.reply.is_some();
+        let field = Input::new(&self.quick_add.input)
+            .aria_label("Quick add")
+            .prefix(Icon::new(IconName::Plus).size_4())
+            .suffix(
+                div()
+                    .text_xs()
+                    .text_color(hex(p.muted_foreground))
+                    .child(if saving { "Adding…" } else { "⌘N" }),
+            );
+        let field = completion_field::render(
+            "quick-add",
+            field,
+            panel
+                .as_ref()
+                .map(|(offers, row)| (offers.as_slice(), *row)),
+            on_accept,
+            p,
+        );
+        let field = completion_field::capture_keys(
+            div().child(field),
+            cx,
+            |app: &mut TuxedoApp, key, window, cx| {
+                let this = &mut app.list_view;
+                let taken = this
+                    .quick_add
+                    .key(key, &this.line_facets, local_today(), window, cx);
+                cx.notify();
+                taken
+            },
+        );
+        v_flex()
+            .flex_shrink_0()
+            .px_4()
+            .py_2()
+            .gap_1()
+            .border_b_1()
+            .border_color(hex(p.border))
+            .child(field)
+            .children(
+                self.quick_add
+                    .error
+                    .map(|error| line_error("quick-add-error", error, p)),
+            )
+            .into_any_element()
     }
 
     pub(super) fn render(
@@ -439,10 +574,12 @@ impl ListView {
                 .items_center()
                 .child(message(
                     "No valid Todo items",
-                    Some("This Todo file did not contain any parsed Todo items.".into()),
+                    Some(
+                        "This Todo file did not contain any parsed Todo items. Add one above."
+                            .into(),
+                    ),
                     p,
                 ))
-                .child(div().pb_6().child(new_item_button(cx)))
                 .into_any_element(),
             (SessionState::Ready(_), Some(_)) if self.projection.shown() == 0 => {
                 query_ui::render_no_matches(&self.projection, &on_edit(cx), p)
@@ -462,6 +599,9 @@ impl ListView {
             .min_h_0()
             .overflow_hidden()
             .children(self.render_query_bar(session, model.selected(), window, p, cx))
+            .when(model.selected().is_some(), |main| {
+                main.child(self.render_quick_add(window, p, cx))
+            })
             .child(body)
             .when_some(model.selected(), |main, selected| {
                 main.child(render_status_bar(selected, p))
@@ -503,12 +643,10 @@ fn render_list(
                     });
                     let toggle = session.clone();
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                        // The row's double-click-to-edit must not see checkbox clicks.
                         cx.stop_propagation();
                         toggle.update(cx, |model, cx| model.enqueue(command.clone(), cx));
                     };
-                    let row = todo_row::render(index, item, today, compact, on_toggle, p);
-                    Some(editable_row(index, row, &session, item))
+                    Some(todo_row::render(index, item, today, compact, on_toggle, p))
                 })
                 .collect()
         },
@@ -516,51 +654,6 @@ fn render_list(
     .flex_1()
     .min_h(px(ROW_HEIGHT))
     .into_any_element()
-}
-
-/// Double-click or the context menu's Edit opens the Todo-item editor for the row's item.
-fn editable_row(
-    index: usize,
-    row: AnyElement,
-    session: &Entity<SessionModel>,
-    item: &tuxedo_core::TodoItem,
-) -> AnyElement {
-    let (session, item) = (session.clone(), item.clone());
-    let edit = move |window: &mut Window, cx: &mut App| {
-        todo_editor::open_edit(session.clone(), &item, window, cx)
-    };
-    let menu_edit = edit.clone();
-    div()
-        .id(("todo-edit", index))
-        .on_click(move |event, window, cx| {
-            if event.click_count() == 2 {
-                edit(window, cx);
-            }
-        })
-        .context_menu(move |menu, _, _| {
-            let edit = menu_edit.clone();
-            menu.item(
-                PopupMenuItem::new("Edit Todo item…")
-                    .on_click(move |_, window, cx| edit(window, cx)),
-            )
-        })
-        .child(row)
-        .into_any_element()
-}
-
-/// The toolbar's New item action (also Cmd-N).
-fn new_item_button(cx: &Context<TuxedoApp>) -> Button {
-    Button::new("new-todo-item")
-        .small()
-        .outline()
-        .icon(Icon::new(IconName::Plus))
-        .label("New item")
-        .tooltip("New Todo item (⌘N)")
-        .on_click(
-            cx.listener(|app, _, window, cx| {
-                todo_editor::open_new(app.session.clone(), window, cx)
-            }),
-        )
 }
 
 /// Applies a Saved view: its Query replaces the field's text, as one step of its undo history,
@@ -584,6 +677,21 @@ pub(super) fn on_edit(cx: &Context<TuxedoApp>) -> OnEdit {
         app.update(cx, |app, cx| ListView::apply(app, edit, window, cx))
             .ok();
     })
+}
+
+/// Why a typed line was refused.
+fn line_error(id: &'static str, error: &str, p: &Palette) -> impl IntoElement {
+    h_flex()
+        .id(id)
+        .gap_1p5()
+        .text_xs()
+        .text_color(hex(p.destructive))
+        .child(
+            Icon::new(IconName::TriangleAlert)
+                .size_3p5()
+                .flex_shrink_0(),
+        )
+        .child(error.to_owned())
 }
 
 fn render_status_bar(selected: &WorkspaceSnapshot, p: &Palette) -> impl IntoElement {
@@ -670,46 +778,29 @@ fn alert(title: &'static str, description: &str, p: &Palette) -> AnyElement {
 #[cfg(test)]
 mod tests {
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
-    use gpui::{
-        point, px, AppContext as _, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
-        Pixels, Point, TestAppContext, VisualTestContext,
-    };
+    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
     use gpui_kit::base::Root;
-    use gpui_kit::component::WindowExt as _;
 
     use super::super::TuxedoApp;
     use crate::model::tests::catalogue;
     use crate::model::SessionModel;
+    use crate::todo_commands::local_today;
 
-    fn double_click(position: Point<Pixels>, cx: &mut VisualTestContext) {
-        for click_count in [1, 2] {
-            let (button, modifiers) = (MouseButton::Left, Modifiers::default());
-            cx.simulate_event(MouseDownEvent {
-                button,
-                position,
-                modifiers,
-                click_count,
-                first_mouse: false,
-            });
-            cx.simulate_event(MouseUpEvent {
-                button,
-                position,
-                modifiers,
-                click_count,
-            });
-        }
-        cx.run_until_parked();
-    }
-
-    /// The app in a window whose root hosts dialogs, showing Workspace A.
+    /// The app in a window whose root hosts dialogs, showing Workspace A with `contents`.
     fn app_window<'a>(
         name: &str,
+        contents: &str,
         cx: &'a mut TestAppContext,
-    ) -> (Entity<TuxedoApp>, &'a mut VisualTestContext) {
+    ) -> (
+        Entity<TuxedoApp>,
+        std::path::PathBuf,
+        &'a mut VisualTestContext,
+    ) {
         cx.update(gpui_kit::init);
         cx.update(crate::app::bind_keys);
         let path = catalogue(name);
-        std::fs::write(path.with_file_name("A.txt"), "First\nSecond\n").unwrap();
+        let todo = path.with_file_name("A.txt");
+        std::fs::write(&todo, contents).unwrap();
         let session = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
         let mut app = None;
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -719,41 +810,48 @@ mod tests {
             Root::new(view, window, cx)
         });
         cx.run_until_parked();
-        (app.unwrap(), cx)
-    }
-
-    fn dialog_open(cx: &mut VisualTestContext) -> bool {
-        cx.update(|window, cx| window.has_active_dialog(cx))
+        (app.unwrap(), todo, cx)
     }
 
     #[gpui::test]
-    fn cmd_n_opens_the_editor_except_while_typing_in_a_field(cx: &mut TestAppContext) {
-        let (app, cx) = app_window("cmd-n", cx);
+    fn quick_add_appends_the_typed_line_and_keeps_a_refused_one(cx: &mut TestAppContext) {
+        let (app, todo, cx) = app_window("quick-add", "First +Home\n", cx);
+        let text = |cx: &mut VisualTestContext| {
+            app.read_with(cx, |app, cx| app.list_view.quick_add_text(cx))
+        };
+
+        // Cmd-N from a text field types nothing and moves nowhere; from the window it focuses
+        // quick add. Autocomplete offers the file's Project, and Tab takes it.
         cx.simulate_keystrokes("cmd-f cmd-n");
-        assert!(
-            !dialog_open(cx),
-            "Cmd-N in the query field does not open the editor"
-        );
-        cx.update(|window, cx| {
-            let root = app.read(cx).focus_handle.clone();
-            window.focus(&root, cx);
-        });
+        cx.simulate_input("x");
+        assert_eq!(text(cx), "");
+        app.update_in(cx, |app, window, cx| window.focus(&app.focus_handle, cx));
         cx.simulate_keystrokes("cmd-n");
-        assert!(dialog_open(cx));
-    }
+        cx.simulate_input("Buy milk +H");
+        cx.simulate_keystrokes("tab");
+        cx.simulate_input("due:2026-11-10");
+        assert_eq!(text(cx), "Buy milk +Home due:2026-11-10");
 
-    #[gpui::test]
-    fn a_double_click_edits_the_row_but_never_from_its_checkbox(cx: &mut TestAppContext) {
-        let (_, cx) = app_window("row-edit", cx);
-
-        let checkbox = cx.debug_bounds("todo-checkbox-1").unwrap().center();
-        double_click(checkbox, cx);
-        assert!(
-            !dialog_open(cx),
-            "the checkbox completes; it never opens the editor"
+        // Enter appends the line with today's Creation date; the field empties.
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        let today = local_today();
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            format!("First +Home\n{today} Buy milk +Home due:2026-11-10\n")
         );
+        assert_eq!(text(cx), "");
 
-        double_click(checkbox + point(px(200.), px(0.)), cx);
-        assert!(dialog_open(cx), "the rest of the row opens the editor");
+        // A refused line stays with its reason and writes nothing; Escape clears the field.
+        cx.simulate_input("2026-02-30 Bad");
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        let error = app.read_with(cx, |app, _| app.list_view.quick_add.error);
+        assert_eq!(error, Some("Use a valid date in YYYY-MM-DD format."));
+        assert_eq!(text(cx), "2026-02-30 Bad");
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert_eq!(text(cx), "");
+        assert_eq!(std::fs::read_to_string(&todo).unwrap().lines().count(), 2);
     }
 }

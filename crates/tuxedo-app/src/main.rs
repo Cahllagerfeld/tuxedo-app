@@ -1,5 +1,6 @@
 mod app;
 mod command_queue;
+mod completion_field;
 mod model;
 mod observation;
 mod query_ui;
@@ -10,7 +11,7 @@ mod screenshot;
 mod session;
 mod theme;
 mod todo_commands;
-mod todo_editor;
+mod todo_line_ui;
 mod todo_projection;
 mod todo_row;
 mod workspace_commands;

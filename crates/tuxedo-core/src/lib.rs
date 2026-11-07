@@ -33,8 +33,7 @@ pub use todo::{
     TodoFileSummary, TodoItem, TodoItemEdit,
 };
 pub use todo_edit::{
-    validate_metadata_token, validate_tag, DraftField, FieldError, PriorityChoice, RepeatUnit,
-    TodoDraft, TodoFields,
+    line_with_date, line_with_priority, line_with_word, line_word_at, LineDate, TodoLine,
 };
 pub use todo_query::{
     deferred_count, group_todos_by_due, invalid_due_count, is_deferred, project_todos,
