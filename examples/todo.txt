@@ -117,9 +117,9 @@ x 2026-10-14 See this completed item in the Kanban Done column +Kanban
 x See a legacy completed item without a Completion date in Kanban Done +Kanban
 
 Press Cmd-N and type a line such as Buy milk +Home due:2026-11-10 into quick add, Enter appends it, then Cmd-Z undoes the creation +TuxedoApp @review
-Double-click this row or right-click Edit Todo item; its unknown Metadata survives the edit +TuxedoApp @review custom:keep estimate:2h
-2026-11-01 Edit every field kind: Creation date, Projects, Contexts, Due date, Show from, Repeat and Metadata +TuxedoApp +Release @computer @review due:2026-11-30 t:2026-11-15 rec:1m custom:value
-x 2026-11-02 2026-10-30 Check Completed in the editor to see the Completion date field +TuxedoApp @review
+Double-click this row (or select it with the arrow keys and press E or Enter) to edit its line in place; its unknown Metadata survives the edit +TuxedoApp @review custom:keep estimate:2h
+2026-11-01 Edit this line in place: type +, @, pri:, due:, t: or rec: for suggestions, or set Due, Show from or Creation with the calendar button +TuxedoApp +Release @computer @review due:2026-11-30 t:2026-11-15 rec:1m custom:value
+x 2026-11-02 2026-10-30 Edit this line without its Completion date to see the edit refused under the row +TuxedoApp @review
 x 2026-11-02 (B) Edit this legacy completed item; its Priority stays before the text +Legacy @review
-Type +Project or x into the Description to see the editor refuse it without writing +TuxedoApp @review
+Edit this line to only +Project @context tokens to see it refused without writing; Escape restores the row +TuxedoApp @review
 Choose Other priority and type a letter from D to Z +TuxedoApp @review

@@ -6,9 +6,10 @@
 use std::ops::Range;
 
 use chrono::{Datelike, Days, NaiveDate};
+use gpui_kit::component::calendar::CalendarState;
 use gpui_kit::component::input::InputState;
 use gpui_kit::*;
-use tuxedo_core::{line_with_priority, line_word_at, Facets, TodoDate};
+use tuxedo_core::{line_with_date, line_with_priority, line_word_at, Facets, LineDate, TodoDate};
 
 use crate::completion_field::{Completion, CompletionKey, Offer, MAX_OFFERS};
 use crate::todo_commands::Reply;
@@ -139,11 +140,19 @@ pub fn suggestions(word: &str, facets: &Facets, today: TodoDate) -> Vec<LineSugg
     offered.into_iter().take(MAX_OFFERS).collect()
 }
 
-/// One line input's state: its text field, autocomplete panel, the last refusal to show, and
-/// the queued command's reply while it saves.
+/// The open date helper of a line: which date it sets, and its calendar.
+pub struct DateHelper {
+    pub target: LineDate,
+    pub calendar: Entity<CalendarState>,
+    pub _selected: Subscription,
+}
+
+/// One line input's state: its text field, autocomplete panel, date helper, the last refusal
+/// to show, and the queued command's reply while it saves.
 pub struct LineField {
     pub input: Entity<InputState>,
     pub completion: Completion,
+    pub date: Option<DateHelper>,
     pub error: Option<&'static str>,
     pub reply: Option<Reply>,
     /// The text last seen, to tell edits from caret moves.
@@ -156,10 +165,21 @@ impl LineField {
         Self {
             input,
             completion: Completion::default(),
+            date: None,
             error: None,
             reply: None,
             seen,
         }
+    }
+
+    /// Starts or ends saving: while a reply is awaited the line is read-only, so the text the
+    /// reply answers is the text shown. The rendered `Input` must say `readonly(saving)` too,
+    /// since it applies its own flag to the state each frame.
+    pub fn set_saving(&mut self, reply: Option<Reply>, cx: &mut App) {
+        let saving = reply.is_some();
+        self.reply = reply;
+        self.input
+            .update(cx, |state, cx| state.set_readonly(saving, cx));
     }
 
     pub fn text(&self, cx: &App) -> String {
@@ -196,7 +216,7 @@ impl LineField {
         window: &Window,
         cx: &App,
     ) -> Option<(Range<usize>, Vec<LineSuggestion>)> {
-        if self.completion.dismissed() || !self.focused(window, cx) {
+        if self.completion.dismissed() || self.reply.is_some() || !self.focused(window, cx) {
             return None;
         }
         let state = self.input.read(cx);
@@ -241,6 +261,26 @@ impl LineField {
         true
     }
 
+    /// Sets the date helper's date in the line: only the changed span is replaced, as one step
+    /// of the field's undo history, and the field takes focus back.
+    pub fn set_date(
+        &mut self,
+        target: LineDate,
+        date: TodoDate,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let text = self.text(cx);
+        let next = line_with_date(&text, target, date);
+        let span = changed_span(&text, &next);
+        let middle = next[span.start..next.len() - (text.len() - span.end)].to_owned();
+        self.input.update(cx, |state, cx| {
+            state.set_selected_range(span, cx);
+            state.replace(middle, window, cx);
+            state.focus(window, cx);
+        });
+    }
+
     /// Writes suggestion `index` in place of the word at the caret, as one step of the field's
     /// undo history, and leaves the caret after it.
     pub fn accept(
@@ -254,7 +294,7 @@ impl LineField {
         let Some((word, mut offered)) = self.offers(facets, today, window, cx) else {
             return;
         };
-        if index >= offered.len() {
+        if index >= offered.len() || self.reply.is_some() {
             return;
         }
         let chosen = offered.swap_remove(index);
@@ -277,4 +317,28 @@ impl LineField {
         });
         self.completion.edited();
     }
+}
+
+/// The byte range of `old` that differs from `new`, between their common prefix and suffix.
+fn changed_span(old: &str, new: &str) -> Range<usize> {
+    let mut start = old
+        .bytes()
+        .zip(new.bytes())
+        .take_while(|(a, b)| a == b)
+        .count();
+    while !old.is_char_boundary(start) || !new.is_char_boundary(start) {
+        start -= 1;
+    }
+    let limit = old.len().min(new.len()) - start;
+    let mut suffix = old
+        .bytes()
+        .rev()
+        .zip(new.bytes().rev())
+        .take(limit)
+        .take_while(|(a, b)| a == b)
+        .count();
+    while !old.is_char_boundary(old.len() - suffix) || !new.is_char_boundary(new.len() - suffix) {
+        suffix -= 1;
+    }
+    start..old.len() - suffix
 }

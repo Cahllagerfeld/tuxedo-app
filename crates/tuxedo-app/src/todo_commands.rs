@@ -139,6 +139,14 @@ pub fn prepare(
             ),
             reply: Some(reply),
         }),
+        TodoCommand::Edit {
+            target,
+            line,
+            reply,
+        } => Ok(TodoRequest {
+            request: session.prepare_edit_line(catalogue_path, target, *line, today),
+            reply: Some(reply),
+        }),
     }
 }
 

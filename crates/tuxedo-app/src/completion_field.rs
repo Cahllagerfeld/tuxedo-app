@@ -3,6 +3,7 @@
 //! and the suggestion panel anchored below the field. Each field supplies its own words, what
 //! they offer, and how accepting rewrites its text.
 
+use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -53,6 +54,11 @@ impl Completion {
         self.dismissed = false;
     }
 
+    /// Closes the panel until the next edit.
+    pub fn dismiss(&mut self) {
+        self.dismissed = true;
+    }
+
     pub fn dismissed(&self) -> bool {
         self.dismissed
     }
@@ -86,16 +92,20 @@ impl Completion {
 }
 
 /// Wraps a field so an open panel sees Up, Down, Enter, Tab, and Escape before the field does.
-/// `on_key` returns whether it took the key (the panel was open); otherwise the key goes on.
+/// `on_key` returns whether it took the key; otherwise the key goes on to the field. It takes
+/// the view weakly, so rows of a virtualized list can wrap their field too.
 pub fn capture_keys<V: 'static>(
     element: Div,
-    cx: &Context<V>,
+    view: WeakEntity<V>,
     on_key: impl Fn(&mut V, CompletionKey, &mut Window, &mut Context<V>) -> bool + Clone + 'static,
 ) -> Div {
     let listener = |key: CompletionKey| {
-        let on_key = on_key.clone();
-        move |view: &mut V, window: &mut Window, cx: &mut Context<V>| {
-            if on_key(view, key, window, cx) {
+        let (view, on_key) = (view.clone(), on_key.clone());
+        move |window: &mut Window, cx: &mut App| {
+            let taken = view
+                .update(cx, |view, cx| on_key(view, key, window, cx))
+                .unwrap_or(false);
+            if taken {
                 cx.stop_propagation();
             }
         }
@@ -108,11 +118,11 @@ pub fn capture_keys<V: 'static>(
         listener(CompletionKey::Close),
     );
     element
-        .capture_action(cx.listener(move |v, _: &MoveUp, w, cx| up(v, w, cx)))
-        .capture_action(cx.listener(move |v, _: &MoveDown, w, cx| down(v, w, cx)))
-        .capture_action(cx.listener(move |v, _: &Enter, w, cx| enter(v, w, cx)))
-        .capture_action(cx.listener(move |v, _: &IndentInline, w, cx| tab(v, w, cx)))
-        .capture_action(cx.listener(move |v, _: &Escape, w, cx| escape(v, w, cx)))
+        .capture_action(move |_: &MoveUp, w, cx| up(w, cx))
+        .capture_action(move |_: &MoveDown, w, cx| down(w, cx))
+        .capture_action(move |_: &Enter, w, cx| enter(w, cx))
+        .capture_action(move |_: &IndentInline, w, cx| tab(w, cx))
+        .capture_action(move |_: &Escape, w, cx| escape(w, cx))
 }
 
 /// `field` with its suggestion panel anchored below it while `open` holds offers and the
@@ -123,6 +133,20 @@ pub fn render(
     field: impl IntoElement,
     open: Option<(&[Offer], usize)>,
     on_accept: OnAccept,
+    p: &'static Palette,
+) -> Popup {
+    render_with(id, field, open, None, on_accept, None, p)
+}
+
+/// [`render`], showing `otherwise` (such as an error) below the field while no panel is open,
+/// and recording where the popup lands in `bounds` (cleared by the caller each frame).
+pub fn render_with(
+    id: impl Into<ElementId>,
+    field: impl IntoElement,
+    open: Option<(&[Offer], usize)>,
+    otherwise: Option<AnyElement>,
+    on_accept: OnAccept,
+    bounds: Option<Rc<Cell<Option<Bounds<Pixels>>>>>,
     p: &'static Palette,
 ) -> Popup {
     let id: ElementId = id.into();
@@ -182,9 +206,13 @@ pub fn render(
                     })
             }))
     });
+    let content = panel.map(IntoElement::into_any_element).or(otherwise);
     Popup::new(id, field)
         .w_full()
         .anchor(Anchor::TopLeft)
         .offset(px(4.))
-        .when_some(panel, |popup, panel| popup.content(panel))
+        .when_some(bounds, |popup, bounds| {
+            popup.on_position(move |position, _| bounds.set(Some(position.bounds)))
+        })
+        .when_some(content, |popup, content| popup.content(content))
 }

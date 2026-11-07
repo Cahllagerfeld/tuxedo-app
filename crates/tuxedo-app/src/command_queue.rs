@@ -45,6 +45,7 @@ impl Command {
             Command::Todo(TodoCommand::Complete { .. }) => "reopen Todo item",
             Command::Todo(TodoCommand::Undo { .. }) => "undo",
             Command::Todo(TodoCommand::Create { .. }) => "create Todo item",
+            Command::Todo(TodoCommand::Edit { .. }) => "edit Todo item",
             Command::Workspace(WorkspaceCommand::Create { .. }) => "create Workspace",
             Command::Workspace(WorkspaceCommand::Update { .. }) => "update Workspace",
             Command::Workspace(WorkspaceCommand::SetShowDeferred { .. }) => "save Show deferred",
@@ -71,6 +72,12 @@ pub enum TodoCommand {
     Create {
         workspace_id: String,
         revision: u64,
+        line: Box<TodoLine>,
+        reply: Reply,
+    },
+    /// Replace the targeted Todo item's line with the row editor's line.
+    Edit {
+        target: TodoTarget,
         line: Box<TodoLine>,
         reply: Reply,
     },

@@ -6,6 +6,7 @@
 //! - [`list_view`]: the main pane (query bar, List view, status bar).
 
 mod list_view;
+mod row_editor;
 mod sidebar;
 
 use std::time::Duration;
@@ -45,6 +46,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-n", QuickAdd, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
+    row_editor::bind_keys(cx);
 }
 
 /// The app menu, whose Quit (Cmd-Q) lets admitted commands finish before the app quits.
@@ -112,7 +114,7 @@ impl TuxedoApp {
         let selected = self.session.read(cx).selected();
         self.list_view.reproject(selected, local_today());
         self.list_view.sync_query_field(cx);
-        self.list_view.follow_replies(cx);
+        self.list_view.follow_replies(&self.session, cx);
         cx.notify();
     }
 
@@ -130,6 +132,35 @@ impl TuxedoApp {
         cx: &mut Context<Self>,
     ) {
         ListView::type_quick_add(self, text, window, cx);
+    }
+
+    /// Screenshot mode's `TUXEDO_KEYS`: the list takes focus first.
+    #[cfg(feature = "screenshot")]
+    pub fn focus_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.list_view.list_focus, cx);
+        cx.notify();
+    }
+
+    /// Screenshot mode's `TUXEDO_EDIT_ROW`.
+    #[cfg(feature = "screenshot")]
+    pub fn edit_row_for_screenshot(
+        &mut self,
+        spec: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        ListView::edit_for_screenshot(self, spec, window, cx);
+    }
+
+    /// Screenshot mode's `TUXEDO_DATE`.
+    #[cfg(feature = "screenshot")]
+    pub fn date_for_screenshot(
+        &mut self,
+        target: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        ListView::date_for_screenshot(self, target, window, cx);
     }
 
     /// Workspace command UI layered over the window: create/edit/delete dialogs (#258).

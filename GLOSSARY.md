@@ -29,10 +29,10 @@ The permanent removal of a Todo item's line from its Todo file. It is distinct f
 _Avoid_: Archive, remove, clear
 
 **Todo-item creation**:
-Appending a new Todo item to the Active workspace's Todo file through the shared Todo-item editor.
+Appending a new Todo item to the Active workspace's Todo file by typing its todo.txt line into quick add. A line without a Creation date gets today's; nothing else is rewritten.
 
 **Todo-item editing**:
-Replacing one Todo item's content through the shared Todo-item editor while retaining its physical-line position and line ending. Completed items expose their Completion date as well as their other fields.
+Replacing one Todo item's line in place, as todo.txt text, while retaining its physical-line position and line ending. A completed Todo item keeps its recorded Completion date.
 
 **Todo-item reordering**:
 Moving the displayed Todo items among their existing physical-line positions. Hidden Todo items, blank lines, skipped lines, and each position's line ending remain in place.

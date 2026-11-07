@@ -28,6 +28,11 @@ use crate::todo_line_ui::LineField;
 use crate::todo_projection::{locale_compare, Row, TodoProjection};
 use crate::todo_row::{self, ROW_HEIGHT};
 
+use super::row_editor::{
+    self, CursorDown, CursorUp, EditContext, EditLine, EditRow, Guards, LineKind, RowEdit,
+    ToggleRow,
+};
+
 /// Below this window width the query bar drops its shortcut hint and button label, so the
 /// field keeps room beside an open sidebar, and rows show one token and a count.
 const COMPACT_WINDOW_WIDTH: f32 = 960.;
@@ -40,15 +45,23 @@ pub const QUICK_ADD_PLACEHOLDER: &str = "Add a Todo item: Buy milk +Home @store 
 /// List-view-local UI state: the projection of the selected Todo file into displayed rows,
 /// with its query, sort, and grouping, the query field's autocomplete, and the quick add line.
 pub(super) struct ListView {
-    projection: TodoProjection,
+    pub(super) projection: TodoProjection,
     query: Entity<InputState>,
     completion: Completion,
     /// Quick add: a new Todo item typed as a todo.txt line.
-    quick_add: LineField,
+    pub(super) quick_add: LineField,
+    /// The row being edited in place, if any.
+    pub(super) editing: Option<EditLine>,
     /// The whole Todo file's Projects, Contexts, and Priorities, which line autocomplete offers.
-    line_facets: Facets,
+    pub(super) line_facets: Facets,
+    /// The list itself takes focus for the keyboard row cursor.
+    pub(super) list_focus: FocusHandle,
+    pub(super) scroll: UniformListScrollHandle,
+    /// The projected row under the keyboard cursor.
+    pub(super) cursor: Option<usize>,
+    pub(super) guards: Guards,
     /// The fields live in the window; set them there when an edit elsewhere changes them.
-    window: AnyWindowHandle,
+    pub(super) window: AnyWindowHandle,
     _subscriptions: [Subscription; 4],
     /// Recomputes the projection when the local date changes.
     _date_watch: Task<()>,
@@ -82,11 +95,7 @@ impl ListView {
                 app.session_changed(cx);
             }
         });
-        let quick_add = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder(QUICK_ADD_PLACEHOLDER)
-                .clean_on_escape()
-        });
+        let quick_add = cx.new(|cx| InputState::new(window, cx).placeholder(QUICK_ADD_PLACEHOLDER));
         let quick_changed = cx.observe(&quick_add, |app, _, cx| {
             app.list_view.quick_add.changed(cx);
             cx.notify();
@@ -117,7 +126,12 @@ impl ListView {
             query,
             completion: Completion::default(),
             quick_add: LineField::new(quick_add, cx),
+            editing: None,
             line_facets: Facets::default(),
+            list_focus: cx.focus_handle(),
+            scroll: UniformListScrollHandle::new(),
+            cursor: None,
+            guards: Guards::default(),
             window: window.window_handle(),
             _subscriptions: [changed, focus, quick_changed, quick_enter],
             _date_watch: date_watch,
@@ -151,6 +165,7 @@ impl ListView {
         self.line_facets = selected.map_or_else(Facets::default, |s| {
             todo_facets(&s.file, CompletionView::All, locale_compare)
         });
+        self.clamp_cursor();
     }
 
     /// Cmd-N: puts the caret in the quick add line.
@@ -190,7 +205,7 @@ impl ListView {
             line: Box::new(line),
             reply: reply.clone(),
         });
-        field.reply = Some(reply);
+        field.set_saving(Some(reply), cx);
         app.session
             .update(cx, |model, cx| model.enqueue(command, cx));
         cx.notify();
@@ -198,19 +213,40 @@ impl ListView {
 
     /// Follows the line inputs' own commands: a saved (or possibly saved) quick add line
     /// empties its field, which keeps focus; a refused or failed one keeps its text.
-    pub(super) fn follow_replies(&mut self, cx: &mut Context<TuxedoApp>) {
+    pub(super) fn follow_replies(
+        &mut self,
+        session: &Entity<SessionModel>,
+        cx: &mut Context<TuxedoApp>,
+    ) {
+        if self.editing.is_some() {
+            let model = session.read(cx);
+            let context = EditContext {
+                workspace_id: model.selected().map(|s| s.workspace.id.clone()),
+                revision: model.revision(),
+                switching: model.pending().is_some(),
+                items: model.selected().map_or_else(Vec::new, |s| {
+                    s.file
+                        .items
+                        .iter()
+                        .map(|item| (item.line_number, item.raw.clone()))
+                        .collect()
+                }),
+            };
+            self.follow_edit(cx, context);
+        }
         let replied = self.quick_add.reply.as_ref().and_then(Reply::get);
         let Some(replied) = replied else {
             return;
         };
-        self.quick_add.reply = None;
+        // The field stayed read-only while saving, so its text is still the submitted line.
+        self.quick_add.set_saving(None, cx);
         if matches!(replied, Replied::Applied | Replied::Uncertain) {
             let input = self.quick_add.input.clone();
             let window = self.window;
             cx.defer(move |cx| {
                 window
                     .update(cx, |_, window, cx| {
-                        input.update(cx, |state, cx| state.set_value("", window, cx))
+                        input.update(cx, |state, cx| state.replace_all("", window, cx))
                     })
                     .ok();
             });
@@ -421,7 +457,11 @@ impl ListView {
             p,
         );
         // Capture phase: the popover sees these keys before the field, only while open.
-        let field = completion_field::capture_keys(field, cx, ListView::on_popover_key);
+        let field = completion_field::capture_keys(
+            field,
+            cx.entity().downgrade(),
+            ListView::on_popover_key,
+        );
         let error = self
             .projection
             .error()
@@ -492,7 +532,9 @@ impl ListView {
             .ok();
         });
         let saving = self.quick_add.reply.is_some();
+        // Read-only while saving; the element applies this to the state on every frame.
         let field = Input::new(&self.quick_add.input)
+            .readonly(saving)
             .aria_label("Quick add")
             .prefix(Icon::new(IconName::Plus).size_4())
             .suffix(
@@ -511,17 +553,25 @@ impl ListView {
             p,
         );
         let field = completion_field::capture_keys(
-            div().child(field),
-            cx,
+            div().flex_1().min_w_0().child(field),
+            cx.entity().downgrade(),
             |app: &mut TuxedoApp, key, window, cx| {
-                let this = &mut app.list_view;
-                let taken = this
-                    .quick_add
-                    .key(key, &this.line_facets, local_today(), window, cx);
-                cx.notify();
-                taken
+                ListView::on_line_key(app, LineKind::QuickAdd, key, window, cx)
             },
         );
+        let date = self
+            .quick_add
+            .date
+            .as_ref()
+            .map(|d| (d.calendar.clone(), d.target));
+        let field = h_flex().gap_1().child(field).child(row_editor::date_button(
+            "quick-add-date",
+            LineKind::QuickAdd,
+            date.as_ref(),
+            cx.entity().downgrade(),
+            Rc::new(std::cell::Cell::new(None)),
+            p,
+        ));
         v_flex()
             .flex_shrink_0()
             .px_4()
@@ -538,6 +588,30 @@ impl ListView {
             .into_any_element()
     }
 
+    /// The list's focus target and key context for the row cursor keys.
+    fn render_list_shell(&self, list: AnyElement, cx: &Context<TuxedoApp>) -> AnyElement {
+        div()
+            .id("todo-list-shell")
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .key_context("TodoList")
+            .track_focus(&self.list_focus)
+            .on_action(cx.listener(|app, _: &CursorUp, _, cx| app.list_view.move_cursor(false, cx)))
+            .on_action(
+                cx.listener(|app, _: &CursorDown, _, cx| app.list_view.move_cursor(true, cx)),
+            )
+            .on_action(cx.listener(|app, _: &EditRow, window, cx| {
+                if let Some(row) = app.list_view.cursor {
+                    ListView::start_edit(app, row, window, cx);
+                }
+            }))
+            .on_action(cx.listener(|app, _: &ToggleRow, _, cx| ListView::toggle_cursor(app, cx)))
+            .child(list)
+            .into_any_element()
+    }
+
     pub(super) fn render(
         &self,
         session: &Entity<SessionModel>,
@@ -545,6 +619,8 @@ impl ListView {
         p: &'static Palette,
         cx: &Context<TuxedoApp>,
     ) -> AnyElement {
+        // Each frame's popups record where they land again.
+        self.guards.clear();
         let model = session.read(cx);
         let body = match (model.state(), model.selected()) {
             (SessionState::Restoring, _) => message(
@@ -584,12 +660,21 @@ impl ListView {
             (SessionState::Ready(_), Some(_)) if self.projection.shown() == 0 => {
                 query_ui::render_no_matches(&self.projection, &on_edit(cx), p)
             }
-            (SessionState::Ready(_), Some(selected)) => render_list(
-                session.clone(),
-                &selected.workspace.id,
-                self.projection.rows(),
-                local_today(),
-                p,
+            (SessionState::Ready(_), Some(selected)) => self.render_list_shell(
+                render_list(
+                    session.clone(),
+                    &selected.workspace.id,
+                    self.projection.rows(),
+                    ListRows {
+                        edit: self.row_edit(window, cx),
+                        cursor: self.cursor.filter(|_| self.list_focus.is_focused(window)),
+                        app: cx.entity().downgrade(),
+                        scroll: self.scroll.clone(),
+                    },
+                    local_today(),
+                    p,
+                ),
+                cx,
             ),
         };
 
@@ -610,15 +695,27 @@ impl ListView {
     }
 }
 
+/// What rows need from the List view each frame: the editing row, the keyboard cursor (while
+/// the list has focus), and the view for row clicks.
+struct ListRows {
+    edit: Option<RowEdit>,
+    cursor: Option<usize>,
+    app: WeakEntity<TuxedoApp>,
+    scroll: UniformListScrollHandle,
+}
+
 /// Rows read the Todo items through the session handle, so nothing is cloned per frame.
-/// The element id is scoped to the Workspace so each one gets its own scroll state.
+/// The element id is scoped to the Workspace so each one gets its own scroll state. The
+/// editing row draws its retained input in the row's own fixed-height slot.
 fn render_list(
     session: Entity<SessionModel>,
     workspace_id: &str,
     rows: Rc<[Row]>,
+    list: ListRows,
     today: TodoDate,
     p: &'static Palette,
 ) -> AnyElement {
+    let scroll = list.scroll.clone();
     uniform_list(
         SharedString::from(format!("todo-list:{workspace_id}")),
         rows.len(),
@@ -636,6 +733,9 @@ fn render_list(
                         }
                         Row::Item(index) => index,
                     };
+                    if let Some(edit) = list.edit.as_ref().filter(|edit| edit.row == row) {
+                        return Some(edit.render(p));
+                    }
                     let item = selected.file.items.get(index)?;
                     let command = Command::Todo(TodoCommand::Complete {
                         target: todo_commands::target(selected, revision, item),
@@ -643,17 +743,58 @@ fn render_list(
                     });
                     let toggle = session.clone();
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                        // The row's double-click-to-edit must not see checkbox clicks.
                         cx.stop_propagation();
                         toggle.update(cx, |model, cx| model.enqueue(command.clone(), cx));
                     };
-                    Some(todo_row::render(index, item, today, compact, on_toggle, p))
+                    let rendered = todo_row::render(index, item, today, compact, on_toggle, p);
+                    Some(row_shell(
+                        row,
+                        rendered,
+                        list.cursor == Some(row),
+                        &list.app,
+                        p,
+                    ))
                 })
                 .collect()
         },
     )
+    .track_scroll(&scroll)
     .flex_1()
     .min_h(px(ROW_HEIGHT))
     .into_any_element()
+}
+
+/// A row's click target: a click puts the keyboard cursor on it and focuses the list, and a
+/// double-click (outside the checkbox) edits it in place.
+fn row_shell(
+    row: usize,
+    rendered: AnyElement,
+    cursor: bool,
+    app: &WeakEntity<TuxedoApp>,
+    p: &Palette,
+) -> AnyElement {
+    let (select, edit) = (app.clone(), app.clone());
+    div()
+        .id(("todo-row-shell", row))
+        .when(cursor, |shell| shell.bg(hex(p.primary).opacity(0.08)))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            select
+                .update(cx, |app, cx| {
+                    app.list_view.cursor = Some(row);
+                    window.focus(&app.list_view.list_focus, cx);
+                    cx.notify();
+                })
+                .ok();
+        })
+        .on_click(move |event, window, cx| {
+            if event.click_count() == 2 {
+                edit.update(cx, |app, cx| ListView::start_edit(app, row, window, cx))
+                    .ok();
+            }
+        })
+        .child(rendered)
+        .into_any_element()
 }
 
 /// Applies a Saved view: its Query replaces the field's text, as one step of its undo history,
@@ -778,10 +919,14 @@ fn alert(title: &'static str, description: &str, p: &Palette) -> AnyElement {
 #[cfg(test)]
 mod tests {
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
-    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext};
+    use gpui::{
+        point, px, AppContext as _, Entity, EntityInputHandler as _, Modifiers, MouseButton,
+        MouseDownEvent, MouseUpEvent, Pixels, Point, TestAppContext, VisualTestContext,
+    };
     use gpui_kit::base::Root;
 
     use super::super::TuxedoApp;
+    use crate::command_queue::Command;
     use crate::model::tests::catalogue;
     use crate::model::SessionModel;
     use crate::todo_commands::local_today;
@@ -853,5 +998,103 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(text(cx), "");
         assert_eq!(std::fs::read_to_string(&todo).unwrap().lines().count(), 2);
+
+        // Escape during an IME composition only ends the composition; the draft stays.
+        cx.simulate_input("Draft ");
+        app.update_in(cx, |app, window, cx| {
+            app.list_view.quick_add.input.update(cx, |state, cx| {
+                state.replace_and_mark_text_in_range(None, "か", None, window, cx)
+            })
+        });
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert!(text(cx).starts_with("Draft "), "{:?}", text(cx));
+
+        // While the save waits behind another command the line is read-only, so its reply
+        // can never clear text typed after submitting.
+        cx.simulate_keystrokes("cmd-a backspace");
+        cx.simulate_input("Held line");
+        let session = app.read_with(cx, |app, _| app.session.clone());
+        session.update(cx, |model, cx| model.enqueue(Command::Held, cx));
+        cx.simulate_keystrokes("enter");
+        cx.simulate_input(" more");
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert_eq!(text(cx), "Held line");
+    }
+
+    fn double_click(position: Point<Pixels>, cx: &mut VisualTestContext) {
+        for click_count in [1, 2] {
+            let (button, modifiers) = (MouseButton::Left, Modifiers::default());
+            cx.simulate_event(MouseDownEvent {
+                button,
+                position,
+                modifiers,
+                click_count,
+                first_mouse: false,
+            });
+            cx.simulate_event(MouseUpEvent {
+                button,
+                position,
+                modifiers,
+                click_count,
+            });
+        }
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn a_row_edits_in_place_as_its_line_and_escape_restores_it(cx: &mut TestAppContext) {
+        let (app, todo, cx) = app_window("row-edit", "First\r\nSecond\r\n", cx);
+        let editing = |cx: &mut VisualTestContext| {
+            app.read_with(cx, |app, cx| {
+                let edit = app.list_view.editing.as_ref()?;
+                Some((edit.row, edit.field.text(cx)))
+            })
+        };
+
+        // The checkbox completes; it never starts an edit.
+        let checkbox = cx.debug_bounds("todo-checkbox-1").unwrap().center();
+        double_click(checkbox, cx);
+        assert_eq!(editing(cx), None);
+        std::fs::write(&todo, "First\r\nSecond\r\n").unwrap();
+        cx.run_until_parked();
+
+        // Double-click the rest of the row: it becomes its exact raw line, in its own slot.
+        let row = cx.debug_bounds("todo-checkbox-0").unwrap().center() + point(px(200.), px(0.));
+        double_click(row, cx);
+        assert_eq!(editing(cx), Some((0, "First".to_owned())));
+        assert!(cx.debug_bounds("todo-edit-row").is_some());
+
+        // Escape restores the row and writes nothing.
+        cx.simulate_input(" changed");
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert_eq!(editing(cx), None);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            "First\r\nSecond\r\n"
+        );
+
+        // From the keyboard (the cancelled row keeps the cursor): Down and E edit the next row,
+        // Up and Enter the first; Enter in the editor replaces only that line, keeping its ending.
+        cx.simulate_keystrokes("down e");
+        assert_eq!(editing(cx), Some((1, "Second".to_owned())));
+        cx.simulate_keystrokes("escape up enter");
+        assert_eq!(editing(cx), Some((0, "First".to_owned())));
+        cx.simulate_keystrokes("escape down enter");
+        assert_eq!(editing(cx), Some((1, "Second".to_owned())));
+        cx.simulate_input(" +Home due:2026-11-10");
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(editing(cx), None);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            "First\r\nSecond +Home due:2026-11-10\r\n"
+        );
+        let undo = app.read_with(cx, |app, cx| {
+            app.session.read(cx).undo_label().map(str::to_owned)
+        });
+        assert_eq!(undo.as_deref(), Some("Undo edit"));
     }
 }

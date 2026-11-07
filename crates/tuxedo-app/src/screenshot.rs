@@ -9,6 +9,12 @@
 //! - `TUXEDO_SIDEBAR=hidden`
 //! - `TUXEDO_DIALOG=create|edit|delete`: open a Workspace dialog last; `edit` and `delete` act
 //!   on the displayed Workspace
+//! - `TUXEDO_KEYS=<keys>`: focus the list, then press those space-separated keystrokes (such as
+//!   `down down`) for the row cursor
+//! - `TUXEDO_EDIT_ROW=<line>[!<text>]`: edit the row of that physical line in place; `!<text>`
+//!   replaces its text, and a trailing `⏎` presses Enter
+//! - `TUXEDO_DATE=due|t|creation`: open the date helper of the edited row (else of quick add) on
+//!   that target
 //! - `TUXEDO_QUICK_ADD=<text>`: type that line into quick add last, caret at the end (which
 //!   opens autocomplete when its last word can complete); a trailing `⏎` presses Enter
 //! - `TUXEDO_SCROLL=<px>`: scroll the List view, then hover near the card's top-right corner;
@@ -64,8 +70,19 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
                 .timer(Duration::from_millis(ms))
                 .await
         };
-        // Session restoration runs on the background executor; give it and a few frames time.
-        settle(cx, 1500).await;
+        // Session restoration runs on the background executor; wait for it (at most about 10 s),
+        // then give a few frames time.
+        for _ in 0..50 {
+            let restoring = cx.update(|cx| {
+                let session = root.read(cx).session().read(cx);
+                matches!(session.state(), crate::model::SessionState::Restoring)
+            });
+            if !restoring {
+                break;
+            }
+            settle(cx, 200).await;
+        }
+        settle(cx, 500).await;
         if let Ok(name) = std::env::var("TUXEDO_SELECT") {
             cx.update(|cx| {
                 let session = root.read(cx).session().clone();
@@ -206,6 +223,41 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             .ok();
             settle(cx, 800).await;
         }
+        if let Ok(keys) = std::env::var("TUXEDO_KEYS") {
+            // `Keystroke::parse` wants text that outlives the window update; a dev tool can leak it.
+            let keys: &'static str = Box::leak(keys.into_boxed_str());
+            cx.update_window(window, |_, window, cx| {
+                root.update(cx, |app, cx| app.focus_list(window, cx));
+            })
+            .ok();
+            settle(cx, 300).await;
+            cx.update_window(window, |_, window, cx| {
+                for key in keys.split_whitespace() {
+                    match Keystroke::parse(key).ok() {
+                        Some(keystroke) => {
+                            window.dispatch_keystroke(keystroke, cx);
+                        }
+                        None => eprintln!("tuxedo: bad keystroke {key}"),
+                    }
+                }
+            })
+            .ok();
+            settle(cx, 500).await;
+        }
+        if let Ok(spec) = std::env::var("TUXEDO_EDIT_ROW") {
+            cx.update_window(window, |_, window, cx| {
+                root.update(cx, |app, cx| app.edit_row_for_screenshot(&spec, window, cx))
+            })
+            .ok();
+            settle(cx, 800).await;
+        }
+        if let Ok(target) = std::env::var("TUXEDO_DATE") {
+            cx.update_window(window, |_, window, cx| {
+                root.update(cx, |app, cx| app.date_for_screenshot(&target, window, cx))
+            })
+            .ok();
+            settle(cx, 800).await;
+        }
         if let Ok(text) = std::env::var("TUXEDO_QUICK_ADD") {
             cx.update_window(window, |_, window, cx| {
                 root.update(cx, |app, cx| {
@@ -215,7 +267,16 @@ pub fn schedule(window: AnyWindowHandle, root: Entity<TuxedoApp>, cx: &mut App) 
             .ok();
             settle(cx, 800).await;
         }
-        let result = cx.update_window(window, |_, window, _| window.render_to_image());
+        // Draw the latest state now: with the display asleep the offscreen window gets no
+        // frames, and capture reads the last drawn one. Twice, since anchored popups place
+        // themselves on the frame after they measure their trigger.
+        let result = cx.update_window(window, |_, window, cx| {
+            for _ in 0..2 {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            }
+            window.render_to_image()
+        });
         match result {
             Ok(Ok(image)) => match image.save(&path) {
                 Ok(()) => eprintln!("tuxedo: saved screenshot to {}", path.to_string_lossy()),
