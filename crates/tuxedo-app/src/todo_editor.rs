@@ -2,7 +2,12 @@
 //! existing one, with the Electron editor's fields (`TodoEditorDialog.svelte`). The draft and its
 //! validation live in `tuxedo_core::TodoDraft`; this module owns the inputs, shows each field's
 //! error inline, and enqueues a Todo command only once the draft is valid. Outcomes (conflicts,
-//! failures, notices) arrive through the app's notifications like every other command's.
+//! failures, notices) arrive through the app's notifications like every other command's; the
+//! editor also hears its own command's outcome and closes only once it is saved, keeping the draft
+//! after a failure or a creation conflict, as in Electron.
+//!
+//! The editor is bound to the Workspace and revision shown when it opened. It closes when another
+//! Workspace is shown and never retargets its change to it.
 
 use std::cell::Cell;
 
@@ -10,8 +15,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::{DialogAction, DialogClose, DialogFooter};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{h_flex, v_flex, Sizable, WindowExt as _};
+use gpui_kit::component::input::{Enter, Input, InputEvent, InputState};
+use gpui_kit::component::{h_flex, v_flex, Disableable, Sizable, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use tuxedo_core::{
@@ -22,7 +27,7 @@ use tuxedo_core::{
 use crate::command_queue::{Command, TodoCommand};
 use crate::model::SessionModel;
 use crate::theme::{hex, Palette, MONO_FONT};
-use crate::todo_commands::local_today;
+use crate::todo_commands::{local_today, Replied, Reply};
 
 actions!(tuxedo, [NewTodoItem]);
 
@@ -102,6 +107,7 @@ fn open(
             description.update(cx, |input, cx| input.focus(window, cx));
         }
         let submit = editor.clone();
+        let saving = editor.read(cx).reply.is_some();
         dialog
             .title(if editing {
                 "Edit Todo item"
@@ -113,17 +119,22 @@ fn open(
             .footer(
                 DialogFooter::new()
                     .child(DialogClose::new().trigger(|button| button.label("Cancel")))
-                    .child(
-                        DialogAction::new().child(Button::new("save-todo").primary().label(
-                            if editing {
-                                "Save changes"
-                            } else {
-                                "Add Todo item"
+                    .child(DialogAction::new().child(
+                        Button::new("save-todo").primary().disabled(saving).label(
+                            match (editing, saving) {
+                                (true, false) => "Save changes",
+                                (true, true) => "Saving…",
+                                (false, false) => "Add Todo item",
+                                (false, true) => "Adding…",
                             },
-                        )),
-                    ),
+                        ),
+                    )),
             )
-            .on_ok(move |_, window, cx| submit.update(cx, |editor, cx| editor.submit(window, cx)))
+            // The dialog stays open; the editor closes it once its change is saved.
+            .on_ok(move |_, window, cx| {
+                submit.update(cx, |editor, cx| editor.submit(window, cx));
+                false
+            })
     });
     Some(opened)
 }
@@ -151,6 +162,12 @@ struct TagInput {
 
 struct TodoEditor {
     session: Entity<SessionModel>,
+    /// The Workspace shown when the editor opened; its change never goes anywhere else.
+    workspace_id: String,
+    /// The revision the change is admitted against; follows refreshes of the same Workspace.
+    revision: u64,
+    /// The queued change's outcome, while saving.
+    reply: Option<Reply>,
     /// The Todo item being edited; `None` for a new one.
     item: Option<TodoItem>,
     /// "Workspace · todo.txt", the Todo file the editor writes.
@@ -203,7 +220,14 @@ impl TodoEditor {
                 format!("{} · {file}", s.workspace.name)
             })
             .unwrap_or_default();
-        let mut subscriptions = Vec::new();
+        let (workspace_id, revision) = {
+            let model = session.read(cx);
+            let id = model.selected().map(|s| s.workspace.id.clone());
+            (id.unwrap_or_default(), model.revision().unwrap_or_default())
+        };
+        let mut subscriptions = vec![cx.observe_in(&session, window, |editor, _, window, cx| {
+            editor.session_changed(window, cx)
+        })];
         let mut input = |field: Field, value: String, placeholder: &str, cx: &mut Context<Self>| {
             let state = cx.new(|cx| {
                 InputState::new(window, cx)
@@ -213,10 +237,10 @@ impl TodoEditor {
             subscriptions.push(cx.subscribe_in(
                 &state,
                 window,
-                move |editor, _, event: &InputEvent, window, cx| match event {
-                    InputEvent::Change => editor.changed(field, cx),
-                    InputEvent::PressEnter { .. } => editor.enter(field, window, cx),
-                    _ => {}
+                move |editor, _, event: &InputEvent, _, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        editor.changed(field, cx)
+                    }
                 },
             ));
             state
@@ -299,6 +323,9 @@ impl TodoEditor {
         let tag = |input| TagInput { input, error: None };
         Self {
             session,
+            workspace_id,
+            revision,
+            reply: None,
             item,
             target_label,
             draft,
@@ -378,19 +405,23 @@ impl TodoEditor {
         cx.notify();
     }
 
-    /// Enter commits a typed tag; anywhere else (or in an empty tag input) it saves.
-    fn enter(&mut self, field: Field, window: &mut Window, cx: &mut Context<Self>) {
-        let tag_field = matches!(field, Field::Projects | Field::Contexts | Field::Metadata);
-        let typed = self
-            .tag_input(field)
-            .is_some_and(|t| !Self::text(&t.input, cx).trim().is_empty());
-        if tag_field && typed {
-            self.commit_tag(field, window, cx);
-            cx.notify();
-            return;
-        }
-        if self.submit(window, cx) {
-            window.close_dialog(cx);
+    /// The editor's one Enter handler, ahead of the inputs and the dialog: Enter in a tag input
+    /// with typed text commits that tag; anywhere else it saves. Either way exactly once.
+    fn on_enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        let typed = [Field::Projects, Field::Contexts, Field::Metadata]
+            .into_iter()
+            .find(|field| {
+                let input = &self.tag_input(*field).expect("tag field").input;
+                input.read(cx).focus_handle(cx).is_focused(window)
+                    && !Self::text(input, cx).trim().is_empty()
+            });
+        match typed {
+            Some(field) => {
+                self.commit_tag(field, window, cx);
+                cx.notify();
+            }
+            None => self.submit(window, cx),
         }
     }
 
@@ -438,18 +469,34 @@ impl TodoEditor {
         error.is_none()
     }
 
-    /// Replaces the Metadata list and shows its effective Due date and Show from in their fields.
+    /// Replaces the Metadata list. A Due date, Show from or Repeat field shows its new value
+    /// only when that key's tokens changed; otherwise its typed text (valid or not) stays.
     fn set_metadata(&mut self, metadata: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
+        let tokens = |m: &[String], key: &str| -> Vec<String> {
+            m.iter().filter(|t| t.starts_with(key)).cloned().collect()
+        };
+        let before = std::mem::take(&mut self.draft.metadata);
+        self.draft.metadata = before.clone();
         self.draft.set_metadata(metadata);
+        let changed = |key| tokens(&before, key) != tokens(&self.draft.metadata, key);
+        let (due, show_from, rec) = (changed("due:"), changed("t:"), changed("rec:"));
         let date = |d: Option<TodoDate>| d.map(|d| d.to_string()).unwrap_or_default();
-        let (due, show_from) = (date(self.draft.due_date()), date(self.draft.show_from()));
-        let interval = self.draft.repeat_interval.clone();
-        self.due.update(cx, |s, cx| s.set_value(due, window, cx));
-        self.show_from
-            .update(cx, |s, cx| s.set_value(show_from, window, cx));
-        self.repeat_interval
-            .update(cx, |s, cx| s.set_value(interval, window, cx));
-        (self.due_error, self.show_from_error) = (false, false);
+        if due {
+            let value = date(self.draft.due_date());
+            self.due.update(cx, |s, cx| s.set_value(value, window, cx));
+            self.due_error = false;
+        }
+        if show_from {
+            let value = date(self.draft.show_from());
+            self.show_from
+                .update(cx, |s, cx| s.set_value(value, window, cx));
+            self.show_from_error = false;
+        }
+        if rec {
+            let interval = self.draft.repeat_interval.clone();
+            self.repeat_interval
+                .update(cx, |s, cx| s.set_value(interval, window, cx));
+        }
     }
 
     fn remove_tag(
@@ -522,12 +569,18 @@ impl TodoEditor {
     }
 
     fn validation(&self) -> Result<tuxedo_core::TodoFields, Vec<FieldError>> {
-        self.draft.validate(self.item.is_some())
+        match &self.item {
+            Some(item) => self.draft.validate_edit(item),
+            None => self.draft.validate(false),
+        }
     }
 
-    /// Validates and enqueues the change. `false` keeps the dialog open to show what is wrong;
-    /// nothing is written while the draft is invalid.
-    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    /// Validates and enqueues the change against the Workspace and revision the editor is bound
+    /// to; nothing is queued while the draft is invalid or a save is already in flight.
+    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.reply.is_some() {
+            return;
+        }
         self.submitted = true;
         // Typed but uncommitted tags are saved too, as in Electron; a refused one blocks saving.
         // Every list commits (or shows its error), not only up to the first refusal.
@@ -538,15 +591,13 @@ impl TodoEditor {
         let fields = self.validation();
         self.errors = fields.as_ref().err().cloned().unwrap_or_default();
         let blocked = self.due_error || self.show_from_error || !committed;
+        cx.notify();
         let Some(fields) = fields.ok().filter(|_| !blocked) else {
-            cx.notify();
-            return false;
+            return;
         };
-        let model = self.session.read(cx);
-        let (Some(selected), Some(revision)) = (model.selected(), model.revision()) else {
-            return true;
-        };
-        let workspace_id = selected.workspace.id.clone();
+        let reply = Reply::default();
+        let workspace_id = self.workspace_id.clone();
+        let revision = self.revision;
         let command = match &self.item {
             Some(item) => TodoCommand::Edit {
                 target: TodoTarget {
@@ -556,16 +607,48 @@ impl TodoEditor {
                     expected_raw: item.raw.clone(),
                 },
                 fields,
+                reply: reply.clone(),
             },
             None => TodoCommand::Create {
                 workspace_id,
                 revision,
                 fields,
+                reply: reply.clone(),
             },
         };
+        self.reply = Some(reply);
         self.session
             .update(cx, |model, cx| model.enqueue(Command::Todo(command), cx));
-        true
+    }
+
+    /// Follows the session: another Workspace shown closes the editor; the outcome of its own
+    /// change closes it (saved, an edit conflict, an uncertain write) or keeps the draft (nothing
+    /// written, a creation conflict); otherwise it follows refreshes of its Workspace.
+    fn session_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let model = self.session.read(cx);
+        let shown = model.selected().map(|s| s.workspace.id.as_str());
+        if shown != Some(self.workspace_id.as_str()) {
+            window.close_dialog(cx);
+            return;
+        }
+        let (revision, switching) = (model.revision(), model.pending().is_some());
+        let replied = match &self.reply {
+            Some(reply) => match reply.get() {
+                Some(replied) => Some(replied),
+                None => return,
+            },
+            None => None,
+        };
+        match replied {
+            Some(Replied::Applied | Replied::Uncertain) => return window.close_dialog(cx),
+            Some(Replied::Conflict) if self.item.is_some() => return window.close_dialog(cx),
+            Some(_) => self.reply = None,
+            None => {}
+        }
+        if !switching {
+            self.revision = revision.unwrap_or(self.revision);
+        }
+        cx.notify();
     }
 
     fn error(&self, field: DraftField) -> Option<&'static str> {
@@ -614,6 +697,7 @@ impl Render for TodoEditor {
         });
         v_flex()
             .id("todo-editor")
+            .capture_action(cx.listener(Self::on_enter))
             .max_h(px(560.))
             .overflow_y_scroll()
             .gap_3()
@@ -848,4 +932,218 @@ fn columns(left: Div, right: Div) -> Div {
         .gap_4()
         .child(left.flex_1())
         .child(right.flex_1())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
+    use gpui::{div, AppContext as _, Entity, IntoElement, TestAppContext, VisualTestContext};
+    use gpui_kit::base::Root;
+    use gpui_kit::component::WindowExt as _;
+
+    use super::{open, TodoEditor};
+    use crate::command_queue::OutcomeKind;
+    use crate::model::tests::{catalogue, C};
+    use crate::model::SessionModel;
+    use crate::todo_commands::local_today;
+
+    struct Blank;
+
+    impl gpui::Render for Blank {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl IntoElement {
+            div()
+        }
+    }
+
+    /// Workspace A (shown) with `contents`, in a window whose root hosts dialogs. Command outcomes
+    /// stay in the model, since no app view presents them.
+    fn window<'a>(
+        name: &str,
+        contents: &str,
+        cx: &'a mut TestAppContext,
+    ) -> (Entity<SessionModel>, PathBuf, &'a mut VisualTestContext) {
+        cx.update(gpui_kit::init);
+        let path = catalogue(name);
+        let todo = path.with_file_name("A.txt");
+        std::fs::write(&todo, contents).unwrap();
+        let session = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
+        cx.run_until_parked();
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            crate::theme::init(window, cx);
+            let blank = cx.new(|_| Blank);
+            Root::new(blank, window, cx)
+        });
+        (session, todo, cx)
+    }
+
+    fn open_new(session: &Entity<SessionModel>, cx: &mut VisualTestContext) -> Entity<TodoEditor> {
+        let editor = cx.update(|window, cx| open(session.clone(), None, window, cx));
+        cx.run_until_parked();
+        editor.unwrap()
+    }
+
+    fn type_into(
+        editor: &Entity<TodoEditor>,
+        input: impl Fn(&TodoEditor) -> &Entity<gpui_kit::component::input::InputState>,
+        text: &str,
+        cx: &mut VisualTestContext,
+    ) {
+        cx.update(|window, cx| {
+            let input = input(editor.read(cx)).clone();
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
+        cx.simulate_input(text);
+    }
+
+    fn dialog_open(cx: &mut VisualTestContext) -> bool {
+        cx.update(|window, cx| window.has_active_dialog(cx))
+    }
+
+    fn kinds(session: &Entity<SessionModel>, cx: &mut VisualTestContext) -> Vec<OutcomeKind> {
+        cx.update(|_, cx| {
+            session.update(cx, |m, _| {
+                m.take_outcomes().into_iter().map(|o| o.kind).collect()
+            })
+        })
+    }
+
+    #[gpui::test]
+    fn enter_commits_a_typed_tag_and_otherwise_saves_exactly_once(cx: &mut TestAppContext) {
+        let (session, todo, cx) = window("editor-enter", "First\n", cx);
+        let editor = open_new(&session, cx);
+
+        type_into(&editor, |e| &e.projects.input, "Work", cx);
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        let projects = cx.update(|_, cx| editor.read(cx).draft.projects.clone());
+        assert_eq!(projects, ["Work"]);
+        assert_eq!(std::fs::read_to_string(&todo).unwrap(), "First\n");
+        assert!(dialog_open(cx), "a committed tag does not save");
+
+        type_into(&editor, |e| &e.description, "Plan", cx);
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            format!("First\n{} Plan +Work\n", local_today())
+        );
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
+        assert!(!dialog_open(cx), "a saved change closes the editor");
+    }
+
+    #[gpui::test]
+    fn a_failed_save_keeps_the_draft_and_a_retry_saves_once(cx: &mut TestAppContext) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let (session, todo, cx) = window("editor-failure", "First\n", cx);
+        let dir = todo.parent().unwrap().to_path_buf();
+        let mode = |bits| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(bits));
+        let editor = open_new(&session, cx);
+        type_into(&editor, |e| &e.description, "Plan", cx);
+
+        // No temporary file can be created beside the Todo file: nothing is written.
+        mode(0o500).unwrap();
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        mode(0o700).unwrap();
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Failed]);
+        assert!(dialog_open(cx), "a failed save keeps the editor open");
+        let description = cx.update(|_, cx| editor.read(cx).draft.description.clone());
+        assert_eq!(description, "Plan");
+
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            format!("First\n{} Plan\n", local_today())
+        );
+        assert!(!dialog_open(cx));
+    }
+
+    #[gpui::test]
+    fn a_save_never_retargets_to_a_workspace_shown_after_opening(cx: &mut TestAppContext) {
+        let (session, todo, cx) = window("editor-switch", "First\n", cx);
+        let other = todo.with_file_name("C.txt");
+        let before = std::fs::read_to_string(&other).unwrap();
+        // The switch is admitted, but its load waits on the background executor, which runs only
+        // when the test parks: A is still shown when the editor opens.
+        cx.update(|_, cx| session.update(cx, |m, cx| m.select(C, cx)));
+        let editor = open_new_unparked(&session, cx);
+        cx.run_until_parked();
+        assert!(
+            !dialog_open(cx),
+            "showing another Workspace closes the editor"
+        );
+
+        // Even a save from the stale editor stays bound to A, where it is refused as stale.
+        cx.update(|window, cx| {
+            editor.update(cx, |editor, cx| {
+                editor.draft.description = "Plan".into();
+                editor.submit(window, cx);
+            })
+        });
+        cx.run_until_parked();
+        assert_eq!(std::fs::read_to_string(&todo).unwrap(), "First\n");
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), before);
+        assert_eq!(
+            kinds(&session, cx),
+            [OutcomeKind::Applied, OutcomeKind::Failed]
+        );
+    }
+
+    fn open_new_unparked(
+        session: &Entity<SessionModel>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<TodoEditor> {
+        cx.update(|window, cx| open(session.clone(), None, window, cx))
+            .unwrap()
+    }
+
+    #[gpui::test]
+    fn an_invalid_date_keeps_blocking_when_pending_metadata_commits(cx: &mut TestAppContext) {
+        let (session, todo, cx) = window("editor-dates", "First\n", cx);
+        type DateInput = fn(&TodoEditor) -> &Entity<gpui_kit::component::input::InputState>;
+        let cases: [(&str, DateInput); 2] =
+            [("Due date", |e| &e.due), ("Show from", |e| &e.show_from)];
+        for (label, date) in cases {
+            let editor = open_new(&session, cx);
+            type_into(&editor, |e| &e.description, "Plan", cx);
+            type_into(&editor, date, "2026-02-30", cx);
+            type_into(&editor, |e| &e.metadata.input, "custom:keep", cx);
+            cx.update(|window, cx| editor.update(cx, |e, cx| e.submit(window, cx)));
+            cx.run_until_parked();
+
+            assert_eq!(
+                std::fs::read_to_string(&todo).unwrap(),
+                "First\n",
+                "{label}"
+            );
+            let (metadata, typed) = cx.update(|_, cx| {
+                let editor = editor.read(cx);
+                (
+                    editor.draft.metadata.clone(),
+                    date(editor).read(cx).value().to_string(),
+                )
+            });
+            assert_eq!(
+                metadata,
+                ["custom:keep"],
+                "{label}: pending Metadata commits"
+            );
+            assert_eq!(typed, "2026-02-30", "{label}: the invalid text stays");
+            assert!(dialog_open(cx), "{label}");
+            assert!(
+                kinds(&session, cx).is_empty(),
+                "{label}: nothing was queued"
+            );
+            cx.update(|window, cx| window.close_dialog(cx));
+            cx.run_until_parked();
+        }
+    }
 }

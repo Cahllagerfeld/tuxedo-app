@@ -14,6 +14,7 @@ use std::collections::VecDeque;
 use gpui_kit::Task;
 use tuxedo_core::{TodoFields, TodoTarget};
 
+use crate::todo_commands::Reply;
 use crate::workspace_commands::WorkspaceCommand;
 
 /// A command the person issued, with the expectations captured at admission. A command whose
@@ -61,16 +62,19 @@ pub enum TodoCommand {
     Complete { target: TodoTarget, completed: bool },
     /// Undo the last Todo-file change of the Workspace shown at admission.
     Undo { workspace_id: String, revision: u64 },
-    /// Append a new Todo item from the editor to the Workspace shown at admission.
+    /// Append a new Todo item from the editor to the Workspace shown at admission. `reply`
+    /// tells the editor its own outcome.
     Create {
         workspace_id: String,
         revision: u64,
         fields: TodoFields,
+        reply: Reply,
     },
     /// Replace the targeted Todo item's line with the editor's fields.
     Edit {
         target: TodoTarget,
         fields: TodoFields,
+        reply: Reply,
     },
 }
 
