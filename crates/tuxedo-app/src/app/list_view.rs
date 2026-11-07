@@ -57,8 +57,11 @@ pub(super) struct ListView {
     /// The list itself takes focus for the keyboard row cursor.
     pub(super) list_focus: FocusHandle,
     pub(super) scroll: UniformListScrollHandle,
-    /// The projected row under the keyboard cursor.
+    /// The projected row under the keyboard cursor, and its item's physical line.
     pub(super) cursor: Option<usize>,
+    pub(super) cursor_line: Option<u32>,
+    /// Each Todo item's physical line, by item index, for the cursor's identity.
+    pub(super) item_lines: Rc<[u32]>,
     pub(super) guards: Guards,
     /// The fields live in the window; set them there when an edit elsewhere changes them.
     pub(super) window: AnyWindowHandle,
@@ -131,6 +134,8 @@ impl ListView {
             list_focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             cursor: None,
+            cursor_line: None,
+            item_lines: Rc::from([]),
             guards: Guards::default(),
             window: window.window_handle(),
             _subscriptions: [changed, focus, quick_changed, quick_enter],
@@ -165,7 +170,11 @@ impl ListView {
         self.line_facets = selected.map_or_else(Facets::default, |s| {
             todo_facets(&s.file, CompletionView::All, locale_compare)
         });
-        self.clamp_cursor();
+        self.item_lines = selected.map_or_else(
+            || Rc::from([]),
+            |s| s.file.items.iter().map(|item| item.line_number).collect(),
+        );
+        self.restore_cursor();
     }
 
     /// Cmd-N: puts the caret in the quick add line.
@@ -183,7 +192,7 @@ impl ListView {
         if field.reply.is_some() || field.composing(window, cx) {
             return;
         }
-        let text = field.text(cx);
+        let text = field.submitted(cx);
         if text.trim().is_empty() {
             return;
         }
@@ -598,16 +607,29 @@ impl ListView {
             .min_h_0()
             .key_context("TodoList")
             .track_focus(&self.list_focus)
-            .on_action(cx.listener(|app, _: &CursorUp, _, cx| app.list_view.move_cursor(false, cx)))
-            .on_action(
-                cx.listener(|app, _: &CursorDown, _, cx| app.list_view.move_cursor(true, cx)),
-            )
+            // Row actions run only while the list itself has focus, never from a field or a
+            // popup inside it.
+            .on_action(cx.listener(|app, _: &CursorUp, window, cx| {
+                if app.list_view.list_focus.is_focused(window) {
+                    app.list_view.move_cursor(false, cx)
+                }
+            }))
+            .on_action(cx.listener(|app, _: &CursorDown, window, cx| {
+                if app.list_view.list_focus.is_focused(window) {
+                    app.list_view.move_cursor(true, cx)
+                }
+            }))
             .on_action(cx.listener(|app, _: &EditRow, window, cx| {
-                if let Some(row) = app.list_view.cursor {
+                let row = app.list_view.cursor;
+                if let Some(row) = row.filter(|_| app.list_view.list_focus.is_focused(window)) {
                     ListView::start_edit(app, row, window, cx);
                 }
             }))
-            .on_action(cx.listener(|app, _: &ToggleRow, _, cx| ListView::toggle_cursor(app, cx)))
+            .on_action(cx.listener(|app, _: &ToggleRow, window, cx| {
+                if app.list_view.list_focus.is_focused(window) {
+                    ListView::toggle_cursor(app, cx)
+                }
+            }))
             .child(list)
             .into_any_element()
     }
@@ -781,7 +803,7 @@ fn row_shell(
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             select
                 .update(cx, |app, cx| {
-                    app.list_view.cursor = Some(row);
+                    app.list_view.set_cursor(Some(row));
                     window.focus(&app.list_view.list_focus, cx);
                     cx.notify();
                 })
@@ -921,8 +943,14 @@ mod tests {
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
     use gpui::{
         point, px, AppContext as _, Entity, EntityInputHandler as _, Modifiers, MouseButton,
-        MouseDownEvent, MouseUpEvent, Pixels, Point, TestAppContext, VisualTestContext,
+        MouseDownEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollEvent, TestAppContext,
+        VisualTestContext,
     };
+    use tuxedo_core::CompletionView;
+
+    use super::super::row_editor::LineKind;
+    use super::ListView;
+    use crate::query_ui::FilterEdit;
     use gpui_kit::base::Root;
 
     use super::super::TuxedoApp;
@@ -987,6 +1015,15 @@ mod tests {
         );
         assert_eq!(text(cx), "");
 
+        // The space autocomplete leaves for a next word is not part of the saved line.
+        cx.simulate_input("Call +H");
+        cx.simulate_keystrokes("tab");
+        assert_eq!(text(cx), "Call +Home ");
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        let last = std::fs::read_to_string(&todo).unwrap();
+        assert!(last.ends_with(&format!("{today} Call +Home\n")), "{last:?}");
+
         // A refused line stays with its reason and writes nothing; Escape clears the field.
         cx.simulate_input("2026-02-30 Bad");
         cx.simulate_keystrokes("enter");
@@ -997,7 +1034,7 @@ mod tests {
         cx.simulate_keystrokes("escape");
         cx.run_until_parked();
         assert_eq!(text(cx), "");
-        assert_eq!(std::fs::read_to_string(&todo).unwrap().lines().count(), 2);
+        assert_eq!(std::fs::read_to_string(&todo).unwrap().lines().count(), 3);
 
         // Escape during an IME composition only ends the composition; the draft stays.
         cx.simulate_input("Draft ");
@@ -1045,56 +1082,151 @@ mod tests {
 
     #[gpui::test]
     fn a_row_edits_in_place_as_its_line_and_escape_restores_it(cx: &mut TestAppContext) {
-        let (app, todo, cx) = app_window("row-edit", "First\r\nSecond\r\n", cx);
+        // Enough rows that the list virtualizes and scrolls.
+        let filler: String = (3..=60).map(|n| format!("Filler {n}\r\n")).collect();
+        let initial = format!("First\r\nSecond\r\n{filler}");
+        let (app, todo, cx) = app_window("row-edit", &initial, cx);
+        let disk = || std::fs::read_to_string(&todo).unwrap();
         let editing = |cx: &mut VisualTestContext| {
             app.read_with(cx, |app, cx| {
                 let edit = app.list_view.editing.as_ref()?;
                 Some((edit.row, edit.field.text(cx)))
             })
         };
+        let row_point = |index: usize, cx: &mut VisualTestContext| {
+            cx.debug_bounds(Box::leak(format!("todo-checkbox-{index}").into_boxed_str()))
+                .unwrap()
+                .center()
+                + point(px(200.), px(0.))
+        };
 
         // The checkbox completes; it never starts an edit.
         let checkbox = cx.debug_bounds("todo-checkbox-1").unwrap().center();
         double_click(checkbox, cx);
         assert_eq!(editing(cx), None);
-        std::fs::write(&todo, "First\r\nSecond\r\n").unwrap();
+        std::fs::write(&todo, &initial).unwrap();
         cx.run_until_parked();
 
         // Double-click the rest of the row: it becomes its exact raw line, in its own slot.
-        let row = cx.debug_bounds("todo-checkbox-0").unwrap().center() + point(px(200.), px(0.));
-        double_click(row, cx);
+        double_click(row_point(0, cx), cx);
         assert_eq!(editing(cx), Some((0, "First".to_owned())));
         assert!(cx.debug_bounds("todo-edit-row").is_some());
+        let input = app.read_with(cx, |app, _| {
+            app.list_view
+                .editing
+                .as_ref()
+                .unwrap()
+                .field
+                .input
+                .downgrade()
+        });
 
-        // Escape restores the row and writes nothing.
+        // Escape restores the row, writes nothing, and releases the input entirely.
         cx.simulate_input(" changed");
         cx.simulate_keystrokes("escape");
         cx.run_until_parked();
         assert_eq!(editing(cx), None);
-        assert_eq!(
-            std::fs::read_to_string(&todo).unwrap(),
-            "First\r\nSecond\r\n"
+        assert_eq!(disk(), initial);
+        assert!(
+            input.upgrade().is_none(),
+            "the ended edit's input is released"
         );
 
         // From the keyboard (the cancelled row keeps the cursor): Down and E edit the next row,
-        // Up and Enter the first; Enter in the editor replaces only that line, keeping its ending.
+        // Up and Enter the first.
         cx.simulate_keystrokes("down e");
         assert_eq!(editing(cx), Some((1, "Second".to_owned())));
         cx.simulate_keystrokes("escape up enter");
         assert_eq!(editing(cx), Some((0, "First".to_owned())));
         cx.simulate_keystrokes("escape down enter");
         assert_eq!(editing(cx), Some((1, "Second".to_owned())));
-        cx.simulate_input(" +Home due:2026-11-10");
+
+        // A click in the date helper's calendar leaves focus in the line: Space types (it does
+        // not complete the item), the first Escape closes only the helper.
+        app.update_in(cx, |app, window, cx| {
+            ListView::toggle_date(app, LineKind::Row, window, cx)
+        });
+        cx.run_until_parked();
+        let calendar = cx.debug_bounds("row-date-calendar").unwrap();
+        cx.simulate_click(calendar.origin + point(px(4.), px(4.)), Modifiers::none());
+        cx.run_until_parked();
+        let (helper, focused) = app.update_in(cx, |app, window, cx| {
+            let field = &app.list_view.editing.as_ref().unwrap().field;
+            (field.date.is_some(), field.focused(window, cx))
+        });
+        assert!(helper && focused, "the calendar never takes focus");
+        cx.simulate_keystrokes("space");
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        let helper = app.read_with(cx, |app, _| {
+            app.list_view
+                .editing
+                .as_ref()
+                .map(|edit| edit.field.date.is_some())
+        });
+        assert_eq!(helper, Some(false));
+        assert_eq!(editing(cx), Some((1, "Second ".to_owned())));
+        assert_eq!(disk(), initial, "nothing completed or saved");
+
+        // Enter replaces only that line, keeping its ending.
+        cx.simulate_input("+Home due:2026-11-10");
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         assert_eq!(editing(cx), None);
         assert_eq!(
-            std::fs::read_to_string(&todo).unwrap(),
-            "First\r\nSecond +Home due:2026-11-10\r\n"
+            disk(),
+            format!("First\r\nSecond +Home due:2026-11-10\r\n{filler}")
         );
         let undo = app.read_with(cx, |app, cx| {
             app.session.read(cx).undo_label().map(str::to_owned)
         });
         assert_eq!(undo.as_deref(), Some("Undo edit"));
+
+        // Scrolled out of view, the editing row still ends on a click elsewhere, unsaved.
+        double_click(row_point(0, cx), cx);
+        cx.simulate_input(" draft");
+        let position = row_point(3, cx);
+        cx.simulate_event(ScrollEvent {
+            position,
+            delta: ScrollDelta::Pixels(point(px(0.), px(-1500.))),
+            ..Default::default()
+        });
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("todo-edit-row").is_none(), "scrolled out");
+        let elsewhere = row_point(55, cx);
+        cx.simulate_click(elsewhere, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(editing(cx), None);
+        assert!(disk().starts_with("First\r\n"));
+    }
+
+    #[gpui::test]
+    fn the_row_cursor_never_rests_on_a_group_header(cx: &mut TestAppContext) {
+        let today = local_today();
+        let contents = format!("A due:{today}\nB due:{today}\nC due:2099-01-01\n");
+        let (app, _todo, cx) = app_window("grouped-cursor", &contents, cx);
+        for edit in [
+            FilterEdit::Completion(CompletionView::Open),
+            FilterEdit::Grouped(true),
+        ] {
+            app.update_in(cx, |app, window, cx| {
+                ListView::apply_for_test(app, edit, window, cx)
+            });
+            cx.run_until_parked();
+        }
+        // Today, A, B, Upcoming, C: the cursor on B, then Space completes B, which leaves the
+        // open view; the Upcoming header takes its row, and the cursor moves on to C.
+        app.update_in(cx, |app, window, cx| {
+            window.focus(&app.list_view.list_focus, cx)
+        });
+        cx.simulate_keystrokes("down down");
+        let cursor = app.read_with(cx, |app, _| app.list_view.cursor);
+        assert_eq!(cursor, Some(2));
+        cx.simulate_keystrokes("space");
+        cx.run_until_parked();
+        let (cursor, line) = app.read_with(cx, |app, _| {
+            (app.list_view.cursor, app.list_view.cursor_line)
+        });
+        assert_eq!((cursor, line), (Some(3), Some(3)), "on C, line 3");
     }
 }

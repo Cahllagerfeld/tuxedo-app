@@ -15,7 +15,7 @@ use gpui_kit::base::Popup;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::calendar::{Calendar, CalendarEvent, CalendarState, Date};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{h_flex, v_flex, Icon, Selectable, Sizable};
+use gpui_kit::component::{h_flex, v_flex, Icon, Selectable, Sizable, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use tuxedo_core::{LineDate, TodoDate, TodoItem, TodoLine, TodoTarget};
@@ -64,21 +64,35 @@ pub(super) struct EditLine {
     _subscriptions: [Subscription; 2],
 }
 
-/// Where last frame's popups landed: a click there is not "elsewhere" for the row editor.
+/// How a row edit ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EditExit {
+    /// Saved, or cancelled with Escape: the list takes focus back.
+    Keyboard,
+    /// A click elsewhere: its destination keeps focus.
+    Click,
+    /// The item changed or left the list, or another Workspace is shown.
+    Invalidated,
+}
+
+/// Where last frame's editing row and its popups landed: a click there is not "elsewhere" for
+/// the row editor. Cleared each frame, so a row scrolled out of the list guards nothing.
 #[derive(Clone, Default)]
 pub(super) struct Guards {
+    pub(super) row: Rc<Cell<Option<Bounds<Pixels>>>>,
     pub(super) panel: Rc<Cell<Option<Bounds<Pixels>>>>,
     pub(super) date: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
 
 impl Guards {
     pub(super) fn clear(&self) {
+        self.row.set(None);
         self.panel.set(None);
         self.date.set(None);
     }
 
     fn contain(&self, position: Point<Pixels>) -> bool {
-        [&self.panel, &self.date]
+        [&self.row, &self.panel, &self.date]
             .into_iter()
             .any(|cell| cell.get().is_some_and(|b| b.contains(&position)))
     }
@@ -147,7 +161,8 @@ impl ListView {
         // The line opens as it is; autocomplete waits for the first edit.
         field.completion.dismiss();
         let this = &mut app.list_view;
-        this.cursor = Some(row);
+        this.end_edit(EditExit::Invalidated, cx);
+        this.set_cursor(Some(row));
         this.editing = Some(EditLine {
             target,
             original: item,
@@ -167,7 +182,7 @@ impl ListView {
         if edit.field.reply.is_some() || edit.field.composing(window, cx) {
             return;
         }
-        let text = edit.field.text(cx);
+        let text = edit.field.submitted(cx);
         let line = match TodoLine::edit_of(&text, &edit.original) {
             Ok(line) => line,
             Err(message) => {
@@ -187,21 +202,38 @@ impl ListView {
         cx.notify();
     }
 
-    /// Ends the row edit without saving. A keyboard exit gives the list focus back; a click
-    /// elsewhere leaves focus with what was clicked.
-    pub(super) fn cancel_edit(
-        app: &mut TuxedoApp,
-        refocus: bool,
-        window: &mut Window,
-        cx: &mut Context<TuxedoApp>,
-    ) {
-        if app.list_view.editing.take().is_none() {
+    /// The one cleanup for every way a row edit ends (saved, cancelled from the keyboard or by
+    /// a click elsewhere, or invalidated): drops the session with its input, subscriptions, and
+    /// reply. Once focus has settled, the list takes focus back after a keyboard exit, or when
+    /// the removed input still holds it (a click elsewhere otherwise keeps its destination's
+    /// focus), and gpui-component's registration of the removed input is released.
+    pub(super) fn end_edit(&mut self, exit: EditExit, cx: &mut Context<TuxedoApp>) {
+        let Some(edit) = self.editing.take() else {
             return;
-        }
-        if refocus {
-            window.focus(&app.list_view.list_focus, cx);
-        }
+        };
+        let input_focus = edit.field.input.read(cx).focus_handle(cx);
+        drop(edit);
+        let (list, window) = (self.list_focus.clone(), self.window);
+        cx.defer(move |cx| {
+            window
+                .update(cx, |_, window, cx| {
+                    if exit == EditExit::Keyboard || input_focus.is_focused(window) {
+                        window.focus(&list, cx);
+                    }
+                    window.focused_input(cx);
+                })
+                .ok();
+        });
         cx.notify();
+    }
+
+    /// A mouse down anywhere in the window, before its target sees it: outside the editing row
+    /// and its popups it ends the row edit without saving, also while the row is scrolled out
+    /// of the list.
+    pub(super) fn outside_click(&mut self, position: Point<Pixels>, cx: &mut Context<TuxedoApp>) {
+        if self.editing.is_some() && !self.guards.contain(position) {
+            self.end_edit(EditExit::Click, cx);
+        }
     }
 
     /// Follows the row edit after the session changed: its own outcome ends it (saved, an edit
@@ -217,14 +249,7 @@ impl ListView {
                 None => return,
                 Some(Replied::Failed) => edit.field.set_saving(None, app_cx),
                 Some(Replied::Applied | Replied::Uncertain | Replied::Conflict) => {
-                    self.editing = None;
-                    let (focus, window) = (self.list_focus.clone(), self.window);
-                    app_cx.defer(move |cx| {
-                        window
-                            .update(cx, |_, window, cx| window.focus(&focus, cx))
-                            .ok();
-                    });
-                    return;
+                    return self.end_edit(EditExit::Keyboard, app_cx);
                 }
             }
         }
@@ -243,7 +268,7 @@ impl ListView {
                     edit.target.revision = revision;
                 }
             }
-            _ => self.editing = None,
+            _ => self.end_edit(EditExit::Invalidated, app_cx),
         }
     }
 
@@ -341,7 +366,11 @@ impl ListView {
         let Some(helper) = field.date.take() else {
             return;
         };
-        field.set_date(helper.target, date, window, cx);
+        // A refusal (such as a Creation date the parser would read as the Completion date)
+        // shows like any other, and the line stays as it was.
+        if let Err(message) = field.set_date(helper.target, date, window, cx) {
+            field.error = Some(message);
+        }
         cx.notify();
     }
 
@@ -380,7 +409,7 @@ impl ListView {
             return true;
         }
         match kind {
-            LineKind::Row => Self::cancel_edit(app, true, window, cx),
+            LineKind::Row => app.list_view.end_edit(EditExit::Keyboard, cx),
             LineKind::QuickAdd => field
                 .input
                 .update(cx, |state, cx| state.replace_all("", window, cx)),
@@ -402,7 +431,7 @@ impl ListView {
             (Some(at), false) => items(Box::new((0..at.min(rows.len())).rev())),
         };
         if let Some(row) = next.or(self.cursor) {
-            self.cursor = Some(row);
+            self.set_cursor(Some(row));
             self.scroll.scroll_to_item(row, ScrollStrategy::Nearest);
         }
         cx.notify();
@@ -505,10 +534,38 @@ impl ListView {
         Self::set_date_target(app, kind, target, cx);
     }
 
-    /// Keeps the cursor on a row that exists after the rows changed.
-    pub(super) fn clamp_cursor(&mut self) {
-        let len = self.projection.rows().len();
-        self.cursor = self.cursor.filter(|_| len > 0).map(|row| row.min(len - 1));
+    /// Puts the row cursor on `row`, remembering its item's physical line.
+    pub(super) fn set_cursor(&mut self, row: Option<usize>) {
+        let rows = self.projection.rows();
+        self.cursor = row;
+        self.cursor_line = row.and_then(|row| match rows.get(row) {
+            Some(Row::Item(index)) => self.item_lines.get(*index).copied(),
+            _ => None,
+        });
+    }
+
+    /// After the rows changed: the cursor stays on its item when it is still shown, else moves
+    /// to the nearest item (forward first), never a group header; none left clears it.
+    pub(super) fn restore_cursor(&mut self) {
+        let Some(at) = self.cursor else {
+            return;
+        };
+        let rows = self.projection.rows();
+        let line_of = |row: usize| match rows[row] {
+            Row::Item(index) => self.item_lines.get(index).copied(),
+            Row::Header { .. } => None,
+        };
+        let same = self
+            .cursor_line
+            .and_then(|line| (0..rows.len()).find(|&row| line_of(row) == Some(line)));
+        let nearest = || {
+            let at = at.min(rows.len());
+            (at..rows.len())
+                .chain((0..at).rev())
+                .find(|&row| matches!(rows[row], Row::Item(_)))
+        };
+        let row = same.or_else(nearest);
+        self.set_cursor(row);
     }
 }
 
@@ -574,9 +631,10 @@ impl RowEdit {
                 ListView::on_line_key(app, LineKind::Row, key, window, cx)
             },
         );
-        let guards = self.guards.clone();
+        let row_bounds = self.guards.row.clone();
         h_flex()
             .id(("todo-edit-row", self.row))
+            .relative()
             .when(cfg!(test), |row| {
                 row.debug_selector(|| "todo-edit-row".into())
             })
@@ -587,15 +645,15 @@ impl RowEdit {
             .border_b_1()
             .border_color(hex(p.border).opacity(0.5))
             .bg(hex(p.primary).opacity(0.06))
-            // A click elsewhere cancels without saving; the panels below the row are not
-            // elsewhere.
-            .on_mouse_down_out(move |event, window, cx| {
-                if guards.contain(event.position) {
-                    return;
-                }
-                app.update(cx, |app, cx| ListView::cancel_edit(app, false, window, cx))
-                    .ok();
-            })
+            // Where the row is this frame, for `ListView::outside_click`.
+            .child(
+                canvas(
+                    move |bounds, _, _| row_bounds.set(Some(bounds)),
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
             .child(field)
             .child(date_button(
                 "row-date",
@@ -692,6 +750,13 @@ pub(super) fn date_button(
         };
         v_flex()
             .id(SharedString::from(format!("{id}-panel")))
+            .when(cfg!(test), |panel| {
+                panel.debug_selector(move || format!("{id}-panel"))
+            })
+            // The calendar would take focus on a click; the line input keeps it, so its keys
+            // (Escape closes the helper) and the List view's (which need the list focused)
+            // stay where they belong.
+            .capture_any_mouse_down(|_, window, _| window.prevent_default())
             .p_2()
             .gap_2()
             .rounded(px(8.))
@@ -716,7 +781,13 @@ pub(super) fn date_button(
                     .child(quick("Tomorrow", todo_line_ui::date_after(today, 1)))
                     .child(quick("Next Monday", todo_line_ui::next_monday(today))),
             )
-            .child(Calendar::new(calendar).small())
+            .child(
+                div()
+                    .when(cfg!(test), |d| {
+                        d.debug_selector(move || format!("{id}-calendar"))
+                    })
+                    .child(Calendar::new(calendar).small()),
+            )
     });
     Popup::new(SharedString::from(format!("{id}-popup")), button)
         .anchor(Anchor::TopRight)

@@ -212,6 +212,10 @@ impl Render for TuxedoApp {
             // Key bindings need a context to match; `!Input` keeps Undo last change out of fields.
             .key_context("Tuxedo")
             .track_focus(&self.focus_handle)
+            // Before any target: a click outside the row being edited ends that edit.
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                this.list_view.outside_click(event.position, cx)
+            }))
             .on_action(cx.listener(|this, _: &UndoTodo, _, cx| {
                 this.session.update(cx, |model, cx| model.undo(cx));
             }))

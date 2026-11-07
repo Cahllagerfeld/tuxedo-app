@@ -157,6 +157,8 @@ pub struct LineField {
     pub reply: Option<Reply>,
     /// The text last seen, to tell edits from caret moves.
     seen: String,
+    /// The text right after autocomplete left a space at its end for the next word.
+    accepted: Option<String>,
 }
 
 impl LineField {
@@ -169,6 +171,7 @@ impl LineField {
             error: None,
             reply: None,
             seen,
+            accepted: None,
         }
     }
 
@@ -184,6 +187,16 @@ impl LineField {
 
     pub fn text(&self, cx: &App) -> String {
         self.input.read(cx).value().to_string()
+    }
+
+    /// The line to submit: the text as typed, except the one trailing space autocomplete left
+    /// for a next word that was never typed. Any other trailing space is the person's.
+    pub fn submitted(&self, cx: &App) -> String {
+        let mut text = self.text(cx);
+        if self.accepted.as_ref() == Some(&text) && text.ends_with(' ') {
+            text.pop();
+        }
+        text
     }
 
     /// Follows the input: an edit reopens the panel and clears a shown refusal.
@@ -262,16 +275,17 @@ impl LineField {
     }
 
     /// Sets the date helper's date in the line: only the changed span is replaced, as one step
-    /// of the field's undo history, and the field takes focus back.
+    /// of the field's undo history, and the field takes focus back. Refused (the line unchanged)
+    /// where the parser would read the date as another one.
     pub fn set_date(
         &mut self,
         target: LineDate,
         date: TodoDate,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Result<(), &'static str> {
         let text = self.text(cx);
-        let next = line_with_date(&text, target, date);
+        let next = line_with_date(&text, target, date)?;
         let span = changed_span(&text, &next);
         let middle = next[span.start..next.len() - (text.len() - span.end)].to_owned();
         self.input.update(cx, |state, cx| {
@@ -279,6 +293,7 @@ impl LineField {
             state.replace(middle, window, cx);
             state.focus(window, cx);
         });
+        Ok(())
     }
 
     /// Writes suggestion `index` in place of the word at the caret, as one step of the field's
@@ -316,6 +331,9 @@ impl LineField {
             state.focus(window, cx);
         });
         self.completion.edited();
+        let text = self.text(cx);
+        let caret = self.input.read(cx).cursor();
+        self.accepted = (caret == text.len() && text.ends_with(' ')).then_some(text);
     }
 }
 
