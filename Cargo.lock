@@ -7003,12 +7003,14 @@ dependencies = [
 name = "tuxedo-app"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "chrono",
  "gpui-kit",
  "gpui-pre",
  "gpui-pre-platform",
  "icu_collator",
  "image",
+ "notify",
  "serde_json",
  "tuxedo-core",
  "uuid",
