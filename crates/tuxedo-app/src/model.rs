@@ -16,11 +16,13 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use tuxedo_core::{
-    CoreError, Observed, Workspace, WorkspaceChange, WorkspaceSession, WorkspaceSnapshot,
+    read_saved_views, saved_views_path, CoreError, Observed, SavedViews, Workspace,
+    WorkspaceChange, WorkspaceSession, WorkspaceSnapshot,
 };
 
 use crate::command_queue::{Accepted, Command, CommandQueue, Outcome, OutcomeKind, TodoCommand};
 use crate::observation::{self, Target, Watch, Watching};
+use crate::saved_view_commands;
 use crate::session::{self, Restored};
 use crate::todo_commands;
 use crate::workspace_commands;
@@ -56,6 +58,8 @@ pub struct SessionModel {
     _restore: Task<()>,
     /// Where the catalogue lives; every write command rereads it. `None` when it has no location.
     catalogue_path: Option<PathBuf>,
+    /// The confirmed saved views, next to the catalogue; `None` until restored.
+    saved_views: Option<SavedViews>,
     /// Write commands, run one at a time in admission order.
     commands: CommandQueue,
     recovery: Recovery,
@@ -121,15 +125,21 @@ impl SessionModel {
     /// Workspace session restoration from the catalogue at `path`.
     pub fn restore_from(path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let catalogue_path = path.clone();
-        let load = cx.background_spawn(async move { session::restore(path.as_deref()) });
+        let load = cx.background_spawn(async move {
+            let views = path
+                .as_deref()
+                .map(|p| SavedViews::load(saved_views_path(p)));
+            (session::restore(path.as_deref()), views)
+        });
         let task = cx.spawn(async move |this, cx| {
-            let restored = load.await;
+            let (restored, views) = load.await;
             this.update(cx, |model, cx| {
                 match restored {
                     Restored::Unavailable(error) => model.state = SessionState::Unavailable(error),
                     Restored::Ready { session, warning } => {
                         model.state = SessionState::Ready(session);
                         model.warning = warning;
+                        model.saved_views = views;
                     }
                 }
                 model.sync_observation(cx);
@@ -172,6 +182,7 @@ impl SessionModel {
             pending: None,
             _restore: task,
             catalogue_path,
+            saved_views: None,
             commands: CommandQueue::default(),
             recovery: Recovery::Confirmed,
             outcomes: VecDeque::new(),
@@ -236,6 +247,11 @@ impl SessionModel {
             SessionState::Ready(session) => &session.catalogue().workspaces,
             _ => &[],
         }
+    }
+
+    /// The saved views, once restored with a catalogue location.
+    pub fn saved_views(&self) -> Option<&SavedViews> {
+        self.saved_views.as_ref()
     }
 
     pub fn selected(&self) -> Option<&WorkspaceSnapshot> {
@@ -394,18 +410,39 @@ impl SessionModel {
             Command::Todo(command) => {
                 let today = todo_commands::local_today();
                 match todo_commands::prepare(session, &catalogue_path, command, today) {
-                    Ok(request) => {
-                        Ok(self.run(move || request.execute(), todo_commands::accept, cx))
+                    Ok(request) => Ok(self.run(
+                        move || request.execute(),
+                        in_session(todo_commands::accept),
+                        cx,
+                    )),
+                    Err(error) => {
+                        Err(self.accept_failure(in_session(todo_commands::accept), error))
                     }
-                    Err(error) => Err(self.accept_failure(todo_commands::accept, error)),
                 }
             }
             Command::Workspace(command) => {
                 match workspace_commands::prepare(session, &catalogue_path, command) {
-                    Ok(request) => {
-                        Ok(self.run(move || request.execute(), workspace_commands::accept, cx))
+                    Ok(request) => Ok(self.run(
+                        move || request.execute(),
+                        in_session(workspace_commands::accept),
+                        cx,
+                    )),
+                    Err(error) => {
+                        Err(self.accept_failure(in_session(workspace_commands::accept), error))
                     }
-                    Err(error) => Err(self.accept_failure(workspace_commands::accept, error)),
+                }
+            }
+            Command::SavedView(command) => {
+                let Some(views) = &self.saved_views else {
+                    return Err(Outcome::new(
+                        OutcomeKind::Failed,
+                        "Saved view not saved",
+                        Some("Saved views are not available.".into()),
+                    ));
+                };
+                match saved_view_commands::prepare(views, session, command) {
+                    Ok(request) => Ok(self.run(move || request.execute(), in_saved_views, cx)),
+                    Err(error) => Err(self.accept_failure(in_saved_views, error)),
                 }
             }
             #[cfg(test)]
@@ -422,13 +459,10 @@ impl SessionModel {
     /// A family's preparation failure, reported through its own acceptance.
     fn accept_failure<R>(
         &mut self,
-        accept: fn(&mut WorkspaceSession, Result<R, CoreError>) -> Accepted,
+        accept: impl FnOnce(&mut SessionModel, Result<R, CoreError>) -> Accepted,
         error: CoreError,
     ) -> Outcome {
-        let SessionState::Ready(session) = &mut self.state else {
-            unreachable!("commands start only with a session");
-        };
-        match accept(session, Err(error)) {
+        match accept(self, Err(error)) {
             Accepted::Done(outcome) | Accepted::Recover(outcome) => outcome,
         }
     }
@@ -438,7 +472,7 @@ impl SessionModel {
     fn run<R: Send + 'static>(
         &mut self,
         execute: impl FnOnce() -> Result<R, CoreError> + Send + 'static,
-        accept: fn(&mut WorkspaceSession, Result<R, CoreError>) -> Accepted,
+        accept: impl FnOnce(&mut SessionModel, Result<R, CoreError>) -> Accepted + 'static,
         cx: &mut Context<Self>,
     ) -> Task<()> {
         let in_flight = self.in_flight.clone();
@@ -451,10 +485,7 @@ impl SessionModel {
         cx.spawn(async move |this, cx| {
             let result = execute.await;
             this.update(cx, |model, cx| {
-                let accepted = match &mut model.state {
-                    SessionState::Ready(session) => accept(session, result),
-                    _ => unreachable!("commands start only with a session"),
-                };
+                let accepted = accept(model, result);
                 match accepted {
                     Accepted::Done(outcome) => {
                         if outcome.kind == OutcomeKind::Applied {
@@ -480,17 +511,25 @@ impl SessionModel {
         })
     }
 
-    /// Rereads the catalogue and the selected Todo file and accepts them as confirmed (clearing
-    /// Undo) before any further command runs. Never resubmits the command that needed it.
+    /// Rereads the catalogue, the selected Todo file, and the saved views and accepts them as
+    /// confirmed (clearing Undo) before any further command runs. Never resubmits the command
+    /// that needed it. Saved views that cannot be read are shown as unavailable, not a failure.
     fn start_recovery(&mut self, cx: &mut Context<Self>) {
         let request = match (self.session(), self.catalogue_path.as_deref()) {
             (Some(session), Some(path)) => session.prepare_reread(path),
             _ => return self.finish_recovery(Err("No Workspace session is available.".into()), cx),
         };
-        let reread = cx.background_spawn(async move { request.execute() });
+        let views_path = self.saved_views.as_ref().map(|v| v.path().to_path_buf());
+        let reread = cx.background_spawn(async move {
+            let views = views_path.map(|path| read_saved_views(&path));
+            (request.execute(), views)
+        });
         let task = cx.spawn(async move |this, cx| {
-            let result = reread.await;
+            let (result, views) = reread.await;
             this.update(cx, |model, cx| {
+                if let (Some(saved), Some(read)) = (&mut model.saved_views, views) {
+                    saved.accept_reread(read);
+                }
                 let result = match (result, &mut model.state) {
                     (Ok(result), SessionState::Ready(session)) => {
                         session.accept_reread(result);
@@ -721,6 +760,28 @@ impl SessionModel {
         });
         self.commands.start(task, "Todo-file observation");
     }
+}
+
+/// A Todo-file or Workspace family's acceptance, which installs into the core session.
+fn in_session<R>(
+    accept: fn(&mut WorkspaceSession, Result<R, CoreError>) -> Accepted,
+) -> impl FnOnce(&mut SessionModel, Result<R, CoreError>) -> Accepted {
+    move |model, result| match &mut model.state {
+        SessionState::Ready(session) => accept(session, result),
+        _ => unreachable!("commands start only with a session"),
+    }
+}
+
+/// The Saved-view family's acceptance, which installs into the confirmed saved views.
+fn in_saved_views(
+    model: &mut SessionModel,
+    result: Result<saved_view_commands::SavedViewExecuted, CoreError>,
+) -> Accepted {
+    let views = model
+        .saved_views
+        .as_mut()
+        .expect("prepared with saved views");
+    saved_view_commands::accept(views, result)
 }
 
 #[cfg(test)]

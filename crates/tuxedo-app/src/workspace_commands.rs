@@ -1,4 +1,4 @@
-//! Workspace commands (create, update, delete, select): building them from the person's input
+//! Workspace commands (create, update, Show deferred, delete, select): building them from the person's input
 //! and the family's `prepare`/`accept` for the command queue.
 
 use std::path::{Path, PathBuf};
@@ -29,6 +29,11 @@ pub fn create(name: String, color: WorkspaceColor, todo_file: PathBuf) -> Worksp
             show_deferred: None,
         },
     }
+}
+
+/// Saves the Workspace's Show deferred preference.
+pub fn set_show_deferred(id: String, show_deferred: bool) -> WorkspaceCommand {
+    WorkspaceChange::SetShowDeferred { id, show_deferred }
 }
 
 /// Prepares a dequeued Workspace command against the session as it is now. Never refuses a

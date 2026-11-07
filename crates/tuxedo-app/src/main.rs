@@ -3,6 +3,7 @@ mod command_queue;
 mod model;
 mod observation;
 mod query_ui;
+mod saved_view_commands;
 #[cfg(feature = "screenshot")]
 mod screenshot;
 mod session;

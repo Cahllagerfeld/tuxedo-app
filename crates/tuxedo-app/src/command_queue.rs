@@ -1,8 +1,8 @@
-//! The foreground command queue. Every write command (Todo-file and Workspace commands) is
-//! admitted here in order and runs one at a time: the running command's task is retained until
-//! the foreground has accepted its result, and only then is the next command dequeued and
-//! prepared against the session as it is by then. A running write task is never dropped or
-//! replaced to start another, so every admitted command commits or fails visibly.
+//! The foreground command queue. Every write command (Todo-file, Workspace, and Saved-view
+//! commands) is admitted here in order and runs one at a time: the running command's task is
+//! retained until the foreground has accepted its result, and only then is the next command
+//! dequeued and prepared against the session as it is by then. A running write task is never
+//! dropped or replaced to start another, so every admitted command commits or fails visibly.
 //!
 //! Commands come in families. Each family module supplies a foreground `prepare` (no I/O), a
 //! background request with `execute`, and a foreground `accept` that installs the result into
@@ -14,6 +14,7 @@ use std::collections::VecDeque;
 use gpui_kit::Task;
 use tuxedo_core::{TodoFields, TodoTarget};
 
+use crate::saved_view_commands::SavedViewCommand;
 use crate::todo_commands::Reply;
 use crate::workspace_commands::WorkspaceCommand;
 
@@ -24,6 +25,8 @@ pub enum Command {
     Todo(TodoCommand),
     /// Workspace commands (`workspace_commands`): create, update, delete, select.
     Workspace(WorkspaceCommand),
+    /// Saved-view commands (`saved_view_commands`): save, delete, reload.
+    SavedView(SavedViewCommand),
     /// Test-only: completes with the given acceptance, without touching any file.
     #[cfg(test)]
     Scripted(Accepted),
@@ -48,6 +51,7 @@ impl Command {
             Command::Workspace(WorkspaceCommand::SetShowDeferred { .. }) => "save Show deferred",
             Command::Workspace(WorkspaceCommand::Delete { .. }) => "remove Workspace",
             Command::Workspace(WorkspaceCommand::Select { .. }) => "switch Workspace",
+            Command::SavedView(command) => command.name(),
             #[cfg(test)]
             Command::Scripted(_) => "scripted",
             #[cfg(test)]
