@@ -130,6 +130,12 @@ fn open(
                         ),
                     )),
             )
+            // Esc, Cancel, the close button: the editor stops following the session at once,
+            // so while this dialog animates out it cannot close a newer one.
+            .on_close({
+                let editor = editor.clone();
+                move |_, _, cx| editor.update(cx, |editor, _| editor.dismissed())
+            })
             // The dialog stays open; the editor closes it once its change is saved.
             .on_ok(move |_, window, cx| {
                 submit.update(cx, |editor, cx| editor.submit(window, cx));
@@ -192,6 +198,10 @@ struct TodoEditor {
     /// Field errors from the last validation; refreshed on every edit after a submission.
     errors: Vec<FieldError>,
     submitted: bool,
+    /// Follows the session for this editor's outcome and Workspace; dropped on dismissal.
+    session_watch: Option<Subscription>,
+    /// The dialog was dismissed or closed by the editor; it never closes a dialog again.
+    closed: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -225,9 +235,10 @@ impl TodoEditor {
             let id = model.selected().map(|s| s.workspace.id.clone());
             (id.unwrap_or_default(), model.revision().unwrap_or_default())
         };
-        let mut subscriptions = vec![cx.observe_in(&session, window, |editor, _, window, cx| {
+        let session_watch = cx.observe_in(&session, window, |editor, _, window, cx| {
             editor.session_changed(window, cx)
-        })];
+        });
+        let mut subscriptions = Vec::new();
         let mut input = |field: Field, value: String, placeholder: &str, cx: &mut Context<Self>| {
             let state = cx.new(|cx| {
                 InputState::new(window, cx)
@@ -345,6 +356,8 @@ impl TodoEditor {
             show_from_error: false,
             errors: Vec::new(),
             submitted: false,
+            session_watch: Some(session_watch),
+            closed: false,
             _subscriptions: subscriptions,
         }
     }
@@ -355,6 +368,9 @@ impl TodoEditor {
 
     /// Follows one input's edit into the draft.
     fn changed(&mut self, field: Field, cx: &mut Context<Self>) {
+        if self.saving() {
+            return;
+        }
         let date_text = |input: &Entity<InputState>, cx: &App| {
             let text = Self::text(input, cx);
             let text = text.trim();
@@ -409,6 +425,9 @@ impl TodoEditor {
     /// with typed text commits that tag; anywhere else it saves. Either way exactly once.
     fn on_enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
+        if self.saving() {
+            return;
+        }
         let typed = [Field::Projects, Field::Contexts, Field::Metadata]
             .into_iter()
             .find(|field| {
@@ -437,6 +456,9 @@ impl TodoEditor {
     /// Adds the typed tag to its list, or shows why it cannot be added. `true` when the input is
     /// empty afterwards.
     fn commit_tag(&mut self, field: Field, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.saving() {
+            return false;
+        }
         let Some(tag) = self.tag_input(field) else {
             return true;
         };
@@ -506,6 +528,9 @@ impl TodoEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.saving() {
+            return;
+        }
         match field {
             Field::Projects => drop(self.draft.projects.remove(index)),
             Field::Contexts => drop(self.draft.contexts.remove(index)),
@@ -525,6 +550,9 @@ impl TodoEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.saving() {
+            return;
+        }
         match choice {
             Some(choice) => {
                 self.other = false;
@@ -546,6 +574,9 @@ impl TodoEditor {
     }
 
     fn set_repeat_unit(&mut self, unit: RepeatUnit, cx: &mut Context<Self>) {
+        if self.saving() {
+            return;
+        }
         let interval = self.draft.repeat_interval.clone();
         self.draft.set_repeat(&interval, unit);
         self.revalidate();
@@ -553,6 +584,9 @@ impl TodoEditor {
     }
 
     fn set_completed(&mut self, completed: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.saving() {
+            return;
+        }
         self.draft.set_completed(completed, self.today);
         let date = self.draft.completion_date.clone();
         self.completion_date
@@ -621,6 +655,29 @@ impl TodoEditor {
             .update(cx, |model, cx| model.enqueue(Command::Todo(command), cx));
     }
 
+    /// While a save is in flight every control is disabled and nothing edits the draft, so what
+    /// was saved is what the person sees.
+    fn saving(&self) -> bool {
+        self.reply.is_some()
+    }
+
+    /// The dialog went away (dismissed by the person, or closed by the editor): stop following
+    /// the session. Idempotent.
+    fn dismissed(&mut self) {
+        self.closed = true;
+        self.session_watch = None;
+    }
+
+    /// Closes this editor's dialog once. Only an editor whose dialog is still showing calls this;
+    /// the dialog is modal, so it is the window's newest dialog.
+    fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.closed {
+            return;
+        }
+        self.dismissed();
+        window.close_dialog(cx);
+    }
+
     /// Follows the session: another Workspace shown closes the editor; the outcome of its own
     /// change closes it (saved, an edit conflict, an uncertain write) or keeps the draft (nothing
     /// written, a creation conflict); otherwise it follows refreshes of its Workspace.
@@ -628,8 +685,7 @@ impl TodoEditor {
         let model = self.session.read(cx);
         let shown = model.selected().map(|s| s.workspace.id.as_str());
         if shown != Some(self.workspace_id.as_str()) {
-            window.close_dialog(cx);
-            return;
+            return self.close(window, cx);
         }
         let (revision, switching) = (model.revision(), model.pending().is_some());
         let replied = match &self.reply {
@@ -640,8 +696,8 @@ impl TodoEditor {
             None => None,
         };
         match replied {
-            Some(Replied::Applied | Replied::Uncertain) => return window.close_dialog(cx),
-            Some(Replied::Conflict) if self.item.is_some() => return window.close_dialog(cx),
+            Some(Replied::Applied | Replied::Uncertain) => return self.close(window, cx),
+            Some(Replied::Conflict) if self.item.is_some() => return self.close(window, cx),
             Some(_) => self.reply = None,
             None => {}
         }
@@ -661,6 +717,7 @@ impl TodoEditor {
 
 impl Render for TodoEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let saving = self.saving();
         let p = Palette::current(cx);
         let submitted = self.submitted;
         let draft = &self.draft;
@@ -691,6 +748,7 @@ impl Render for TodoEditor {
             Checkbox::new("todo-completed")
                 .label("Completed")
                 .checked(self.draft.completed)
+                .disabled(saving)
                 .on_click(cx.listener(|editor, checked: &bool, window, cx| {
                     editor.set_completed(*checked, window, cx)
                 }))
@@ -709,7 +767,7 @@ impl Render for TodoEditor {
             )
             .child(field(
                 "Description",
-                Input::new(&self.description),
+                Input::new(&self.description).disabled(saving),
                 self.error(DraftField::Description),
                 p,
             ))
@@ -721,7 +779,7 @@ impl Render for TodoEditor {
                 field("Priority", priority, self.error(DraftField::Priority), p),
                 field(
                     "Due date",
-                    Input::new(&self.due).cleanable(true),
+                    Input::new(&self.due).disabled(saving).cleanable(true),
                     date_error(self.due_error),
                     p,
                 ),
@@ -729,14 +787,14 @@ impl Render for TodoEditor {
             .child(columns(
                 field(
                     "Show from",
-                    Input::new(&self.show_from).cleanable(true),
+                    Input::new(&self.show_from).disabled(saving).cleanable(true),
                     date_error(self.show_from_error),
                     p,
                 )
                 .children(notes.into_iter().map(|note| note_text(note, p))),
                 field(
                     "Creation date",
-                    Input::new(&self.creation_date).cleanable(true),
+                    Input::new(&self.creation_date).disabled(saving).cleanable(true),
                     self.error(DraftField::CreationDate),
                     p,
                 ),
@@ -759,7 +817,7 @@ impl Render for TodoEditor {
             .when(self.draft.completed, |form| {
                 form.child(field(
                     "Completion date",
-                    Input::new(&self.completion_date),
+                    Input::new(&self.completion_date).disabled(saving),
                     self.error(DraftField::CompletionDate),
                     p,
                 ))
@@ -770,6 +828,7 @@ impl Render for TodoEditor {
 
 impl TodoEditor {
     fn render_priority(&self, p: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
+        let saving = self.saving();
         let current = self.draft.priority;
         let choices = [
             ("None", Some(PriorityChoice::None)),
@@ -789,6 +848,7 @@ impl TodoEditor {
                     _ => None,
                 };
                 segment(format!("todo-priority-{label}"), label, selected)
+                    .disabled(self.saving())
                     .when_some(color, |b, color| b.text_color(color))
                     .on_click(cx.listener(move |editor, _, window, cx| {
                         editor.set_priority(choice, window, cx)
@@ -801,12 +861,13 @@ impl TodoEditor {
                 col.child(
                     div()
                         .w(px(72.))
-                        .child(Input::new(&self.other_priority).small()),
+                        .child(Input::new(&self.other_priority).disabled(saving).small()),
                 )
             })
     }
 
     fn render_repeat(&self, _p: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
+        let saving = self.saving();
         let unit = self.draft.repeat_unit;
         let units = [
             ("Off", RepeatUnit::Off),
@@ -817,6 +878,7 @@ impl TodoEditor {
         ];
         let buttons = units.into_iter().map(|(label, value)| {
             segment(format!("todo-repeat-{label}"), label, unit == value)
+                .disabled(self.saving())
                 .on_click(cx.listener(move |editor, _, _, cx| editor.set_repeat_unit(value, cx)))
         });
         let interval = !matches!(unit, RepeatUnit::Off | RepeatUnit::Unsupported);
@@ -828,7 +890,7 @@ impl TodoEditor {
                     h_flex().gap_1p5().child("every").child(
                         div()
                             .w(px(64.))
-                            .child(Input::new(&self.repeat_interval).small()),
+                            .child(Input::new(&self.repeat_interval).disabled(saving).small()),
                     ),
                 )
             })
@@ -843,6 +905,7 @@ impl TodoEditor {
         p: &Palette,
         cx: &mut Context<Self>,
     ) -> Div {
+        let saving = self.saving();
         let (values, tag, draft_field) = match field_kind {
             Field::Projects => (&self.draft.projects, &self.projects, DraftField::Projects),
             Field::Contexts => (&self.draft.contexts, &self.contexts, DraftField::Contexts),
@@ -868,6 +931,7 @@ impl TodoEditor {
                     Button::new((SharedString::from(format!("remove-{label}")), index))
                         .ghost()
                         .xsmall()
+                        .disabled(self.saving())
                         .icon(IconName::X)
                         .tooltip(format!("Remove {text}"))
                         .on_click(cx.listener(move |editor, _, window, cx| {
@@ -883,7 +947,7 @@ impl TodoEditor {
                 .when(!values.is_empty(), |col| {
                     col.child(h_flex().flex_wrap().gap_1().children(chips))
                 })
-                .child(Input::new(&tag.input)),
+                .child(Input::new(&tag.input).disabled(saving)),
             error,
             p,
         )
@@ -943,7 +1007,7 @@ mod tests {
     use gpui_kit::base::Root;
     use gpui_kit::component::WindowExt as _;
 
-    use super::{open, TodoEditor};
+    use super::{open, Field, TodoEditor};
     use crate::command_queue::OutcomeKind;
     use crate::model::tests::{catalogue, C};
     use crate::model::SessionModel;
@@ -1018,15 +1082,21 @@ mod tests {
         let (session, todo, cx) = window("editor-enter", "First\n", cx);
         let editor = open_new(&session, cx);
 
+        // The form is already valid: a submission would save, so only routing keeps it open.
+        type_into(&editor, |e| &e.description, "Plan", cx);
         type_into(&editor, |e| &e.projects.input, "Work", cx);
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         let projects = cx.update(|_, cx| editor.read(cx).draft.projects.clone());
         assert_eq!(projects, ["Work"]);
         assert_eq!(std::fs::read_to_string(&todo).unwrap(), "First\n");
+        assert!(
+            kinds(&session, cx).is_empty(),
+            "a committed tag queues nothing"
+        );
         assert!(dialog_open(cx), "a committed tag does not save");
 
-        type_into(&editor, |e| &e.description, "Plan", cx);
+        type_into(&editor, |e| &e.description, "", cx);
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         assert_eq!(
@@ -1035,6 +1105,131 @@ mod tests {
         );
         assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
         assert!(!dialog_open(cx), "a saved change closes the editor");
+    }
+
+    #[gpui::test]
+    fn the_draft_cannot_change_while_its_save_is_in_flight(cx: &mut TestAppContext) {
+        use tuxedo_core::{PriorityChoice, RepeatUnit};
+        let (session, todo, cx) = window("editor-held", "First\n", cx);
+        let editor = open_new(&session, cx);
+        type_into(&editor, |e| &e.description, "Plan", cx);
+        type_into(&editor, |e| &e.contexts.input, "home", cx);
+        cx.simulate_keystrokes("enter");
+        // The save is admitted; its write waits on the background executor until the test parks.
+        cx.update(|window, cx| {
+            editor.update(cx, |e, cx| {
+                e.submit(window, cx);
+                let before = e.draft.clone();
+                e.set_priority(Some(PriorityChoice::Letter('A')), window, cx);
+                e.set_repeat_unit(RepeatUnit::Week, cx);
+                e.remove_tag(Field::Contexts, 0, window, cx);
+                e.metadata
+                    .input
+                    .update(cx, |s, cx| s.set_value("late:edit", window, cx));
+                assert!(!e.commit_tag(Field::Metadata, window, cx));
+                e.changed(Field::Description, cx);
+                assert_eq!(
+                    e.draft, before,
+                    "nothing edits the draft while it is saving"
+                );
+            })
+        });
+        cx.run_until_parked();
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            format!("First\n{} Plan @home\n", local_today())
+        );
+        assert!(!dialog_open(cx));
+    }
+
+    #[gpui::test]
+    fn a_dismissed_editor_never_closes_a_newer_one(cx: &mut TestAppContext) {
+        let (session, _, cx) = window("editor-dismissed", "First\n", cx);
+        // Motion on: a closed dialog stays mounted, with its editor, while it animates out.
+        cx.update(|_, cx| cx.set_reduce_motion(false));
+        let first = open_new(&session, cx);
+        type_into(&first, |e| &e.description, "Plan", cx);
+        cx.update(|window, cx| first.update(cx, |e, cx| e.submit(window, cx)));
+        // Escape dismisses it while its save is in flight; the save still completes.
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert!(!dialog_open(cx));
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
+
+        let _second = open_new(&session, cx);
+        assert!(dialog_open(cx));
+        cx.update(|_, cx| session.update(cx, |_, cx| cx.notify()));
+        cx.run_until_parked();
+        assert!(
+            dialog_open(cx),
+            "the first editor's outcome does not close the second"
+        );
+    }
+
+    #[gpui::test]
+    fn a_creation_conflict_keeps_the_draft_until_an_explicit_retry(cx: &mut TestAppContext) {
+        let (session, todo, cx) = window("editor-conflict", "First\n", cx);
+        let editor = open_new(&session, cx);
+        type_into(&editor, |e| &e.description, "Plan", cx);
+        type_into(&editor, |e| &e.projects.input, "Work", cx);
+        cx.simulate_keystrokes("enter");
+        std::fs::write(&todo, "Changed elsewhere\n").unwrap();
+
+        type_into(&editor, |e| &e.description, "", cx);
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Conflict]);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            "Changed elsewhere\n"
+        );
+        assert!(dialog_open(cx), "a creation conflict keeps the editor open");
+        let draft = cx.update(|_, cx| editor.read(cx).draft.clone());
+        assert_eq!(
+            (draft.description.as_str(), draft.projects.as_slice()),
+            ("Plan", &["Work".to_owned()][..])
+        );
+        cx.run_until_parked();
+        assert!(
+            kinds(&session, cx).is_empty(),
+            "nothing is retried on its own"
+        );
+
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(kinds(&session, cx), [OutcomeKind::Applied]);
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            format!("Changed elsewhere\n{} Plan +Work\n", local_today())
+        );
+        assert!(!dialog_open(cx));
+    }
+
+    #[gpui::test]
+    fn clearing_a_recorded_completion_date_is_reported_on_its_field(cx: &mut TestAppContext) {
+        use tuxedo_core::DraftField;
+        let (session, todo, cx) = window("editor-completion", "x 2026-10-09 Old\n", cx);
+        let item = cx.update(|_, cx| session.read(cx).selected().unwrap().file.items[0].clone());
+        let editor = cx
+            .update(|window, cx| open(session.clone(), Some(item), window, cx))
+            .unwrap();
+        cx.run_until_parked();
+        type_into(&editor, |e| &e.completion_date, "", cx);
+        cx.simulate_keystrokes("cmd-a backspace enter");
+        cx.run_until_parked();
+
+        let error = cx.update(|_, cx| editor.read(cx).error(DraftField::CompletionDate));
+        assert_eq!(
+            error,
+            Some("Choose a Completion date for a completed Todo item.")
+        );
+        assert!(kinds(&session, cx).is_empty(), "nothing is queued");
+        assert_eq!(
+            std::fs::read_to_string(&todo).unwrap(),
+            "x 2026-10-09 Old\n"
+        );
+        assert!(dialog_open(cx));
     }
 
     #[gpui::test]
