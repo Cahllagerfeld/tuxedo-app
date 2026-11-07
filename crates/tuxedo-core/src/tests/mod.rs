@@ -3,6 +3,7 @@
 mod atomic_file;
 mod catalogue;
 mod observation;
+mod saved_views;
 mod session;
 mod todo;
 mod todo_edit;

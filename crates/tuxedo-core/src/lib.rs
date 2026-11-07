@@ -9,6 +9,7 @@ mod date;
 mod error;
 mod observation;
 mod recurrence;
+mod saved_views;
 mod session;
 mod todo;
 mod todo_edit;
@@ -20,6 +21,10 @@ pub use catalogue::{js_trim, load_catalogue, Catalogue, TodoSortOrder, Workspace
 pub use date::TodoDate;
 pub use error::CoreError;
 pub use observation::{ObserveRequest, ObserveResult, Observed, TODO_FILE_RELOADED};
+pub use saved_views::{
+    read_saved_views, saved_views_path, SavedView, SavedViewChange, SavedViewWriteRequest,
+    SavedViewWriteResult, SavedViews, SAVED_VIEWS_FILE,
+};
 pub use session::{OpenRequest, RereadRequest, RereadResult, WorkspaceSession, WorkspaceSnapshot};
 pub use todo::{
     parse_todo_text, read_todo_file, DueCategory, LineEnding, SkippedLine, SourceLine, TodoFile,
