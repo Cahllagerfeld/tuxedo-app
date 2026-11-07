@@ -509,6 +509,19 @@ fn editing_refuses_a_changed_target_and_a_cleared_completion_date() {
     );
     assert_eq!(fixture.disk(), "Keep\r\nChanged externally\r\nLast");
 
+    // The editor reports it on the field before anything is queued; the core refuses it too.
+    let recorded = parse_todo_text(PathBuf::new(), "x 2026-10-09 Old")
+        .items
+        .remove(0);
+    let cleared = TodoDraft {
+        completion_date: String::new(),
+        ..TodoDraft::from_item(&recorded)
+    };
+    let errors = cleared.validate_edit(&recorded).unwrap_err();
+    assert_eq!(errors[0].field, DraftField::CompletionDate);
+    let legacy = parse_todo_text(PathBuf::new(), "x Old").items.remove(0);
+    assert!(TodoDraft::from_item(&legacy).validate_edit(&legacy).is_ok());
+
     let mut fixture = Fixture::new("x 2026-10-09 Old");
     let outcome = fixture.edit(1, |d| TodoDraft {
         completion_date: String::new(),

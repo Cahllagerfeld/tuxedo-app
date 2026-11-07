@@ -227,6 +227,27 @@ impl TodoDraft {
         };
     }
 
+    /// Validates an edit of `original`: [`Self::validate`] for editing, and a recorded
+    /// Completion date cannot be cleared while the item stays completed (legacy completed items
+    /// without one stay editable).
+    pub fn validate_edit(&self, original: &TodoItem) -> Result<TodoFields, Vec<FieldError>> {
+        let result = self.validate(true);
+        let cleared =
+            self.completed && original.completion_date.is_some() && self.completion_date.is_empty();
+        if !cleared {
+            return result;
+        }
+        let required = FieldError {
+            field: DraftField::CompletionDate,
+            message: COMPLETION_DATE_REQUIRED,
+        };
+        let mut errors = result.err().unwrap_or_default();
+        if !errors.contains(&required) {
+            errors.push(required);
+        }
+        Err(errors)
+    }
+
     /// Validates the draft for a new Todo item (`editing == false`) or an edit, returning the
     /// fields to save or every field error. Cross-field rules run only once each field is valid.
     pub fn validate(&self, editing: bool) -> Result<TodoFields, Vec<FieldError>> {
