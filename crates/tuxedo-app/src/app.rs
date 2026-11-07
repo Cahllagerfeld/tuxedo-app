@@ -43,7 +43,7 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-z", UndoTodo, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-f", FocusQuery, None),
-        KeyBinding::new("cmd-n", todo_editor::NewTodoItem, Some("Tuxedo")),
+        KeyBinding::new("cmd-n", todo_editor::NewTodoItem, Some("Tuxedo && !Input")),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
 }

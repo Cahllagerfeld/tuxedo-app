@@ -478,6 +478,8 @@ fn render_list(
                     });
                     let toggle = session.clone();
                     let on_toggle = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                        // The row's double-click-to-edit must not see checkbox clicks.
+                        cx.stop_propagation();
                         toggle.update(cx, |model, cx| model.enqueue(command.clone(), cx));
                     };
                     let row = todo_row::render(index, item, today, compact, on_toggle, p);
@@ -624,4 +626,95 @@ fn alert(title: &'static str, description: &str, p: &Palette) -> AnyElement {
                 ),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
+    use gpui::{
+        point, px, AppContext as _, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
+        Pixels, Point, TestAppContext, VisualTestContext,
+    };
+    use gpui_kit::base::Root;
+    use gpui_kit::component::WindowExt as _;
+
+    use super::super::TuxedoApp;
+    use crate::model::tests::catalogue;
+    use crate::model::SessionModel;
+
+    fn double_click(position: Point<Pixels>, cx: &mut VisualTestContext) {
+        for click_count in [1, 2] {
+            let (button, modifiers) = (MouseButton::Left, Modifiers::default());
+            cx.simulate_event(MouseDownEvent {
+                button,
+                position,
+                modifiers,
+                click_count,
+                first_mouse: false,
+            });
+            cx.simulate_event(MouseUpEvent {
+                button,
+                position,
+                modifiers,
+                click_count,
+            });
+        }
+        cx.run_until_parked();
+    }
+
+    /// The app in a window whose root hosts dialogs, showing Workspace A.
+    fn app_window<'a>(
+        name: &str,
+        cx: &'a mut TestAppContext,
+    ) -> (Entity<TuxedoApp>, &'a mut VisualTestContext) {
+        cx.update(gpui_kit::init);
+        cx.update(crate::app::bind_keys);
+        let path = catalogue(name);
+        std::fs::write(path.with_file_name("A.txt"), "First\nSecond\n").unwrap();
+        let session = cx.new(|cx| SessionModel::restore_from(Some(path), cx));
+        let mut app = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            crate::theme::init(window, cx);
+            let view = cx.new(|cx| TuxedoApp::with_session(session.clone(), window, cx));
+            app = Some(view.clone());
+            Root::new(view, window, cx)
+        });
+        cx.run_until_parked();
+        (app.unwrap(), cx)
+    }
+
+    fn dialog_open(cx: &mut VisualTestContext) -> bool {
+        cx.update(|window, cx| window.has_active_dialog(cx))
+    }
+
+    #[gpui::test]
+    fn cmd_n_opens_the_editor_except_while_typing_in_a_field(cx: &mut TestAppContext) {
+        let (app, cx) = app_window("cmd-n", cx);
+        cx.simulate_keystrokes("cmd-f cmd-n");
+        assert!(
+            !dialog_open(cx),
+            "Cmd-N in the query field does not open the editor"
+        );
+        cx.update(|window, cx| {
+            let root = app.read(cx).focus_handle.clone();
+            window.focus(&root, cx);
+        });
+        cx.simulate_keystrokes("cmd-n");
+        assert!(dialog_open(cx));
+    }
+
+    #[gpui::test]
+    fn a_double_click_edits_the_row_but_never_from_its_checkbox(cx: &mut TestAppContext) {
+        let (_, cx) = app_window("row-edit", cx);
+
+        let checkbox = cx.debug_bounds("todo-checkbox-1").unwrap().center();
+        double_click(checkbox, cx);
+        assert!(
+            !dialog_open(cx),
+            "the checkbox completes; it never opens the editor"
+        );
+
+        double_click(checkbox + point(px(200.), px(0.)), cx);
+        assert!(dialog_open(cx), "the rest of the row opens the editor");
+    }
 }
