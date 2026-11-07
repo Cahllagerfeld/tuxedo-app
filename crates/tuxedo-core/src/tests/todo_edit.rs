@@ -335,9 +335,9 @@ impl Fixture {
     fn create(&mut self, draft: TodoDraft) -> Outcome {
         let fields = draft.validate(false).unwrap();
         let revision = self.session.revision();
-        let request = self
-            .session
-            .prepare_create(&self.catalogue, ID_A, revision, fields);
+        let request =
+            self.session
+                .prepare_create(&self.catalogue, ID_A, revision, fields, date(TODAY));
         self.finish(request)
     }
 
@@ -416,6 +416,22 @@ fn creation_appends_with_the_file_line_ending_and_undoes_exact_bytes() {
 }
 
 #[test]
+fn a_future_show_from_reports_that_the_saved_item_is_hidden() {
+    let mut fixture = Fixture::new("");
+    let later = |show_from: &str| TodoDraft {
+        metadata: vec![format!("t:{show_from}")],
+        ..draft("Later")
+    };
+    assert_eq!(fixture.create(later(TODAY)), Outcome::Applied(None));
+    assert_eq!(
+        fixture.create(later("2028-02-01")),
+        Outcome::Applied(Some(
+            "Hidden until Show from 2028-02-01. Use Show deferred to see it.".into()
+        ))
+    );
+}
+
+#[test]
 fn creation_refuses_an_externally_changed_file_and_a_stale_revision() {
     let mut fixture = Fixture::new("Original\n");
     fs::write(&fixture.todo, "Changed externally\r\n").unwrap();
@@ -429,9 +445,10 @@ fn creation_refuses_an_externally_changed_file_and_a_stale_revision() {
 
     let fields = draft("New").validate(false).unwrap();
     let stale = fixture.session.revision() - 1;
-    let request = fixture
-        .session
-        .prepare_create(&fixture.catalogue, ID_A, stale, fields);
+    let request =
+        fixture
+            .session
+            .prepare_create(&fixture.catalogue, ID_A, stale, fields, date(TODAY));
     assert_eq!(fixture.finish(request), Outcome::Stale);
     assert_eq!(fixture.disk(), "Changed externally\r\n");
 }

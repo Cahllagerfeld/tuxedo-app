@@ -599,12 +599,14 @@ pub(crate) enum EditorChange {
     Create {
         expected: String,
         fields: TodoFields,
+        hidden: Option<String>,
     },
     /// Replaces the target's line when it still holds the expected raw text.
     Edit {
         target: TodoTarget,
         fields: TodoFields,
         today: TodoDate,
+        hidden: Option<String>,
     },
 }
 
@@ -627,10 +629,14 @@ impl EditorChange {
 
     pub(crate) fn plan(&self, file: &TodoFile) -> Result<EditorPlan, &'static str> {
         match self {
-            Self::Create { expected, fields } => Ok(if file.source == *expected {
+            Self::Create {
+                expected,
+                fields,
+                hidden,
+            } => Ok(if file.source == *expected {
                 EditorPlan::Write {
                     contents: append_line(file, &create_line(fields)),
-                    notice: None,
+                    notice: hidden.clone(),
                 }
             } else {
                 EditorPlan::Conflict("The Todo file changed on disk. Review its current contents.")
@@ -639,6 +645,7 @@ impl EditorChange {
                 target,
                 fields,
                 today,
+                hidden,
             } => {
                 let item = file
                     .items
@@ -675,7 +682,7 @@ impl EditorChange {
                     )?;
                     (plan.raw, plan.notice)
                 } else {
-                    (raw, None)
+                    (raw, hidden.clone())
                 };
                 Ok(EditorPlan::Write {
                     contents: replace_line(file, item.line_number, &raw),
@@ -693,15 +700,34 @@ fn invalid(message: &str) -> CoreError {
 }
 
 impl WorkspaceSession {
+    /// Why a saved open item will not be listed: a future Show from date while the Workspace's
+    /// Show deferred preference is off.
+    fn hidden_notice(&self, fields: &TodoFields, today: TodoDate) -> Option<String> {
+        let show_deferred = self
+            .selected
+            .as_ref()
+            .and_then(|s| s.workspace.show_deferred)
+            .unwrap_or(false);
+        let show_from = fields.show_from().filter(|d| *d > today);
+        match show_from {
+            Some(date) if !show_deferred && !fields.completed => Some(format!(
+                "Hidden until Show from {date}. Use Show deferred to see it."
+            )),
+            _ => None,
+        }
+    }
+
     /// Foreground step of Todo-item creation: appends `fields` to the selected Workspace's Todo
     /// file as long as the file still holds the contents confirmed at `revision`. Refuses another
-    /// Workspace or an older revision as [`CoreError::StaleCommand`]. Performs no I/O.
+    /// Workspace or an older revision as [`CoreError::StaleCommand`]. A future Show from date the person would
+    /// not see is reported in the result's notice. Performs no I/O.
     pub fn prepare_create(
         &self,
         catalogue_path: &Path,
         workspace_id: &str,
         revision: u64,
         fields: TodoFields,
+        today: TodoDate,
     ) -> Result<crate::TodoWriteRequest, CoreError> {
         if fields.editing {
             return Err(invalid("Invalid Todo item."));
@@ -711,7 +737,12 @@ impl WorkspaceSession {
             .as_ref()
             .map(|s| s.file.source.clone())
             .unwrap_or_default();
-        let change = EditorChange::Create { expected, fields };
+        let hidden = self.hidden_notice(&fields, today);
+        let change = EditorChange::Create {
+            expected,
+            fields,
+            hidden,
+        };
         self.prepare_editor_write(catalogue_path, workspace_id, revision, change)
     }
 
@@ -734,10 +765,12 @@ impl WorkspaceSession {
             return Err(invalid("Invalid Todo item target."));
         }
         let (workspace_id, revision) = (target.workspace_id.clone(), target.revision);
+        let hidden = self.hidden_notice(&fields, today);
         let change = EditorChange::Edit {
             target,
             fields,
             today,
+            hidden,
         };
         self.prepare_editor_write(catalogue_path, &workspace_id, revision, change)
     }
