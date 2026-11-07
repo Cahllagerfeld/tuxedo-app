@@ -371,15 +371,26 @@ impl ListView {
                 )
                 .children(error)
                 .child(
+                    // Wraps the Show deferred and Save view actions below the readout when
+                    // the pane is too narrow for both, as at the 640 px minimum window width.
                     h_flex()
                         .items_start()
-                        .gap_3()
-                        .child(div().flex_1().min_w_0().child(query_ui::render_readout_row(
-                            &self.projection,
-                            self.projection.sort(selected),
-                            &on_edit,
-                            p,
-                        )))
+                        .flex_wrap()
+                        .gap_x_3()
+                        .gap_y_1()
+                        .child(
+                            div()
+                                .flex_grow(1.)
+                                .flex_shrink(1.)
+                                .flex_basis(px(360.))
+                                .min_w_0()
+                                .child(query_ui::render_readout_row(
+                                    &self.projection,
+                                    self.projection.sort(selected),
+                                    &on_edit,
+                                    p,
+                                )),
+                        )
                         .child(saved_views_ui::render_toolbar(
                             session.clone(),
                             selected,

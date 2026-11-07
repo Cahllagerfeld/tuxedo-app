@@ -238,7 +238,12 @@ pub fn render_toolbar(
                 cx,
             )
         });
-    h_flex().gap_1().flex_shrink_0().child(deferred).child(save)
+    h_flex()
+        .ml_auto()
+        .gap_1()
+        .flex_shrink_0()
+        .child(deferred)
+        .child(save)
 }
 
 /// Opens the Save view dialog for the current Query.
@@ -382,10 +387,11 @@ mod tests {
     use gpui::{AppContext as _, TestAppContext};
     use tuxedo_core::TodoDate;
 
-    use crate::command_queue::{Command, OutcomeKind};
+    use crate::command_queue::{Command, OutcomeKind, TodoCommand};
     use crate::model::tests::{catalogue, A};
     use crate::model::SessionModel;
     use crate::saved_view_commands::SavedViewCommand;
+    use crate::todo_commands;
     use crate::todo_projection::TodoProjection;
     use crate::workspace_commands;
 
@@ -443,6 +449,53 @@ mod tests {
                     .collect::<Vec<_>>(),
                 ["later"]
             );
+        });
+
+        // An unconfirmed saved-views write: the file it committed is installed before the next
+        // command prepares (which refuses the same name again instead of writing a duplicate),
+        // the write is never resubmitted, and the Todo file's Undo survives.
+        let complete = model.read_with(cx, |m, _| {
+            let selected = m.selected().unwrap();
+            Command::Todo(TodoCommand::Complete {
+                target: todo_commands::target(
+                    selected,
+                    m.revision().unwrap(),
+                    &selected.file.items[0],
+                ),
+                completed: true,
+            })
+        });
+        model.update(cx, |m, cx| m.enqueue(complete, cx));
+        cx.run_until_parked();
+        tuxedo_core::fail_directory_sync(path.parent().unwrap());
+        let save = |name: &str| {
+            Command::SavedView(SavedViewCommand::create(
+                A.into(),
+                name.into(),
+                "now".into(),
+            ))
+        };
+        model.update(cx, |m, cx| {
+            m.take_outcomes();
+            m.enqueue(save("Now"), cx);
+            m.enqueue(save("now"), cx);
+        });
+        cx.run_until_parked();
+        let outcomes = model.update(cx, |m, _| m.take_outcomes());
+        let titles: Vec<_> = outcomes.iter().map(|o| o.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            ["Saved view change not confirmed", "Saved view not saved"]
+        );
+        let on_disk = tuxedo_core::read_saved_views(&path.with_file_name("saved-views.json"));
+        let names = |views: &[tuxedo_core::SavedView]| {
+            views.iter().map(|v| v.name.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(names(&on_disk.unwrap()), ["Later", "Now"]);
+        model.read_with(cx, |m, _| {
+            let installed: Vec<_> = m.saved_views().unwrap().for_workspace(A).cloned().collect();
+            assert_eq!(names(&installed), ["Later", "Now"]);
+            assert_eq!(m.undo_label(), Some("Undo completion"));
         });
     }
 }
