@@ -1,6 +1,7 @@
 mod app;
 mod command_queue;
 mod model;
+mod observation;
 mod query_ui;
 #[cfg(feature = "screenshot")]
 mod screenshot;

@@ -3,6 +3,10 @@
 //! Write commands run through one [`CommandQueue`], Workspace switches included: a switch loads
 //! and persists the Active workspace in admission order, so the last choice is what ends up both
 //! displayed and persisted, and no read accepts across a command.
+//!
+//! Todo-file observation shares that queue: debounced change signals mark the observed file
+//! dirty, and one authoritative read runs once no command is running or queued, so it never
+//! overlaps a command and signals received during one are applied after it.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -11,9 +15,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::*;
-use tuxedo_core::{CoreError, Workspace, WorkspaceChange, WorkspaceSession, WorkspaceSnapshot};
+use tuxedo_core::{
+    CoreError, Observed, Workspace, WorkspaceChange, WorkspaceSession, WorkspaceSnapshot,
+};
 
 use crate::command_queue::{Accepted, Command, CommandQueue, Outcome, OutcomeKind, TodoCommand};
+use crate::observation::{self, Target, Watch};
 use crate::session::{self, Restored};
 use crate::todo_commands;
 use crate::workspace_commands;
@@ -67,6 +74,26 @@ pub struct SessionModel {
     /// Whether a command's background step is running, for the best-effort native-quit wait.
     in_flight: Arc<AtomicBool>,
     _app_quit: Subscription,
+    /// Starts a Todo-file watch (replaced in tests by an injected signal source).
+    watch: Watch,
+    /// The Active workspace's Todo-file observation, while a Workspace is shown.
+    observer: Option<Observer>,
+    /// Advances whenever observation is retargeted or stopped; older signals are ignored.
+    observation_generation: u64,
+    /// A debounced change signal awaits its read; cleared when that read starts.
+    observe_dirty: bool,
+}
+
+/// One observed Todo file: its watch and the tasks forwarding and debouncing its signals.
+struct Observer {
+    target: Target,
+    generation: u64,
+    /// Ends the watch when dropped; released off the UI thread.
+    guard: Option<Box<dyn Send>>,
+    /// Acquires the watch, then forwards its signals.
+    _listen: Task<()>,
+    /// The pending debounce; replacing it restarts the delay.
+    debounce: Option<Task<()>>,
 }
 
 impl SessionModel {
@@ -88,6 +115,7 @@ impl SessionModel {
                         model.warning = warning;
                     }
                 }
+                model.sync_observation(cx);
                 cx.notify();
             })
             .ok();
@@ -123,6 +151,10 @@ impl SessionModel {
             quit_deadline: None,
             in_flight,
             _app_quit: app_quit,
+            watch: observation::default_watch(),
+            observer: None,
+            observation_generation: 0,
+            observe_dirty: false,
         }
     }
 
@@ -242,6 +274,7 @@ impl SessionModel {
     /// Runs the next step: a needed recovery first, then queued commands in order. A command that
     /// fails while being prepared reports its outcome and lets the next one start.
     fn run_next(&mut self, cx: &mut Context<Self>) {
+        self.sync_observation(cx);
         if self.commands.is_running() {
             return;
         }
@@ -272,6 +305,8 @@ impl SessionModel {
         if self.quitting {
             self.quit_deadline = None;
             (self.quit_app)(cx);
+        } else if self.observe_dirty && self.recovery == Recovery::Confirmed {
+            self.start_observed_read(cx);
         }
     }
 
@@ -458,9 +493,148 @@ impl SessionModel {
     }
 }
 
+/// Todo-file observation.
+impl SessionModel {
+    /// Watches the shown Workspace's Todo file, keeping the watch across same-file revisions and
+    /// replacing it when the shown Todo file changes. Stops in the Empty state and when quitting.
+    fn sync_observation(&mut self, cx: &mut Context<Self>) {
+        let target = self
+            .selected()
+            .filter(|_| !self.quitting)
+            .map(|selected| Target {
+                workspace_id: selected.workspace.id.clone(),
+                path: selected.workspace.todo_file.clone(),
+            });
+        if self.observer.as_ref().map(|o| &o.target) == target.as_ref() {
+            return;
+        }
+        // Invalidate first, so nothing the old watch still delivers is accepted.
+        self.observation_generation += 1;
+        self.observe_dirty = false;
+        if let Some(old) = self.observer.take() {
+            release(old.guard, cx);
+        }
+        let Some(target) = target else {
+            return;
+        };
+        let generation = self.observation_generation;
+        let (watch, path) = (self.watch.clone(), target.path.clone());
+        let listen = cx.spawn(async move |this, cx| {
+            let acquired = cx.background_spawn(async move { watch(&path) }).await;
+            let signals = this
+                .update(cx, |model, cx| match acquired {
+                    Ok(watching) => match model.observer_mut(generation) {
+                        Some(observer) => {
+                            observer.guard = Some(watching.guard);
+                            // Reconcile once: the file may have changed since it was loaded.
+                            model.signal(generation, cx);
+                            Some(watching.signals)
+                        }
+                        None => {
+                            release(Some(watching.guard), cx);
+                            None
+                        }
+                    },
+                    // Best effort: the Workspace stays usable without observation.
+                    Err(error) => {
+                        eprintln!("tuxedo: could not observe the Todo file: {error}");
+                        None
+                    }
+                })
+                .ok()
+                .flatten();
+            let Some(signals) = signals else {
+                return;
+            };
+            while signals.recv().await.is_ok() {
+                if this
+                    .update(cx, |model, cx| model.signal(generation, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        self.observer = Some(Observer {
+            target,
+            generation,
+            guard: None,
+            _listen: listen,
+            debounce: None,
+        });
+    }
+
+    fn observer_mut(&mut self, generation: u64) -> Option<&mut Observer> {
+        self.observer
+            .as_mut()
+            .filter(|observer| observer.generation == generation)
+    }
+
+    /// A change signal for the watch of `generation`: (re)starts the debounce, after which the
+    /// file is marked dirty and read as soon as the queue allows.
+    fn signal(&mut self, generation: u64, cx: &mut Context<Self>) {
+        let Some(observer) = self.observer_mut(generation) else {
+            return;
+        };
+        observer.debounce = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(observation::DEBOUNCE).await;
+            this.update(cx, |model, cx| {
+                if model.observer_mut(generation).is_some() {
+                    model.observe_dirty = true;
+                    model.run_next(cx);
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// Reads the observed Todo file in the queue's running slot and accepts what it shows.
+    /// Signals arriving meanwhile mark the file dirty again for another read.
+    fn start_observed_read(&mut self, cx: &mut Context<Self>) {
+        self.observe_dirty = false;
+        let Some(request) = self.session().and_then(|s| s.prepare_observe()) else {
+            return;
+        };
+        let read = cx.background_spawn(async move { request.execute() });
+        let task = cx.spawn(async move |this, cx| {
+            let result = read.await;
+            this.update(cx, |model, cx| {
+                let SessionState::Ready(session) = &mut model.state else {
+                    unreachable!("observation runs only with a session");
+                };
+                match session.accept_observed(result) {
+                    Observed::Unchanged | Observed::Stale => {}
+                    Observed::Changed { notice } => {
+                        if let Some(notice) = notice {
+                            let outcome =
+                                Outcome::new(OutcomeKind::Applied, notice, Some(notice.into()));
+                            model.outcomes.push_back(outcome);
+                        }
+                    }
+                    Observed::Unavailable { warning } => model.warning = Some(warning),
+                }
+                model.commands.accept();
+                model.run_next(cx);
+                cx.notify();
+            })
+            .ok();
+        });
+        self.commands.start(task, "Todo-file observation");
+    }
+}
+
+/// Ends a watch off the UI thread: stopping a native watcher may wait for its thread.
+fn release(guard: Option<Box<dyn Send>>, cx: &mut Context<SessionModel>) {
+    if let Some(guard) = guard {
+        cx.background_spawn(async move { drop(guard) }).detach();
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
 
     // Explicit imports: a glob of gpui would shadow the built-in `#[test]` the macro expands to.
     use gpui::{AppContext as _, Entity, TestAppContext};
@@ -469,6 +643,7 @@ pub(crate) mod tests {
 
     use super::{SessionModel, QUIT_DEADLINE};
     use crate::command_queue::{Accepted, Command, Outcome, OutcomeKind, TodoCommand};
+    use crate::observation::{Watch, Watching, DEBOUNCE};
     use crate::todo_commands;
     use tuxedo_core::{WorkspaceChange, WorkspaceSession};
 
@@ -815,5 +990,133 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert_eq!(EXIT.with(|e| e.get()), Some(1));
         assert!(!QUIT.with(|q| q.get()));
+    }
+
+    /// Ends a test watch, recording that it ended.
+    struct Released(Arc<AtomicBool>);
+
+    impl Drop for Released {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+
+    type Watches = Arc<Mutex<Vec<(PathBuf, async_channel::Sender<()>, Arc<AtomicBool>)>>>;
+
+    /// An injected signal source: records each watch so the test can signal and inspect it.
+    fn injected_watch() -> (Watch, Watches) {
+        let watches = Watches::default();
+        let recorded = watches.clone();
+        let watch: Watch = Arc::new(move |path| {
+            let (sender, signals) = async_channel::bounded(1);
+            let released = Arc::new(AtomicBool::new(false));
+            let entry = (path.to_owned(), sender, released.clone());
+            recorded.lock().unwrap().push(entry);
+            Ok(Watching {
+                signals,
+                guard: Box::new(Released(released)),
+            })
+        });
+        (watch, watches)
+    }
+
+    #[gpui::test]
+    fn observed_changes_wait_for_commands_and_follow_the_shown_workspace(cx: &mut TestAppContext) {
+        let (watch, watches) = injected_watch();
+        let catalogue = catalogue("observe");
+        let todo = catalogue.with_file_name("A.txt");
+        std::fs::write(&todo, "First\nSecond\n").unwrap();
+        let model = cx.new(|cx| {
+            let mut model = SessionModel::restore_from(Some(catalogue.clone()), cx);
+            model.watch = watch;
+            model
+        });
+        cx.run_until_parked();
+        let signal = |index: usize| {
+            let _ = watches.lock().unwrap()[index].1.try_send(());
+        };
+        let released = |index: usize| watches.lock().unwrap()[index].2.load(Ordering::Acquire);
+        let settle = |cx: &mut TestAppContext| {
+            cx.executor().advance_clock(DEBOUNCE);
+            cx.run_until_parked();
+        };
+        let source = |cx: &mut TestAppContext| {
+            model.read_with(cx, |m, _| m.selected().map(|s| s.file.source.clone()))
+        };
+        settle(cx); // The reconciling read after the watch starts finds nothing new.
+        assert_eq!(watches.lock().unwrap()[0].0, todo);
+        assert!(kinds(&model, cx).is_empty());
+
+        // Tuxedo's own write signals too, but its bytes are already confirmed: no notice, and
+        // Undo and the revision survive.
+        let command = complete(&model, 1, cx);
+        model.update(cx, |m, cx| m.enqueue(command, cx));
+        cx.run_until_parked();
+        assert_eq!(kinds(&model, cx), [OutcomeKind::Applied]);
+        let revision = model.read_with(cx, |m, _| m.revision());
+        signal(0);
+        settle(cx);
+        assert!(kinds(&model, cx).is_empty());
+        model.read_with(cx, |m, _| {
+            assert_eq!(m.revision(), revision);
+            assert_eq!(m.undo_label(), Some("Undo completion"));
+        });
+
+        // A change signalled while a command runs is read only after that command finishes.
+        model.update(cx, |m, cx| m.enqueue(Command::Held, cx));
+        std::fs::write(&todo, "Third\n").unwrap();
+        signal(0);
+        settle(cx);
+        assert!(
+            source(cx).unwrap().starts_with("x "),
+            "not read during the command"
+        );
+        model.update(cx, |m, cx| {
+            m.commands.accept();
+            m.run_next(cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(source(cx).as_deref(), Some("Third\n"));
+        let outcomes = model.update(cx, |m, _| m.take_outcomes());
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].message.as_deref(), Some("Todo file reloaded"));
+        model.read_with(cx, |m, _| assert_eq!(m.undo_label(), None));
+
+        // Signals are debounced: each one restarts the 250 ms delay.
+        std::fs::write(&todo, "Fourth\n").unwrap();
+        for _ in 0..2 {
+            signal(0);
+            cx.run_until_parked();
+            cx.executor()
+                .advance_clock(DEBOUNCE - Duration::from_millis(1));
+            cx.run_until_parked();
+            assert_eq!(source(cx).as_deref(), Some("Third\n"));
+        }
+        cx.executor().advance_clock(Duration::from_millis(1));
+        cx.run_until_parked();
+        assert_eq!(source(cx).as_deref(), Some("Fourth\n"));
+        kinds(&model, cx);
+
+        // A Workspace switch ends A's watch and starts B's; A's late signals change nothing.
+        model.update(cx, |m, cx| m.select(B, cx));
+        cx.run_until_parked();
+        settle(cx);
+        assert!(released(0));
+        assert_eq!(watches.lock().unwrap()[1].0, todo.with_file_name("B.txt"));
+        kinds(&model, cx);
+        std::fs::write(&todo, "Ignored\n").unwrap();
+        signal(0);
+        settle(cx);
+        assert_eq!(source(cx).as_deref(), Some("Task in B\n"));
+        assert!(kinds(&model, cx).is_empty());
+
+        // A Todo file that cannot be read enters the Empty state with a warning; watching ends.
+        std::fs::remove_file(todo.with_file_name("B.txt")).unwrap();
+        signal(1);
+        settle(cx);
+        assert_eq!(source(cx), None);
+        model.read_with(cx, |m, _| assert!(m.warning().unwrap().contains("B.txt")));
+        assert!(released(1));
+        assert_eq!(watches.lock().unwrap().len(), 2);
     }
 }
