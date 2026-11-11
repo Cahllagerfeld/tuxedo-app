@@ -15,7 +15,7 @@ export function workspaceRouting() {
 		session: () => page.data.session,
 		workspace: () => page.data.workspace,
 		destination: () => page.params.id,
-		navigating: () => !!navigating.to,
+		navigating: () => !!navigating.to && !navigating.shallow,
 		invalidate: invalidateDisplayedData,
 	};
 	const commands = new WorkspaceCommands(window.desktop, routes);

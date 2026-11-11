@@ -15,23 +15,28 @@ export type InvalidateDisplayedData = (target: DisplayedDataTarget) => Promise<v
 
 let queue = Promise.resolve();
 
-// SvelteKit drops an invalidation overtaken by another invalidation or a navigation, resolving it
-// without applying. Serializing them, after any in-flight navigation commits, means each resolved
-// call has re-read its loaders.
-export const invalidateDisplayedData: InvalidateDisplayedData = ({
-	session = false,
-	workspaceId = null,
-	savedViewsId = null,
-}) => {
+// SvelteKit drops an invalidation overtaken by another invalidation or a navigation, including a
+// shallow one, resolving it without applying. Serializing them, after any in-flight navigation
+// commits, means each resolved call has re-read its loaders.
+export const serializeWithInvalidations = (task: () => Promise<void>) => {
 	const next = queue.then(async () => {
 		await navigating.complete?.catch(() => {});
-		await invalidate(
-			(dependency) =>
-				(session && dependency.href === sessionDependency) ||
-				(!!workspaceId && dependency.href === workspaceDependency(workspaceId)) ||
-				(!!savedViewsId && dependency.href === savedViewsDependency(savedViewsId))
-		);
+		await task();
 	});
 	queue = next.catch(() => {});
 	return next;
 };
+
+export const invalidateDisplayedData: InvalidateDisplayedData = ({
+	session = false,
+	workspaceId = null,
+	savedViewsId = null,
+}) =>
+	serializeWithInvalidations(() =>
+		invalidate(
+			(dependency) =>
+				(session && dependency.href === sessionDependency) ||
+				(!!workspaceId && dependency.href === workspaceDependency(workspaceId)) ||
+				(!!savedViewsId && dependency.href === savedViewsDependency(savedViewsId))
+		)
+	);
