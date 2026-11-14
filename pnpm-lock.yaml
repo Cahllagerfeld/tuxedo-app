@@ -225,8 +225,8 @@ importers:
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0))
       '@tanstack/svelte-hotkeys':
-        specifier: 0.17.0
-        version: 0.17.0(svelte@5.57.2)
+        specifier: 0.22.1
+        version: 0.22.1(svelte@5.57.2)
       '@tanstack/svelte-virtual':
         specifier: 3.13.50
         version: 3.13.50(svelte@5.57.2)
@@ -809,18 +809,15 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
 
-  '@tanstack/hotkeys@0.18.0':
-    resolution: {integrity: sha512-QQjRgnpz0xrTbhKiuia+ACGzO4PsxEsTVH2ls01fM2LJ8uISrWVq/9ILB3bd4eFdWzj9I6K7qZM6swoDDiKcRQ==}
+  '@tanstack/hotkeys@0.27.1':
+    resolution: {integrity: sha512-ZgZWw1jcAYwukEwF9Fk7JQSLh4dunfI5ElP48/YoRFBnXqtMwP9MmTKazMKcyW6tOLYZ1gx9bWe9KfQdPuRZMA==}
     engines: {node: '>=20'}
 
-  '@tanstack/store@0.11.2':
-    resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
-
-  '@tanstack/svelte-hotkeys@0.17.0':
-    resolution: {integrity: sha512-sYPN8olyR5N7K6pslaLBQFpy0FUP2XNPO9IeLTig2vVEtuJFErZbcMihGl0HxhWOgmEtneCPgOzAXtMDnOebRg==}
+  '@tanstack/svelte-hotkeys@0.22.1':
+    resolution: {integrity: sha512-UGus1C5vV7d14aX5JmDIIQAAefZ3OcsBZzi5swgFnWGWjICi4asMOQ41f4FTdJam08B1NkJ7ukJ66GEwMOgscg==}
     engines: {node: '>=20'}
     peerDependencies:
-      svelte: ^5.25.0
+      svelte: ^5.40.0
 
   '@tanstack/svelte-virtual@3.13.50':
     resolution: {integrity: sha512-msRag/Da+WH+km/dFSbLJSKpzbrOhhrLItzeRuRsApOFdkFzUXjZpODl1nQYjZ4m095Ea0Q+ue4cnOhpI86awg==}
@@ -2708,15 +2705,11 @@ snapshots:
       tailwindcss: 4.3.3
       vite: 8.3.5(@types/node@24.19.2)(jiti@2.7.0)
 
-  '@tanstack/hotkeys@0.18.0':
-    dependencies:
-      '@tanstack/store': 0.11.2
+  '@tanstack/hotkeys@0.27.1': {}
 
-  '@tanstack/store@0.11.2': {}
-
-  '@tanstack/svelte-hotkeys@0.17.0(svelte@5.57.2)':
+  '@tanstack/svelte-hotkeys@0.22.1(svelte@5.57.2)':
     dependencies:
-      '@tanstack/hotkeys': 0.18.0
+      '@tanstack/hotkeys': 0.27.1
       svelte: 5.57.2
 
   '@tanstack/svelte-virtual@3.13.50(svelte@5.57.2)':
