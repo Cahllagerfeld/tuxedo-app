@@ -8,6 +8,8 @@ Setup validates Workspace names and canonical file references before creating a 
 
 ## Development
 
+Prerequisites: macOS and [devenv](https://devenv.sh), which provides Node.js 24 and pnpm. Domain terms are defined in `GLOSSARY.md`, architectural decisions are recorded in `docs/adr/`, and `examples/todo.txt` demonstrates every supported Todo-file case.
+
 Install dependencies with `devenv shell -- pnpm install --frozen-lockfile`, then launch with `devenv shell -- pnpm dev`. Vite and vite-plugin-electron build/watch main and preload and serve the renderer at `http://127.0.0.1:1420`; Ctrl-C stops the application. Renderer updates use Vite HMR.
 
 SvelteKit 3 uses native `#lib/*` package imports with explicit file extensions. Its renderer configuration lives in `apps/desktop/vite.config.ts`, and `svelte-kit sync` generates the `$app/tsconfig` base. Keep TypeScript on the shared 6.x version until SvelteKit and svelte-check support 7.x.
